@@ -1,0 +1,271 @@
+name: Hepta inference INF-0 Rust 1.95 formatting export
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-runtime-v2-20260828
+    paths:
+      - ".github/workflows/hepta-inference-inf0-rustfmt-export.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-inf0-rustfmt-export
+  cancel-in-progress: false
+
+jobs:
+  export:
+    name: Export exact Rust 1.95 formatting payload
+    if: >-
+      github.repository == 'ProfAlexQI/hepta-private-ci' &&
+      github.ref == 'refs/heads/codex/hepta-inference-runtime-v2-20260828'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      EXPECTED_PARENT: 64371f6852ea34092076f33d42f43473b8f547e4
+      OLD_BOOTSTRAP: .github/workflows/hepta-inference-inf0-rustfmt-bootstrap.yml
+      V2_BOOTSTRAP: .github/workflows/hepta-inference-inf0-rustfmt-bootstrap-v2.yml
+      SELF: .github/workflows/hepta-inference-inf0-rustfmt-export.yml
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+
+      - name: Verify exact export parent and changed path
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          test -f "$OLD_BOOTSTRAP"
+          test -f "$V2_BOOTSTRAP"
+          test -f "$SELF"
+          test -z "$(git status --porcelain)"
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt
+
+      - name: Materialize exact formatter output and restore strict workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path(".github/workflows/hepta-inference-inf0.yml")
+          text = path.read_text(encoding="utf-8")
+          reference_start = "      - name: Check standalone reference formatting\n"
+          reference_end = "      - name: Test standalone reference crate\n"
+          compatibility_start = "      - name: Check included inference source fragments\n"
+          compatibility_end = "      - name: Workspace formatting\n"
+
+          def replace_between(source: str, start: str, end: str, replacement: str) -> str:
+              start_index = source.find(start)
+              end_index = source.find(end, start_index)
+              if start_index < 0 or end_index < 0:
+                  raise SystemExit(f"strict-workflow anchor missing: {start.strip()} -> {end.strip()}")
+              return source[:start_index] + replacement + source[end_index:]
+
+          text = replace_between(
+              text,
+              reference_start,
+              reference_end,
+              """      - name: Check standalone reference formatting
+                shell: bash
+                run: cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml -- --check
+
+          """,
+          )
+          text = replace_between(
+              text,
+              compatibility_start,
+              compatibility_end,
+              """      - name: Check included inference source fragments
+                shell: bash
+                run: |
+                  rustfmt --edition 2024 --check \\
+                    ollama/src/client.rs \\
+                    ollama/src/client_*.inc.rs \\
+                    lmstudio/src/client.rs \\
+                    lmstudio/src/client_*.inc.rs
+
+          """,
+          )
+          for marker in (
+              "Materialize standalone formatted source",
+              "Upload standalone formatted source",
+              "Enforce standalone formatting",
+              "Materialize included fragment formatting",
+              "Upload formatted inference fragments",
+              "Enforce included fragment formatting",
+              "hepta-inference-reference-rustfmt",
+              "hepta-inference-fragment-rustfmt",
+          ):
+              if marker in text:
+                  raise SystemExit(f"diagnostic workflow marker remains: {marker}")
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml
+          (
+            cd codex-rs
+            rustfmt --edition 2024 \
+              ollama/src/client.rs \
+              ollama/src/client_*.inc.rs \
+              lmstudio/src/client.rs \
+              lmstudio/src/client_*.inc.rs
+          )
+          git rm "$OLD_BOOTSTRAP" "$V2_BOOTSTRAP" "$SELF"
+
+      - name: Verify bounded formatter payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+
+          def names(*args: str) -> set[str]:
+              output = subprocess.check_output(["git", *args], text=True)
+              return {line for line in output.splitlines() if line}
+
+          changed = names("diff", "HEAD", "--name-only")
+          deleted = names("diff", "HEAD", "--diff-filter=D", "--name-only")
+          exact = {
+              ".github/workflows/hepta-inference-inf0.yml",
+              ".github/workflows/hepta-inference-inf0-rustfmt-bootstrap.yml",
+              ".github/workflows/hepta-inference-inf0-rustfmt-bootstrap-v2.yml",
+              ".github/workflows/hepta-inference-inf0-rustfmt-export.yml",
+              "tools/hepta-inference-inf0/src/lib.rs",
+          }
+          required_deleted = {
+              ".github/workflows/hepta-inference-inf0-rustfmt-bootstrap.yml",
+              ".github/workflows/hepta-inference-inf0-rustfmt-bootstrap-v2.yml",
+              ".github/workflows/hepta-inference-inf0-rustfmt-export.yml",
+          }
+          prefixes = (
+              "codex-rs/ollama/src/client",
+              "codex-rs/lmstudio/src/client",
+          )
+          unexpected = sorted(
+              path for path in changed if path not in exact and not path.startswith(prefixes)
+          )
+          if unexpected:
+              raise SystemExit(f"unexpected formatter export paths: {unexpected}")
+          missing = sorted(exact - changed)
+          if missing:
+              raise SystemExit(f"required formatter export paths unchanged: {missing}")
+          if not required_deleted.issubset(deleted):
+              raise SystemExit(f"workflow deletion drift: deleted={sorted(deleted)}")
+          if not any(path.startswith(prefixes[0]) for path in changed):
+              raise SystemExit("no Ollama formatter payload")
+          if not any(path.startswith(prefixes[1]) for path in changed):
+              raise SystemExit("no LM Studio formatter payload")
+          PY
+          git diff HEAD --check
+          cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml -- --check
+          (
+            cd codex-rs
+            rustfmt --edition 2024 --check \
+              ollama/src/client.rs \
+              ollama/src/client_*.inc.rs \
+              lmstudio/src/client.rs \
+              lmstudio/src/client_*.inc.rs
+          )
+
+      - name: Build deterministic export bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          export_root="$RUNNER_TEMP/hepta-inference-rustfmt-export"
+          files_root="$export_root/files"
+          mkdir -p "$files_root"
+          git diff HEAD --binary > "$export_root/hepta-inference-rustfmt.patch"
+          git diff HEAD --name-only --diff-filter=ACMRT > "$export_root/changed-files.txt"
+          git diff HEAD --name-only --diff-filter=D > "$export_root/deleted-files.txt"
+          while IFS= read -r path; do
+            test -n "$path"
+            mkdir -p "$files_root/$(dirname "$path")"
+            cp "$path" "$files_root/$path"
+          done < "$export_root/changed-files.txt"
+          python3 - "$export_root" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          files_root = root / "files"
+          changed = (root / "changed-files.txt").read_text(encoding="utf-8").splitlines()
+          deleted = (root / "deleted-files.txt").read_text(encoding="utf-8").splitlines()
+          files = []
+          for relative in changed:
+              payload = (files_root / relative).read_bytes()
+              files.append(
+                  {
+                      "path": relative,
+                      "byte_length": len(payload),
+                      "sha256": hashlib.sha256(payload).hexdigest(),
+                  }
+              )
+          manifest = {
+              "schema": "hepta.inference.inf0c.rustfmt-export.v1",
+              "export_commit": os.environ["GITHUB_SHA"],
+              "export_tree": os.popen("git rev-parse 'HEAD^{tree}'").read().strip(),
+              "rustc": os.popen("rustc --version").read().strip(),
+              "rustfmt": os.popen("rustfmt --version").read().strip(),
+              "files": files,
+              "deleted": deleted,
+              "qualified": False,
+              "inf1": "NOT_STARTED",
+              "authority": {
+                  "production_listener": False,
+                  "production_writer": False,
+                  "provider_effect": False,
+                  "external_effect": False,
+                  "shared_kg_write": False,
+                  "memory_write": False,
+                  "route_write": False,
+                  "fleet_write": False,
+                  "model_npu": False,
+                  "remote_inference": False,
+                  "automatic_model_install": False,
+                  "operator_acceptance": False,
+                  "promotion": False,
+                  "release": False,
+              },
+          }
+          (root / "manifest.json").write_text(
+              json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+          find "$export_root" -type f -print0 | sort -z | xargs -0 shasum -a 256 > "$export_root/SHA256SUMS"
+
+      - name: Upload exact formatter export
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0-rustfmt-export-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-inference-rustfmt-export
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Record fail-closed export posture
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Hepta inference INF-0 Rust 1.95 formatter export"
+            echo
+            echo "- export commit: $GITHUB_SHA"
+            echo "- source branch mutated by workflow: false"
+            echo "- qualification_only: true"
+            echo "- qualified: false"
+            echo "- INF-1: NOT_STARTED"
+            echo "- production/effect/model-NPU/remote/promotion authority: false"
+          } >> "$GITHUB_STEP_SUMMARY"
