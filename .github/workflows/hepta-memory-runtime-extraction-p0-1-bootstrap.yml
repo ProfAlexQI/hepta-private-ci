@@ -15,11 +15,18 @@ concurrency:
 
 jobs:
   migrate-and-verify:
-    name: Migrate Agentd to physical Memory runtime facade
+    name: Materialize physical Memory runtime facade
     if: ${{ !contains(github.event.head_commit.message || '', '[memory-runtime-extraction]') }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
     steps:
+      - name: Enable Git long paths before checkout
+        shell: pwsh
+        run: git config --system core.longpaths true
+
       - name: Checkout latest convergence branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -33,16 +40,17 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Apply deterministic extraction migration
+      - name: Apply deterministic workspace materialization
         run: python3 scripts/hepta-memory-runtime-extraction-p0-1.py
 
       - name: Format extracted boundary sources
         run: |
           rustfmt --edition 2024 \
             codex-rs/hepta-memory-runtime/src/lib.rs \
-            codex-rs/hepta-agentd/src/composition.rs
+            codex-rs/hepta-memory-runtime/src/legacy_authority.rs \
+            codex-rs/hepta-agentd/src/memory_service.rs
 
-      - name: Refresh local workspace lock binding
+      - name: Refresh workspace lock binding
         working-directory: codex-rs
         run: cargo check -p codex-hepta-memory-runtime -p codex-hepta-agentd
 
@@ -74,28 +82,6 @@ jobs:
           if agentd_lock is None or "codex-hepta-memory-runtime" not in agentd_lock.get("dependencies", []):
               raise SystemExit("Agentd lock entry is missing the Memory runtime facade")
           PY
-
-      - name: Enforce migration allowlist
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import subprocess
-
-          allowed = {
-              "codex-rs/Cargo.lock",
-              "codex-rs/Cargo.toml",
-              "codex-rs/hepta-agentd/Cargo.toml",
-              "codex-rs/hepta-agentd/src/composition.rs",
-              "codex-rs/hepta-memory-runtime/src/lib.rs",
-              "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_P0_2_STATUS.json",
-          }
-          changed = set(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
-          unexpected = sorted(changed - allowed)
-          if unexpected:
-              raise SystemExit(f"Memory runtime extraction escaped allowlist: {unexpected}")
-          PY
-          git diff --check
 
       - name: Canonical architecture source gate
         run: python3 scripts/verify-hepta-architecture-convergence-p0-2.py
@@ -133,12 +119,48 @@ jobs:
             -p codex-hepta-agentd \
             -- -D warnings
 
+      - name: Mark materialized source state
+        run: |
+          python3 - <<'PY'
+          import json
+          import pathlib
+
+          path = pathlib.Path("docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_P0_2_STATUS.json")
+          value = json.loads(path.read_text(encoding="utf-8"))
+          implemented = value.setdefault("implemented", {})
+          implemented["memoryRuntimeFacadeCrate"] = True
+          implemented["memoryRuntimeFacadeMaterialized"] = True
+          value["sourceRevision"] = max(int(value.get("sourceRevision", 0)), 10)
+          path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - name: Enforce migration allowlist
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+
+          allowed = {
+              "codex-rs/Cargo.lock",
+              "codex-rs/Cargo.toml",
+              "codex-rs/hepta-agentd/Cargo.toml",
+              "codex-rs/hepta-agentd/src/memory_service.rs",
+              "codex-rs/hepta-memory-runtime/src/lib.rs",
+              "codex-rs/hepta-memory-runtime/src/legacy_authority.rs",
+              "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_P0_2_STATUS.json",
+          }
+          changed = set(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
+          unexpected = sorted(changed - allowed)
+          if unexpected:
+              raise SystemExit(f"Memory runtime extraction escaped allowlist: {unexpected}")
+          PY
+          git diff --check
+
       - name: Commit verified extraction
-        shell: bash
         run: |
           set -euo pipefail
           if git diff --quiet; then
-            echo "Memory runtime extraction is already applied."
+            echo "Memory runtime extraction is already materialized."
             exit 0
           fi
           git config user.name "Hepta qualification bootstrap"
@@ -147,9 +169,10 @@ jobs:
             codex-rs/Cargo.lock \
             codex-rs/Cargo.toml \
             codex-rs/hepta-agentd/Cargo.toml \
-            codex-rs/hepta-agentd/src/composition.rs \
+            codex-rs/hepta-agentd/src/memory_service.rs \
             codex-rs/hepta-memory-runtime/src/lib.rs \
+            codex-rs/hepta-memory-runtime/src/legacy_authority.rs \
             docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_P0_2_STATUS.json
           git diff --cached --check
-          git commit -m "refactor(memory): bind Agentd to runtime facade [memory-runtime-extraction]"
+          git commit -m "refactor(memory): materialize runtime facade [memory-runtime-extraction]"
           git push origin HEAD:refs/heads/codex/hepta-architecture-convergence-p0-2-20260828
