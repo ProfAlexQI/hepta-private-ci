@@ -1,139 +1,10 @@
-//! Legacy production-authority compatibility adapter.
+//! Agentd integration seam for the Memory runtime production adapter.
 //!
-//! The durable writer already requires an independently verified
-//! [`ProductionAuthorityLease`]. This adapter converts that verified boundary
-//! into the unified `Authorized<CognitiveWriteCapability>` witness before
-//! Agentd opens or mutates the Agent-private Cognitive store. It grants no
-//! provider dispatch or external-effect capability.
+//! The actual legacy-lease attenuation is owned by
+//! `codex-hepta-memory-runtime`; Agentd only consumes the resulting typed
+//! cognitive-write authorization before it opens the durable writer host.
 
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
-
-use codex_hepta_contracts::AgentId;
-use codex_hepta_contracts::AuthorityAction;
-use codex_hepta_contracts::AuthorityLeaseBinding;
-use codex_hepta_contracts::Authorized;
-use codex_hepta_contracts::CapabilityVerificationRequest;
-use codex_hepta_contracts::CapabilityVerifier;
-use codex_hepta_contracts::CognitiveWriteCapability;
-use codex_hepta_contracts::authorize_verified_capability;
-use codex_hepta_memory::ProductionAuthorityLease;
-use codex_hepta_memory::ProductionAuthorityVerifier;
-use codex_hepta_memory::ProductionWriterError;
-
-#[derive(Clone, Debug)]
-pub(crate) struct ProductionCognitiveWriteAuthorization {
-    lease: ProductionAuthorityLease,
-    capability: Authorized<CognitiveWriteCapability>,
-}
-
-impl ProductionCognitiveWriteAuthorization {
-    pub(crate) fn verify<V>(
-        lease: ProductionAuthorityLease,
-        verifier: &V,
-        expected_agent: &AgentId,
-        lease_generation: u64,
-    ) -> Result<Self, ProductionWriterError>
-    where
-        V: ProductionAuthorityVerifier + ?Sized,
-    {
-        let binding = AuthorityLeaseBinding::new(
-            lease.agent_id.clone(),
-            lease.grant_digest.clone(),
-            lease.authority_epoch,
-            lease.owner_epoch,
-            lease_generation,
-            lease.fencing_token_digest()?,
-            lease.lease_expires_at_unix_seconds,
-        )
-        .map_err(|error| {
-            ProductionWriterError::AuthorityRejected(format!(
-                "typed cognitive-write binding rejected: {error}"
-            ))
-        })?;
-        let adapter = LegacyProductionCapabilityVerifier {
-            lease: &lease,
-            verifier,
-        };
-        let capability = authorize_verified_capability::<CognitiveWriteCapability, _>(
-            binding,
-            expected_agent,
-            lease_generation,
-            now_unix_seconds()?,
-            &adapter,
-        )
-        .map_err(|error| {
-            ProductionWriterError::AuthorityRejected(format!(
-                "typed cognitive-write authorization rejected: {error}"
-            ))
-        })?;
-        Ok(Self { lease, capability })
-    }
-
-    #[cfg(test)]
-    pub(crate) fn lease(&self) -> &ProductionAuthorityLease {
-        &self.lease
-    }
-
-    #[cfg(test)]
-    pub(crate) fn capability(&self) -> &Authorized<CognitiveWriteCapability> {
-        &self.capability
-    }
-
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        ProductionAuthorityLease,
-        Authorized<CognitiveWriteCapability>,
-    ) {
-        (self.lease, self.capability)
-    }
-}
-
-struct LegacyProductionCapabilityVerifier<'a, V>
-where
-    V: ProductionAuthorityVerifier + ?Sized,
-{
-    lease: &'a ProductionAuthorityLease,
-    verifier: &'a V,
-}
-
-impl<'a, V> CapabilityVerifier for LegacyProductionCapabilityVerifier<'a, V>
-where
-    V: ProductionAuthorityVerifier + ?Sized,
-{
-    fn verify(&self, request: &CapabilityVerificationRequest<'_>) -> Result<(), String> {
-        if request.action() != AuthorityAction::WriteCognitiveState {
-            return Err(
-                "legacy production lease may only mint cognitive-write authority".to_string(),
-            );
-        }
-        let binding = request.binding();
-        let fencing_token_sha256 = self
-            .lease
-            .fencing_token_digest()
-            .map_err(|error| error.to_string())?;
-        if binding.subject_agent_id() != &self.lease.agent_id
-            || binding.grant_sha256() != &self.lease.grant_digest
-            || binding.authority_epoch() != self.lease.authority_epoch
-            || binding.owner_epoch() != self.lease.owner_epoch
-            || binding.expires_at_unix_seconds()
-                != self.lease.lease_expires_at_unix_seconds
-            || binding.fencing_token_sha256() != &fencing_token_sha256
-        {
-            return Err("legacy production lease drifted from typed binding".to_string());
-        }
-        self.verifier
-            .verify(self.lease, request.expected_agent_id())
-    }
-}
-
-fn now_unix_seconds() -> Result<u64, ProductionWriterError> {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .map_err(|error| ProductionWriterError::Invalid(format!("system clock failed: {error}")))
-}
+pub(crate) use codex_hepta_memory_runtime::ProductionCognitiveWriteAuthorization;
 
 #[cfg(test)]
 mod tests {
@@ -146,36 +17,33 @@ mod tests {
     use codex_hepta_memory::ProductionWriterError;
 
     use super::ProductionCognitiveWriteAuthorization;
-    use super::now_unix_seconds;
 
     const OWNER_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
     const OTHER_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c13";
 
     fn agent_id(value: &str) -> AgentId {
-        match AgentId::parse(value) {
-            Ok(agent_id) => agent_id,
-            Err(error) => panic!("test AgentId must parse: {error}"),
-        }
+        AgentId::parse(value)
+            .unwrap_or_else(|error| panic!("test AgentId must parse: {error}"))
     }
 
     fn lease() -> ProductionAuthorityLease {
-        let token = match ProductionAuthorityToken::from_verified_bytes(
-            b"externally-verified-supervisor-token".to_vec(),
-        ) {
-            Ok(token) => token,
-            Err(error) => panic!("test token must be valid: {error}"),
-        };
-        match ProductionAuthorityLease::from_verified_parts(
+        let expires_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_else(|error| panic!("clock must work: {error}"))
+            .as_secs()
+            + 3_600;
+        ProductionAuthorityLease::from_verified_parts(
             agent_id(OWNER_ID),
             Sha256Digest::for_bytes(b"signed-production-grant"),
             5,
             8,
-            now_unix_seconds().unwrap_or_else(|error| panic!("clock must work: {error}")) + 3_600,
-            token,
-        ) {
-            Ok(lease) => lease,
-            Err(error) => panic!("test lease must be valid: {error}"),
-        }
+            expires_at,
+            ProductionAuthorityToken::from_verified_bytes(
+                b"externally-verified-supervisor-token".to_vec(),
+            )
+            .unwrap_or_else(|error| panic!("test token must be valid: {error}")),
+        )
+        .unwrap_or_else(|error| panic!("test lease must be valid: {error}"))
     }
 
     struct AllowVerifier;
@@ -206,30 +74,24 @@ mod tests {
     }
 
     #[test]
-    fn verified_legacy_lease_mints_external_cognitive_write_only() {
-        let authorization = match ProductionCognitiveWriteAuthorization::verify(
+    fn agentd_consumes_external_typed_cognitive_write_only() {
+        let authorization = ProductionCognitiveWriteAuthorization::verify(
             lease(),
             &AllowVerifier,
             &agent_id(OWNER_ID),
             3,
-        ) {
-            Ok(authorization) => authorization,
-            Err(error) => panic!("legacy lease must adapt: {error}"),
-        };
+        )
+        .unwrap_or_else(|error| panic!("legacy lease must adapt: {error}"));
         assert_eq!(
             authorization.capability().action(),
             AuthorityAction::WriteCognitiveState
         );
         assert!(authorization.capability().is_external());
         assert_eq!(authorization.capability().generation(), 3);
-        assert_eq!(
-            authorization.capability().grant_sha256(),
-            &authorization.lease().grant_digest
-        );
     }
 
     #[test]
-    fn verifier_denial_and_agent_mismatch_fail_closed() {
+    fn agentd_never_bypasses_verifier_or_agent_binding() {
         assert!(matches!(
             ProductionCognitiveWriteAuthorization::verify(
                 lease(),
