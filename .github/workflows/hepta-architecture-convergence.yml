@@ -6,6 +6,7 @@ on:
       - "ARCHITECTURE.md"
       - "docs/architecture/**"
       - "scripts/verify-hepta-architecture-convergence.py"
+      - "scripts/verify-hepta-effect-dispatch-callers.py"
       - "codex-rs/hepta-contracts/**"
       - "codex-rs/hepta-memory/**"
       - "codex-rs/hepta-agentd/**"
@@ -57,6 +58,7 @@ jobs:
             echo "qualification_only=true"
             echo "typed_legacy_adapter=true"
             echo "typed_external_effect_gate=true"
+            echo "raw_effect_caller_ratchet=true"
             echo "service_builders=true"
             echo "physical_memory_schema_extraction=false"
             echo "runtime_authority=false"
@@ -76,7 +78,10 @@ jobs:
           set -euo pipefail
           python3 scripts/verify-hepta-architecture-convergence.py \
             | tee "$EVIDENCE_DIR/source-verifier.json"
+          python3 scripts/verify-hepta-effect-dispatch-callers.py \
+            | tee "$EVIDENCE_DIR/effect-caller-verifier.json"
           echo "source_verifier=passed" >> "$EVIDENCE_DIR/receipt.txt"
+          echo "effect_caller_ratchet=passed" >> "$EVIDENCE_DIR/receipt.txt"
 
       - name: Package-scoped format gate
         working-directory: codex-rs
