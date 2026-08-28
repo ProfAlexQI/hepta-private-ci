@@ -1,0 +1,78 @@
+{
+  "schema": "hepta.ui.execution-provenance-audit.v1",
+  "status": "EXECUTION_PROVENANCE_AUDIT_SOURCE_READY_COMPLETED_RUN_REQUIRED",
+  "candidateBranch": "codex/ui-v4-execution-provenance-audit-20260828",
+  "baseBranch": "codex/ui-v4-same-run-qualification-index-20260828",
+  "baseCommit": "09119f358ec8d33913feed61514ee033d52c4ad2",
+  "baseTree": "fed4e5d6474b4b8dde8dc21117a850bf14f45276",
+  "sourceWorkflow": "hepta-ui-v4-windows-material-profile-exact",
+  "producer": {
+    "source": "scripts/hepta-ui-v4-execution-provenance-audit",
+    "schema": "docs/ui/schemas/hepta.ui.v4.execution-provenance-audit.v1.schema.json",
+    "atomicReceiptWrite": true,
+    "boundedFailures": 64,
+    "completedRunRequired": true,
+    "sourceRunSuccessRequired": true,
+    "candidateCommitRequired": true,
+    "candidateTreeRequired": true,
+    "auditorCommitRequired": true,
+    "auditorTreeRequired": true,
+    "sameRunIndexRequired": true,
+    "nonzeroRunnerRequired": true,
+    "nonemptyStepsRequired": true,
+    "platformSpecificCompileStepsRequired": true,
+    "compileRunnerLabelsRequired": true,
+    "governedRuntimeLabels": [
+      "self-hosted",
+      "Windows",
+      "X64",
+      "hepta-ui-dwm"
+    ],
+    "runtimeIdentityTypesRequired": true,
+    "runtimeSequenceContract": [
+      1,
+      2,
+      3
+    ],
+    "rootAndTransientWindowIdMustDiffer": true,
+    "rootAndTransientHwndMustDiffer": true,
+    "exactDestroyedIdentityRequired": true,
+    "makepadRevision": "c4335cee10b22aca768510c9d072b0ca1bba15c8",
+    "selfTests": [
+      "pre-runtime-pass",
+      "windows-runtime-pass",
+      "missing-windows-producer-step-fail-closed",
+      "runtime-label-drift-fail-closed",
+      "runtime-sequence-type-drift-fail-closed"
+    ]
+  },
+  "outputStatuses": {
+    "preRuntime": "PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE",
+    "windowsRuntime": "PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE",
+    "failure": "FAIL_EXACT_HEAD_EXECUTION_PROVENANCE"
+  },
+  "qualification": {
+    "sourceImplemented": true,
+    "hostedSource": false,
+    "completedRunAudited": false,
+    "preRuntimeProvenance": false,
+    "windowsRuntimeProvenance": false,
+    "eligibleForProductIntegrationReview": false,
+    "productBound": false,
+    "transientSystemMaterialBound": false,
+    "completeProfileBound": false,
+    "systemMaterialBound": false,
+    "nativeProductRuntime": false,
+    "deviceValidation": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

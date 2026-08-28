@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.ai/schemas/ui/hepta.ui.v4.execution-provenance-audit.v1.schema.json",
+  "title": "Hepta UI v4 exact-head execution provenance audit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "auditor", "candidate", "sourceRun", "evidence", "qualification", "authority", "failures"],
+  "properties": {
+    "schema": {"const": "hepta.ui.v4.execution-provenance-audit.v1"},
+    "status": {"enum": ["PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE", "PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE", "FAIL_EXACT_HEAD_EXECUTION_PROVENANCE"]},
+    "auditor": {"$ref": "#/$defs/gitPair"},
+    "candidate": {"$ref": "#/$defs/gitPair"},
+    "sourceRun": {"$ref": "#/$defs/sourceRun"},
+    "evidence": {"$ref": "#/$defs/evidence"},
+    "qualification": {"$ref": "#/$defs/qualification"},
+    "authority": {"$ref": "#/$defs/authority"},
+    "failures": {"type": "array", "maxItems": 64, "items": {"type": "string", "minLength": 1, "maxLength": 4096}}
+  },
+  "$defs": {
+    "gitObject": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "gitPair": {
+      "type": "object", "additionalProperties": false, "required": ["commit", "tree"],
+      "properties": {"commit": {"type": "string"}, "tree": {"type": "string"}}
+    },
+    "sourceRun": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repository", "runId", "runAttempt", "event", "headSha", "qualified"],
+      "properties": {
+        "repository": {"type": "string"}, "runId": {"type": "integer", "minimum": 0},
+        "runAttempt": {"type": "integer", "minimum": 0}, "event": {"type": "string"},
+        "headSha": {"type": "string"}, "qualified": {"type": "boolean"}
+      }
+    },
+    "jobEvidence": {
+      "type": "object", "additionalProperties": true, "required": ["jobId", "qualified"],
+      "properties": {
+        "jobId": {"type": "integer", "minimum": 1}, "runnerId": {"type": "integer", "minimum": 1},
+        "runnerName": {"type": "string", "minLength": 1},
+        "labels": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "stepCount": {"type": "integer", "minimum": 1}, "skipped": {"type": "boolean"},
+        "qualified": {"type": "boolean"}
+      }
+    },
+    "qualifiedEvidence": {
+      "type": "object", "additionalProperties": true, "required": ["qualified"],
+      "properties": {"qualified": {"type": "boolean"}}
+    },
+    "runtimeEvidence": {
+      "type": "object", "additionalProperties": true, "required": ["requested", "qualified"],
+      "properties": {
+        "requested": {"type": "boolean"}, "qualified": {"type": "boolean"},
+        "status": {"const": "PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE"},
+        "rootSequence": {"const": 1}, "acrylicSequence": {"const": 2}, "rollbackSequence": {"const": 3}
+      }
+    },
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["jobs", "artifacts", "materialization", "qualificationIndex", "windowsRuntime"],
+      "properties": {
+        "jobs": {"type": "object", "additionalProperties": {"$ref": "#/$defs/jobEvidence"}},
+        "artifacts": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"}},
+        "materialization": {"$ref": "#/$defs/qualifiedEvidence"},
+        "qualificationIndex": {"$ref": "#/$defs/qualifiedEvidence"},
+        "windowsRuntime": {"$ref": "#/$defs/runtimeEvidence"}
+      }
+    },
+    "qualification": {
+      "type": "object", "additionalProperties": false,
+      "required": ["executionProvenance", "preRuntime", "windowsRuntime", "productBound", "transientSystemMaterialBound", "completeProfileBound", "systemMaterialBound", "nativeProductRuntime", "deviceValidation"],
+      "properties": {
+        "executionProvenance": {"type": "boolean"}, "preRuntime": {"type": "boolean"}, "windowsRuntime": {"type": "boolean"},
+        "productBound": {"const": false}, "transientSystemMaterialBound": {"const": false},
+        "completeProfileBound": {"const": false}, "systemMaterialBound": {"const": false},
+        "nativeProductRuntime": {"const": false}, "deviceValidation": {"const": false}
+      }
+    },
+    "authority": {
+      "type": "object", "additionalProperties": false,
+      "required": ["network", "mutation", "effect", "liveAdapter", "production", "operatorAcceptance", "promotion", "release"],
+      "properties": {
+        "network": {"const": false}, "mutation": {"const": false}, "effect": {"const": false},
+        "liveAdapter": {"const": false}, "production": {"const": false},
+        "operatorAcceptance": {"const": false}, "promotion": {"const": false}, "release": {"const": false}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"enum": ["PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE", "PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE"]}}},
+      "then": {
+        "properties": {
+          "auditor": {"properties": {"commit": {"$ref": "#/$defs/gitObject"}, "tree": {"$ref": "#/$defs/gitObject"}}},
+          "candidate": {"properties": {"commit": {"$ref": "#/$defs/gitObject"}, "tree": {"$ref": "#/$defs/gitObject"}}},
+          "sourceRun": {"properties": {
+            "repository": {"pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"}, "runId": {"minimum": 1},
+            "runAttempt": {"minimum": 1}, "headSha": {"$ref": "#/$defs/gitObject"}, "qualified": {"const": true}
+          }},
+          "qualification": {"properties": {"executionProvenance": {"const": true}, "preRuntime": {"const": true}}},
+          "failures": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE"}}},
+      "then": {"properties": {
+        "qualification": {"properties": {"windowsRuntime": {"const": false}}},
+        "evidence": {"properties": {"windowsRuntime": {"properties": {"requested": {"const": false}, "qualified": {"const": false}}}}}
+      }}
+    },
+    {
+      "if": {"properties": {"status": {"const": "PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE"}}},
+      "then": {"properties": {
+        "qualification": {"properties": {"windowsRuntime": {"const": true}}},
+        "evidence": {"properties": {"windowsRuntime": {
+          "required": ["status", "rootSequence", "acrylicSequence", "rollbackSequence"],
+          "properties": {"requested": {"const": true}, "qualified": {"const": true}}
+        }}}
+      }}
+    },
+    {
+      "if": {"properties": {"status": {"const": "FAIL_EXACT_HEAD_EXECUTION_PROVENANCE"}}},
+      "then": {"properties": {
+        "qualification": {"properties": {"executionProvenance": {"const": false}, "preRuntime": {"const": false}, "windowsRuntime": {"const": false}}},
+        "failures": {"minItems": 1}
+      }}
+    }
+  ]
+}

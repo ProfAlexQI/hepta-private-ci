@@ -1,0 +1,303 @@
+name: hepta-ui-v4-execution-provenance-audit
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-execution-provenance-audit-*"
+  pull_request:
+    paths:
+      - "scripts/hepta-ui-v4-execution-provenance-audit"
+      - "scripts/hepta-ui-v4-execution-provenance-audit-gate"
+      - "docs/ui/HEPTA_UI_EXECUTION_PROVENANCE_AUDIT_V1.json"
+      - "docs/ui/schemas/hepta.ui.v4.execution-provenance-audit.v1.schema.json"
+      - "docs/ui/HEPTA_UI_V4_TRANCHE_20_EXECUTION_PROVENANCE_AUDIT_2026-08-28.md"
+      - ".github/workflows/hepta-ui-v4-execution-provenance-audit.yml"
+  workflow_run:
+    workflows:
+      - "hepta-ui-v4-windows-material-profile-exact"
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Completed hepta-ui-v4-windows-material-profile-exact run ID"
+        required: true
+        type: string
+      require_windows_runtime:
+        description: "Require governed Windows runtime provenance"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: hepta-ui-v4-execution-provenance-${{ github.event.workflow_run.id || inputs.source_run_id || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-contract:
+    name: Execution provenance audit source contract
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AUDITOR_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout exact auditor candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.AUDITOR_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact auditor checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$AUDITOR_SHA"
+      - name: Validate audit source and self-tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -c scripts/hepta-ui-v4-execution-provenance-audit
+          ruby -c scripts/hepta-ui-v4-execution-provenance-audit-gate
+          ruby -rjson -e 'ARGV.each { |path| JSON.parse(File.read(path)) }' \
+            docs/ui/HEPTA_UI_EXECUTION_PROVENANCE_AUDIT_V1.json \
+            docs/ui/schemas/hepta.ui.v4.execution-provenance-audit.v1.schema.json
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-execution-provenance-audit.yml")'
+          mkdir -p artifacts/execution-provenance-source
+          ruby scripts/hepta-ui-v4-execution-provenance-audit --self-test \
+            | tee artifacts/execution-provenance-source/self-test.json
+          ruby scripts/hepta-ui-v4-execution-provenance-audit-gate \
+            | tee artifacts/execution-provenance-source/source-gate.json
+          ruby -rjson -e '
+            receipt=JSON.parse(File.read("artifacts/execution-provenance-source/source-gate.json"))
+            abort "unexpected source status" unless receipt.fetch("status") == "PASS_EXECUTION_PROVENANCE_AUDIT_SOURCE_ONLY"
+            abort "source authority escaped" unless %w[
+              product_bound transient_system_material_binding complete_profile_binding
+              system_material_binding native_product_runtime device_validation
+              production_authority effect_authority live_adapter_authority
+              operator_acceptance promotion release
+            ].all? { |key| receipt.fetch(key) == false }
+          '
+      - name: Upload audit source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-execution-provenance-source-${{ env.AUDITOR_SHA }}
+          path: artifacts/execution-provenance-source
+          if-no-files-found: error
+          retention-days: 14
+
+  audit-completed-run:
+    name: Audit completed exact-head execution provenance
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AUDITOR_SHA: ${{ github.sha }}
+    steps:
+      - name: Resolve source run
+        id: source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          DISPATCH_RUN_ID: ${{ inputs.source_run_id }}
+          STRICT_RUNTIME_INPUT: ${{ inputs.require_windows_runtime }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            source_run_id="$WORKFLOW_RUN_ID"
+            strict_runtime=false
+          else
+            source_run_id="$DISPATCH_RUN_ID"
+            strict_runtime="$STRICT_RUNTIME_INPUT"
+          fi
+          [[ "$source_run_id" =~ ^[1-9][0-9]*$ ]]
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$source_run_id" \
+            > source-run.json
+          SOURCE_RUN_ID="$source_run_id" STRICT_RUNTIME="$strict_runtime" ruby -rjson -e '
+            run=JSON.parse(File.read("source-run.json"))
+            abort "wrong workflow" unless run.fetch("name") == "hepta-ui-v4-windows-material-profile-exact"
+            abort "source run is not completed" unless run.fetch("status") == "completed"
+            abort "repository drift" unless run.dig("repository","full_name") == ENV.fetch("GITHUB_REPOSITORY")
+            abort "invalid source run conclusion" unless run.fetch("conclusion").is_a?(String)
+            sha=run.fetch("head_sha")
+            abort "invalid source head" unless sha.match?(/\A[0-9a-f]{40}\z/)
+            puts "source_run_id=#{ENV.fetch("SOURCE_RUN_ID")}"
+            puts "source_head_sha=#{sha}"
+            puts "strict_runtime=#{ENV.fetch("STRICT_RUNTIME") == "true"}"
+          ' >> "$GITHUB_OUTPUT"
+      - name: Checkout exact auditor source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.AUDITOR_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify auditor identity and source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$AUDITOR_SHA"
+          ruby -c scripts/hepta-ui-v4-execution-provenance-audit
+          ruby -c scripts/hepta-ui-v4-execution-provenance-audit-gate
+          ruby scripts/hepta-ui-v4-execution-provenance-audit --self-test > auditor-self-test.json
+          ruby scripts/hepta-ui-v4-execution-provenance-audit-gate > auditor-source-gate.json
+      - name: Fetch source-run jobs and artifacts
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ steps.source.outputs.source_run_id }}
+          SOURCE_HEAD_SHA: ${{ steps.source.outputs.source_head_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/provenance-input artifacts/provenance-output archives
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/jobs?per_page=100" \
+            > artifacts/provenance-output/jobs.json
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
+            > artifacts/provenance-output/artifacts.json
+          ruby -rjson -e '
+            payload=JSON.parse(File.read("artifacts/provenance-output/artifacts.json"))
+            candidate=ENV.fetch("SOURCE_HEAD_SHA")
+            prefixes=[
+              "hepta-ui-v4-exact-source-",
+              "hepta-ui-v4-exact-materialization-",
+              "hepta-ui-v4-exact-compile-ubuntu-latest-",
+              "hepta-ui-v4-exact-compile-windows-latest-",
+              "hepta-ui-v4-exact-compile-macos-latest-",
+              "hepta-ui-v4-exact-windows-profile-",
+              "hepta-ui-v4-same-run-qualification-index-"
+            ]
+            selected=payload.fetch("artifacts").select do |artifact|
+              name=artifact.fetch("name")
+              !artifact.fetch("expired") && name.end_with?(candidate) && prefixes.any? { |prefix| name.start_with?(prefix) }
+            end
+            abort "no exact artifacts" if selected.empty?
+            names=selected.map { |artifact| artifact.fetch("name") }
+            abort "duplicate artifact name" unless names.uniq.length == names.length
+            selected.each do |artifact|
+              name=artifact.fetch("name")
+              abort "unsafe artifact name" unless name.match?(/\A[A-Za-z0-9_.-]+\z/)
+              run_sha=artifact.dig("workflow_run","head_sha")
+              abort "artifact head drift" if run_sha && run_sha != candidate
+              puts [name, artifact.fetch("archive_download_url")].join("\t")
+            end
+          ' > artifacts/provenance-output/downloads.tsv
+          while IFS=$'\t' read -r name url; do
+            test -n "$name"
+            mkdir -p "artifacts/provenance-input/$name"
+            curl --fail --location --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$url" > "archives/$name.zip"
+            unzip -Z1 "archives/$name.zip" > "archives/$name.entries"
+            NAME="$name" ruby -e '
+              File.readlines("archives/#{ENV.fetch("NAME")}.entries", chomp: true).each do |entry|
+                abort "empty archive entry" if entry.empty?
+                abort "absolute archive entry" if entry.start_with?("/", "\\")
+                abort "drive-qualified archive entry" if entry.match?(/\A[A-Za-z]:/)
+                parts=entry.tr("\\", "/").split("/")
+                abort "path traversal archive entry" if parts.include?("..")
+              end
+            '
+            unzip -q "archives/$name.zip" -d "artifacts/provenance-input/$name"
+          done < artifacts/provenance-output/downloads.tsv
+      - name: Produce execution provenance audit
+        id: audit
+        continue-on-error: true
+        shell: bash
+        env:
+          SOURCE_HEAD_SHA: ${{ steps.source.outputs.source_head_sha }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.source_run_id }}
+          STRICT_RUNTIME: ${{ steps.source.outputs.strict_runtime }}
+        run: |
+          set -euo pipefail
+          source_dir="artifacts/provenance-input/hepta-ui-v4-exact-source-$SOURCE_HEAD_SHA"
+          test -d "$source_dir"
+          candidate_tree="$(tr -d '\r\n' < "$source_dir/candidate-tree.txt")"
+          auditor_tree="$(git rev-parse 'HEAD^{tree}')"
+          runtime_conclusion="$(ruby -rjson -e '
+            jobs=JSON.parse(File.read("artifacts/provenance-output/jobs.json")).fetch("jobs")
+            matches=jobs.select { |job| job["name"] == "Governed exact-head Windows Mica/Acrylic producer" }
+            abort "runtime job count=#{matches.length}" unless matches.length == 1
+            puts matches.fetch(0).fetch("conclusion")
+          ')"
+          args=(
+            --run source-run.json
+            --jobs artifacts/provenance-output/jobs.json
+            --artifacts artifacts/provenance-input
+            --candidate-commit "$SOURCE_HEAD_SHA"
+            --candidate-tree "$candidate_tree"
+            --auditor-commit "$AUDITOR_SHA"
+            --auditor-tree "$auditor_tree"
+            --output artifacts/provenance-output/execution-provenance.json
+          )
+          if [[ "$STRICT_RUNTIME" == "true" || "$runtime_conclusion" == "success" ]]; then
+            args+=(--require-windows-runtime)
+          fi
+          ruby scripts/hepta-ui-v4-execution-provenance-audit "${args[@]}"
+      - name: Validate bounded audit receipt
+        if: always()
+        shell: bash
+        env:
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+          STRICT_RUNTIME: ${{ steps.source.outputs.strict_runtime }}
+          SOURCE_HEAD_SHA: ${{ steps.source.outputs.source_head_sha }}
+        run: |
+          set -euo pipefail
+          ruby -rjson -e '
+            path="artifacts/provenance-output/execution-provenance.json"
+            abort "audit receipt missing" unless File.file?(path)
+            receipt=JSON.parse(File.read(path))
+            abort "candidate drift" unless receipt.dig("candidate","commit") == ENV.fetch("SOURCE_HEAD_SHA")
+            abort "authority escaped" unless receipt.fetch("authority").values.all? { |value| value == false }
+            %w[productBound transientSystemMaterialBound completeProfileBound systemMaterialBound nativeProductRuntime deviceValidation].each do |key|
+              abort "#{key} escaped" unless receipt.dig("qualification",key) == false
+            end
+            if ENV.fetch("AUDIT_OUTCOME") == "success"
+              allowed=%w[PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE]
+              abort "unexpected PASS status" unless allowed.include?(receipt.fetch("status"))
+              if ENV.fetch("STRICT_RUNTIME") == "true"
+                abort "Windows runtime provenance missing" unless receipt.fetch("status") == "PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE"
+              end
+            else
+              abort "missing fail-closed status" unless receipt.fetch("status") == "FAIL_EXACT_HEAD_EXECUTION_PROVENANCE"
+              failures=receipt.fetch("failures")
+              abort "failure list missing" unless failures.is_a?(Array) && !failures.empty?
+              exit 1
+            end
+          '
+      - name: Upload execution provenance audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-execution-provenance-${{ steps.source.outputs.source_head_sha }}
+          path: |
+            artifacts/provenance-output/execution-provenance.json
+            artifacts/provenance-output/jobs.json
+            artifacts/provenance-output/artifacts.json
+            artifacts/provenance-output/downloads.tsv
+            source-run.json
+            auditor-self-test.json
+            auditor-source-gate.json
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,878 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "fileutils"
+require "json"
+require "optparse"
+require "pathname"
+require "tmpdir"
+
+SCHEMA = "hepta.ui.v4.execution-provenance-audit.v1"
+MAKEPAD_REVISION = "c4335cee10b22aca768510c9d072b0ca1bba15c8"
+WORKFLOW_NAME = "hepta-ui-v4-windows-material-profile-exact"
+INDEX_PRE_RUNTIME = "PASS_EXACT_HEAD_PRE_RUNTIME_QUALIFICATION"
+INDEX_WINDOWS_RUNTIME = "PASS_EXACT_HEAD_WINDOWS_RUNTIME_QUALIFICATION"
+PASS_PRE_RUNTIME = "PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE"
+PASS_WINDOWS_RUNTIME = "PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE"
+FAIL_STATUS = "FAIL_EXACT_HEAD_EXECUTION_PROVENANCE"
+
+SOURCE_JOB = "Exact-head full source chain and patcher self-test"
+PATCH_JOB = "Candidate-bound Makepad materialization"
+COMPILE_JOBS = {
+  "ubuntu-latest" => "Exact-head compile and focused tests (ubuntu-latest)",
+  "windows-latest" => "Exact-head compile and focused tests (windows-latest)",
+  "macos-latest" => "Exact-head compile and focused tests (macos-latest)"
+}.freeze
+RUNTIME_JOB = "Governed exact-head Windows Mica/Acrylic producer"
+INDEX_JOB = "Canonical exact-head qualification index"
+
+EXPECTED_LABELS = {
+  SOURCE_JOB => ["ubuntu-latest"],
+  PATCH_JOB => ["ubuntu-latest"],
+  COMPILE_JOBS.fetch("ubuntu-latest") => ["ubuntu-latest"],
+  COMPILE_JOBS.fetch("windows-latest") => ["windows-latest"],
+  COMPILE_JOBS.fetch("macos-latest") => ["macos-latest"],
+  RUNTIME_JOB => ["self-hosted", "Windows", "X64", "hepta-ui-dwm"],
+  INDEX_JOB => ["ubuntu-latest"]
+}.freeze
+
+REQUIRED_STEPS = {
+  SOURCE_JOB => [
+    "Verify exact checkout identity",
+    "Run inherited and canonical source gates"
+  ],
+  PATCH_JOB => [
+    "Verify exact checkout identity",
+    "Materialize exact patched checkout",
+    "Validate materialization receipt"
+  ],
+  COMPILE_JOBS.fetch("ubuntu-latest") => [
+    "Verify exact checkout identity",
+    "Materialize patched Makepad",
+    "Format, compile, and focused tests",
+    "Compile non-Windows producer stub"
+  ],
+  COMPILE_JOBS.fetch("windows-latest") => [
+    "Verify exact checkout identity",
+    "Materialize patched Makepad",
+    "Format, compile, and focused tests",
+    "Compile full Windows producer against patched API"
+  ],
+  COMPILE_JOBS.fetch("macos-latest") => [
+    "Verify exact checkout identity",
+    "Materialize patched Makepad",
+    "Format, compile, and focused tests",
+    "Compile non-Windows producer stub"
+  ],
+  RUNTIME_JOB => [
+    "Verify exact checkout identity",
+    "Materialize patched Makepad",
+    "Run governed producer",
+    "Validate exact aggregate PASS receipt"
+  ],
+  INDEX_JOB => [
+    "Verify exact checkout and current run identity",
+    "Fetch same-run jobs and exact artifacts",
+    "Produce same-run qualification index",
+    "Validate and enforce same-run index"
+  ]
+}.freeze
+
+EXPECTED_ARTIFACT_PREFIXES = [
+  "hepta-ui-v4-exact-source-",
+  "hepta-ui-v4-exact-materialization-",
+  "hepta-ui-v4-exact-compile-ubuntu-latest-",
+  "hepta-ui-v4-exact-compile-windows-latest-",
+  "hepta-ui-v4-exact-compile-macos-latest-",
+  "hepta-ui-v4-same-run-qualification-index-"
+].freeze
+RUNTIME_ARTIFACT_PREFIX = "hepta-ui-v4-exact-windows-profile-"
+
+class AuditError < StandardError; end
+
+Options = Struct.new(
+  :run,
+  :jobs,
+  :artifacts,
+  :candidate_commit,
+  :candidate_tree,
+  :auditor_commit,
+  :auditor_tree,
+  :output,
+  :require_windows_runtime,
+  :self_test,
+  keyword_init: true
+)
+
+def git_object_id?(value)
+  value.is_a?(String) && value.match?(/\A[0-9a-f]{40}\z/)
+end
+
+def false_authority
+  {
+    "network" => false,
+    "mutation" => false,
+    "effect" => false,
+    "liveAdapter" => false,
+    "production" => false,
+    "operatorAcceptance" => false,
+    "promotion" => false,
+    "release" => false
+  }
+end
+
+def false_product_qualification
+  {
+    "productBound" => false,
+    "transientSystemMaterialBound" => false,
+    "completeProfileBound" => false,
+    "systemMaterialBound" => false,
+    "nativeProductRuntime" => false,
+    "deviceValidation" => false
+  }
+end
+
+def parse_json(path)
+  JSON.parse(Pathname.new(path).read)
+rescue Errno::ENOENT
+  raise AuditError, "missing JSON #{path}"
+rescue JSON::ParserError => error
+  raise AuditError, "invalid JSON #{path}: #{error.message}"
+end
+
+def write_json_atomic(path, payload)
+  destination = Pathname.new(path).expand_path
+  destination.dirname.mkpath
+  temporary = destination.sub_ext(".tmp")
+  temporary.write(JSON.pretty_generate(payload) + "\n")
+  File.rename(temporary, destination)
+end
+
+def require_false_hash!(value, label)
+  raise AuditError, "#{label} is not an object" unless value.is_a?(Hash)
+  escaped = value.select { |_key, item| item != false }.keys
+  raise AuditError, "#{label} escaped: #{escaped.join(', ')}" unless escaped.empty?
+end
+
+def jobs_array(payload)
+  jobs = payload.is_a?(Hash) ? payload["jobs"] : payload
+  raise AuditError, "jobs payload has no jobs array" unless jobs.is_a?(Array)
+  jobs
+end
+
+def unique_job!(jobs, name)
+  matches = jobs.select { |job| job["name"] == name }
+  raise AuditError, "job #{name.inspect} count=#{matches.length}" unless matches.length == 1
+  matches.fetch(0)
+end
+
+def validate_labels!(job, name)
+  labels = job["labels"]
+  raise AuditError, "#{name}: labels missing" unless labels.is_a?(Array)
+  missing = EXPECTED_LABELS.fetch(name) - labels
+  raise AuditError, "#{name}: missing labels #{missing.join(', ')}" unless missing.empty?
+end
+
+def validate_steps!(job, name)
+  steps = job["steps"]
+  raise AuditError, "#{name}: steps missing" unless steps.is_a?(Array) && !steps.empty?
+  invalid = steps.reject { |step| ["success", "skipped"].include?(step["conclusion"]) }
+  unless invalid.empty?
+    raise AuditError, "#{name}: failed steps #{invalid.map { |step| step['name'] }.join(', ')}"
+  end
+  names = steps.map { |step| step["name"] }
+  missing = REQUIRED_STEPS.fetch(name) - names
+  raise AuditError, "#{name}: missing required steps #{missing.join(', ')}" unless missing.empty?
+  steps.length
+end
+
+def validate_success_job!(job, name, candidate)
+  raise AuditError, "#{name}: head SHA drift" unless job["head_sha"] == candidate
+  raise AuditError, "#{name}: status=#{job['status']}" unless job["status"] == "completed"
+  raise AuditError, "#{name}: conclusion=#{job['conclusion']}" unless job["conclusion"] == "success"
+  runner_id = job["runner_id"]
+  raise AuditError, "#{name}: runner_id missing" unless runner_id.is_a?(Integer) && runner_id.positive?
+  runner_name = job["runner_name"].to_s
+  raise AuditError, "#{name}: runner_name missing" if runner_name.empty?
+  validate_labels!(job, name)
+  step_count = validate_steps!(job, name)
+  {
+    "jobId" => job.fetch("id"),
+    "runnerId" => runner_id,
+    "runnerName" => runner_name,
+    "labels" => job.fetch("labels"),
+    "stepCount" => step_count,
+    "qualified" => true
+  }
+end
+
+def validate_skipped_runtime!(job, candidate)
+  raise AuditError, "runtime: head SHA drift" unless job["head_sha"] == candidate
+  unless job["status"] == "completed" && job["conclusion"] == "skipped"
+    raise AuditError, "runtime: expected skipped, got status=#{job['status']} conclusion=#{job['conclusion']}"
+  end
+  validate_labels!(job, RUNTIME_JOB)
+  steps = job["steps"]
+  raise AuditError, "runtime: skipped job unexpectedly executed steps" unless steps.nil? || steps.empty?
+  {
+    "jobId" => job.fetch("id"),
+    "skipped" => true,
+    "qualified" => false
+  }
+end
+
+def artifact_directory!(root, name)
+  directory = Pathname.new(root).join(name)
+  raise AuditError, "artifact directory missing: #{name}" unless directory.directory?
+  directory
+end
+
+def unique_file!(root, basename)
+  matches = Pathname.new(root).glob("**/#{basename}").select(&:file?)
+  raise AuditError, "#{basename} count=#{matches.length}" unless matches.length == 1
+  matches.fetch(0)
+end
+
+def validate_artifact_set!(root, candidate, runtime_required)
+  names = Pathname.new(root).children.select(&:directory?).map { |path| path.basename.to_s }
+  raise AuditError, "duplicate artifact directory" unless names.uniq.length == names.length
+  required = EXPECTED_ARTIFACT_PREFIXES.map { |prefix| "#{prefix}#{candidate}" }
+  required << "#{RUNTIME_ARTIFACT_PREFIX}#{candidate}" if runtime_required
+  missing = required - names
+  raise AuditError, "missing artifacts #{missing.join(', ')}" unless missing.empty?
+  runtime_name = "#{RUNTIME_ARTIFACT_PREFIX}#{candidate}"
+  if !runtime_required && names.include?(runtime_name)
+    raise AuditError, "unexpected Windows runtime artifact for pre-runtime qualification"
+  end
+  unsafe = names.reject { |name| name.match?(/\A[A-Za-z0-9_.-]+\z/) }
+  raise AuditError, "unsafe artifact directories #{unsafe.join(', ')}" unless unsafe.empty?
+  required
+end
+
+def nonnegative_integer?(value)
+  value.is_a?(Integer) && value >= 0
+end
+
+def positive_integer?(value)
+  value.is_a?(Integer) && value.positive?
+end
+
+def positive_handle?(value)
+  value.is_a?(String) && value.match?(/\A[1-9][0-9]*\z/)
+end
+
+def validate_identity!(identity, label)
+  raise AuditError, "#{label}: identity is not an object" unless identity.is_a?(Hash)
+  raise AuditError, "#{label}: index invalid" unless nonnegative_integer?(identity["index"])
+  raise AuditError, "#{label}: generation invalid" unless nonnegative_integer?(identity["generation"])
+  raise AuditError, "#{label}: HWND invalid" unless positive_handle?(identity["nativeHandle"])
+  identity
+end
+
+def same_identity?(left, right)
+  %w[index generation nativeHandle].all? { |key| left[key] == right[key] }
+end
+
+def same_window_id?(left, right)
+  %w[index generation].all? { |key| left[key] == right[key] }
+end
+
+def validate_run!(run, candidate)
+  raise AuditError, "wrong workflow" unless run["name"] == WORKFLOW_NAME
+  raise AuditError, "source run is not completed" unless run["status"] == "completed"
+  raise AuditError, "source run conclusion=#{run['conclusion']}" unless run["conclusion"] == "success"
+  raise AuditError, "source run head drift" unless run["head_sha"] == candidate
+  repository = run.dig("repository", "full_name").to_s
+  raise AuditError, "source repository missing" unless repository.match?(/\A[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\z/)
+  run_id = run["id"]
+  raise AuditError, "source run ID invalid" unless positive_integer?(run_id)
+  run_attempt = run["run_attempt"]
+  raise AuditError, "source run attempt invalid" unless positive_integer?(run_attempt)
+  {
+    "repository" => repository,
+    "runId" => run_id,
+    "runAttempt" => run_attempt,
+    "event" => run["event"].to_s,
+    "headSha" => candidate,
+    "qualified" => true
+  }
+end
+
+def validate_materialization_receipt!(root, candidate, tree)
+  directory = artifact_directory!(root, "hepta-ui-v4-exact-materialization-#{candidate}")
+  receipt = parse_json(directory.join("materialization.json"))
+  unless receipt["status"] == "PASS_PATCHED_CHECKOUT_MATERIALIZED_SOURCE_ONLY"
+    raise AuditError, "materialization status=#{receipt['status']}"
+  end
+  raise AuditError, "materialization commit drift" unless receipt.dig("candidate", "commit") == candidate
+  raise AuditError, "materialization tree drift" unless receipt.dig("candidate", "tree") == tree
+  raise AuditError, "materialization candidate unbound" unless receipt.dig("candidate", "bound") == true
+  raise AuditError, "Makepad revision drift" unless receipt.dig("makepad", "revision") == MAKEPAD_REVISION
+  raise AuditError, "default dependency changed" unless receipt.dig("cargoOverride", "defaultDependencyChanged") == false
+  raise AuditError, "patch not applied" unless receipt.dig("qualification", "patchAppliedInWorktree") == true
+  require_false_hash!(receipt.fetch("authority"), "materialization authority")
+  {
+    "status" => receipt.fetch("status"),
+    "makepadRevision" => MAKEPAD_REVISION,
+    "qualified" => true
+  }
+end
+
+def validate_runtime_receipt!(root, candidate, tree)
+  directory = artifact_directory!(root, "#{RUNTIME_ARTIFACT_PREFIX}#{candidate}")
+  receipt = parse_json(directory.join("receipt.json"))
+  raise AuditError, "runtime status=#{receipt['status']}" unless receipt["status"] == "PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE"
+  raise AuditError, "runtime commit drift" unless receipt.dig("candidate", "commit") == candidate
+  raise AuditError, "runtime tree drift" unless receipt.dig("candidate", "tree") == tree
+  raise AuditError, "runtime Makepad drift" unless receipt.dig("makepad", "revision") == MAKEPAD_REVISION
+  raise AuditError, "vendored patch runtime missing" unless receipt.dig("makepad", "vendoredPatchBuild") == true
+  raise AuditError, "default dependency switched" unless receipt.dig("makepad", "defaultDependencySwitched") == false
+  raise AuditError, "runtime fixture flag missing" unless receipt["fixture"] == true
+
+  root_receipt = receipt.fetch("root")
+  root_identity = validate_identity!(root_receipt.fetch("identity"), "root")
+  raise AuditError, "root backend mismatch" unless root_receipt["backend"] == "WindowsDwm"
+  unless root_receipt["status"] == "VerifiedPersistentChromeWithBackdropReadback"
+    raise AuditError, "root status mismatch"
+  end
+  raise AuditError, "root readback scope mismatch" unless root_receipt["readbackScope"] == "BackdropOnly"
+  unless root_receipt["requestedBackdrop"] == "Mica" &&
+         root_receipt["observedBackdrop"] == "Mica" &&
+         root_receipt["backdropExact"] == true
+    raise AuditError, "root Mica readback mismatch"
+  end
+
+  transient = receipt.fetch("transient")
+  parent = validate_identity!(transient.fetch("parent"), "transient parent")
+  identity = validate_identity!(transient.fetch("identity"), "transient")
+  destroyed = validate_identity!(transient.fetch("destroyedIdentity"), "transient destroyed")
+  raise AuditError, "transient parent drift" unless same_identity?(root_identity, parent)
+  raise AuditError, "root/transient WindowId reused" if same_window_id?(root_identity, identity)
+  raise AuditError, "root/transient HWND reused" if root_identity["nativeHandle"] == identity["nativeHandle"]
+  raise AuditError, "separateFromRoot missing" unless transient["separateFromRoot"] == true
+  unless same_identity?(identity, destroyed) && transient["destroyedAcknowledged"] == true
+    raise AuditError, "Destroyed identity drift"
+  end
+
+  acrylic = transient.fetch("acrylic")
+  solid = transient.fetch("solidRollback")
+  unless acrylic["status"] == "VerifiedAcrylicWithBackdropReadback" &&
+         acrylic["requestedBackdrop"] == "Acrylic" &&
+         acrylic["observedBackdrop"] == "Acrylic" &&
+         acrylic["backdropExact"] == true
+    raise AuditError, "Acrylic receipt mismatch"
+  end
+  unless solid["status"] == "VerifiedSolidRollbackWithBackdropReadback" &&
+         solid["requestedBackdrop"] == "None" &&
+         solid["observedBackdrop"] == "None" &&
+         solid["backdropExact"] == true
+    raise AuditError, "solid rollback receipt mismatch"
+  end
+  sequences = [
+    root_receipt["requestSequence"],
+    acrylic["requestSequence"],
+    solid["requestSequence"]
+  ]
+  raise AuditError, "runtime sequence types invalid" unless sequences.all? { |value| positive_integer?(value) }
+  raise AuditError, "runtime sequence contract drift" unless sequences == [1, 2, 3]
+
+  qualification = receipt.fetch("qualification")
+  %w[rootRuntimeReceipt transientRuntimeReceipt dualReceiptAggregateRuntime eligibleForProductIntegrationReview].each do |key|
+    raise AuditError, "runtime #{key} missing" unless qualification[key] == true
+  end
+  false_product_qualification.each_key do |key|
+    raise AuditError, "runtime #{key} escaped" unless qualification[key] == false
+  end
+  require_false_hash!(receipt.fetch("authority"), "runtime authority")
+  {
+    "status" => receipt.fetch("status"),
+    "rootSequence" => 1,
+    "acrylicSequence" => 2,
+    "rollbackSequence" => 3,
+    "qualified" => true
+  }
+end
+
+def validate_index_receipt!(root, candidate, tree, run_id, jobs, runtime_required)
+  directory = artifact_directory!(root, "hepta-ui-v4-same-run-qualification-index-#{candidate}")
+  receipt = parse_json(directory.join("qualification-index.json"))
+  expected_status = runtime_required ? INDEX_WINDOWS_RUNTIME : INDEX_PRE_RUNTIME
+  raise AuditError, "index status=#{receipt['status']} expected=#{expected_status}" unless receipt["status"] == expected_status
+  raise AuditError, "index commit drift" unless receipt.dig("candidate", "commit") == candidate
+  raise AuditError, "index tree drift" unless receipt.dig("candidate", "tree") == tree
+  raise AuditError, "index run ID drift" unless receipt.dig("sourceRun", "runId").to_i == run_id
+  raise AuditError, "index same-run flag missing" unless receipt.dig("sourceRun", "allowInProgressRun") == true
+  raise AuditError, "index failures not empty" unless receipt.fetch("failures") == []
+  require_false_hash!(receipt.fetch("authority"), "index authority")
+  false_product_qualification.each_key do |key|
+    raise AuditError, "index #{key} escaped" unless receipt.dig("qualification", key) == false
+  end
+  %w[source materialization compileUbuntu compileWindows compileMacos preRuntime].each do |key|
+    raise AuditError, "index #{key} missing" unless receipt.dig("qualification", key) == true
+  end
+  if runtime_required
+    raise AuditError, "index windowsRuntime missing" unless receipt.dig("qualification", "windowsRuntime") == true
+    raise AuditError, "index integration eligibility missing" unless receipt.dig("qualification", "eligibleForProductIntegrationReview") == true
+  else
+    raise AuditError, "index windowsRuntime escaped" unless receipt.dig("qualification", "windowsRuntime") == false
+    raise AuditError, "index integration eligibility escaped" unless receipt.dig("qualification", "eligibleForProductIntegrationReview") == false
+  end
+
+  expected_job_ids = {
+    SOURCE_JOB => receipt.dig("evidence", "source", "job", "jobId"),
+    PATCH_JOB => receipt.dig("evidence", "materialization", "job", "jobId"),
+    COMPILE_JOBS.fetch("ubuntu-latest") => receipt.dig("evidence", "compile", "ubuntu-latest", "job", "jobId"),
+    COMPILE_JOBS.fetch("windows-latest") => receipt.dig("evidence", "compile", "windows-latest", "job", "jobId"),
+    COMPILE_JOBS.fetch("macos-latest") => receipt.dig("evidence", "compile", "macos-latest", "job", "jobId")
+  }
+  expected_job_ids[RUNTIME_JOB] = receipt.dig("evidence", "windowsRuntime", "job", "jobId") if runtime_required
+  expected_job_ids.each do |name, id|
+    actual = unique_job!(jobs, name)
+    raise AuditError, "index job ID drift for #{name}" unless id == actual["id"]
+  end
+  {
+    "status" => receipt.fetch("status"),
+    "artifact" => directory.basename.to_s,
+    "qualified" => true
+  }
+end
+
+def build_audit(options)
+  failures = []
+  run = parse_json(options.run)
+  jobs = jobs_array(parse_json(options.jobs))
+  candidate = options.candidate_commit || run["head_sha"]
+  tree = options.candidate_tree
+  auditor_commit = options.auditor_commit
+  auditor_tree = options.auditor_tree
+  raise AuditError, "candidate commit invalid" unless git_object_id?(candidate)
+  raise AuditError, "candidate tree invalid" unless git_object_id?(tree)
+  raise AuditError, "auditor commit invalid" unless git_object_id?(auditor_commit)
+  raise AuditError, "auditor tree invalid" unless git_object_id?(auditor_tree)
+
+  source_run = nil
+  job_evidence = {}
+  artifacts = []
+  materialization = nil
+  index = nil
+  runtime = { "requested" => options.require_windows_runtime == true, "qualified" => false }
+
+  begin
+    source_run = validate_run!(run, candidate)
+  rescue AuditError => error
+    failures << error.message
+  end
+
+  begin
+    artifacts = validate_artifact_set!(options.artifacts, candidate, options.require_windows_runtime == true)
+  rescue AuditError => error
+    failures << error.message
+  end
+
+  [SOURCE_JOB, PATCH_JOB, *COMPILE_JOBS.values, INDEX_JOB].each do |name|
+    begin
+      job_evidence[name] = validate_success_job!(unique_job!(jobs, name), name, candidate)
+    rescue AuditError => error
+      failures << error.message
+    end
+  end
+
+  begin
+    runtime_job = unique_job!(jobs, RUNTIME_JOB)
+    if options.require_windows_runtime
+      job_evidence[RUNTIME_JOB] = validate_success_job!(runtime_job, RUNTIME_JOB, candidate)
+      runtime["requested"] = true
+    else
+      job_evidence[RUNTIME_JOB] = validate_skipped_runtime!(runtime_job, candidate)
+      runtime["requested"] = false
+    end
+  rescue AuditError => error
+    failures << error.message
+  end
+
+  begin
+    materialization = validate_materialization_receipt!(options.artifacts, candidate, tree)
+  rescue AuditError => error
+    failures << error.message
+  end
+
+  begin
+    index = validate_index_receipt!(
+      options.artifacts,
+      candidate,
+      tree,
+      run.fetch("id").to_i,
+      jobs,
+      options.require_windows_runtime == true
+    )
+  rescue AuditError => error
+    failures << error.message
+  end
+
+  if options.require_windows_runtime
+    begin
+      runtime = validate_runtime_receipt!(options.artifacts, candidate, tree).merge("requested" => true)
+    rescue AuditError => error
+      failures << error.message
+    end
+  end
+
+  qualified = failures.empty?
+  status = if !qualified
+             FAIL_STATUS
+           elsif options.require_windows_runtime
+             PASS_WINDOWS_RUNTIME
+           else
+             PASS_PRE_RUNTIME
+           end
+  {
+    "schema" => SCHEMA,
+    "status" => status,
+    "auditor" => {
+      "commit" => auditor_commit,
+      "tree" => auditor_tree
+    },
+    "candidate" => {
+      "commit" => candidate,
+      "tree" => tree
+    },
+    "sourceRun" => source_run || {
+      "repository" => run.dig("repository", "full_name").to_s,
+      "runId" => run["id"].to_i,
+      "runAttempt" => run["run_attempt"].to_i,
+      "event" => run["event"].to_s,
+      "headSha" => candidate,
+      "qualified" => false
+    },
+    "evidence" => {
+      "jobs" => job_evidence,
+      "artifacts" => artifacts,
+      "materialization" => materialization || { "qualified" => false },
+      "qualificationIndex" => index || { "qualified" => false },
+      "windowsRuntime" => runtime
+    },
+    "qualification" => {
+      "executionProvenance" => qualified,
+      "preRuntime" => qualified,
+      "windowsRuntime" => qualified && options.require_windows_runtime == true
+    }.merge(false_product_qualification),
+    "authority" => false_authority,
+    "failures" => failures.uniq.first(64)
+  }
+end
+
+def write_fixture(path, value)
+  Pathname.new(path).dirname.mkpath
+  Pathname.new(path).write(JSON.pretty_generate(value) + "\n")
+end
+
+def fake_step(name)
+  { "name" => name, "status" => "completed", "conclusion" => "success", "number" => 1 }
+end
+
+def fake_job(id, name, candidate, conclusion: "success", labels: nil)
+  labels ||= EXPECTED_LABELS.fetch(name)
+  if conclusion == "skipped"
+    return {
+      "id" => id,
+      "name" => name,
+      "head_sha" => candidate,
+      "status" => "completed",
+      "conclusion" => "skipped",
+      "runner_id" => nil,
+      "runner_name" => nil,
+      "labels" => labels,
+      "steps" => []
+    }
+  end
+  steps = REQUIRED_STEPS.fetch(name).map.with_index do |step, index|
+    fake_step(step).merge("number" => index + 1)
+  end
+  steps << fake_step("Complete job").merge("number" => 99)
+  {
+    "id" => id,
+    "name" => name,
+    "head_sha" => candidate,
+    "status" => "completed",
+    "conclusion" => conclusion,
+    "runner_id" => 10_000 + id,
+    "runner_name" => "self-test-runner-#{id}",
+    "labels" => labels,
+    "steps" => steps
+  }
+end
+
+def false_source_receipt(status)
+  {
+    "status" => status,
+    "production_authority" => false,
+    "effect_authority" => false,
+    "live_adapter_authority" => false,
+    "operator_acceptance" => false,
+    "promotion" => false,
+    "release" => false
+  }
+end
+
+def build_fixture(root, candidate, tree, runtime: false)
+  source_dir = Pathname.new(root).join("hepta-ui-v4-exact-source-#{candidate}")
+  source_dir.mkpath
+  source_dir.join("candidate-commit.txt").write(candidate + "\n")
+  source_dir.join("candidate-tree.txt").write(tree + "\n")
+  %w[
+    PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE_SOURCE_ONLY
+    PASS_WINDOWS_MATERIAL_PROFILE_RUNTIME_SOURCE_ONLY
+    PASS_EXACT_CANDIDATE_MATERIALIZATION_HARDENING_SOURCE_ONLY
+    PASS_EXACT_HEAD_QUALIFICATION_CLOSURE_SOURCE_ONLY
+  ].each_with_index do |status, index|
+    write_fixture(source_dir.join("source-#{index}.json"), false_source_receipt(status))
+  end
+  write_fixture(source_dir.join("patcher-self-test.json"), { "status" => "PASS_MAKEPAD_PATCHER_SELF_TEST" })
+
+  materialization_dir = Pathname.new(root).join("hepta-ui-v4-exact-materialization-#{candidate}")
+  materialization_dir.mkpath
+  write_fixture(materialization_dir.join("materialization.json"), {
+    "status" => "PASS_PATCHED_CHECKOUT_MATERIALIZED_SOURCE_ONLY",
+    "candidate" => { "commit" => candidate, "tree" => tree, "bound" => true },
+    "makepad" => { "revision" => MAKEPAD_REVISION },
+    "cargoOverride" => { "defaultDependencyChanged" => false },
+    "qualification" => { "patchAppliedInWorktree" => true },
+    "authority" => false_authority
+  })
+
+  COMPILE_JOBS.each_key do |os|
+    Pathname.new(root).join("hepta-ui-v4-exact-compile-#{os}-#{candidate}").mkpath
+  end
+
+  root_identity = { "index" => 1, "generation" => 7, "nativeHandle" => "11" }
+  transient_identity = { "index" => 2, "generation" => 9, "nativeHandle" => "12" }
+  if runtime
+    runtime_dir = Pathname.new(root).join("#{RUNTIME_ARTIFACT_PREFIX}#{candidate}")
+    runtime_dir.mkpath
+    write_fixture(runtime_dir.join("receipt.json"), {
+      "status" => "PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE",
+      "candidate" => { "commit" => candidate, "tree" => tree },
+      "makepad" => { "revision" => MAKEPAD_REVISION, "vendoredPatchBuild" => true, "defaultDependencySwitched" => false },
+      "fixture" => true,
+      "root" => {
+        "identity" => root_identity,
+        "requestSequence" => 1,
+        "backend" => "WindowsDwm",
+        "status" => "VerifiedPersistentChromeWithBackdropReadback",
+        "readbackScope" => "BackdropOnly",
+        "requestedBackdrop" => "Mica",
+        "observedBackdrop" => "Mica",
+        "backdropExact" => true
+      },
+      "transient" => {
+        "parent" => root_identity,
+        "identity" => transient_identity,
+        "separateFromRoot" => true,
+        "acrylic" => { "status" => "VerifiedAcrylicWithBackdropReadback", "requestSequence" => 2, "requestedBackdrop" => "Acrylic", "observedBackdrop" => "Acrylic", "backdropExact" => true },
+        "solidRollback" => { "status" => "VerifiedSolidRollbackWithBackdropReadback", "requestSequence" => 3, "requestedBackdrop" => "None", "observedBackdrop" => "None", "backdropExact" => true },
+        "destroyedIdentity" => transient_identity,
+        "destroyedAcknowledged" => true
+      },
+      "qualification" => {
+        "rootRuntimeReceipt" => true,
+        "transientRuntimeReceipt" => true,
+        "dualReceiptAggregateRuntime" => true,
+        "eligibleForProductIntegrationReview" => true
+      }.merge(false_product_qualification),
+      "authority" => false_authority
+    })
+  end
+
+  jobs = [
+    fake_job(1, SOURCE_JOB, candidate),
+    fake_job(2, PATCH_JOB, candidate),
+    fake_job(3, COMPILE_JOBS.fetch("ubuntu-latest"), candidate),
+    fake_job(4, COMPILE_JOBS.fetch("windows-latest"), candidate),
+    fake_job(5, COMPILE_JOBS.fetch("macos-latest"), candidate),
+    fake_job(6, RUNTIME_JOB, candidate, conclusion: runtime ? "success" : "skipped"),
+    fake_job(7, INDEX_JOB, candidate)
+  ]
+
+  index_dir = Pathname.new(root).join("hepta-ui-v4-same-run-qualification-index-#{candidate}")
+  index_dir.mkpath
+  evidence = {
+    "source" => { "job" => { "jobId" => 1 } },
+    "materialization" => { "job" => { "jobId" => 2 } },
+    "compile" => {
+      "ubuntu-latest" => { "job" => { "jobId" => 3 } },
+      "windows-latest" => { "job" => { "jobId" => 4 } },
+      "macos-latest" => { "job" => { "jobId" => 5 } }
+    },
+    "windowsRuntime" => runtime ? { "job" => { "jobId" => 6 } } : { "requested" => false, "qualified" => false }
+  }
+  write_fixture(index_dir.join("qualification-index.json"), {
+    "status" => runtime ? INDEX_WINDOWS_RUNTIME : INDEX_PRE_RUNTIME,
+    "candidate" => { "commit" => candidate, "tree" => tree },
+    "sourceRun" => { "repository" => "owner/repo", "runId" => 99, "allowInProgressRun" => true },
+    "evidence" => evidence,
+    "qualification" => {
+      "source" => true,
+      "materialization" => true,
+      "compileUbuntu" => true,
+      "compileWindows" => true,
+      "compileMacos" => true,
+      "preRuntime" => true,
+      "windowsRuntime" => runtime,
+      "eligibleForProductIntegrationReview" => runtime
+    }.merge(false_product_qualification),
+    "authority" => false_authority,
+    "failures" => []
+  })
+
+  [jobs, {
+    "id" => 99,
+    "name" => WORKFLOW_NAME,
+    "status" => "completed",
+    "conclusion" => "success",
+    "head_sha" => candidate,
+    "run_attempt" => 1,
+    "event" => "pull_request",
+    "repository" => { "full_name" => "owner/repo" }
+  }]
+end
+
+def run_self_test
+  candidate = "a" * 40
+  tree = "b" * 40
+  auditor_commit = "c" * 40
+  auditor_tree = "d" * 40
+  tests = {}
+  Dir.mktmpdir("hepta-ui-provenance-self-test") do |directory|
+    root = Pathname.new(directory)
+    artifacts = root.join("artifacts")
+    artifacts.mkpath
+    jobs, run = build_fixture(artifacts, candidate, tree, runtime: false)
+    jobs_path = root.join("jobs.json")
+    run_path = root.join("run.json")
+    write_fixture(jobs_path, { "jobs" => jobs })
+    write_fixture(run_path, run)
+    options = Options.new(
+      run: run_path,
+      jobs: jobs_path,
+      artifacts: artifacts,
+      candidate_commit: candidate,
+      candidate_tree: tree,
+      auditor_commit: auditor_commit,
+      auditor_tree: auditor_tree,
+      output: root.join("out.json"),
+      require_windows_runtime: false
+    )
+    pre = build_audit(options)
+    raise AuditError, "pre-runtime self-test failed" unless pre["status"] == PASS_PRE_RUNTIME
+    tests["preRuntime"] = true
+
+    FileUtils.rm_rf(artifacts)
+    artifacts.mkpath
+    jobs, run = build_fixture(artifacts, candidate, tree, runtime: true)
+    write_fixture(jobs_path, { "jobs" => jobs })
+    write_fixture(run_path, run)
+    options.require_windows_runtime = true
+    runtime = build_audit(options)
+    raise AuditError, "runtime self-test failed" unless runtime["status"] == PASS_WINDOWS_RUNTIME
+    tests["windowsRuntime"] = true
+
+    jobs[3]["steps"].reject! { |step| step["name"] == "Compile full Windows producer against patched API" }
+    write_fixture(jobs_path, { "jobs" => jobs })
+    broken_step = build_audit(options)
+    raise AuditError, "missing Windows producer step did not fail" unless broken_step["status"] == FAIL_STATUS
+    tests["missingWindowsProducerStep"] = true
+
+    jobs, run = build_fixture(artifacts, candidate, tree, runtime: true)
+    jobs[5]["labels"] = ["windows-latest"]
+    write_fixture(jobs_path, { "jobs" => jobs })
+    broken_labels = build_audit(options)
+    raise AuditError, "runtime label drift did not fail" unless broken_labels["status"] == FAIL_STATUS
+    tests["runtimeLabels"] = true
+
+    jobs, run = build_fixture(artifacts, candidate, tree, runtime: true)
+    runtime_receipt = unique_file!(artifacts, "receipt.json")
+    payload = parse_json(runtime_receipt)
+    payload["transient"]["solidRollback"]["requestSequence"] = "3"
+    write_fixture(runtime_receipt, payload)
+    write_fixture(jobs_path, { "jobs" => jobs })
+    broken_sequence = build_audit(options)
+    raise AuditError, "runtime sequence type drift did not fail" unless broken_sequence["status"] == FAIL_STATUS
+    tests["runtimeSequenceTypes"] = true
+  end
+  puts JSON.pretty_generate(
+    "schema" => "hepta.ui.v4.execution-provenance-audit-self-test.v1",
+    "status" => "PASS_EXECUTION_PROVENANCE_AUDIT_SELF_TEST",
+    "tests" => tests,
+    "authority" => false_authority
+  )
+end
+
+options = Options.new(require_windows_runtime: false, self_test: false)
+parser = OptionParser.new do |arguments|
+  arguments.banner = "usage: #{$PROGRAM_NAME} --run RUN_JSON --jobs JOBS_JSON --artifacts DIR --candidate-tree TREE --auditor-commit SHA --auditor-tree TREE --output JSON"
+  arguments.on("--run PATH") { |value| options.run = value }
+  arguments.on("--jobs PATH") { |value| options.jobs = value }
+  arguments.on("--artifacts PATH") { |value| options.artifacts = value }
+  arguments.on("--candidate-commit SHA") { |value| options.candidate_commit = value }
+  arguments.on("--candidate-tree SHA") { |value| options.candidate_tree = value }
+  arguments.on("--auditor-commit SHA") { |value| options.auditor_commit = value }
+  arguments.on("--auditor-tree SHA") { |value| options.auditor_tree = value }
+  arguments.on("--output PATH") { |value| options.output = value }
+  arguments.on("--require-windows-runtime") { options.require_windows_runtime = true }
+  arguments.on("--self-test") { options.self_test = true }
+end
+parser.parse!
+
+if options.self_test
+  run_self_test
+  exit 0
+end
+
+%i[run jobs artifacts candidate_tree auditor_commit auditor_tree output].each do |name|
+  abort "missing --#{name.to_s.tr('_', '-')}" if options[name].nil?
+end
+
+begin
+  payload = build_audit(options)
+  write_json_atomic(options.output, payload)
+  puts JSON.pretty_generate(payload)
+  exit(payload["status"].start_with?("PASS_") ? 0 : 1)
+rescue AuditError => error
+  payload = {
+    "schema" => SCHEMA,
+    "status" => FAIL_STATUS,
+    "auditor" => {
+      "commit" => options.auditor_commit.to_s,
+      "tree" => options.auditor_tree.to_s
+    },
+    "candidate" => {
+      "commit" => options.candidate_commit.to_s,
+      "tree" => options.candidate_tree.to_s
+    },
+    "sourceRun" => {
+      "repository" => "",
+      "runId" => 0,
+      "runAttempt" => 0,
+      "event" => "",
+      "headSha" => options.candidate_commit.to_s,
+      "qualified" => false
+    },
+    "evidence" => {
+      "jobs" => {},
+      "artifacts" => [],
+      "materialization" => { "qualified" => false },
+      "qualificationIndex" => { "qualified" => false },
+      "windowsRuntime" => { "requested" => options.require_windows_runtime == true, "qualified" => false }
+    },
+    "qualification" => {
+      "executionProvenance" => false,
+      "preRuntime" => false,
+      "windowsRuntime" => false
+    }.merge(false_product_qualification),
+    "authority" => false_authority,
+    "failures" => [error.message]
+  }
+  write_json_atomic(options.output, payload)
+  warn JSON.pretty_generate(payload)
+  exit 1
+end

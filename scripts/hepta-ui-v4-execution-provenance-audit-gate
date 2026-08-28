@@ -1,0 +1,177 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  producer: root.join("scripts/hepta-ui-v4-execution-provenance-audit"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-execution-provenance-audit.yml"),
+  schema: root.join("docs/ui/schemas/hepta.ui.v4.execution-provenance-audit.v1.schema.json"),
+  contract: root.join("docs/ui/HEPTA_UI_EXECUTION_PROVENANCE_AUDIT_V1.json"),
+  document: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_20_EXECUTION_PROVENANCE_AUDIT_2026-08-28.md")
+}.freeze
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+
+producer = files.fetch(:producer).read
+workflow = files.fetch(:workflow).read
+schema = JSON.parse(files.fetch(:schema).read)
+contract = JSON.parse(files.fetch(:contract).read)
+document = files.fetch(:document).read
+
+checks["producer.statuses"] = %w[
+  PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE
+  PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE
+  FAIL_EXACT_HEAD_EXECUTION_PROVENANCE
+  PASS_EXECUTION_PROVENANCE_AUDIT_SELF_TEST
+].all? { |status| producer.include?(status) }
+checks["producer.required_jobs"] = [
+  "Exact-head full source chain and patcher self-test",
+  "Candidate-bound Makepad materialization",
+  "Exact-head compile and focused tests (ubuntu-latest)",
+  "Exact-head compile and focused tests (windows-latest)",
+  "Exact-head compile and focused tests (macos-latest)",
+  "Governed exact-head Windows Mica/Acrylic producer",
+  "Canonical exact-head qualification index"
+].all? { |name| producer.include?(name) }
+checks["producer.platform_steps"] =
+  producer.include?("Compile non-Windows producer stub") &&
+  producer.include?("Compile full Windows producer against patched API")
+checks["producer.runner_labels"] = %w[
+  ubuntu-latest windows-latest macos-latest self-hosted Windows X64 hepta-ui-dwm
+].all? { |label| producer.include?(label) }
+checks["producer.executable_evidence"] =
+  producer.include?("runner_id missing") &&
+  producer.include?("runner_name missing") &&
+  producer.include?("steps missing") &&
+  producer.include?("missing required steps")
+checks["producer.strict_identity"] =
+  producer.include?("index invalid") &&
+  producer.include?("generation invalid") &&
+  producer.include?("HWND invalid") &&
+  producer.include?("root/transient WindowId reused") &&
+  producer.include?("root/transient HWND reused") &&
+  producer.include?("Destroyed identity drift")
+checks["producer.strict_sequences"] =
+  producer.include?("runtime sequence types invalid") &&
+  producer.include?("runtime sequence contract drift") &&
+  producer.include?("sequences == [1, 2, 3]")
+checks["producer.same_run_index"] =
+  producer.include?("hepta-ui-v4-same-run-qualification-index-") &&
+  producer.include?("index job ID drift") &&
+  producer.include?("index same-run flag missing")
+checks["producer.atomic_bounded"] =
+  producer.include?("write_json_atomic") &&
+  producer.include?("failures.uniq.first(64)")
+checks["producer.self_tests"] = %w[
+  pre-runtime\ self-test\ failed
+  runtime\ self-test\ failed
+  missing\ Windows\ producer\ step\ did\ not\ fail
+  runtime\ label\ drift\ did\ not\ fail
+  runtime\ sequence\ type\ drift\ did\ not\ fail
+].all? { |term| producer.include?(term.tr("\\", "")) }
+checks["producer.authority_false"] = %w[
+  network mutation effect liveAdapter production operatorAcceptance promotion release
+].all? { |key| producer.include?("\"#{key}\" => false") }
+
+checks["schema.statuses"] = schema.dig("properties", "status", "enum") == %w[
+  PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE
+  PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE
+  FAIL_EXACT_HEAD_EXECUTION_PROVENANCE
+]
+checks["schema.strict_git_pass"] =
+  schema.dig("$defs", "gitObject", "pattern") == "^[0-9a-f]{40}$"
+checks["schema.runtime_sequences"] =
+  schema.dig("$defs", "runtimeEvidence", "properties", "rootSequence", "const") == 1 &&
+  schema.dig("$defs", "runtimeEvidence", "properties", "acrylicSequence", "const") == 2 &&
+  schema.dig("$defs", "runtimeEvidence", "properties", "rollbackSequence", "const") == 3
+checks["schema.product_false"] = %w[
+  productBound transientSystemMaterialBound completeProfileBound
+  systemMaterialBound nativeProductRuntime deviceValidation
+].all? { |key| schema.dig("$defs", "qualification", "properties", key, "const") == false }
+checks["schema.authority_false"] =
+  schema.dig("$defs", "authority", "properties").values.all? { |entry| entry["const"] == false }
+checks["schema.failure_bounded"] =
+  schema.dig("properties", "failures", "maxItems") == 64 &&
+  schema.dig("properties", "failures", "items", "maxLength") == 4096
+
+checks["contract.source_only"] =
+  contract.dig("qualification", "sourceImplemented") == true &&
+  contract.fetch("qualification").reject { |key, _| key == "sourceImplemented" }.values.none? &&
+  contract.fetch("authority").values.none?
+checks["contract.labels_sequences"] =
+  contract.dig("producer", "governedRuntimeLabels") == %w[self-hosted Windows X64 hepta-ui-dwm] &&
+  contract.dig("producer", "runtimeSequenceContract") == [1, 2, 3]
+checks["contract.makepad"] =
+  contract.dig("producer", "makepadRevision") == "c4335cee10b22aca768510c9d072b0ca1bba15c8"
+
+checks["workflow.triggers"] =
+  workflow.include?("workflow_run:") &&
+  workflow.include?("workflow_dispatch:") &&
+  workflow.include?("pull_request:")
+checks["workflow.read_only"] =
+  workflow.include?("contents: read") &&
+  workflow.include?("actions: read") &&
+  !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+checks["workflow.source_gate"] =
+  workflow.include?("hepta-ui-v4-execution-provenance-audit --self-test") &&
+  workflow.include?("hepta-ui-v4-execution-provenance-audit-gate") &&
+  workflow.include?("PASS_EXECUTION_PROVENANCE_AUDIT_SOURCE_ONLY")
+checks["workflow.run_validation"] =
+  workflow.include?("wrong workflow") &&
+  workflow.include?("source run is not completed") &&
+  workflow.include?("source run conclusion") &&
+  workflow.include?("repository drift")
+checks["workflow.safe_artifacts"] =
+  workflow.include?("unsafe artifact name") &&
+  workflow.include?("absolute archive entry") &&
+  workflow.include?("drive-qualified archive entry") &&
+  workflow.include?("path traversal archive entry")
+checks["workflow.producer_cli"] = %w[
+  --run --jobs --artifacts --candidate-commit --candidate-tree
+  --auditor-commit --auditor-tree --output
+].all? { |term| workflow.include?(term) }
+checks["workflow.runtime_mode"] =
+  workflow.include?("require_windows_runtime") &&
+  workflow.include?("--require-windows-runtime") &&
+  workflow.include?("PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE")
+checks["workflow.bounded_failure"] =
+  workflow.include?("continue-on-error: true") &&
+  workflow.include?("FAIL_EXACT_HEAD_EXECUTION_PROVENANCE") &&
+  workflow.include?("failure list missing")
+
+checks["document.boundary"] =
+  document.include?("PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE") &&
+  document.include?("PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE") &&
+  document.include?("productBound=false") &&
+  document.include?("release=false")
+
+failures = checks.reject { |_key, value| value }.keys
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.execution-provenance-audit-source-gate.v1",
+  status: failures.empty? ? "PASS_EXECUTION_PROVENANCE_AUDIT_SOURCE_ONLY" :
+    "FAIL_EXECUTION_PROVENANCE_AUDIT_SOURCE",
+  source_implemented: failures.empty?,
+  hosted_source_validation: false,
+  completed_run_audited: false,
+  pre_runtime_provenance: false,
+  windows_runtime_provenance: false,
+  product_bound: false,
+  transient_system_material_binding: false,
+  complete_profile_binding: false,
+  system_material_binding: false,
+  native_product_runtime: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  live_adapter_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  release: false,
+  checks: checks,
+  failures: failures
+)
+exit(failures.empty? ? 0 : 1)
