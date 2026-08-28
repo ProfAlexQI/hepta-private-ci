@@ -21,7 +21,7 @@
   "source_acceptance_review_policy": "docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json",
   "source_acceptance_pointer_contract": "docs/hepta-vnext/browser/C1_EXACT_SOURCE_ACCEPTANCE_POINTER_V1.md",
   "source_acceptance_pointer_status": "docs/hepta-vnext/browser/C1_EXACT_SOURCE_ACCEPTANCE_POINTER_V1_STATUS.json",
-  "source_acceptance_pointer_tool": "scripts/hepta-servo-exact-source-acceptance-pointer-v1.py",
+  "source_acceptance_pointer_tool": "scripts/hepta-servo-exact-source-acceptance-pointer-v2.py",
   "source_acceptance_policy_schema": "docs/hepta-vnext/browser/hepta.servo.source_acceptance_review_policy.v1.schema.json",
   "source_acceptance_challenge_schema": "docs/hepta-vnext/browser/hepta.servo.source_acceptance_review_challenge.v1.schema.json",
   "accepted_source_pointer_schema": "docs/hepta-vnext/browser/hepta.servo.accepted_source_pointer.v1.schema.json",
@@ -35,11 +35,11 @@
     "servo_runtime": "not_integrated",
     "production_caller": "not_integrated",
     "servo_provenance_generator": "implemented_unqualified_no_source_receipt",
-    "exact_source_review_candidate": "implemented_fixture_only_real_evidence_absent",
+    "exact_source_review_candidate": "implemented_v2_fixture_only_real_evidence_absent",
     "source_acceptance_review_policy": "implemented_self_bound",
     "source_acceptance_review_challenge": "implemented_create_only",
-    "accepted_source_pointer_verifier": "implemented_no_pointer_creation_command",
-    "live_github_review_verifier": "implemented_fixture_only",
+    "accepted_source_pointer_verifier": "implemented_v2_no_pointer_creation_command",
+    "live_github_review_verifier": "implemented_real_api_workflow_fixture_validated",
     "canonical_accepted_source_pointer": "absent"
   },
   "stage_status": {
@@ -56,7 +56,7 @@
     "GitHub Actions still has no executable hosted-runner evidence bound to the exact current head",
     "canonical exact-source qualification v3 has not produced a successful retained evidence packet",
     "no exact-source review candidate, review challenge, dedicated review PR or accepted-source pointer exists",
-    "a real accepted-source pointer requires a distinct current-head trusted-collaborator approval",
+    "a real accepted-source pointer requires deterministic candidate and challenge snapshots, a bound PR number/head ref, a distinct current-head trusted-collaborator approval and the live status check",
     "worker source/API topology remains unaccepted and build authorization remains false",
     "the Hepta-owned Servo worker crate, reviewed recipe, real build inputs, artifact, symbols and SPDX SBOM do not exist",
     "no real Servo WebView, sandbox, listener scan, egress denial or platform qualification has run"
@@ -78,5 +78,6 @@
     "C1 current pointers that stopped at an unreviewed exact-source candidate",
     "blocking CI configurations that did not require the canonical browser aggregate",
     "source acceptance prose without a machine-verifiable distinct current-head review fence"
-  ]
+  ],
+  "source_acceptance_live_review_workflow": ".github/workflows/hepta-servo-exact-source-acceptance-live-review.yml"
 }
