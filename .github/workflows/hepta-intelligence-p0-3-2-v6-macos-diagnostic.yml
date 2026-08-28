@@ -1,0 +1,67 @@
+name: hepta-intelligence-p0-3-2-v6-macos-diagnostic
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-p0-3-2-v6-macos-diagnostic-20260828"
+    paths:
+      - ".github/workflows/hepta-intelligence-p0-3-2-v6-macos-diagnostic.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-p0-3-2-v6-macos-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  exact-head-diagnostic:
+    name: P0.3.2 v6 macOS exact-head diagnostic
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout immutable P0.3.2 candidate
+        uses: actions/checkout@v4
+        with:
+          ref: d1b3259416539be4ea823d7c5dfd6c76edc0b0bb
+          fetch-depth: 1
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Run exact diagnostic receipt
+        run: python3 scripts/run-hepta-intelligence-shared-projection-planner-v6.py
+
+      - name: Upload exact diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p0-3-2-macos-d1b3259416539be4ea823d7c5dfd6c76edc0b0bb
+          path: artifacts/hepta-intelligence-shared-projection-planner-v6
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce diagnostic result
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          receipt = json.loads(
+              Path(
+                  "artifacts/hepta-intelligence-shared-projection-planner-v6/qualification-receipt.json"
+              ).read_text(encoding="utf-8")
+          )
+          assert receipt["head"] == "d1b3259416539be4ea823d7c5dfd6c76edc0b0bb"
+          if not receipt["qualified"]:
+              failed = [
+                  check["id"] for check in receipt["checks"] if not check["passed"]
+              ]
+              raise SystemExit(f"P0.3.2 macOS diagnostic failed: {failed}")
+          PY
