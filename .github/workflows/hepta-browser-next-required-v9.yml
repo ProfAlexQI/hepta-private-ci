@@ -5,28 +5,42 @@ on:
   pull_request:
     paths:
       - "codex-rs/hepta-shadow-qualification/**"
+      - "tools/hepta-browser-c1-protocol/**"
+      - "tools/hepta-browser-c1-startup-bridge/**"
+      - "tools/hepta-browser-c1-artifact-gate/**"
       - "scripts/hepta-servo-*.py"
       - "scripts/verify-hepta-servo-*.py"
+      - "scripts/verify-hepta-browser-*.py"
       - "scripts/tests/test_hepta_servo_*.py"
       - "docs/hepta-vnext/browser/**"
       - "third_party/servo-patches/**"
       - ".github/workflows/hepta-browser-ci.yml"
+      - ".github/workflows/hepta-browser-c1-protocol.yml"
+      - ".github/workflows/hepta-browser-c1-startup-bridge.yml"
       - ".github/workflows/hepta-servo-*.yml"
       - ".github/workflows/hepta-browser-next-required-v9.yml"
-      - ".github/workflows/blocking-ci.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
   pull-requests: read
 
-# Keep this workflow flat. blocking-ci -> v9 -> leaf reusable workflow is the
-# maximum intended nesting. Calling v8/v7 here would exceed GitHub's reusable
-# workflow nesting limit once blocking-ci is the top-level caller.
+# This workflow is a top-level required context. Its leaves expose workflow_call
+# only, so a PR update runs each qualification gate exactly once.
 jobs:
-  browser-protocol:
-    name: Browser contracts, Actor and private worker protocol
+  browser-contracts:
+    name: Browser contracts and deterministic Actor fixture
     uses: ./.github/workflows/hepta-browser-ci.yml
+    secrets: inherit
+
+  private-protocol:
+    name: Dependency-free private worker protocol
+    uses: ./.github/workflows/hepta-browser-c1-protocol.yml
+    secrets: inherit
+
+  startup-bridge:
+    name: Artifact-to-browser startup bridge
+    uses: ./.github/workflows/hepta-browser-c1-startup-bridge.yml
     secrets: inherit
 
   independent-source-v3:
@@ -68,7 +82,9 @@ jobs:
     name: Hepta Browser next required v9
     if: ${{ always() }}
     needs:
-      - browser-protocol
+      - browser-contracts
+      - private-protocol
+      - startup-bridge
       - independent-source-v3
       - exact-source-review-candidate-v2
       - source-api-topology
@@ -79,7 +95,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require canonical flat tooling and acceptance gates
+      - name: Require all qualification-only dependencies
         shell: bash
         env:
           NEEDS: ${{ toJSON(needs) }}
@@ -104,15 +120,15 @@ jobs:
                   {
                       "status": "PASS_TOOLING_AND_FIXTURES_ONLY",
                       "dependencies": sorted(needs),
-                      "reusable_workflow_topology": "blocking_to_v9_to_leaf",
+                      "workflow_topology": "top_level_v9_to_workflow_call_only_leaves",
+                      "private_protocol": "dependency_free_qualification_only",
+                      "startup_bridge": "fixture_artifact_to_browser_handoff",
                       "source_generator": "v2_deterministic_umask",
                       "source_verifier": "v2_git_base_name_compare",
                       "source_review_candidate": "v2_separate_review",
                       "source_acceptance_pointer": "v2_verify_only_no_creation_command",
-                      "source_live_review": "v2_trusted_base_standalone_required_status",
                       "source_api_topology": "hepta_owned_embedder_v1",
                       "topology_acceptance_pointer": "v1_verify_only_no_creation_command",
-                      "topology_live_review": "v1_trusted_base_standalone_required_status",
                       "build_input_sealer": "v3_toolchain_bound",
                       "build_preflight": "v2_strict_capture_facts",
                       "exact_servo_source_accepted": False,
@@ -143,9 +159,8 @@ jobs:
           {
             echo "### Hepta Browser canonical next-stage aggregate v9"
             echo
-            echo "- reusable workflow nesting: blocking-ci -> v9 -> leaf"
-            echo "- source acceptance trusted-base review: standalone required status"
-            echo "- Worker topology trusted-base review: standalone required status"
+            echo "- top-level required workflow with workflow_call-only leaves"
+            echo "- independent private protocol and startup bridge: required"
             echo "- exact Servo source accepted: false"
             echo "- Worker source topology accepted: false"
             echo "- build authorized: false"

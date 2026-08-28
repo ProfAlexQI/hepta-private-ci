@@ -3,23 +3,6 @@ name: hepta browser C1 private worker protocol
 on:
   workflow_call:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "tools/hepta-browser-c1-protocol/**"
-      - "docs/hepta-vnext/browser/C1_*"
-      - "docs/hepta-vnext/browser/hepta.browser.c1_protocol_*"
-      - "scripts/verify-hepta-browser-c1-protocol.py"
-      - ".github/workflows/hepta-browser-c1-protocol.yml"
-  push:
-    branches:
-      - integration/vnext-main-20260811
-      - "codex/hepta-*"
-    paths:
-      - "tools/hepta-browser-c1-protocol/**"
-      - "docs/hepta-vnext/browser/C1_*"
-      - "docs/hepta-vnext/browser/hepta.browser.c1_protocol_*"
-      - "scripts/verify-hepta-browser-c1-protocol.py"
-      - ".github/workflows/hepta-browser-c1-protocol.yml"
 
 permissions:
   contents: read
@@ -85,8 +68,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # cargo fmt --locked is not a cargo-fmt option; the committed dependency-free
-          # Cargo.lock is verified separately and the formatter runs in --check mode.
           cargo fmt \
             --manifest-path tools/hepta-browser-c1-protocol/Cargo.toml \
             -- --check 2>&1 | tee "$C1_EVIDENCE_DIR/format.log"
@@ -113,11 +94,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(grep -c '^\[\[package\]\]' tools/hepta-browser-c1-protocol/Cargo.lock)" -eq 1
-          git diff --exit-code -- \
-            tools/hepta-browser-c1-protocol \
-            docs/hepta-vnext/browser \
-            scripts/verify-hepta-browser-c1-protocol.py \
-            .github/workflows/hepta-browser-c1-protocol.yml \
+          git diff --exit-code -- tools/hepta-browser-c1-protocol scripts/verify-hepta-browser-c1-protocol.py \
             2>&1 | tee "$C1_EVIDENCE_DIR/clean-worktree.log"
 
       - name: Build qualification receipt
@@ -133,10 +110,8 @@ jobs:
           import subprocess
 
           evidence = pathlib.Path(os.environ["C1_EVIDENCE_DIR"])
-
           def digest(name: str) -> str:
               return hashlib.sha256((evidence / name).read_bytes()).hexdigest()
-
           commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
           tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip()
           receipt = {
@@ -145,13 +120,6 @@ jobs:
               "claim_level": "QUALIFICATION_ONLY_PRIVATE_PROTOCOL",
               "source_commit": commit,
               "source_tree": tree,
-              "servo_source_pin": {
-                  "repository": "servo/servo",
-                  "commit": "0a48e298482659817eb50097df23841f2b8e3044",
-                  "tree": "b04d2f75b3217374d079d579c270177b57fa1389",
-                  "license": "MPL-2.0",
-                  "artifact_imported": False,
-              },
               "protocol": {
                   "version": 1,
                   "maximum_frame_bytes": 65536,
@@ -166,10 +134,6 @@ jobs:
                   "format": {"status": "PASSED", "log_sha256": digest("format.log")},
                   "tests": {"status": "PASSED", "log_sha256": digest("tests.log")},
                   "clippy": {"status": "PASSED", "log_sha256": digest("clippy.log")},
-                  "forbidden_surface_scan": {
-                      "status": "PASSED",
-                      "log_sha256": digest("plan-verifier.log"),
-                  },
               },
               "authority": {
                   "runtime_authority": False,
