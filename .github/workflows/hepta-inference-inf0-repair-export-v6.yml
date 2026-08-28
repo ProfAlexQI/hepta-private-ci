@@ -1,0 +1,158 @@
+name: Hepta inference INF-0 bounded repair export v6
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0-macos-diagnostics-v2-20260828
+    paths:
+      - ".github/workflows/hepta-inference-inf0-repair-export-v6.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: macos-latest
+    timeout-minutes: 180
+    env:
+      CANDIDATE: 3afce0894a597f1968169400e3b79c4a5e94ec17
+      REPAIR_SCRIPT: scripts/hepta-inference-inf0-bounded-repair-v6.py
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Detach exact candidate with isolated repair script
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/hepta-inference-inf0-repair-export-v6.yml"
+          git show "$GITHUB_SHA:$REPAIR_SCRIPT" > "$RUNNER_TEMP/repair.py"
+          python3 -m py_compile "$RUNNER_TEMP/repair.py"
+          git checkout --detach "$CANDIDATE"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE"
+          test "$(git rev-parse HEAD^)" = "d47cd292c89cd4ac6d484232b35589d65a88f0b9"
+          test -z "$(git status --porcelain)"
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply and validate bounded repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$RUNNER_TEMP/repair.py"
+          (
+            cd codex-rs
+            cargo fmt \
+              -p codex-lmstudio \
+              -p codex-ollama \
+              -p codex-utils-oss \
+              -p codex-responses-api-proxy
+          )
+          cat > "$RUNNER_TEMP/expected.txt" <<'EOF'
+          codex-rs/lmstudio/src/lib.rs
+          codex-rs/lmstudio/src/sha256.rs
+          codex-rs/ollama/src/client_support.inc.rs
+          codex-rs/ollama/src/lib.rs
+          codex-rs/responses-api-proxy/src/dump.rs
+          codex-rs/responses-api-proxy/src/sha256.rs
+          codex-rs/utils/oss/src/lib.rs
+          EOF
+          sed -i '' 's/^          //' "$RUNNER_TEMP/expected.txt"
+          git diff --name-only | sort > "$RUNNER_TEMP/changed.txt"
+          diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/changed.txt"
+          git diff --check
+          (
+            cd codex-rs
+            cargo fmt \
+              -p codex-lmstudio \
+              -p codex-ollama \
+              -p codex-utils-oss \
+              -p codex-responses-api-proxy \
+              -- --check
+            rustfmt --edition 2024 --check \
+              ollama/src/client.rs \
+              ollama/src/client_*.inc.rs \
+              lmstudio/src/client.rs \
+              lmstudio/src/client_*.inc.rs
+          )
+
+      - name: Execute repair qualification matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/hepta-inference-inf0-repair"
+          mkdir -p "$out/files"
+          run_gate() {
+            name="$1"
+            shift
+            set +e
+            "$@" > "$out/$name.log" 2>&1
+            rc=$?
+            set -e
+            printf '%s=%s\n' "$name" "$rc" >> "$out/exit-codes.txt"
+          }
+          : > "$out/exit-codes.txt"
+          run_gate cargo_check bash -lc '
+            cd codex-rs && cargo check --locked \
+              -p codex-lmstudio -p codex-ollama \
+              -p codex-utils-oss -p codex-responses-api-proxy
+          '
+          run_gate cargo_test bash -lc '
+            cd codex-rs && cargo test --locked \
+              -p codex-lmstudio -p codex-ollama \
+              -p codex-utils-oss -p codex-responses-api-proxy
+          '
+          run_gate cargo_clippy bash -lc '
+            cd codex-rs && cargo clippy --locked --all-targets \
+              -p codex-lmstudio -p codex-ollama \
+              -p codex-utils-oss -p codex-responses-api-proxy \
+              -- -D warnings
+          '
+          git diff --binary > "$out/repair.patch"
+          git diff --name-only > "$out/changed-files.txt"
+          while IFS= read -r path; do
+            mkdir -p "$out/files/$(dirname "$path")"
+            cp "$path" "$out/files/$path"
+          done < "$out/changed-files.txt"
+          {
+            echo "candidate=$CANDIDATE"
+            echo "candidate_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "rustc=$(rustc --version)"
+            echo "rustfmt=$(rustfmt --version)"
+            cat "$out/exit-codes.txt"
+            echo "qualified=false"
+            echo "ubuntu_qualification=false"
+            echo "inf1=NOT_STARTED"
+            echo "authority=false"
+          } > "$out/receipt.txt"
+          find "$out" -type f -print0 | sort -z | xargs -0 shasum -a 256 > "$out/SHA256SUMS"
+          cat "$out/receipt.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload bounded repair payload
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0-bounded-repair-v6-${{ env.CANDIDATE }}
+          path: ${{ runner.temp }}/hepta-inference-inf0-repair
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce repair gates
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          receipt="$RUNNER_TEMP/hepta-inference-inf0-repair/exit-codes.txt"
+          grep -qx 'cargo_check=0' "$receipt"
+          grep -qx 'cargo_test=0' "$receipt"
+          grep -qx 'cargo_clippy=0' "$receipt"
+          echo "PASS_HEPTA_INFERENCE_INF0_BOUNDED_REPAIR_EXPORT_ONLY"
