@@ -13,17 +13,19 @@ concurrency:
   group: c1-hosted-gap-closure-v1-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
-# Exact-head closure epoch 4. ARM64 is the repository's currently executing
-# hosted pool; the producer remains single-lane and rejects a moved remote head.
+# Exact-head closure epoch 5. Ubuntu 22 is the current exact-PR lane with a
+# proven positive runner ID and completed preflight steps. The producer remains
+# single-lane and refuses to push if the remote branch moves during validation.
 jobs:
   close-current-gaps:
     name: Close current hosted qualification gaps
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.base.ref == 'integration/vnext-main-20260811'
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
     env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
       HEAD_REF: ${{ github.head_ref }}
     steps:
