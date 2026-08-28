@@ -4,6 +4,9 @@ use codex_hepta_contracts::Sha256Digest;
 use sha2::Digest;
 use sha2::Sha256;
 
+#[path = "cognitive/grounding_v3.rs"]
+pub(crate) mod grounding_v3;
+
 pub(crate) fn workspace_digest(path: &Path) -> Sha256Digest {
     codex_hepta_memory::workspace_binding_digest(path)
 }
