@@ -118,6 +118,12 @@ checks["home.mobile_bounded_variant"] =
   home_override.include?("mod.widgets.HeptaV4RoomsSideBar") &&
   home_override.include?("Mobile := View") &&
   home_override.include?("filter_panel := RoundedShadowView")
+checks["home.mobile_named_page_override"] =
+  home_override.include?("Mobile +:") &&
+  home_override.include?("mod.widgets.HeptaV4RoomsSideBar {}")
+checks["home.explicit_stack_templates"] =
+  home_override.include?("stack_templates:") &&
+  home_override.scan("mod.widgets.HeptaV4RobrixStackNavigationView").length >= 4
 checks["home.no_legacy_filter_rows"] =
   !home_override.match?(/height:\s*(?:35|39|45)\b/)
 checks["home.stack_contract_retained"] =

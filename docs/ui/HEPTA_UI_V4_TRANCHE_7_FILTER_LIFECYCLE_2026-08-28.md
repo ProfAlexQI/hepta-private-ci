@@ -40,8 +40,10 @@ The filter is now migrated as one unit:
 The post-registration Home override replaces only named prototypes:
 
 - the desktop `home_page` inside the existing PageFlip;
+- the mobile root `home_page`, explicitly instantiating the v4 `RoomsSideBar`;
 - the mobile `RoomsSideBar` variant;
-- the mobile StackNavigation compatibility prototype.
+- all three mobile StackNavigation templates, explicitly instantiating the v4 stack prototype;
+- the compatibility names for any later consumers.
 
 It does not fork the full Rust HomeScreen implementation. Existing room-list,
 selection, PageFlip, settings, add-room, and StackNavigation state remains

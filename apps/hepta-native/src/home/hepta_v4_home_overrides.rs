@@ -16,6 +16,31 @@ script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*
 
+    // Define the upgraded stack before the HomeScreen override so the three
+    // stack templates can reference it explicitly rather than relying only on
+    // a later compatibility-name rebind.
+    mod.widgets.STACK_VIEW_HEADER_HEIGHT = (mod.widgets.HEPTA_V4_MOBILE_HEADER_HEIGHT)
+    mod.widgets.HeptaV4RobrixStackNavigationView = mod.widgets.RobrixStackNavigationView {
+        header +: {
+            height: (mod.widgets.HEPTA_V4_MOBILE_HEADER_HEIGHT)
+            content +: {
+                height: (mod.widgets.HEPTA_V4_MOBILE_HEADER_HEIGHT)
+                button_container +: {
+                    left_button +: {
+                        width: Fit{min: FitBound.Abs(48)}
+                        height: Fit{min: FitBound.Abs(48)}
+                        padding: 12
+                        margin: Inset{left: 4, right: 0, top: 0, bottom: 0}
+                        icon_walk: Walk{width: 20, height: 20}
+                    }
+                }
+            }
+        }
+        body +: {
+            margin: Inset{top: (mod.widgets.HEPTA_V4_MOBILE_HEADER_HEIGHT)}
+        }
+    }
+
     // One reusable row owns the vertical contract for desktop and mobile.
     mod.widgets.HeptaV4RoomFilterRow = mod.widgets.HeptaV4ControlRow {
         CachedWidget {
@@ -69,10 +94,10 @@ script_mod! {
             }
         }
     }
-    mod.widgets.RoomsSideBar = mod.widgets.HeptaV4RoomsSideBar {}
 
-    // Replace only the desktop home page. The PageFlip, settings/add-room pages,
-    // navigation state, and MainDesktopUI implementation remain unchanged.
+    // Replace the named desktop and mobile home pages, plus all stack templates,
+    // explicitly. This avoids depending on whether an already-constructed child
+    // prototype observes a later compatibility-name rebind.
     mod.widgets.HeptaV4HomeScreen = mod.widgets.HomeScreen {
         main_adaptive_view +: {
             Desktop +: {
@@ -90,35 +115,49 @@ script_mod! {
                     }
                 }
             }
-        }
-    }
-    mod.widgets.HomeScreen = mod.widgets.HeptaV4HomeScreen {}
 
-    // Upgrade the mobile stack prototype after HomeScreen registration.
-    mod.widgets.STACK_VIEW_HEADER_HEIGHT = (mod.widgets.HEPTA_V4_MOBILE_HEADER_HEIGHT)
+            Mobile +: {
+                view_stack +: {
+                    root_view +: {
+                        home_screen_page_flip +: {
+                            home_page := View {
+                                width: Fill
+                                height: Fill
+                                flow: Down
 
-    mod.widgets.HeptaV4RobrixStackNavigationView = mod.widgets.RobrixStackNavigationView {
-        header +: {
-            height: (mod.widgets.HEPTA_V4_MOBILE_HEADER_HEIGHT)
-            content +: {
-                height: (mod.widgets.HEPTA_V4_MOBILE_HEADER_HEIGHT)
-                button_container +: {
-                    left_button +: {
-                        width: Fit{min: FitBound.Abs(48)}
-                        height: Fit{min: FitBound.Abs(48)}
-                        padding: 12
-                        margin: Inset{left: 4, right: 0, top: 0, bottom: 0}
-                        icon_walk: Walk{width: 20, height: 20}
+                                mod.widgets.HeptaV4RoomsSideBar {}
+                            }
+                        }
+                    }
+
+                    stack_templates: {
+                        RoomScreenStackNavigationView := mod.widgets.HeptaV4RobrixStackNavigationView {
+                            body +: {
+                                room_screen := mod.widgets.RoomScreen {}
+                            }
+                        }
+
+                        InviteScreenStackNavigationView := mod.widgets.HeptaV4RobrixStackNavigationView {
+                            body +: {
+                                invite_screen := mod.widgets.InviteScreen {}
+                            }
+                        }
+
+                        SpaceLobbyScreenStackNavigationView := mod.widgets.HeptaV4RobrixStackNavigationView {
+                            body +: {
+                                space_lobby_screen := mod.widgets.SpaceLobbyScreen {}
+                            }
+                        }
                     }
                 }
             }
         }
-        body +: {
-            margin: Inset{top: (mod.widgets.HEPTA_V4_MOBILE_HEADER_HEIGHT)}
-        }
     }
 
+    // Keep compatibility names correct for any later consumers too.
+    mod.widgets.RoomsSideBar = mod.widgets.HeptaV4RoomsSideBar {}
     mod.widgets.RobrixStackNavigationView = mod.widgets.HeptaV4RobrixStackNavigationView {}
+    mod.widgets.HomeScreen = mod.widgets.HeptaV4HomeScreen {}
 }
 
 #[cfg(test)]
