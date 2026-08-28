@@ -32,18 +32,12 @@ jobs:
     uses: ./.github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml
     secrets: inherit
 
-  source-acceptance-live-review-v2:
-    name: Trusted-base live source-only review or not-applicable gate
-    uses: ./.github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml
-    secrets: inherit
-
   required:
     name: Hepta Browser next required v8
     if: ${{ always() }}
     needs:
       - canonical-v7
       - source-acceptance-pointer-v1
-      - source-acceptance-live-review-v2
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -69,7 +63,7 @@ jobs:
               "source_acceptance_review_policy": "v1_self_bound",
               "source_acceptance_review_challenge": "v1_create_only",
               "source_acceptance_pointer": "v1_verify_only_no_creation_command",
-              "source_live_review": "v2_trusted_base_required_or_not_applicable",
+              "source_live_review": "v2_trusted_base_standalone_required_status",
               "required_status_check": "Source-only accepted pointer live review",
               "exact_servo_source_accepted": False,
               "source_review_candidate_accepted": False,
@@ -96,7 +90,7 @@ jobs:
           {
             echo "### Hepta Browser canonical next-stage aggregate v8"
             echo
-            echo "- trusted-base source acceptance live review v2: required"
+            echo "- trusted-base source acceptance live review v2: standalone required status"
             echo "- PR-head verifier execution: forbidden"
             echo "- exact Servo source accepted: false"
             echo "- Worker source topology accepted: false"
