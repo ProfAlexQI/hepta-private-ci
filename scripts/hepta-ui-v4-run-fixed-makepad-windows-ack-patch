@@ -7,16 +7,9 @@ require "rbconfig"
 require "tempfile"
 
 EXPECTED_PATCHER_BLOB = "369e607f4f80d08d739d2f83778fb4e37aa50d4e"
-BLOCK_START = <<~'RUBY'.freeze
-  replace_once!(
-    checkout.join("platform/src/window.rs"),
-    <<~'RUST'.chomp,
-          pub fn set_window_visuals(&mut self, cx: &mut Cx, visuals: WindowVisuals) {
-RUBY
-BLOCK_END = <<~'RUBY'.freeze
-    "correlated WindowHandle setter"
-  )
-RUBY
+RUST_HEREDOC = "<<~'RUST'.chomp"
+FIXED_RUST_HEREDOC = "<<-'RUST'.chomp"
+MINIMUM_EXPECTED_RUST_HEREDOCS = 8
 
 repo_root = Pathname.new(__dir__).join("..").expand_path
 original = repo_root.join("scripts/hepta-ui-v4-apply-makepad-windows-ack-patch")
@@ -31,37 +24,34 @@ abort "canonical patcher drifted: #{actual_blob.strip}" unless
   actual_blob.strip == EXPECTED_PATCHER_BLOB
 
 source = original.read
-start = source.index(BLOCK_START)
-abort "correlated setter repair anchor is missing" unless start
-finish_start = source.index(BLOCK_END, start)
-abort "correlated setter repair terminator is missing" unless finish_start
-finish = finish_start + BLOCK_END.length
-block = source[start...finish]
-abort "unexpected correlated setter heredoc count" unless
-  block.scan("<<~'RUST'.chomp").length == 2
+heredoc_count = source.scan(RUST_HEREDOC).length
+abort "canonical Rust heredoc set drifted: #{heredoc_count}" unless
+  heredoc_count >= MINIMUM_EXPECTED_RUST_HEREDOCS
 
 inside_heredoc = false
-fixed_block = block.lines.map do |line|
-  if line.include?("<<~'RUST'.chomp")
+fixed_count = 0
+fixed_source = source.lines.map do |line|
+  if line.include?(RUST_HEREDOC)
+    abort "nested Rust heredoc is unsupported" if inside_heredoc
     inside_heredoc = true
-    line.sub("<<~'RUST'.chomp", "<<-'RUST'.chomp")
+    fixed_count += 1
+    line.sub(RUST_HEREDOC, FIXED_RUST_HEREDOC)
   elsif inside_heredoc && line.strip == "RUST"
     inside_heredoc = false
     line
   elsif inside_heredoc && !line.strip.empty?
-    abort "correlated setter indentation repair drifted" unless line.start_with?("    ")
+    abort "Rust heredoc structural indentation drifted" unless line.start_with?("    ")
     line.sub(/\A    /, "")
   else
     line
   end
 end.join
-abort "unterminated correlated setter heredoc" if inside_heredoc
 
-fixed_source = source[0...start] + fixed_block + source[finish..]
-abort "repair did not preserve exactly two indented heredocs" unless
-  fixed_block.scan("<<-'RUST'.chomp").length == 2
-abort "repair left the broken setter heredoc" if
-  fixed_block.include?("<<~'RUST'.chomp")
+abort "unterminated Rust heredoc" if inside_heredoc
+abort "not every Rust heredoc was repaired" unless fixed_count == heredoc_count
+abort "broken squiggly Rust heredoc remains" if fixed_source.include?(RUST_HEREDOC)
+abort "repaired heredoc count drifted" unless
+  fixed_source.scan(FIXED_RUST_HEREDOC).length == heredoc_count
 
 Tempfile.create(["hepta-ui-v4-fixed-makepad-patcher", ".rb"]) do |temporary|
   temporary.write(fixed_source)
