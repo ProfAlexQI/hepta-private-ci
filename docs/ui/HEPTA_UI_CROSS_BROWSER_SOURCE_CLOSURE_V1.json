@@ -1,0 +1,57 @@
+{
+  "schema": "hepta.ui.cross-browser-source-closure.v1",
+  "status": "CROSS_BROWSER_SOURCE_READY_EXECUTION_AND_HUMAN_ACCEPTANCE_REQUIRED",
+  "base": {
+    "branch": "codex/ui-v4-global-platform-source-closure-20260828",
+    "commit": "ca407388efd37310c43f69858d05c773a52f762d",
+    "tree": "fc7246efa889a806d746123435875dede0ceae3a"
+  },
+  "formalRuntime": {
+    "server": "hepta --serve-ui",
+    "servedPath": "/control-ui.js",
+    "runtimeSideRouteForbidden": true,
+    "exactBundleBytes": true,
+    "etagBound": true,
+    "runtimeInjected": false,
+    "loopbackOnly": true,
+    "sameOriginGetOnly": true
+  },
+  "lanes": [
+    {"id": "chromium", "host": "ubuntu-latest", "engine": "chromium", "physicalProductAcceptance": false},
+    {"id": "firefox", "host": "ubuntu-latest", "engine": "firefox", "physicalProductAcceptance": false},
+    {"id": "webkit-linux", "host": "ubuntu-latest", "engine": "webkit", "physicalProductAcceptance": false},
+    {"id": "edge", "host": "windows-latest", "engine": "chromium", "channel": "msedge", "physicalProductAcceptance": false},
+    {"id": "webkit-macos", "host": "macos-latest", "engine": "webkit", "physicalProductAcceptance": false}
+  ],
+  "scenarios": [
+    "desktop-1280",
+    "mobile-390-transient",
+    "zoom200-768"
+  ],
+  "qualification": {
+    "sourceImplemented": true,
+    "hostedSource": false,
+    "chromiumRuntime": false,
+    "edgeRuntime": false,
+    "firefoxRuntime": false,
+    "webkitLinuxRuntime": false,
+    "webkitMacosRuntime": false,
+    "crossBrowserEngineMatrix": false,
+    "physicalEdgeAcceptance": false,
+    "physicalFirefoxAcceptance": false,
+    "physicalSafariAcceptance": false,
+    "crossBrowserHumanVisualAcceptance": false,
+    "deviceValidation": false,
+    "productWired": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
