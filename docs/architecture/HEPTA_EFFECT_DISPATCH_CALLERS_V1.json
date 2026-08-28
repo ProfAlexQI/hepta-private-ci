@@ -1,0 +1,32 @@
+{
+  "schema": "hepta.effect_dispatch_callers.v1",
+  "schema_version": 1,
+  "status": "SOURCE_PRESENT_QUALIFICATION_PENDING",
+  "symbols": {
+    "ProductionOutboxDispatcher::attach": {
+      "allowed_paths": [
+        "codex-rs/hepta-memory/src/production_writer.rs",
+        "codex-rs/hepta-agentd/src/production_writer_host.rs"
+      ],
+      "production_callers": [],
+      "runtime_attached": false,
+      "external_effect_authority": false
+    },
+    "ProductionDurableWriter::open": {
+      "allowed_paths": [
+        "codex-rs/hepta-memory/src/production_writer.rs",
+        "codex-rs/hepta-agentd/src/production_writer_host.rs"
+      ],
+      "production_callers": [],
+      "runtime_attached": false,
+      "production_writer_authority": false
+    }
+  },
+  "policy": {
+    "agentd_raw_writer_accessor_allowed": false,
+    "direct_product_dispatcher_allowed": false,
+    "typed_external_effect_capability_required": true,
+    "legacy_memory_implementation_retained": true,
+    "physical_memory_extraction_allowed": false
+  }
+}
