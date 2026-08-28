@@ -1,0 +1,275 @@
+name: Hepta Intelligence Q0 compile-fix v3
+
+on:
+  push:
+    branches:
+      - codex/hepta-intelligence-plan-v3-20260828
+    paths:
+      - .github/workflows/hepta-intelligence-q0-compile-fix-v3.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-q0-compile-fix-v3-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
+  EXPECTED_PARENT: c37c62ca8f6c420e0e6b2a2216456f7cbd3f30c7
+  PATCH_FILE: .github/patches/hepta-intelligence-q0-compile-fix-v1.patch
+  OLD_APPLIER: .github/workflows/hepta-intelligence-q0-compile-fix-apply.yml
+  INVALID_V2: .github/workflows/hepta-intelligence-q0-compile-fix-v2.yml
+  THIS_APPLIER: .github/workflows/hepta-intelligence-q0-compile-fix-v3.yml
+  ARTIFACT_DIR: artifacts/hepta-intelligence-q0-compile-fix-v3
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_BUILD_JOBS: 4
+  RUST_BACKTRACE: 1
+
+jobs:
+  prove-and-commit:
+    name: Prove staged compile repair and tamper regression fix
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact v3 candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Prove exact identity and ARM64 host
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$EXPECTED_BRANCH"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(uname -m)" = "aarch64"
+          test -f "$PATCH_FILE"
+          test -f "$OLD_APPLIER"
+          test -f "$INVALID_V2"
+          test -f "$THIS_APPLIER"
+          mkdir -p "$ARTIFACT_DIR"
+          printf '{"head":"%s","tree":"%s","parent":"%s","host":"aarch64-unknown-linux-gnu","runtime_authority":false}\n' \
+            "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" "$(git rev-parse HEAD^)" \
+            > "$ARTIFACT_DIR/identity.json"
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Verify toolchain, host and repository pin
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          expected=$(python3 - <<'PY'
+          import pathlib
+          import tomllib
+          value = tomllib.loads(pathlib.Path("rust-toolchain.toml").read_text())
+          print(value["toolchain"]["channel"])
+          PY
+          )
+          test "$expected" = "1.95.0"
+          test "$(rustc --version | awk '{print $2}')" = "$expected"
+          test "$(rustc -vV | awk '/^host:/ {print $2}')" = "aarch64-unknown-linux-gnu"
+          test -s Cargo.lock
+
+      - name: Apply the staged eight-file compile repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check "$PATCH_FILE"
+          git apply "$PATCH_FILE"
+
+      - name: Make tamper-trigger restoration exact and idempotent
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-memory/src/fact_grounding/durable/tests.rs")
+          text = path.read_text(encoding="utf-8")
+          old = (
+              "    sqlx::query(\n"
+              "              \"CREATE TRIGGER kg_revision_fact_grounding_spans_no_update\n"
+              "          BEFORE UPDATE ON kg_revision_fact_grounding_spans BEGIN\n"
+              "              SELECT RAISE(ABORT, 'fact-grounding spans are immutable');\n"
+              "          END\",\n"
+              "      )\n"
+          )
+          new = (
+              "    sqlx::query(\"DROP TRIGGER IF EXISTS kg_revision_fact_grounding_spans_no_update\")\n"
+              "          .execute(&store.pool)\n"
+              "          .await\n"
+              "          .expect(\"clear stale guard before restore\");\n"
+              "      sqlx::query(\n"
+              "          \"CREATE TRIGGER kg_revision_fact_grounding_spans_no_update\n"
+              "          BEFORE UPDATE ON kg_revision_fact_grounding_spans BEGIN\n"
+              "              SELECT RAISE(ABORT, 'fact-grounding spans are immutable');\n"
+              "          END\",\n"
+              "      )\n"
+          )
+          assert text.count(old) == 1, text.count(old)
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+      - name: Format and assert the exact nine-file repair set
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs
+            codex-rs/hepta-memory/src/intelligence_mutation_state.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs
+            codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/tests.rs
+          )
+          rustfmt --edition 2024 --config skip_children=true "${files[@]}"
+          rustfmt --edition 2024 --check --config skip_children=true "${files[@]}"
+          git diff --check
+          python3 - <<'PY'
+          import subprocess
+
+          expected = {
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
+              "codex-rs/hepta-memory/src/intelligence_mutation_state.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
+              "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/tests.rs",
+          }
+          actual = set(
+              subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          )
+          assert actual == expected, {
+              "missing": sorted(expected - actual),
+              "unexpected": sorted(actual - expected),
+          }
+          PY
+          git diff --stat | tee "$ARTIFACT_DIR/repair-stat.txt"
+          git diff --binary > "$ARTIFACT_DIR/repair.patch"
+
+      - name: Re-run all frozen source and SQLite contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json
+          canonical=$(mktemp)
+          cp "$status" "$canonical"
+          restore_status() { cp "$canonical" "$status"; rm -f "$canonical"; }
+          trap restore_status EXIT
+
+          test "$(python3 scripts/verify-hepta-intelligence-master-plan.py)" = \
+            "PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_SOURCE_ONLY"
+          python3 scripts/hepta-intelligence-status-compat.py P0.2 >/dev/null
+          python3 scripts/verify-hepta-intelligence-grounding-ledger.py >/dev/null
+          python3 scripts/hepta-intelligence-status-compat.py P0.3 >/dev/null
+          python3 scripts/verify-hepta-intelligence-grounding-gate.py >/dev/null
+          python3 scripts/hepta-intelligence-status-compat.py P0.4a >/dev/null
+          python3 scripts/verify-hepta-intelligence-mutation-state.py >/dev/null
+          python3 scripts/hepta-intelligence-status-compat.py P0.4b >/dev/null
+          python3 scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py >/dev/null
+          python3 scripts/verify-hepta-intelligence-mutation-journal.py >/dev/null
+          python3 scripts/hepta-intelligence-status-compat.py P0.4c >/dev/null
+          python3 scripts/verify-hepta-intelligence-shadow-host.py >/dev/null
+
+          restore_status
+          trap - EXIT
+          git diff --check
+
+      - name: Run all focused frozen-tranche tests
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-memory durable_grounding -- --nocapture 2>&1 | tee "../$ARTIFACT_DIR/test-p0-2.log"
+          cargo test --locked -p codex-hepta-memory fact_grounding -- --nocapture 2>&1 | tee "../$ARTIFACT_DIR/test-p0-1-regression.log"
+          cargo test --locked -p codex-hepta-memory shadow_ -- --nocapture 2>&1 | tee "../$ARTIFACT_DIR/test-p0-3.log"
+          cargo test --locked -p codex-hepta-memory intelligence_mutation_state -- --nocapture 2>&1 | tee "../$ARTIFACT_DIR/test-p0-4a.log"
+          cargo test --locked -p codex-hepta-memory intelligence_mutation_journal -- --nocapture 2>&1 | tee "../$ARTIFACT_DIR/test-p0-4b.log"
+          cargo test --locked -p codex-hepta-memory shadow_intelligence_mutation_host -- --nocapture 2>&1 | tee "../$ARTIFACT_DIR/test-p0-4c-memory.log"
+          cargo test --locked -p codex-hepta-memory-extension grounding_v3 -- --nocapture 2>&1 | tee "../$ARTIFACT_DIR/test-p0-3-extension.log"
+          cargo test --locked -p codex-hepta-agentd --features qualification-intelligence-mutation-shadow shadow_intelligence_mutation_host -- --nocapture 2>&1 | tee "../$ARTIFACT_DIR/test-p0-4c-agentd.log"
+
+      - name: Run full memory tests and strict memory Clippy
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-memory 2>&1 | tee "../$ARTIFACT_DIR/test-full-memory.log"
+          cargo clippy --locked -p codex-hepta-memory --all-targets -- -D warnings 2>&1 | tee "../$ARTIFACT_DIR/clippy-memory.log"
+
+      - name: Upload v3 evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-q0-compile-fix-v3-${{ github.sha }}
+          path: artifacts/hepta-intelligence-q0-compile-fix-v3/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Commit the proven repair and delete temporary infrastructure
+        shell: bash
+        run: |
+          set -euo pipefail
+          repaired=(
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs
+            codex-rs/hepta-memory/src/intelligence_mutation_state.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs
+            codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/tests.rs
+          )
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "${repaired[@]}"
+          git rm "$PATCH_FILE" "$OLD_APPLIER" "$INVALID_V2" "$THIS_APPLIER"
+          python3 - <<'PY'
+          import os
+          import subprocess
+
+          expected = {
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
+              "codex-rs/hepta-memory/src/intelligence_mutation_state.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
+              "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/tests.rs",
+              os.environ["PATCH_FILE"],
+              os.environ["OLD_APPLIER"],
+              os.environ["INVALID_V2"],
+              os.environ["THIS_APPLIER"],
+          }
+          actual = set(
+              subprocess.check_output(
+                  ["git", "diff", "--cached", "--name-only"], text=True
+              ).splitlines()
+          )
+          assert actual == expected, {
+              "missing": sorted(expected - actual),
+              "unexpected": sorted(actual - expected),
+          }
+          PY
+          git diff --cached --check
+          git commit -m "fix(intelligence): restore nested grounding compile and tamper regression"
+          git fetch origin "$EXPECTED_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          git push origin "HEAD:$EXPECTED_BRANCH"
