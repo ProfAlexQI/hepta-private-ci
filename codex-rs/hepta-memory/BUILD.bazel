@@ -5,6 +5,7 @@ codex_rust_crate(
     compile_data = glob([
         "migrations/**",
         "grounding-migrations/**",
+        "mutation-migrations/**",
     ]),
     crate_name = "codex_hepta_memory",
 )
