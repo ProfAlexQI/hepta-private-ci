@@ -1,0 +1,123 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+workflow_path = root.join(".github/workflows/hepta-ui-v4-windows-material-profile-exact.yml")
+contract_path = root.join("docs/ui/HEPTA_UI_SAME_RUN_QUALIFICATION_INDEX_V1.json")
+document_path = root.join("docs/ui/HEPTA_UI_V4_TRANCHE_19_SAME_RUN_QUALIFICATION_INDEX_2026-08-28.md")
+producer_path = root.join("scripts/hepta-ui-v4-exact-head-qualification-index")
+index_gate_path = root.join("scripts/hepta-ui-v4-exact-head-qualification-index-gate")
+
+checks = {
+  "file.workflow" => workflow_path.file? && !workflow_path.zero?,
+  "file.contract" => contract_path.file? && !contract_path.zero?,
+  "file.document" => document_path.file? && !document_path.zero?,
+  "file.producer" => producer_path.file? && !producer_path.zero?,
+  "file.index_gate" => index_gate_path.file? && !index_gate_path.zero?
+}
+
+workflow = workflow_path.read
+contract = JSON.parse(contract_path.read)
+document = document_path.read
+
+checks["workflow.actions_read"] =
+  workflow.include?("contents: read") && workflow.include?("actions: read")
+checks["workflow.final_job"] =
+  workflow.include?("qualification-index:") &&
+  workflow.include?("name: Canonical exact-head qualification index") &&
+  workflow.include?("if: always()")
+checks["workflow.final_needs"] = %w[
+  source-contract
+  patch-contract
+  compile-contract
+  windows-runtime-profile
+].all? { |name| workflow.include?("- #{name}") }
+checks["workflow.current_run_binding"] =
+  workflow.include?("$GITHUB_RUN_ID") &&
+  workflow.include?("actions/runs/$GITHUB_RUN_ID") &&
+  workflow.include?("head SHA drift") &&
+  workflow.include?("repository drift")
+checks["workflow.same_run_jobs_artifacts"] =
+  workflow.include?("actions/runs/$GITHUB_RUN_ID/jobs?per_page=100") &&
+  workflow.include?("actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100") &&
+  workflow.include?("archive_download_url")
+checks["workflow.bounded_polling"] =
+  workflow.include?("for attempt in $(seq 1 12)") &&
+  workflow.include?("sleep 5")
+checks["workflow.safe_extract"] =
+  workflow.include?("unzip -Z1") &&
+  workflow.include?("absolute archive entry") &&
+  workflow.include?("drive-qualified archive entry") &&
+  workflow.include?("path traversal archive entry")
+checks["workflow.same_run_producer"] =
+  workflow.include?("--allow-in-progress-run") &&
+  workflow.include?("--require-windows-runtime") &&
+  workflow.include?("--run-id \"$GITHUB_RUN_ID\"")
+checks["workflow.statuses"] = %w[
+  PASS_EXACT_HEAD_PRE_RUNTIME_QUALIFICATION
+  PASS_EXACT_HEAD_WINDOWS_RUNTIME_QUALIFICATION
+  FAIL_EXACT_HEAD_QUALIFICATION_INDEX
+].all? { |status| workflow.include?(status) }
+checks["workflow.source_chain"] =
+  workflow.include?("hepta-ui-v4-exact-head-qualification-index --self-test") &&
+  workflow.include?("hepta-ui-v4-same-run-qualification-index-gate") &&
+  workflow.include?("same-run-index-source.json")
+checks["workflow.failure_receipt"] =
+  workflow.include?("continue-on-error: true") &&
+  workflow.include?("qualification index missing") &&
+  workflow.include?("failure list missing")
+checks["workflow.artifact_identity"] =
+  workflow.include?("artifact head drift") &&
+  workflow.include?("name.end_with?(candidate)") &&
+  workflow.include?("duplicate artifact name")
+checks["workflow.read_only_no_release"] =
+  !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+
+checks["contract.source_only"] =
+  contract.dig("qualification", "sourceImplemented") == true &&
+  contract.fetch("qualification").reject { |key, _| key == "sourceImplemented" }.values.none? &&
+  contract.fetch("authority").values.none?
+checks["contract.same_run"] =
+  contract.dig("workflow", "sameRunId") == true &&
+  contract.dig("workflow", "sameRunCanBeInProgress") == true &&
+  contract.dig("workflow", "safeArchiveExtraction") == true &&
+  contract.dig("workflow", "boundedArtifactPollingAttempts") == 12
+checks["contract.statuses"] =
+  contract.dig("workflow", "preRuntimeStatus") == "PASS_EXACT_HEAD_PRE_RUNTIME_QUALIFICATION" &&
+  contract.dig("workflow", "windowsRuntimeStatus") == "PASS_EXACT_HEAD_WINDOWS_RUNTIME_QUALIFICATION" &&
+  contract.dig("workflow", "failureStatus") == "FAIL_EXACT_HEAD_QUALIFICATION_INDEX"
+checks["document.boundary"] =
+  document.downcase.include?("same-run") &&
+  document.include?("PASS_EXACT_HEAD_PRE_RUNTIME_QUALIFICATION") &&
+  document.include?("PASS_EXACT_HEAD_WINDOWS_RUNTIME_QUALIFICATION") &&
+  document.include?("productBound=false") &&
+  document.include?("release=false")
+
+failures = checks.reject { |_key, value| value }.keys
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.same-run-qualification-index-source-gate.v1",
+  status: failures.empty? ? "PASS_SAME_RUN_QUALIFICATION_INDEX_SOURCE_ONLY" :
+    "FAIL_SAME_RUN_QUALIFICATION_INDEX_SOURCE",
+  source_implemented: failures.empty?,
+  hosted_same_run_validation: false,
+  pre_runtime_qualification: false,
+  windows_runtime_qualification: false,
+  product_bound: false,
+  transient_system_material_binding: false,
+  complete_profile_binding: false,
+  system_material_binding: false,
+  native_product_runtime: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  live_adapter_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  release: false,
+  checks: checks,
+  failures: failures
+)
+exit(failures.empty? ? 0 : 1)

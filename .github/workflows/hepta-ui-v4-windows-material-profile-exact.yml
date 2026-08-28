@@ -18,10 +18,21 @@ on:
       - "scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch"
       - "scripts/hepta-ui-v4-exact-candidate-materialization-gate"
       - "scripts/hepta-ui-v4-exact-head-qualification-closure-gate"
+      - "scripts/hepta-ui-v4-exact-head-qualification-index"
+      - "scripts/hepta-ui-v4-exact-head-qualification-index.part1.rb"
+      - "scripts/hepta-ui-v4-exact-head-qualification-index.part2.rb"
+      - "scripts/hepta-ui-v4-exact-head-qualification-index.part3.rb"
+      - "scripts/hepta-ui-v4-exact-head-qualification-index.part4.rb"
+      - "scripts/hepta-ui-v4-exact-head-qualification-index-gate"
+      - "scripts/hepta-ui-v4-same-run-qualification-index-gate"
       - "docs/ui/HEPTA_UI_EXACT_CANDIDATE_MATERIALIZATION_HARDENING_V1.json"
       - "docs/ui/HEPTA_UI_EXACT_HEAD_QUALIFICATION_CLOSURE_V1.json"
+      - "docs/ui/HEPTA_UI_EXACT_HEAD_QUALIFICATION_INDEX_V1.json"
+      - "docs/ui/HEPTA_UI_SAME_RUN_QUALIFICATION_INDEX_V1.json"
       - "docs/ui/HEPTA_UI_V4_TRANCHE_17_EXACT_HEAD_QUALIFICATION_CLOSURE_2026-08-28.md"
+      - "docs/ui/HEPTA_UI_V4_TRANCHE_19_SAME_RUN_QUALIFICATION_INDEX_2026-08-28.md"
       - "docs/ui/schemas/hepta.ui.v4.vendored-makepad-materialization.v1.schema.json"
+      - "docs/ui/schemas/hepta.ui.v4.exact-head-qualification-index.v1.schema.json"
       - ".github/workflows/hepta-ui-v4-windows-material-profile-exact.yml"
   workflow_dispatch:
     inputs:
@@ -33,6 +44,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -51,30 +63,50 @@ jobs:
         with:
           ref: ${{ env.HEPTA_CANDIDATE_SHA }}
           fetch-depth: 1
+          persist-credentials: false
       - name: Verify exact checkout identity
         shell: bash
         run: |
+          set -euo pipefail
           test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
           git rev-parse 'HEAD^{tree}' > exact-candidate-tree.txt
       - name: Run inherited and canonical source gates
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           ruby -c scripts/hepta-ui-v4-materialize-makepad-windows-hook
           ruby -c scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch
           ruby -c scripts/hepta-ui-v4-exact-candidate-materialization-gate
           ruby -c scripts/hepta-ui-v4-exact-head-qualification-closure-gate
+          ruby -c scripts/hepta-ui-v4-exact-head-qualification-index
+          ruby -c scripts/hepta-ui-v4-exact-head-qualification-index-gate
+          ruby -c scripts/hepta-ui-v4-same-run-qualification-index-gate
+          for part in scripts/hepta-ui-v4-exact-head-qualification-index.part{1..4}.rb; do
+            test -s "$part"
+          done
           ruby -rjson -e 'ARGV.each { |p| JSON.parse(File.read(p)) }' \
             docs/ui/HEPTA_UI_EXACT_CANDIDATE_MATERIALIZATION_HARDENING_V1.json \
             docs/ui/HEPTA_UI_EXACT_HEAD_QUALIFICATION_CLOSURE_V1.json \
-            docs/ui/schemas/hepta.ui.v4.vendored-makepad-materialization.v1.schema.json
+            docs/ui/HEPTA_UI_EXACT_HEAD_QUALIFICATION_INDEX_V1.json \
+            docs/ui/HEPTA_UI_SAME_RUN_QUALIFICATION_INDEX_V1.json \
+            docs/ui/schemas/hepta.ui.v4.vendored-makepad-materialization.v1.schema.json \
+            docs/ui/schemas/hepta.ui.v4.exact-head-qualification-index.v1.schema.json
           ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-windows-material-profile-exact.yml")'
           mkdir -p artifacts/exact-source
-          ruby scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch --self-test | tee artifacts/exact-source/patcher-self-test.json
-          ruby scripts/hepta-ui-v4-windows-material-profile-aggregate-gate | tee artifacts/exact-source/inherited-aggregate-source.json
-          ruby scripts/hepta-ui-v4-windows-material-profile-runtime-gate | tee artifacts/exact-source/inherited-runtime-source.json
-          ruby scripts/hepta-ui-v4-exact-candidate-materialization-gate | tee artifacts/exact-source/exact-materialization-source.json
-          ruby scripts/hepta-ui-v4-exact-head-qualification-closure-gate | tee artifacts/exact-source/closure-source.json
+          ruby scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch --self-test \
+            | tee artifacts/exact-source/patcher-self-test.json
+          ruby scripts/hepta-ui-v4-exact-head-qualification-index --self-test \
+            | tee artifacts/exact-source/qualification-index-self-test.json
+          ruby scripts/hepta-ui-v4-windows-material-profile-aggregate-gate \
+            | tee artifacts/exact-source/inherited-aggregate-source.json
+          ruby scripts/hepta-ui-v4-windows-material-profile-runtime-gate \
+            | tee artifacts/exact-source/inherited-runtime-source.json
+          ruby scripts/hepta-ui-v4-exact-candidate-materialization-gate \
+            | tee artifacts/exact-source/exact-materialization-source.json
+          ruby scripts/hepta-ui-v4-exact-head-qualification-closure-gate \
+            | tee artifacts/exact-source/closure-source.json
+          ruby scripts/hepta-ui-v4-same-run-qualification-index-gate \
+            | tee artifacts/exact-source/same-run-index-source.json
           printf '%s\n' "$HEPTA_CANDIDATE_SHA" > artifacts/exact-source/candidate-commit.txt
           cp exact-candidate-tree.txt artifacts/exact-source/candidate-tree.txt
       - uses: actions/upload-artifact@v4
@@ -95,15 +127,18 @@ jobs:
         with:
           ref: ${{ env.HEPTA_CANDIDATE_SHA }}
           fetch-depth: 1
+          persist-credentials: false
       - name: Verify exact checkout identity
         shell: bash
-        run: test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
       - name: Materialize exact patched checkout
         id: materialize
         continue-on-error: true
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           mkdir -p artifacts/exact-materialization
           export HEPTA_CANDIDATE_COMMIT="$HEPTA_CANDIDATE_SHA"
           export HEPTA_CANDIDATE_TREE="$(git rev-parse 'HEAD^{tree}')"
@@ -117,6 +152,7 @@ jobs:
         env:
           MATERIALIZE_OUTCOME: ${{ steps.materialize.outcome }}
         run: |
+          set -euo pipefail
           ruby -rjson -e '
             r=JSON.parse(File.read("artifacts/exact-materialization/materialization.json"))
             abort "candidate unbound" unless r.dig("candidate","bound") == true
@@ -157,9 +193,12 @@ jobs:
         with:
           ref: ${{ env.HEPTA_CANDIDATE_SHA }}
           fetch-depth: 1
+          persist-credentials: false
       - name: Verify exact checkout identity
         shell: bash
-        run: test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
@@ -167,7 +206,7 @@ jobs:
       - name: Materialize patched Makepad
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           export HEPTA_CANDIDATE_COMMIT="$HEPTA_CANDIDATE_SHA"
           export HEPTA_CANDIDATE_TREE="$(git rev-parse 'HEAD^{tree}')"
           ruby scripts/hepta-ui-v4-materialize-makepad-windows-hook \
@@ -177,6 +216,7 @@ jobs:
       - name: Format, compile, and focused tests
         shell: bash
         run: |
+          set -euo pipefail
           cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
           cargo check --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features
           cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features shared::hepta_windows_transient_material_host::tests -- --nocapture
@@ -188,13 +228,21 @@ jobs:
       - name: Compile non-Windows producer stub
         if: runner.os != 'Windows'
         shell: bash
-        run: cargo check --manifest-path apps/hepta-native/Cargo.toml --bin hepta-ui-v4-windows-material-profile-probe --no-default-features
+        run: |
+          set -euo pipefail
+          cargo check --manifest-path apps/hepta-native/Cargo.toml \
+            --bin hepta-ui-v4-windows-material-profile-probe \
+            --no-default-features
       - name: Compile full Windows producer against patched API
         if: runner.os == 'Windows'
         shell: bash
         env:
           RUSTFLAGS: "--cfg hepta_makepad_windows_ack_hook --check-cfg=cfg(hepta_makepad_windows_ack_hook)"
-        run: cargo check --manifest-path apps/hepta-native/Cargo.toml --bin hepta-ui-v4-windows-material-profile-probe --no-default-features
+        run: |
+          set -euo pipefail
+          cargo check --manifest-path apps/hepta-native/Cargo.toml \
+            --bin hepta-ui-v4-windows-material-profile-probe \
+            --no-default-features
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -218,16 +266,20 @@ jobs:
         with:
           ref: ${{ env.HEPTA_CANDIDATE_SHA }}
           fetch-depth: 1
+          persist-credentials: false
       - name: Verify exact checkout identity
         shell: pwsh
-        run: if ((git rev-parse HEAD).Trim() -ne $env:HEPTA_CANDIDATE_SHA) { throw 'exact checkout drift' }
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne $env:HEPTA_CANDIDATE_SHA) {
+            throw 'exact checkout drift'
+          }
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
       - name: Materialize patched Makepad
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           export HEPTA_CANDIDATE_COMMIT="$HEPTA_CANDIDATE_SHA"
           export HEPTA_CANDIDATE_TREE="$(git rev-parse 'HEAD^{tree}')"
           ruby scripts/hepta-ui-v4-materialize-makepad-windows-hook \
@@ -251,14 +303,18 @@ jobs:
           $path='artifacts/exact-windows-profile/receipt.json'
           if (-not (Test-Path $path)) { throw 'aggregate receipt missing' }
           $r=Get-Content -Raw $path | ConvertFrom-Json
-          if ('${{ steps.governed_runtime.outcome }}' -ne 'success') { throw "producer failed: $($r.failures -join '; ')" }
+          if ('${{ steps.governed_runtime.outcome }}' -ne 'success') {
+            throw "producer failed: $($r.failures -join '; ')"
+          }
           if ($r.status -ne 'PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE') { throw 'aggregate did not pass' }
           if ($r.candidate.commit -ne $env:HEPTA_CANDIDATE_SHA) { throw 'commit drift' }
           if ($r.root.status -ne 'VerifiedPersistentChromeWithBackdropReadback') { throw 'root receipt mismatch' }
           if ($r.transient.acrylic.status -ne 'VerifiedAcrylicWithBackdropReadback') { throw 'Acrylic receipt mismatch' }
           if ($r.transient.solidRollback.status -ne 'VerifiedSolidRollbackWithBackdropReadback') { throw 'rollback receipt mismatch' }
           if (-not $r.transient.destroyedAcknowledged) { throw 'Destroyed acknowledgement missing' }
-          foreach ($p in $r.authority.PSObject.Properties) { if ($p.Value) { throw "authority $($p.Name) escaped" } }
+          foreach ($p in $r.authority.PSObject.Properties) {
+            if ($p.Value) { throw "authority $($p.Name) escaped" }
+          }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -267,5 +323,186 @@ jobs:
             artifacts/exact-windows-profile/receipt.json
             hepta-patched-makepad-materialization.json
             hepta-patched-makepad-materialization.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  qualification-index:
+    name: Canonical exact-head qualification index
+    if: always()
+    needs:
+      - source-contract
+      - patch-contract
+      - compile-contract
+      - windows-runtime-profile
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REQUIRE_WINDOWS_RUNTIME: ${{ github.event_name == 'workflow_dispatch' && inputs.run_windows_profile_probe == true }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout and current run identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            > current-run.json
+          ruby -rjson -e '
+            run=JSON.parse(File.read("current-run.json"))
+            abort "wrong workflow" unless run.fetch("name") == "hepta-ui-v4-windows-material-profile-exact"
+            abort "run id drift" unless run.fetch("id").to_i == ENV.fetch("GITHUB_RUN_ID").to_i
+            abort "head SHA drift" unless run.fetch("head_sha") == ENV.fetch("HEPTA_CANDIDATE_SHA")
+            abort "repository drift" unless run.dig("repository","full_name") == ENV.fetch("GITHUB_REPOSITORY")
+            abort "unexpected current-run status" unless %w[in_progress completed].include?(run.fetch("status"))
+          '
+      - name: Fetch same-run jobs and exact artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/same-run-index/input artifacts/same-run-index/output archives
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" \
+            > artifacts/same-run-index/output/jobs.json
+
+          for attempt in $(seq 1 12); do
+            curl --fail --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+              > artifacts/same-run-index/output/artifacts.json
+            if ruby -rjson -e '
+              payload=JSON.parse(File.read("artifacts/same-run-index/output/artifacts.json"))
+              candidate=ENV.fetch("HEPTA_CANDIDATE_SHA")
+              required=[
+                "hepta-ui-v4-exact-source-#{candidate}",
+                "hepta-ui-v4-exact-materialization-#{candidate}",
+                "hepta-ui-v4-exact-compile-ubuntu-latest-#{candidate}",
+                "hepta-ui-v4-exact-compile-windows-latest-#{candidate}",
+                "hepta-ui-v4-exact-compile-macos-latest-#{candidate}"
+              ]
+              required << "hepta-ui-v4-exact-windows-profile-#{candidate}" if ENV.fetch("REQUIRE_WINDOWS_RUNTIME") == "true"
+              names=payload.fetch("artifacts").reject { |a| a.fetch("expired") }.map { |a| a.fetch("name") }
+              exit((required - names).empty? ? 0 : 1)
+            '; then
+              break
+            fi
+            sleep 5
+          done
+
+          ruby -rjson -e '
+            payload=JSON.parse(File.read("artifacts/same-run-index/output/artifacts.json"))
+            candidate=ENV.fetch("HEPTA_CANDIDATE_SHA")
+            selected=payload.fetch("artifacts").select do |artifact|
+              name=artifact.fetch("name")
+              !artifact.fetch("expired") &&
+                name.start_with?("hepta-ui-v4-exact-") &&
+                name.end_with?(candidate)
+            end
+            names=selected.map { |artifact| artifact.fetch("name") }
+            abort "duplicate artifact name" unless names.uniq.length == names.length
+            selected.each do |artifact|
+              name=artifact.fetch("name")
+              abort "unsafe artifact name" unless name.match?(/\A[A-Za-z0-9_.-]+\z/)
+              run_sha=artifact.dig("workflow_run","head_sha")
+              abort "artifact head drift" if run_sha && run_sha != candidate
+              puts [name, artifact.fetch("archive_download_url")].join("\t")
+            end
+          ' > artifacts/same-run-index/output/downloads.tsv
+
+          while IFS=$'\t' read -r name url; do
+            test -n "$name"
+            mkdir -p "artifacts/same-run-index/input/$name"
+            curl --fail --location --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$url" > "archives/$name.zip"
+            unzip -Z1 "archives/$name.zip" > "archives/$name.entries"
+            NAME="$name" ruby -e '
+              File.readlines("archives/#{ENV.fetch("NAME")}.entries", chomp: true).each do |entry|
+                abort "empty archive entry" if entry.empty?
+                abort "absolute archive entry" if entry.start_with?("/", "\\")
+                abort "drive-qualified archive entry" if entry.match?(/\A[A-Za-z]:/)
+                parts=entry.tr("\\", "/").split("/")
+                abort "path traversal archive entry" if parts.include?("..")
+              end
+            '
+            unzip -q "archives/$name.zip" -d "artifacts/same-run-index/input/$name"
+          done < artifacts/same-run-index/output/downloads.tsv
+      - name: Produce same-run qualification index
+        id: produce_index
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_tree="$(git rev-parse 'HEAD^{tree}')"
+          args=(
+            --jobs artifacts/same-run-index/output/jobs.json
+            --artifacts artifacts/same-run-index/input
+            --candidate-commit "$HEPTA_CANDIDATE_SHA"
+            --candidate-tree "$candidate_tree"
+            --repository "$GITHUB_REPOSITORY"
+            --run-id "$GITHUB_RUN_ID"
+            --output artifacts/same-run-index/output/qualification-index.json
+            --allow-in-progress-run
+          )
+          if [[ "$REQUIRE_WINDOWS_RUNTIME" == "true" ]]; then
+            args+=(--require-windows-runtime)
+          fi
+          ruby scripts/hepta-ui-v4-exact-head-qualification-index "${args[@]}"
+      - name: Validate and enforce same-run index
+        if: always()
+        shell: bash
+        env:
+          INDEX_OUTCOME: ${{ steps.produce_index.outcome }}
+        run: |
+          set -euo pipefail
+          ruby -rjson -e '
+            path="artifacts/same-run-index/output/qualification-index.json"
+            abort "qualification index missing" unless File.file?(path)
+            receipt=JSON.parse(File.read(path))
+            abort "candidate commit drift" unless receipt.dig("candidate","commit") == ENV.fetch("HEPTA_CANDIDATE_SHA")
+            abort "candidate tree drift" unless receipt.dig("candidate","tree") == `git rev-parse HEAD^{tree}`.strip
+            abort "run id drift" unless receipt.dig("sourceRun","runId").to_i == ENV.fetch("GITHUB_RUN_ID").to_i
+            abort "same-run flag missing" unless receipt.dig("sourceRun","allowInProgressRun") == true
+            abort "authority escaped" unless receipt.fetch("authority").values.all? { |value| value == false }
+            %w[productBound transientSystemMaterialBound completeProfileBound systemMaterialBound nativeProductRuntime deviceValidation].each do |key|
+              abort "#{key} escaped" unless receipt.dig("qualification",key) == false
+            end
+            expected = ENV.fetch("REQUIRE_WINDOWS_RUNTIME") == "true" ?
+              "PASS_EXACT_HEAD_WINDOWS_RUNTIME_QUALIFICATION" :
+              "PASS_EXACT_HEAD_PRE_RUNTIME_QUALIFICATION"
+            if ENV.fetch("INDEX_OUTCOME") == "success"
+              abort "unexpected same-run PASS" unless receipt.fetch("status") == expected
+            else
+              abort "missing fail-closed index" unless receipt.fetch("status") == "FAIL_EXACT_HEAD_QUALIFICATION_INDEX"
+              failures=receipt.fetch("failures")
+              abort "failure list missing" unless failures.is_a?(Array) && !failures.empty?
+              exit 1
+            end
+          '
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hepta-ui-v4-same-run-qualification-index-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: |
+            artifacts/same-run-index/output/qualification-index.json
+            artifacts/same-run-index/output/jobs.json
+            artifacts/same-run-index/output/artifacts.json
+            artifacts/same-run-index/output/downloads.tsv
+            current-run.json
           if-no-files-found: warn
           retention-days: 14

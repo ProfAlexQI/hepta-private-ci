@@ -1,0 +1,53 @@
+{
+  "schema": "hepta.ui.same-run-qualification-index.v1",
+  "status": "SAME_RUN_FINAL_INDEX_SOURCE_READY_EXECUTION_REQUIRED",
+  "candidateBranch": "codex/ui-v4-same-run-qualification-index-20260828",
+  "baseBranch": "codex/ui-v4-exact-head-qualification-index-20260828",
+  "baseCommit": "224dc67144b18ccd8138306d531a59275bc1b2ac",
+  "baseTree": "786e28a5d4c81be2c27524b4ed2441b9a6119bc2",
+  "workflow": {
+    "name": "hepta-ui-v4-windows-material-profile-exact",
+    "source": ".github/workflows/hepta-ui-v4-windows-material-profile-exact.yml",
+    "finalJobName": "Canonical exact-head qualification index",
+    "sameRunId": true,
+    "sameRunCanBeInProgress": true,
+    "exactCandidateCheckout": true,
+    "currentRunMetadataValidated": true,
+    "jobsFetchedFromCurrentRun": true,
+    "artifactsFetchedFromCurrentRun": true,
+    "boundedArtifactPollingAttempts": 12,
+    "artifactPollingIntervalSeconds": 5,
+    "safeArchiveExtraction": true,
+    "allowInProgressProducerFlag": true,
+    "preRuntimeStatus": "PASS_EXACT_HEAD_PRE_RUNTIME_QUALIFICATION",
+    "windowsRuntimeStatus": "PASS_EXACT_HEAD_WINDOWS_RUNTIME_QUALIFICATION",
+    "failureStatus": "FAIL_EXACT_HEAD_QUALIFICATION_INDEX",
+    "runtimeRequiredOnlyWhenDispatched": true,
+    "permissions": [
+      "contents:read",
+      "actions:read"
+    ]
+  },
+  "qualification": {
+    "sourceImplemented": true,
+    "hostedSameRunSource": false,
+    "sameRunPreRuntimeIndex": false,
+    "sameRunWindowsRuntimeIndex": false,
+    "productBound": false,
+    "transientSystemMaterialBound": false,
+    "completeProfileBound": false,
+    "systemMaterialBound": false,
+    "nativeProductRuntime": false,
+    "deviceValidation": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
