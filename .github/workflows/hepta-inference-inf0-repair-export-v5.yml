@@ -1,0 +1,283 @@
+name: Hepta inference INF-0 bounded repair export v5
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0-macos-diagnostics-v2-20260828
+    paths:
+      - ".github/workflows/hepta-inference-inf0-repair-export-v5.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-inf0-repair-export-v5
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Validate and export bounded source repair
+    runs-on: macos-latest
+    timeout-minutes: 180
+    env:
+      CANDIDATE: 3afce0894a597f1968169400e3b79c4a5e94ec17
+      SELF: .github/workflows/hepta-inference-inf0-repair-export-v5.yml
+      CARGO_TERM_COLOR: never
+      RUST_BACKTRACE: "1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Detach exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          git checkout --detach "$CANDIDATE"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE"
+          test "$(git rev-parse HEAD^)" = "d47cd292c89cd4ac6d484232b35589d65a88f0b9"
+          test -z "$(git status --porcelain)"
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply bounded compile repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str, expected: int = 1) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f"{path}: expected {expected} replacement(s), found {count}")
+              target.write_text(text.replace(old, new), encoding="utf-8")
+
+          replace_exact(
+              "codex-rs/ollama/src/client_support.inc.rs",
+              '''format!(concat!(
+                "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={operation} ",
+                "maximum={MAX_CONTROL_RESPONSE_BYTES}"
+            ))''',
+              '''format!(
+                "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={} maximum={}",
+                operation, MAX_CONTROL_RESPONSE_BYTES
+            )''',
+              expected=1,
+          )
+          replace_exact(
+              "codex-rs/ollama/src/client_support.inc.rs",
+              '''format!(concat!(
+                    "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={operation} ",
+                    "maximum={MAX_CONTROL_RESPONSE_BYTES}"
+                ))''',
+              '''format!(
+                    "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={} maximum={}",
+                    operation, MAX_CONTROL_RESPONSE_BYTES
+                )''',
+              expected=1,
+          )
+          replace_exact(
+              "codex-rs/ollama/src/lib.rs",
+              '''format!(
+            concat!(
+                "OLLAMA_MODEL_NOT_INSTALLED model={model}; ",
+                "automatic model installation is disabled. ",
+                "Run `ollama pull {model}` explicitly and retry."
+            )
+        )''',
+              '''format!(
+            "OLLAMA_MODEL_NOT_INSTALLED model={}; automatic model installation is disabled. Run `ollama pull {}` explicitly and retry.",
+            model, model
+        )''',
+          )
+          replace_exact(
+              "codex-rs/lmstudio/src/lib.rs",
+              '''format!(
+                concat!(
+                    "LMSTUDIO_MODEL_NOT_INSTALLED model={model}; ",
+                    "automatic model installation is disabled. ",
+                    "Install the model explicitly in LM Studio and retry."
+                )
+            )''',
+              '''format!(
+                "LMSTUDIO_MODEL_NOT_INSTALLED model={}; automatic model installation is disabled. Install the model explicitly in LM Studio and retry.",
+                model
+            )''',
+          )
+          PY
+          (
+            cd codex-rs
+            cargo fmt \
+              -p codex-lmstudio \
+              -p codex-ollama \
+              -p codex-utils-oss \
+              -p codex-responses-api-proxy
+          )
+
+      - name: Verify bounded repair scope and formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed < <(git diff --name-only)
+          expected=(
+            codex-rs/lmstudio/src/lib.rs
+            codex-rs/lmstudio/src/sha256.rs
+            codex-rs/ollama/src/client_support.inc.rs
+            codex-rs/ollama/src/lib.rs
+            codex-rs/responses-api-proxy/src/dump.rs
+            codex-rs/responses-api-proxy/src/sha256.rs
+            codex-rs/utils/oss/src/lib.rs
+          )
+          printf '%s\n' "${changed[@]}" | sort > "$RUNNER_TEMP/changed.txt"
+          printf '%s\n' "${expected[@]}" | sort > "$RUNNER_TEMP/expected.txt"
+          diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/changed.txt"
+          git diff --check
+          (
+            cd codex-rs
+            cargo fmt \
+              -p codex-lmstudio \
+              -p codex-ollama \
+              -p codex-utils-oss \
+              -p codex-responses-api-proxy \
+              -- --check
+            rustfmt --edition 2024 --check \
+              ollama/src/client.rs \
+              ollama/src/client_*.inc.rs \
+              lmstudio/src/client.rs \
+              lmstudio/src/client_*.inc.rs
+          )
+
+      - name: Compile repaired packages
+        id: check
+        continue-on-error: true
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo check --locked \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy
+
+      - name: Test repaired packages
+        id: test
+        continue-on-error: true
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo test --locked \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy
+
+      - name: Strict Clippy for repaired packages
+        id: clippy
+        continue-on-error: true
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo clippy --locked --all-targets \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy \
+            -- -D warnings
+
+      - name: Build deterministic repair payload
+        if: always()
+        shell: bash
+        env:
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+          TEST_OUTCOME: ${{ steps.test.outcome }}
+          CLIPPY_OUTCOME: ${{ steps.clippy.outcome }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/hepta-inference-inf0-repair"
+          mkdir -p "$out/files"
+          git diff --binary > "$out/repair.patch"
+          git diff --name-only > "$out/changed-files.txt"
+          while IFS= read -r path; do
+            test -n "$path"
+            mkdir -p "$out/files/$(dirname "$path")"
+            cp "$path" "$out/files/$path"
+          done < "$out/changed-files.txt"
+          python3 - "$out" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          files = []
+          for relative in root.joinpath("changed-files.txt").read_text(encoding="utf-8").splitlines():
+              payload = root.joinpath("files", relative).read_bytes()
+              files.append({
+                  "path": relative,
+                  "byte_length": len(payload),
+                  "sha256": hashlib.sha256(payload).hexdigest(),
+              })
+          outcomes = {
+              "cargo_check": os.environ.get("CHECK_OUTCOME"),
+              "cargo_test": os.environ.get("TEST_OUTCOME"),
+              "cargo_clippy": os.environ.get("CLIPPY_OUTCOME"),
+          }
+          manifest = {
+              "schema": "hepta.inference.inf0c.bounded-repair-export.v1",
+              "candidate": os.environ["CANDIDATE"],
+              "candidate_tree": os.popen("git rev-parse 'HEAD^{tree}'").read().strip(),
+              "rustc": os.popen("rustc --version").read().strip(),
+              "rustfmt": os.popen("rustfmt --version").read().strip(),
+              "outcomes": outcomes,
+              "all_rust_gates_passed": all(value == "success" for value in outcomes.values()),
+              "files": files,
+              "qualified": False,
+              "ubuntu_qualification": False,
+              "inf1": "NOT_STARTED",
+              "authority": False,
+          }
+          root.joinpath("manifest.json").write_text(
+              json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+          find "$out" -type f -print0 | sort -z | xargs -0 shasum -a 256 > "$out/SHA256SUMS"
+          cat "$out/manifest.json" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload bounded repair payload
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0-bounded-repair-${{ env.CANDIDATE }}
+          path: ${{ runner.temp }}/hepta-inference-inf0-repair
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce complete repair validation
+        if: always()
+        shell: bash
+        env:
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+          TEST_OUTCOME: ${{ steps.test.outcome }}
+          CLIPPY_OUTCOME: ${{ steps.clippy.outcome }}
+        run: |
+          set -euo pipefail
+          test "$CHECK_OUTCOME" = success
+          test "$TEST_OUTCOME" = success
+          test "$CLIPPY_OUTCOME" = success
+          echo "PASS_HEPTA_INFERENCE_INF0_BOUNDED_REPAIR_EXPORT_ONLY"
+          echo "qualified=false" >> "$GITHUB_STEP_SUMMARY"
+          echo "ubuntu_qualification=false" >> "$GITHUB_STEP_SUMMARY"
+          echo "INF-1=NOT_STARTED" >> "$GITHUB_STEP_SUMMARY"
+          echo "production/effect/model-NPU/remote/promotion authority=false" >> "$GITHUB_STEP_SUMMARY"
