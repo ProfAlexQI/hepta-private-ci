@@ -14,6 +14,7 @@ use codex_hepta_contracts::IdempotencyKey;
 use codex_hepta_contracts::OperationBinding;
 use codex_hepta_contracts::OperationId;
 use codex_hepta_contracts::OperationPhase;
+use codex_hepta_contracts::ProductComponentId;
 use codex_hepta_contracts::RecoveryDecision;
 use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_contracts::recovery_decision;
@@ -227,7 +228,9 @@ fn binding(generation: u64, command: &[u8]) -> OperationBinding {
         IdempotencyKey::parse("idempotency:fault-matrix")
             .unwrap_or_else(|error| panic!("idempotency key must parse: {error}")),
         source,
+        ProductComponentId::AutomationRuntime,
         destination,
+        ProductComponentId::AppServer,
         AuthorityAction::MutateAutomation,
         1,
         4,
