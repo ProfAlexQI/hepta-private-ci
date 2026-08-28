@@ -3,8 +3,9 @@
 //! This module supersedes the first in-memory adapter for feature-on
 //! qualification. It reuses the secret/backend/provider boundary types from
 //! the legacy harness, but tightens provider-call uncertainty, explicit retry,
-//! lookup-only reconciliation, retry-budget exhaustion, and terminal replay.
-//! It remains non-durable and carries no runtime or production authority.
+//! lookup-only reconciliation, retry-budget exhaustion, and current-result
+//! replay. It remains non-durable and carries no runtime or production
+//! authority.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -40,6 +41,7 @@ pub use legacy::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum B3AdapterError {
     InvalidRequest(String),
+    Backend(SecretBackendError),
     Provider(ProviderAdapterError),
     ProviderResponseInvalid(String),
     Conflict,
@@ -59,6 +61,7 @@ impl fmt::Display for B3AdapterError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidRequest(message) => write!(formatter, "invalid B3 request: {message}"),
+            Self::Backend(error) => write!(formatter, "secret backend error: {error}"),
             Self::Provider(error) => write!(formatter, "provider adapter error: {error}"),
             Self::ProviderResponseInvalid(message) => {
                 write!(formatter, "invalid provider response: {message}")
