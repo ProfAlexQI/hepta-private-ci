@@ -23,6 +23,9 @@
     ],
     "codex-rs/hepta-agentd/src/composition.rs": [
       "agent_process_composition_root"
+    ],
+    "codex-rs/hepta-contracts/src/provider_operation.rs": [
+      "provider_operation_unit_tests"
     ]
   },
   "forbiddenProductRequests": [
