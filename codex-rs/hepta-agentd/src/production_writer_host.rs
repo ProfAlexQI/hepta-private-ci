@@ -8,6 +8,8 @@
 use std::fmt;
 use std::sync::Arc;
 
+use codex_hepta_contracts::Authorized;
+use codex_hepta_contracts::CognitiveWriteCapability;
 use codex_hepta_memory::CognitiveStore;
 use codex_hepta_memory::ProductionAuthorityLease;
 use codex_hepta_memory::ProductionAuthorityVerifier;
@@ -20,12 +22,14 @@ use codex_hepta_memory::ProductionWriterError;
 
 use crate::AgentdConfig;
 use crate::AgentdError;
+use crate::production_authority_adapter::ProductionCognitiveWriteAuthorization;
 
 /// Host-owned production writer handle. Constructing this value does not
 /// mutate Agentd's runtime configuration; callers explicitly attach/use it.
 #[derive(Clone)]
 pub struct AgentdProductionWriterHost {
     writer: Arc<ProductionDurableWriter>,
+    cognitive_write: Authorized<CognitiveWriteCapability>,
     dispatcher: Option<ProductionOutboxDispatcher>,
 }
 
@@ -34,14 +38,20 @@ impl fmt::Debug for AgentdProductionWriterHost {
         formatter
             .debug_struct("AgentdProductionWriterHost")
             .field("writer", &self.writer)
+            .field(
+                "cognitive_write_grant_sha256",
+                self.cognitive_write.grant_sha256(),
+            )
             .field("dispatcher_attached", &self.dispatcher.is_some())
             .finish()
     }
 }
 
 impl AgentdProductionWriterHost {
-    /// Open the writer against Agentd's exact private cognitive store. The
-    /// verifier is mandatory and runs before any lease/event/outbox mutation.
+    /// Verify and mint the typed cognitive-write witness before opening the
+    /// Cognitive store. The durable writer repeats its legacy verifier check
+    /// before lease mutation, preserving backward compatibility while the
+    /// typed authority kernel becomes the canonical host boundary.
     pub async fn open<V>(
         config: &AgentdConfig,
         authority: ProductionAuthorityLease,
@@ -52,6 +62,13 @@ impl AgentdProductionWriterHost {
     where
         V: ProductionAuthorityVerifier + ?Sized,
     {
+        let authorization = ProductionCognitiveWriteAuthorization::verify(
+            authority,
+            verifier,
+            &config.identity().agent_id,
+            lease_generation,
+        )?;
+        let (authority, cognitive_write) = authorization.into_parts();
         let store = CognitiveStore::open(&config.identity().layout)
             .await
             .map_err(|error| {
@@ -62,6 +79,7 @@ impl AgentdProductionWriterHost {
                 .await?;
         Ok(Self {
             writer: Arc::new(writer),
+            cognitive_write,
             dispatcher: None,
         })
     }
@@ -79,17 +97,29 @@ impl AgentdProductionWriterHost {
     where
         V: ProductionAuthorityVerifier + ?Sized,
     {
+        let authorization = ProductionCognitiveWriteAuthorization::verify(
+            authority,
+            verifier,
+            store.owner_agent_id(),
+            lease_generation,
+        )?;
+        let (authority, cognitive_write) = authorization.into_parts();
         let writer =
             ProductionDurableWriter::open(store, authority, verifier, lease_id, lease_generation)
                 .await?;
         Ok(Self {
             writer: Arc::new(writer),
+            cognitive_write,
             dispatcher: None,
         })
     }
 
     pub fn writer(&self) -> Arc<ProductionDurableWriter> {
         Arc::clone(&self.writer)
+    }
+
+    pub fn cognitive_write_capability(&self) -> &Authorized<CognitiveWriteCapability> {
+        &self.cognitive_write
     }
 
     /// Attach the provider/host target explicitly. Replacing a target is
