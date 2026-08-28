@@ -169,7 +169,8 @@ def main() -> int:
             "stored_fact_supports(\n            connection,",
             "pub(super) use support::stored_fact_supports;",
             "pub(super) use support::durable_receipt_digest;",
-            "pub(super) use verify::verify_receipts;",
+            "pub(in super::super) use insert::insert_tx;",
+            "pub(in super::super) use verify::verify_receipts;",
         ),
     )
     checks["ledger.helper_visibility_bounded"] = has_all(

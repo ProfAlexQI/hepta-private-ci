@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) async fn verify_receipts(
+pub(in super::super::super) async fn verify_receipts(
     connection: &mut SqliteConnection,
     owner_agent_id: &str,
 ) -> Result<(), CognitiveStoreError> {

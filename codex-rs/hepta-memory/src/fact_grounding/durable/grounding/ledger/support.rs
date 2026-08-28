@@ -94,29 +94,29 @@ pub(in super::super) fn durable_receipt_digest(
         spans,
     } = parts;
     let mut hasher = Sha256::new();
-    super::super::frame_part(
+    crate::framing::frame_part(
         &mut hasher,
         b"hepta:cognitive:durable-fact-grounding-receipt:v1",
     );
-    super::super::frame_part(&mut hasher, memory_id.as_bytes());
-    super::super::frame_part(&mut hasher, &memory_revision.to_be_bytes());
-    super::super::frame_part(&mut hasher, source_id.as_bytes());
-    super::super::frame_part(&mut hasher, &source_revision.to_be_bytes());
-    super::super::frame_part(&mut hasher, GROUNDING_CONTRACT.as_bytes());
-    super::super::frame_part(&mut hasher, source_content_sha256.as_bytes());
-    super::super::frame_part(&mut hasher, fact_set_sha256.as_bytes());
-    super::super::frame_part(&mut hasher, fact_identity_sha256.as_bytes());
-    super::super::frame_part(
+    crate::framing::frame_part(&mut hasher, memory_id.as_bytes());
+    crate::framing::frame_part(&mut hasher, &memory_revision.to_be_bytes());
+    crate::framing::frame_part(&mut hasher, source_id.as_bytes());
+    crate::framing::frame_part(&mut hasher, &source_revision.to_be_bytes());
+    crate::framing::frame_part(&mut hasher, GROUNDING_CONTRACT.as_bytes());
+    crate::framing::frame_part(&mut hasher, source_content_sha256.as_bytes());
+    crate::framing::frame_part(&mut hasher, fact_set_sha256.as_bytes());
+    crate::framing::frame_part(&mut hasher, fact_identity_sha256.as_bytes());
+    crate::framing::frame_part(
         &mut hasher,
         &u64::try_from(spans.len()).unwrap_or(u64::MAX).to_be_bytes(),
     );
     for span in spans {
-        super::super::frame_part(&mut hasher, span.identity.kind.as_str().as_bytes());
-        super::super::frame_part(&mut hasher, span.identity.key.as_bytes());
-        super::super::frame_part(&mut hasher, &span.ordinal.to_be_bytes());
-        super::super::frame_part(&mut hasher, &span.start_byte.to_be_bytes());
-        super::super::frame_part(&mut hasher, &span.end_byte.to_be_bytes());
-        super::super::frame_part(&mut hasher, span.evidence_sha256.as_str().as_bytes());
+        crate::framing::frame_part(&mut hasher, span.identity.kind.as_str().as_bytes());
+        crate::framing::frame_part(&mut hasher, span.identity.key.as_bytes());
+        crate::framing::frame_part(&mut hasher, &span.ordinal.to_be_bytes());
+        crate::framing::frame_part(&mut hasher, &span.start_byte.to_be_bytes());
+        crate::framing::frame_part(&mut hasher, &span.end_byte.to_be_bytes());
+        crate::framing::frame_part(&mut hasher, span.evidence_sha256.as_str().as_bytes());
     }
     Sha256Digest::from_sha256_output(hasher.finalize())
 }
