@@ -1,0 +1,170 @@
+name: p0-3-2-self-land-slim
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-p0-3-2-slim-lander-20260828"
+    paths:
+      - ".github/workflows/p0-3-2-self-land-slim.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: p0-3-2-self-land-slim
+  cancel-in-progress: false
+
+jobs:
+  land:
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact slim lander
+        uses: actions/checkout@v4
+        with:
+          ref: codex/hepta-intelligence-p0-3-2-slim-lander-20260828
+          fetch-depth: 0
+
+      - name: Reconstruct and verify exact P0.3.2 candidate
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import shutil
+          import subprocess
+          import tarfile
+          from pathlib import Path
+
+          base = "256a47d882413ac1f80892a80177419bb5d12c70"
+          expected_target = "da9157c6bd9dcfba47f70eba9b9634a8e4f72dee"
+          expected_digest = "365595c9b8b1c670063a29d94a629537f3862e96f13721c0f977e4d32974065f"
+          allowed = {
+              ".p0-3-2-bootstrap/payload.part00.b64",
+              ".p0-3-2-bootstrap/payload.part01.b64",
+              ".p0-3-2-bootstrap/payload.part02.b64",
+              ".p0-3-2-bootstrap/payload.part03.b64",
+              ".github/workflows/p0-3-2-self-land.yml",
+              ".github/workflows/p0-3-2-self-land-slim.yml",
+          }
+          merge_base = subprocess.check_output(
+              ["git", "merge-base", "HEAD", base], text=True
+          ).strip()
+          if merge_base != base:
+              raise SystemExit(f"unexpected merge base: {merge_base}")
+          changed = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only", f"{base}..HEAD"], text=True
+              ).splitlines()
+          )
+          if changed != allowed:
+              raise SystemExit(
+                  f"slim lander drift: expected {sorted(allowed)}, observed {sorted(changed)}"
+              )
+          target_head = subprocess.check_output(
+              ["git", "ls-remote", "origin", "refs/heads/codex/hepta-intelligence-shared-projection-planner-v5-20260828"],
+              text=True,
+          ).split()[0]
+          if target_head != expected_target:
+              raise SystemExit(
+                  f"target branch drift: expected {expected_target}, observed {target_head}"
+              )
+
+          encoded = "".join(
+              "".join(path.read_text(encoding="ascii").split())
+              for path in sorted(Path(".p0-3-2-bootstrap").glob("payload.part*.b64"))
+          )
+          payload = base64.b64decode(encoded, validate=True)
+          actual_digest = hashlib.sha256(payload).hexdigest()
+          if actual_digest != expected_digest:
+              raise SystemExit(
+                  f"payload digest mismatch: expected {expected_digest}, observed {actual_digest}"
+              )
+          archive = Path("/tmp/hepta-p0-3-2-candidate.tar.xz")
+          destination = Path("/tmp/hepta-p0-3-2-candidate")
+          archive.write_bytes(payload)
+          if destination.exists():
+              shutil.rmtree(destination)
+          destination.mkdir(parents=True)
+          with tarfile.open(archive, mode="r:xz") as bundle:
+              root = destination.resolve()
+              for member in bundle.getmembers():
+                  target = (destination / member.name).resolve()
+                  if root not in target.parents and target != root:
+                      raise SystemExit(f"unsafe archive path: {member.name}")
+              bundle.extractall(destination)
+          for source in destination.iterdir():
+              target = Path(source.name)
+              if source.is_dir():
+                  shutil.copytree(source, target, dirs_exist_ok=True)
+              else:
+                  shutil.copy2(source, target)
+          PY
+
+          python3 -m py_compile \
+            scripts/verify-hepta-intelligence-grounding-gate.py \
+            scripts/verify-hepta-intelligence-kg-p0-3-2.py
+          python3 -m json.tool \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_4.json \
+            >/dev/null
+          python3 scripts/verify-hepta-intelligence-grounding-gate.py \
+            >/tmp/p0-3-1-source-gate.json
+          python3 scripts/verify-hepta-intelligence-kg-p0-3-2.py \
+            >/tmp/p0-3-2-source-gate-before-binding.json
+          git diff --check
+
+      - name: Create implementation and status-binding commits
+        run: |
+          set -euo pipefail
+          BASE=256a47d882413ac1f80892a80177419bb5d12c70
+          TARGET=codex/hepta-intelligence-shared-projection-planner-v5-20260828
+          EXPECTED_TARGET=da9157c6bd9dcfba47f70eba9b9634a8e4f72dee
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          rm -rf .p0-3-2-bootstrap
+          rm .github/workflows/p0-3-2-self-land.yml
+          rm .github/workflows/p0-3-2-self-land-slim.yml
+          git reset --soft "$BASE"
+          git add -A
+          git commit -m "feat(memory): share semantic KG projection planner P0.3.2"
+          IMPLEMENTATION_COMMIT="$(git rev-parse HEAD)"
+
+          python3 - "$IMPLEMENTATION_COMMIT" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          commit = sys.argv[1]
+          path = Path(
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_4.json"
+          )
+          data = json.loads(path.read_text(encoding="utf-8"))
+          tranche = data["current_tranche"]
+          tranche["status"] = "implemented_on_branch_qualification_pending"
+          tranche["implemented_in_repository"] = True
+          tranche["qualification"]["source_gate"] = "pass_branch_source_contract"
+          data["repository_binding"] = {
+              "branch": "codex/hepta-intelligence-shared-projection-planner-v5-20260828",
+              "implementation_commit": commit,
+              "qualified": False,
+          }
+          path.write_text(
+              json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+
+          python3 scripts/verify-hepta-intelligence-kg-p0-3-2.py \
+            >/tmp/p0-3-2-source-gate-after-binding.json
+          git add \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_4.json
+          git commit -m "docs(status): bind P0.3.2 implementation candidate"
+          FINAL_HEAD="$(git rev-parse HEAD)"
+
+          git push \
+            --force-with-lease="refs/heads/${TARGET}:${EXPECTED_TARGET}" \
+            origin "HEAD:${TARGET}"
+          printf '%s\n' "$IMPLEMENTATION_COMMIT" >/tmp/implementation_commit.txt
+          printf '%s\n' "$FINAL_HEAD" >/tmp/status_binding_commit.txt
