@@ -1,4 +1,4 @@
-name: p0-3-3-finalize-probe-v1
+name: p0-3-3-finalize-v2
 
 on:
   push:
@@ -6,16 +6,28 @@ on:
       - codex/hepta-intelligence-evidence-resolver-v4-20260828
     paths:
       - .github/workflows/p0-3-3-finalize-probe-v1.yml
+      - scripts/finalize-hepta-intelligence-p0-3-3-v2.py
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: p0-3-3-finalize-v2
+  cancel-in-progress: false
 
 jobs:
-  probe:
+  finalize:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      P032_HEAD: fa59bb090043ba8d6fbf0991b167779d2385888c
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          set -euo pipefail
-          git rev-parse HEAD
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+      - run: python3 scripts/finalize-hepta-intelligence-p0-3-3-v2.py
