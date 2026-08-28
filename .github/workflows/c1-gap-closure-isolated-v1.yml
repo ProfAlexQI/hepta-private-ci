@@ -15,7 +15,7 @@ concurrency:
 jobs:
   close-exact-pr-head:
     name: Close exact PR head gaps
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-slim
     timeout-minutes: 90
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
