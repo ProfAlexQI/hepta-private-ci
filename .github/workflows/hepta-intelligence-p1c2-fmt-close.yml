@@ -1,4 +1,4 @@
-name: hepta-intelligence-p1c2-fmt-close
+name: hepta-intelligence-p1c2-semantic-close
 
 on:
   push:
@@ -10,24 +10,24 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-intelligence-p1c2-fmt-close
+  group: hepta-intelligence-p1c2-semantic-close
   cancel-in-progress: true
 
 env:
   CARGO_NET_OFFLINE: "true"
-  QUALIFICATION_DRIVER_SHA: edd6f73cf3339381c7c701f26f6a066ce30e656d
+  QUALIFICATION_DRIVER_SHA: 6c7d621cbdeca30bd6f9aea1c32db2137beff2e3
 
 jobs:
   qualify:
-    name: P1.1c.2 package-scoped format and Clippy closure preflight
-    runs-on: ubuntu-latest
+    name: P1.1c.2 final-label semantic closure preflight
+    runs-on: macos-latest
     timeout-minutes: 60
 
     steps:
       - name: Checkout qualification trigger
         uses: actions/checkout@v4
         with:
-          fetch-depth: 5
+          fetch-depth: 8
 
       - name: Install Rust 1.95.0
         uses: dtolnay/rust-toolchain@stable
@@ -35,7 +35,7 @@ jobs:
           toolchain: "1.95.0"
           components: rustfmt,clippy
 
-      - name: Execute exact fail-closed driver
+      - name: Execute exact fail-closed semantic closure
         env:
           RUNNER_NAME: ${{ runner.name }}
           RUNNER_OS: ${{ runner.os }}
@@ -43,51 +43,14 @@ jobs:
         run: |
           git checkout --detach "$QUALIFICATION_DRIVER_SHA"
           cp scripts/qualification/run-hepta-intelligence-p1c2-fmt-close.sh \
-            "$RUNNER_TEMP/run-hepta-intelligence-p1c2-fmt-close.sh"
-          python3 - "$RUNNER_TEMP/run-hepta-intelligence-p1c2-fmt-close.sh" <<'PY'
-          import sys
-          from pathlib import Path
+            "$RUNNER_TEMP/run-hepta-intelligence-p1c2-semantic-close.sh"
+          bash "$RUNNER_TEMP/run-hepta-intelligence-p1c2-semantic-close.sh"
 
-          path = Path(sys.argv[1])
-          text = path.read_text(encoding="utf-8")
-          marker = "\nexport CARGO_NET_OFFLINE=true\n"
-          if text.count(marker) != 1:
-              raise SystemExit("qualification driver export marker is not unique")
-          closure = r'''
-          python3 - <<'CLIPPY_PATCH'
-          from pathlib import Path
-
-          def replace_once(path: str, old: str, new: str) -> None:
-              target = Path(path)
-              text = target.read_text(encoding="utf-8")
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected one strict-gate patch target, found {count}")
-              target.write_text(text.replace(old, new, 1), encoding="utf-8")
-
-          replace_once(
-              "codex-rs/hepta-memory-p1-1c2-qualification/src/evaluation.rs",
-              "P1_1C2_SCHEMA_VERSION, P1_1C2_SOURCE_QUALIFIED, ProjectionAudit, ReviewProjection,\n    framed_digest, p1c1_digest, p1c_digest, validate_commit_oid,",
-              "P1_1C2_SCHEMA_VERSION, P1_1C2_SOURCE_QUALIFIED, ReviewProjection, framed_digest,\n    p1c1_digest, p1c_digest, validate_commit_oid,",
-          )
-          replace_once(
-              "codex-rs/hepta-memory-p1-1c2-qualification/src/projection.rs",
-              "fn reviews_by_item<'a>(reviews: &'a ReviewBatch) -> BTreeMap<&'a str, Vec<&'a ReviewRecord>> {",
-              "fn reviews_by_item(reviews: &ReviewBatch) -> BTreeMap<&str, Vec<&ReviewRecord>> {",
-          )
-          CLIPPY_PATCH
-
-          export CARGO_NET_OFFLINE=true
-          '''
-          path.write_text(text.replace(marker, "\n" + closure, 1), encoding="utf-8")
-          PY
-          bash "$RUNNER_TEMP/run-hepta-intelligence-p1c2-fmt-close.sh"
-
-      - name: Upload format closure evidence
+      - name: Upload semantic closure evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-intelligence-p1c2-fmt-close-${{ github.sha }}
-          path: artifacts/hepta-intelligence-p1-1c2-fmt-close
+          name: hepta-intelligence-p1c2-semantic-close-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1c2-semantic-closure
           if-no-files-found: warn
           retention-days: 14
