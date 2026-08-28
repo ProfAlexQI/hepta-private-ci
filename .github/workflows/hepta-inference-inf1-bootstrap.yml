@@ -16,7 +16,7 @@ concurrency:
 jobs:
   bootstrap:
     name: Integrate, validate, and export INF-1 source
-    runs-on: ubuntu-24.04-arm
+    runs-on: macos-15-intel
     timeout-minutes: 90
     env:
       CARGO_TERM_COLOR: never
@@ -94,13 +94,8 @@ jobs:
           mkdir -p "$out/files/codex-rs" "$out/files/docs/hepta-vnext/inference" "$out/files/scripts"
           cp codex-rs/Cargo.toml codex-rs/Cargo.lock "$out/files/codex-rs/"
           cp -R codex-rs/hepta-infer-core codex-rs/hepta-inferd "$out/files/codex-rs/"
-          cp docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_STATUS_V1.json \
-            "$out/files/docs/hepta-vnext/inference/"
-          cp scripts/hepta-inference-inf1-bootstrap.py \
-            scripts/hepta-inference-inf1-source-gate.py \
-            scripts/hepta-inference-inf1-materialize.py \
-            scripts/hepta-inference-inf1-payload-*.b85 \
-            "$out/files/scripts/"
+          cp docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_STATUS_V1.json "$out/files/docs/hepta-vnext/inference/"
+          cp scripts/hepta-inference-inf1-bootstrap.py scripts/hepta-inference-inf1-source-gate.py scripts/hepta-inference-inf1-materialize.py scripts/hepta-inference-inf1-payload-*.b85 "$out/files/scripts/"
           cp "$RUNNER_TEMP/hepta-inference-inf1-source-gate.txt" "$out/"
           python3 - "$out" <<'PY'
           import hashlib, json, os, sys
@@ -113,7 +108,7 @@ jobs:
           manifest = {"schema":"hepta.inference.inf1.workspace-bootstrap.v2","input_head":os.environ["GITHUB_SHA"],"runner_os":os.environ["RUNNER_OS"],"runner_arch":os.environ["RUNNER_ARCH"],"rustc":os.popen("rustc --version").read().strip(),"rustfmt":os.popen("rustfmt --version").read().strip(),"source_gate":"PASS","workspace_integration":"PASS","cargo_lock_generated":True,"rust_fmt":"PASS","rust_check":"PASS","rust_test":"PASS","rust_clippy_all_targets_no_deps_d_warnings":"PASS","files":files,"activated":False,"qualified":False,"inf1":"SOURCE_PRESENT_NOT_RUN","authority":False}
           root.joinpath("manifest.json").write_text(json.dumps(manifest, indent=2)+"\n")
           PY
-          find "$out" -type f -print0 | sort -z | xargs -0 sha256sum > "$out/SHA256SUMS"
+          find "$out" -type f -print0 | sort -z | xargs -0 shasum -a 256 > "$out/SHA256SUMS"
 
       - name: Upload exact integrated source payload
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
