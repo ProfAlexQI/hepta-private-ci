@@ -1,0 +1,70 @@
+{
+  "schema": "hepta_intelligence_p1_1a_implementation_receipt_v1",
+  "recorded_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "base": {
+    "branch": "codex/hepta-intelligence-shadow-host-adapter-v4c-20260828",
+    "commit": "7691978b786dd00c69477d1a3355be13db2c4d67",
+    "pull_request": 23,
+    "qualified": false
+  },
+  "candidate": {
+    "branch": "codex/hepta-intelligence-hybrid-retrieval-v2-p1a-20260828",
+    "source_head": "pending_exact_head_freeze"
+  },
+  "implemented_claims": {
+    "typed_query_planner": true,
+    "intent_and_risk_contract": true,
+    "multilingual_term_normalization": true,
+    "typed_channel_evidence": true,
+    "grounding_truth_lifecycle_secret_filters": true,
+    "deterministic_fixed_point_fusion": true,
+    "stable_tie_break": true,
+    "bounded_context_selection": true,
+    "utf8_byte_token_upper_bound": true,
+    "digest_bound_plan_candidates_results_receipt": true,
+    "isolated_integration_test": true,
+    "dedicated_source_gate": true,
+    "dedicated_rust_workflow": true,
+    "rust_toolchain_pin": "1.95.0"
+  },
+  "not_claimed": {
+    "source_gate_pass": false,
+    "rust_format_pass": false,
+    "rust_test_pass": false,
+    "rust_clippy_pass": false,
+    "query_execution_implemented": false,
+    "product_module_registered": false,
+    "vector_backend_registered": false,
+    "reranker_registered": false,
+    "runtime_wired": false,
+    "default_recall_changed": false,
+    "federation_recall_changed": false,
+    "context_attachment": false,
+    "physical_send": false,
+    "production_authority": false,
+    "external_effects": false,
+    "efficacy_proven": false,
+    "operator_accepted": false,
+    "promoted": false,
+    "callers_ratchet": false
+  },
+  "qualification": {
+    "status": "PENDING_EXACT_HEAD_EXECUTION",
+    "qualified": false,
+    "required_commands": [
+      "python3 scripts/verify-hepta-intelligence-hybrid-retrieval.py",
+      "cargo fmt --all -- --check",
+      "cargo test -p codex-hepta-memory --test shadow_hybrid_retrieval_v2_contract -- --nocapture",
+      "cargo test -p codex-hepta-memory",
+      "cargo clippy -p codex-hepta-memory --test shadow_hybrid_retrieval_v2_contract -- -D warnings",
+      "cargo clippy -p codex-hepta-memory --all-targets -- -D warnings"
+    ]
+  },
+  "interpretation": [
+    "This tranche defines and tests query planning, candidate eligibility, deterministic fusion and receipt contracts only.",
+    "The semantic-vector channel is a typed evidence contract; no embedding model, tokenizer, ANN backend or reranker is registered.",
+    "The source file is compiled by a dedicated integration test and is not registered in the product library module graph.",
+    "No source-only or implementation receipt is executable qualification, efficacy evidence, operator acceptance, promotion or production authority."
+  ]
+}
