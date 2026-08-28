@@ -29,14 +29,25 @@ onQueueReceipt,\n'
 )
 store = replace_once(
     store,
-    "             WHERE task_id = ? AND occurrence = ?\n"
-    "               AND client_user_message_id = ? AND outcome = 'uncertain'\",",
-    "             WHERE task_id = ? AND occurrence = ?\n"
-    "               AND client_user_message_id = ? AND outcome = 'uncertain'\n"
-    "               AND operation_id = ? AND operation_binding_sha256 = ?\n"
-    "               AND operation_sequence = ?\",",
+    """        let uncertainty = sqlx::query(
+            "UPDATE automation_dispatch_outcomes
+             SET outcome = 'submitted', queued_submission_id = ?,
+                 observed_at_ms = ?, submitted_at_ms = ?
+             WHERE task_id = ? AND occurrence = ?
+               AND client_user_message_id = ? AND outcome = 'uncertain'",
+        )""",
+    """        let uncertainty = sqlx::query(
+            "UPDATE automation_dispatch_outcomes
+             SET outcome = 'submitted', queued_submission_id = ?,
+                 observed_at_ms = ?, submitted_at_ms = ?
+             WHERE task_id = ? AND occurrence = ?
+               AND client_user_message_id = ? AND outcome = 'uncertain'
+               AND operation_id = ? AND operation_binding_sha256 = ?
+               AND operation_sequence = ?",
+        )""",
     "mark submitted operation where",
 )
+
 # This bind sequence is unique to the uncertainty UPDATE inside mark_submitted.
 store = replace_once(
     store,
@@ -104,14 +115,4 @@ agentd = agentd_path.read_text(encoding="utf-8")
 agentd = replace_once(
     agentd,
     "use codex_hepta_automation::AutomationQueueReceipt;\n",
-    "use codex_hepta_automation::AutomationOperationContext;\n"
-    "use codex_hepta_automation::AutomationQueueReceipt;\n",
-    "agentd automation context import",
-)
-agentd = replace_once(
-    agentd,
-    "use codex_utils_absolute_path::AbsolutePathBuf;\n",
-    "use codex_hepta_contracts::DestinationAcknowledgement;\n"
-    "use codex_hepta_contracts::Sha256Digest;\n"
-    "use codex_utils_absolute_path::AbsolutePathBuf;\n",
-    "agentd acknowl
+    "use codex_hepta_automatio

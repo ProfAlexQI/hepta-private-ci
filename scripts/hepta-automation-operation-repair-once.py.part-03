@@ -1,4 +1,14 @@
-edgement imports",
+n::AutomationOperationContext;\n"
+    "use codex_hepta_automation::AutomationQueueReceipt;\n",
+    "agentd automation context import",
+)
+agentd = replace_once(
+    agentd,
+    "use codex_utils_absolute_path::AbsolutePathBuf;\n",
+    "use codex_hepta_contracts::DestinationAcknowledgement;\n"
+    "use codex_hepta_contracts::Sha256Digest;\n"
+    "use codex_utils_absolute_path::AbsolutePathBuf;\n",
+    "agentd acknowledgement imports",
 )
 agentd = replace_once(
     agentd,
@@ -75,7 +85,7 @@ WHEN ((NEW.operation_id IS NULL) != (NEW.operation_binding_sha256 IS NULL))
   OR (NEW.operation_binding_sha256 IS NOT NULL
       AND (length(NEW.operation_binding_sha256) != 64
            OR NEW.operation_binding_sha256 GLOB '*[^0-9a-f]*'))
-BEGIN
+BEGIM
     SELECT RAISE(ABORT, 'invalid automation operation identity');
 END;
 
