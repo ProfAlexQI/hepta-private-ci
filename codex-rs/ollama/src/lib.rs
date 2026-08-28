@@ -32,8 +32,9 @@ pub async fn ensure_oss_ready(config: &Config, client: &OllamaClient) -> std::io
         std::io::ErrorKind::NotFound,
         format!(
             concat!(
-                "OLLAMA_MODEL_NOT_INSTALLED model={model}; automatic model installation is ",
-                "disabled. Run `ollama pull {model}` explicitly and retry."
+                "OLLAMA_MODEL_NOT_INSTALLED model={model}; ",
+                "automatic model installation is disabled. ",
+                "Run `ollama pull {model}` explicitly and retry."
             )
         ),
     ))
