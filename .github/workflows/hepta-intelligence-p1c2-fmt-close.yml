@@ -15,6 +15,7 @@ concurrency:
 
 env:
   CARGO_NET_OFFLINE: "true"
+  SOURCE_SHA: c3c42f60e5ca11fd49fe5d4d2013c5b21e183619
   QUALIFICATION_DRIVER_SHA: de95f9e6d39c6e57d132fc8ad8368ad89cf54fb4
 
 jobs:
@@ -24,10 +25,17 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout qualification trigger
+      - name: Checkout complete qualification ancestry
         uses: actions/checkout@v4
         with:
-          fetch-depth: 10
+          fetch-depth: 0
+
+      - name: Verify source and driver commits are materialized
+        run: |
+          set -euo pipefail
+          git cat-file -e "$SOURCE_SHA^{commit}"
+          git cat-file -e "$QUALIFICATION_DRIVER_SHA^{commit}"
+          test "$(git merge-base "$SOURCE_SHA" "$QUALIFICATION_DRIVER_SHA")" = "$SOURCE_SHA"
 
       - name: Install Rust 1.95.0
         uses: dtolnay/rust-toolchain@stable
@@ -41,6 +49,7 @@ jobs:
           RUNNER_OS: ${{ runner.os }}
           RUNNER_ARCH: ${{ runner.arch }}
         run: |
+          set -euo pipefail
           git checkout --detach "$QUALIFICATION_DRIVER_SHA"
           cp scripts/qualification/run-hepta-intelligence-p1c2-fmt-close.sh \
             "$RUNNER_TEMP/run-hepta-intelligence-p1c2-reference-close.sh"
