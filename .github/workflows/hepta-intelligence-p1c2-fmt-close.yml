@@ -1,16 +1,16 @@
-name: hepta-intelligence-p1c2-reference-close-windows
+name: hepta-intelligence-p1c2-reference-close-windows-2022
 
 on:
   push:
     branches:
-      - "qualification/p1c2-ref-win-v1"
+      - "qualification/p1c2-ref-win22-v1"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: hepta-intelligence-p1c2-reference-close-windows
+  group: hepta-intelligence-p1c2-reference-close-windows-2022
   cancel-in-progress: true
 
 env:
@@ -23,8 +23,8 @@ env:
 
 jobs:
   qualify:
-    name: P1.1c.2 final-label and frozen-reference closure Windows
-    runs-on: windows-latest
+    name: P1.1c.2 final-label and frozen-reference closure Windows 2022
+    runs-on: windows-2022
     timeout-minutes: 60
 
     defaults:
@@ -70,9 +70,9 @@ jobs:
           chmod +x "$RUNNER_TEMP/hepta-bin/python3"
           export PATH="$RUNNER_TEMP/hepta-bin:$PATH"
           cp scripts/qualification/run-hepta-intelligence-p1c2-fmt-close.sh \
-            "$RUNNER_TEMP/run-hepta-intelligence-p1c2-reference-close-win.sh"
+            "$RUNNER_TEMP/run-hepta-intelligence-p1c2-reference-close-win22.sh"
           python3 - \
-            "$RUNNER_TEMP/run-hepta-intelligence-p1c2-reference-close-win.sh" \
+            "$RUNNER_TEMP/run-hepta-intelligence-p1c2-reference-close-win22.sh" \
             "$RUNNER_TEMP/materialize-p1c2-plan-contract.py" \
             "$RUNNER_TEMP/materialize-p1c2-projection-state.py" <<'PY'
           import sys
@@ -82,7 +82,7 @@ jobs:
           projection_state = Path(sys.argv[3]).as_posix()
           text = driver.read_text(encoding="utf-8")
           old_branch = 'OUTPUT_BRANCH="qualification/p1c2-reference-candidate-c3c42-20260828"'
-          new_branch = 'OUTPUT_BRANCH="qualification/p1c2-ref-win-candidate"'
+          new_branch = 'OUTPUT_BRANCH="qualification/p1c2-ref-win22-candidate"'
           if text.count(old_branch) != 1:
               raise SystemExit("candidate output branch marker is not unique")
           text = text.replace(old_branch, new_branch, 1)
@@ -97,13 +97,13 @@ jobs:
               raise SystemExit("reference materializer step marker is not unique")
           driver.write_text(text.replace(old_step, new_step, 1), encoding="utf-8")
           PY
-          bash "$RUNNER_TEMP/run-hepta-intelligence-p1c2-reference-close-win.sh"
+          bash "$RUNNER_TEMP/run-hepta-intelligence-p1c2-reference-close-win22.sh"
 
       - name: Upload reference closure evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-intelligence-p1c2-reference-close-windows-${{ github.sha }}
+          name: hepta-intelligence-p1c2-reference-close-windows-2022-${{ github.sha }}
           path: artifacts/hepta-intelligence-p1-1c2-reference-closure
           if-no-files-found: warn
           retention-days: 14
