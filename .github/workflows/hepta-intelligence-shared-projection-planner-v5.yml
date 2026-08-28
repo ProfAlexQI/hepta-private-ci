@@ -47,7 +47,7 @@ concurrency:
 jobs:
   exact-head-qualification:
     name: P0.3.2 exact-head shared projection qualification v7
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
     steps:
       - name: Checkout exact source head
