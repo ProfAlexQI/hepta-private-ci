@@ -1,4 +1,4 @@
-name: p0-3-2-compile-repair-v2
+name: p0-3-2-compile-repair-v3
 
 on:
   push:
@@ -6,13 +6,14 @@ on:
       - "codex/hepta-intelligence-shared-projection-planner-v5-20260828"
     paths:
       - "scripts/repair-hepta-intelligence-p0-3-2-compile-v2.py"
+      - "scripts/repair-hepta-intelligence-p0-3-2-reexports-v1.py"
       - ".github/workflows/p0-3-2-compile-repair-v1.yml"
 
 permissions:
   contents: write
 
 concurrency:
-  group: p0-3-2-compile-repair-v2
+  group: p0-3-2-compile-repair-v3
   cancel-in-progress: true
 
 jobs:
@@ -32,8 +33,11 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt,clippy
 
-      - name: Apply bounded source repair
+      - name: Apply bounded compile and reopen repair
         run: python3 scripts/repair-hepta-intelligence-p0-3-2-compile-v2.py
+
+      - name: Apply final bounded re-export repair
+        run: python3 scripts/repair-hepta-intelligence-p0-3-2-reexports-v1.py
 
       - name: Format exact repaired source set
         working-directory: codex-rs
@@ -41,6 +45,7 @@ jobs:
           rustfmt --edition 2024 \
             hepta-memory/src/cognitive_store.rs \
             hepta-memory/src/fact_grounding/durable/grounding/prepare.rs \
+            hepta-memory/src/fact_grounding/durable/grounding/ledger.rs \
             hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs \
             hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs \
             hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs \
@@ -56,6 +61,7 @@ jobs:
       - name: Commit verified compile repair
         run: |
           rm scripts/repair-hepta-intelligence-p0-3-2-compile-v2.py
+          rm scripts/repair-hepta-intelligence-p0-3-2-reexports-v1.py
           rm .github/workflows/p0-3-2-compile-repair-v1.yml
           git config user.name "Qian QI"
           git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
