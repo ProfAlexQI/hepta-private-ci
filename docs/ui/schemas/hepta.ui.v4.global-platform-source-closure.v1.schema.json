@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.ai/schemas/ui/hepta.ui.v4.global-platform-source-closure.v1.schema.json",
+  "title": "Hepta UI v4 global platform source closure",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "candidate", "platforms", "qualification", "authority", "failures"],
+  "properties": {
+    "schema": {"const": "hepta.ui.v4.global-platform-source-closure.v1"},
+    "status": {"enum": ["PASS_GLOBAL_PLATFORM_SOURCE_CLOSURE", "FAIL_GLOBAL_PLATFORM_SOURCE_CLOSURE"]},
+    "candidate": {
+      "type": "object", "additionalProperties": false, "required": ["commit", "tree"],
+      "properties": {
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+      }
+    },
+    "platforms": {
+      "type": "object", "additionalProperties": false,
+      "required": ["macos", "ios", "android", "explicitCaller"],
+      "properties": {
+        "macos": {"$ref": "#/$defs/sourceLane"},
+        "ios": {"$ref": "#/$defs/sourceLane"},
+        "android": {"$ref": "#/$defs/sourceLane"},
+        "explicitCaller": {"$ref": "#/$defs/sourceLane"}
+      }
+    },
+    "qualification": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source", "linuxCompile", "windowsCompile", "macosCompile", "iosTargetCompile", "androidTargetCompile", "productWired", "systemMaterialBound", "deviceValidation"],
+      "properties": {
+        "source": {"type": "boolean"},
+        "linuxCompile": {"type": "boolean"},
+        "windowsCompile": {"type": "boolean"},
+        "macosCompile": {"type": "boolean"},
+        "iosTargetCompile": {"type": "boolean"},
+        "androidTargetCompile": {"type": "boolean"},
+        "productWired": {"const": false},
+        "systemMaterialBound": {"const": false},
+        "deviceValidation": {"const": false}
+      }
+    },
+    "authority": {"$ref": "#/$defs/authority"},
+    "failures": {"type": "array", "maxItems": 32, "items": {"type": "string", "minLength": 1, "maxLength": 4096}}
+  },
+  "$defs": {
+    "sourceLane": {
+      "type": "object", "additionalProperties": false, "required": ["sourceImplemented", "runtimeValidated", "productBound"],
+      "properties": {
+        "sourceImplemented": {"type": "boolean"},
+        "runtimeValidated": {"const": false},
+        "productBound": {"const": false}
+      }
+    },
+    "authority": {
+      "type": "object", "additionalProperties": false,
+      "required": ["network", "mutation", "effect", "liveAdapter", "production", "operatorAcceptance", "promotion", "release"],
+      "properties": {
+        "network": {"const": false}, "mutation": {"const": false}, "effect": {"const": false},
+        "liveAdapter": {"const": false}, "production": {"const": false},
+        "operatorAcceptance": {"const": false}, "promotion": {"const": false}, "release": {"const": false}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "PASS_GLOBAL_PLATFORM_SOURCE_CLOSURE"}}},
+      "then": {
+        "properties": {
+          "platforms": {"properties": {
+            "macos": {"properties": {"sourceImplemented": {"const": true}}},
+            "ios": {"properties": {"sourceImplemented": {"const": true}}},
+            "android": {"properties": {"sourceImplemented": {"const": true}}},
+            "explicitCaller": {"properties": {"sourceImplemented": {"const": true}}}
+          }},
+          "qualification": {"properties": {"source": {"const": true}}},
+          "failures": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "FAIL_GLOBAL_PLATFORM_SOURCE_CLOSURE"}}},
+      "then": {"properties": {"failures": {"minItems": 1}}}
+    }
+  ]
+}
