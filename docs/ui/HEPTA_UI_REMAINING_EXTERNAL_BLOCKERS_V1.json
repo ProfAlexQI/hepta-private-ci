@@ -1,8 +1,31 @@
 {
-  "schema": "hepta.ui.remaining-external-blockers.v1",
-  "status": "SOURCE_CONTROLLABLE_GAPS_CLOSED_EXTERNAL_EVIDENCE_REMAINS",
-  "sourceControllableGapsClosed": true,
-  "remainingBlockers": [
+  "schema": "hepta.ui.remaining-blockers.v1",
+  "status": "WINDOWS_SOURCE_GAPS_CLOSED_GLOBAL_SOURCE_AND_EXTERNAL_EVIDENCE_REMAIN",
+  "windowsSourceControllableGapsClosed": true,
+  "globalSourceControllableGapsClosed": false,
+  "sourceImplementationGaps": [
+    {
+      "id": "macos-appkit-material-adapter",
+      "class": "SOURCE_IMPLEMENTATION",
+      "requiredSource": "AppKit chrome and transient material adapter, scoped acknowledgement producer, preference bridge, rollback lifecycle"
+    },
+    {
+      "id": "ios-uikit-material-adapter",
+      "class": "SOURCE_IMPLEMENTATION",
+      "requiredSource": "UIView/controller system material adapter, sheet host, Dynamic Type and accessibility preference bridge"
+    },
+    {
+      "id": "android-material3-activity-bridge",
+      "class": "SOURCE_IMPLEMENTATION",
+      "requiredSource": "Activity/JNI dynamic-color capability, tonal surface application, animation-scale and lifecycle bridge"
+    },
+    {
+      "id": "product-explicit-activation-caller",
+      "class": "SOURCE_IMPLEMENTATION",
+      "requiredSource": "operator-governed explicit caller that loads sealed receipts and invokes the default-off wiring node"
+    }
+  ],
+  "externalEvidenceBlockers": [
     {
       "id": "github-hosted-runner-assignment",
       "class": "CI_INFRASTRUCTURE",
@@ -22,19 +45,19 @@
       "canBeSatisfiedByRepositorySourceAlone": false
     },
     {
-      "id": "macos-appkit-runtime",
+      "id": "macos-appkit-device",
       "class": "PHYSICAL_DEVICE",
       "requiredEvidence": "AppKit material bind/readback, Reduce Transparency, Increase Contrast, active/inactive window",
       "canBeSatisfiedByRepositorySourceAlone": false
     },
     {
-      "id": "ios-uikit-runtime",
+      "id": "ios-uikit-device",
       "class": "PHYSICAL_DEVICE",
       "requiredEvidence": "system navigation/sheet material, Dynamic Type, safe area, keyboard, Reduce Transparency",
       "canBeSatisfiedByRepositorySourceAlone": false
     },
     {
-      "id": "android-material3-runtime",
+      "id": "android-material3-device",
       "class": "PHYSICAL_DEVICE",
       "requiredEvidence": "dynamic tonal surfaces, dynamic-color unavailable fallback, animation scale, IME and safe area",
       "canBeSatisfiedByRepositorySourceAlone": false
