@@ -93,7 +93,13 @@ fn run_host() -> Result<(), Box<dyn Error>> {
         1,
         CommandKind::Shutdown,
     )?))?;
-    require_completed_outcome(channel.receive()?, 2, binding.identity, 1, "shutdown_complete")?;
+    require_completed_outcome(
+        channel.receive()?,
+        2,
+        binding.identity,
+        1,
+        "shutdown_complete",
+    )?;
     drop(channel);
 
     let status = child.wait()?;
@@ -140,7 +146,11 @@ fn run_worker() -> Result<(), Box<dyn Error>> {
         let (status, code, shutdown) = match &command.command {
             CommandKind::Ping => (OutcomeStatus::Completed, "pong", false),
             CommandKind::Shutdown => (OutcomeStatus::Completed, "shutdown_complete", true),
-            _ => (OutcomeStatus::Denied, "qualification_trial_command_denied", false),
+            _ => (
+                OutcomeStatus::Denied,
+                "qualification_trial_command_denied",
+                false,
+            ),
         };
         channel.send(&Message::Outcome(OutcomeFrame::new(
             command.request_id,
@@ -160,7 +170,11 @@ fn expected_worker(
     host_nonce: [u8; 32],
 ) -> Result<HostExpectedWorker, Box<dyn Error>> {
     Ok(HostExpectedWorker::new(
-        WorkerIdentity::new(BrowserSessionId::new(SESSION_BYTES)?, GENERATION, OWNER_EPOCH)?,
+        WorkerIdentity::new(
+            BrowserSessionId::new(SESSION_BYTES)?,
+            GENERATION,
+            OWNER_EPOCH,
+        )?,
         SourcePin::new(SERVO_COMMIT, SERVO_TREE)?,
         StartupCapability::new(capability_bytes)?,
         host_nonce,
