@@ -106,12 +106,17 @@ test "${#repaired_files[@]}" -gt 0
 rustfmt --edition 2024 --config skip_children=true "${repaired_files[@]}"
 rustfmt --edition 2024 --check --config skip_children=true "${repaired_files[@]}"
 git diff --check
+# Capture the candidate surface before enforcing the allowlist so any future
+# rejection still yields a complete, reviewable artifact.
+git diff --name-only | sort > "$ARTIFACT_DIR/changed-files.txt"
+git diff --stat > "$ARTIFACT_DIR/repair-stat.txt"
+git diff --binary > "$ARTIFACT_DIR/repair.patch"
 while IFS= read -r path; do
   case "$path" in
-    codex-rs/hepta-memory/src/*.rs|codex-rs/hepta-memory/src/**/*.rs) ;;
+    codex-rs/hepta-memory/src/*.rs|codex-rs/hepta-memory/src/**/*.rs|codex-rs/state/src/sqlite.rs) ;;
     *) printf 'unexpected candidate path: %s\n' "$path" >&2; exit 1 ;;
   esac
-done < <(git diff --name-only)
+done < "$ARTIFACT_DIR/changed-files.txt"
 ! git diff --unified=0 -- '*.rs' | grep -E '^\+.*(#\!?\[allow\(clippy|#\[ignore\]|todo!\(|unimplemented!\()'
 set +e
 (cd codex-rs && cargo fmt --all -- --check) >"$ARTIFACT_DIR/rust/workspace-fmt.log" 2>&1

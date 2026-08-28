@@ -24,7 +24,7 @@ concurrency:
 
 env:
   EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-  EXPECTED_PARENT: a7f84baf0afc4a55bc281610501ba41327f4715d
+  EXPECTED_PARENT: 1089229428270867a4de4c8d3795a6c48bf67464
   ARTIFACT_DIR: artifacts/hepta-intelligence-q0-independent-witness/arm64
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
