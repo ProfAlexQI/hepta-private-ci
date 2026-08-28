@@ -1,0 +1,58 @@
+{
+  "schema": "hepta.architecture_convergence.p0_2.status.v1",
+  "captured_at_utc": "2026-08-28T13:30:00Z",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "parent": {
+    "pull_request": 47,
+    "branch": "codex/hepta-architecture-convergence-p0-20260828",
+    "exact_head": "03160d3e20a4972085e4ae31186a6c7e59e7a50c",
+    "executable_qualified": false,
+    "last_observed_runner_state": "RUNNER_NOT_ASSIGNED"
+  },
+  "candidate": {
+    "branch": "codex/hepta-authority-adapter-services-p0-2-20260828",
+    "source_commit": "673b13be84220bab37f87f1048e305974e54a75c",
+    "source_tree": "fd7839147162fc15b62da51fab21321b4ff2aa07",
+    "ahead_of_parent": true,
+    "behind_parent": false
+  },
+  "implementation": {
+    "authority_kernel_schema_version": 2,
+    "external_verified_capability_constructor": true,
+    "legacy_production_lease_to_typed_cognitive_write": true,
+    "legacy_verifier_retained": true,
+    "typed_verification_before_cognitive_store_open": true,
+    "typed_external_effect_required_at_target_attach": true,
+    "typed_external_effect_revalidated_at_dispatch": true,
+    "agent_memory_service": true,
+    "agent_automation_service": true,
+    "agent_app_server_service": true,
+    "supervision_loop_opens_raw_stores": false,
+    "supervision_loop_runs_scheduler_directly": false,
+    "physical_memory_schema_extraction": false
+  },
+  "qualification": {
+    "status": "SOURCE_PRESENT_EXECUTABLE_QUALIFICATION_PENDING",
+    "qualified": false,
+    "source_verifier_executed_on_final_head": false,
+    "rustfmt_executed_on_final_head": false,
+    "authority_tests_executed_on_final_head": false,
+    "legacy_adapter_tests_executed_on_final_head": false,
+    "external_effect_gate_tests_executed_on_final_head": false,
+    "full_product_service_tests_executed_on_final_head": false,
+    "all_target_check_executed_on_final_head": false,
+    "strict_clippy_executed_on_final_head": false
+  },
+  "authority": {
+    "runtime_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "model_invocation": false,
+    "provider_dispatch": false,
+    "external_effect": false,
+    "fleet_mutation": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
