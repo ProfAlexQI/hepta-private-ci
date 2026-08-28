@@ -1,0 +1,54 @@
+# schema=hepta.intelligence.p1_1c.offline_efficacy.v1
+# corpus_id=p1-1c-multilingual-seed-v1
+# version=1
+# provenance=synthetic_seed
+# reviewed=false
+case_id	locale	query	candidate_id	relevance_grade	lexical_ppm	vector_ppm	citation_supported	latency_micros	token_cost	start_node	middle_node	goal_node	edge1_truth_ppm	edge1_contradiction_ppm	edge2_truth_ppm	edge2_contradiction_ppm
+en-ann	en-US	Which evidence binds the immutable ANN index?	en-ann-gold	3	650000	900000	true	120	30	en-ann-gold-s	en-ann-gold-m	en-ann-gold-g	940000	10000	920000	20000
+en-ann	en-US	Which evidence binds the immutable ANN index?	en-ann-support	2	550000	720000	true	100	24	en-ann-support-s	-	en-ann-support-g	780000	40000	0	0
+en-ann	en-US	Which evidence binds the immutable ANN index?	en-ann-lextrap	0	990000	200000	false	80	18	en-ann-lextrap-s	-	en-ann-lextrap-g	300000	650000	0	0
+en-ann	en-US	Which evidence binds the immutable ANN index?	en-ann-vectrap	0	850000	980000	false	110	22	en-ann-vectrap-s	en-ann-vectrap-m	en-ann-vectrap-g	400000	600000	450000	550000
+en-ann	en-US	Which evidence binds the immutable ANN index?	en-ann-kgtrap	0	880000	750000	false	130	26	en-ann-kgtrap-s	en-ann-kgtrap-m	en-ann-kgtrap-g	990000	720000	980000	700000
+en-ann	en-US	Which evidence binds the immutable ANN index?	en-ann-noise	0	800000	800000	false	70	16	en-ann-noise-s	-	en-ann-noise-g	800000	700000	0	0
+zh-ann	zh-CN	哪些证据绑定了不可变 ANN 索引？	zh-ann-gold	3	650000	900000	true	122	31	zh-ann-gold-s	zh-ann-gold-m	zh-ann-gold-g	940000	10000	920000	20000
+zh-ann	zh-CN	哪些证据绑定了不可变 ANN 索引？	zh-ann-support	2	550000	720000	true	102	25	zh-ann-support-s	-	zh-ann-support-g	780000	40000	0	0
+zh-ann	zh-CN	哪些证据绑定了不可变 ANN 索引？	zh-ann-lextrap	0	990000	200000	false	82	19	zh-ann-lextrap-s	-	zh-ann-lextrap-g	300000	650000	0	0
+zh-ann	zh-CN	哪些证据绑定了不可变 ANN 索引？	zh-ann-vectrap	0	850000	980000	false	112	23	zh-ann-vectrap-s	zh-ann-vectrap-m	zh-ann-vectrap-g	400000	600000	450000	550000
+zh-ann	zh-CN	哪些证据绑定了不可变 ANN 索引？	zh-ann-kgtrap	0	880000	750000	false	132	27	zh-ann-kgtrap-s	zh-ann-kgtrap-m	zh-ann-kgtrap-g	990000	720000	980000	700000
+zh-ann	zh-CN	哪些证据绑定了不可变 ANN 索引？	zh-ann-noise	0	800000	800000	false	72	17	zh-ann-noise-s	-	zh-ann-noise-g	800000	700000	0	0
+es-ann	es-ES	¿Qué evidencia vincula el índice ANN inmutable?	es-ann-gold	3	650000	900000	true	124	32	es-ann-gold-s	es-ann-gold-m	es-ann-gold-g	940000	10000	920000	20000
+es-ann	es-ES	¿Qué evidencia vincula el índice ANN inmutable?	es-ann-support	2	550000	720000	true	104	26	es-ann-support-s	-	es-ann-support-g	780000	40000	0	0
+es-ann	es-ES	¿Qué evidencia vincula el índice ANN inmutable?	es-ann-lextrap	0	990000	200000	false	84	20	es-ann-lextrap-s	-	es-ann-lextrap-g	300000	650000	0	0
+es-ann	es-ES	¿Qué evidencia vincula el índice ANN inmutable?	es-ann-vectrap	0	850000	980000	false	114	24	es-ann-vectrap-s	es-ann-vectrap-m	es-ann-vectrap-g	400000	600000	450000	550000
+es-ann	es-ES	¿Qué evidencia vincula el índice ANN inmutable?	es-ann-kgtrap	0	880000	750000	false	134	28	es-ann-kgtrap-s	es-ann-kgtrap-m	es-ann-kgtrap-g	990000	720000	980000	700000
+es-ann	es-ES	¿Qué evidencia vincula el índice ANN inmutable?	es-ann-noise	0	800000	800000	false	74	18	es-ann-noise-s	-	es-ann-noise-g	800000	700000	0	0
+fr-ann	fr-FR	Quelle preuve lie l’index ANN immuable ?	fr-ann-gold	3	650000	900000	true	126	33	fr-ann-gold-s	fr-ann-gold-m	fr-ann-gold-g	940000	10000	920000	20000
+fr-ann	fr-FR	Quelle preuve lie l’index ANN immuable ?	fr-ann-support	2	550000	720000	true	106	27	fr-ann-support-s	-	fr-ann-support-g	780000	40000	0	0
+fr-ann	fr-FR	Quelle preuve lie l’index ANN immuable ?	fr-ann-lextrap	0	990000	200000	false	86	21	fr-ann-lextrap-s	-	fr-ann-lextrap-g	300000	650000	0	0
+fr-ann	fr-FR	Quelle preuve lie l’index ANN immuable ?	fr-ann-vectrap	0	850000	980000	false	116	25	fr-ann-vectrap-s	fr-ann-vectrap-m	fr-ann-vectrap-g	400000	600000	450000	550000
+fr-ann	fr-FR	Quelle preuve lie l’index ANN immuable ?	fr-ann-kgtrap	0	880000	750000	false	136	29	fr-ann-kgtrap-s	fr-ann-kgtrap-m	fr-ann-kgtrap-g	990000	720000	980000	700000
+fr-ann	fr-FR	Quelle preuve lie l’index ANN immuable ?	fr-ann-noise	0	800000	800000	false	76	19	fr-ann-noise-s	-	fr-ann-noise-g	800000	700000	0	0
+ja-ann	ja-JP	不変 ANN インデックスを結び付ける証拠は何ですか？	ja-ann-gold	3	650000	900000	true	128	34	ja-ann-gold-s	ja-ann-gold-m	ja-ann-gold-g	940000	10000	920000	20000
+ja-ann	ja-JP	不変 ANN インデックスを結び付ける証拠は何ですか？	ja-ann-support	2	550000	720000	true	108	28	ja-ann-support-s	-	ja-ann-support-g	780000	40000	0	0
+ja-ann	ja-JP	不変 ANN インデックスを結び付ける証拠は何ですか？	ja-ann-lextrap	0	990000	200000	false	88	22	ja-ann-lextrap-s	-	ja-ann-lextrap-g	300000	650000	0	0
+ja-ann	ja-JP	不変 ANN インデックスを結び付ける証拠は何ですか？	ja-ann-vectrap	0	850000	980000	false	118	26	ja-ann-vectrap-s	ja-ann-vectrap-m	ja-ann-vectrap-g	400000	600000	450000	550000
+ja-ann	ja-JP	不変 ANN インデックスを結び付ける証拠は何ですか？	ja-ann-kgtrap	0	880000	750000	false	138	30	ja-ann-kgtrap-s	ja-ann-kgtrap-m	ja-ann-kgtrap-g	990000	720000	980000	700000
+ja-ann	ja-JP	不変 ANN インデックスを結び付ける証拠は何ですか？	ja-ann-noise	0	800000	800000	false	78	20	ja-ann-noise-s	-	ja-ann-noise-g	800000	700000	0	0
+ar-ann	ar-SA	ما الدليل الذي يربط فهرس ANN غير القابل للتغيير؟	ar-ann-gold	3	650000	900000	true	130	35	ar-ann-gold-s	ar-ann-gold-m	ar-ann-gold-g	940000	10000	920000	20000
+ar-ann	ar-SA	ما الدليل الذي يربط فهرس ANN غير القابل للتغيير؟	ar-ann-support	2	550000	720000	true	110	29	ar-ann-support-s	-	ar-ann-support-g	780000	40000	0	0
+ar-ann	ar-SA	ما الدليل الذي يربط فهرس ANN غير القابل للتغيير؟	ar-ann-lextrap	0	990000	200000	false	90	23	ar-ann-lextrap-s	-	ar-ann-lextrap-g	300000	650000	0	0
+ar-ann	ar-SA	ما الدليل الذي يربط فهرس ANN غير القابل للتغيير؟	ar-ann-vectrap	0	850000	980000	false	120	27	ar-ann-vectrap-s	ar-ann-vectrap-m	ar-ann-vectrap-g	400000	600000	450000	550000
+ar-ann	ar-SA	ما الدليل الذي يربط فهرس ANN غير القابل للتغيير؟	ar-ann-kgtrap	0	880000	750000	false	140	31	ar-ann-kgtrap-s	ar-ann-kgtrap-m	ar-ann-kgtrap-g	990000	720000	980000	700000
+ar-ann	ar-SA	ما الدليل الذي يربط فهرس ANN غير القابل للتغيير؟	ar-ann-noise	0	800000	800000	false	80	21	ar-ann-noise-s	-	ar-ann-noise-g	800000	700000	0	0
+hi-ann	hi-IN	अपरिवर्तनीय ANN सूचकांक को कौन सा प्रमाण बाँधता है?	hi-ann-gold	3	650000	900000	true	132	36	hi-ann-gold-s	hi-ann-gold-m	hi-ann-gold-g	940000	10000	920000	20000
+hi-ann	hi-IN	अपरिवर्तनीय ANN सूचकांक को कौन सा प्रमाण बाँधता है?	hi-ann-support	2	550000	720000	true	112	30	hi-ann-support-s	-	hi-ann-support-g	780000	40000	0	0
+hi-ann	hi-IN	अपरिवर्तनीय ANN सूचकांक को कौन सा प्रमाण बाँधता है?	hi-ann-lextrap	0	990000	200000	false	92	24	hi-ann-lextrap-s	-	hi-ann-lextrap-g	300000	650000	0	0
+hi-ann	hi-IN	अपरिवर्तनीय ANN सूचकांक को कौन सा प्रमाण बाँधता है?	hi-ann-vectrap	0	850000	980000	false	122	28	hi-ann-vectrap-s	hi-ann-vectrap-m	hi-ann-vectrap-g	400000	600000	450000	550000
+hi-ann	hi-IN	अपरिवर्तनीय ANN सूचकांक को कौन सा प्रमाण बाँधता है?	hi-ann-kgtrap	0	880000	750000	false	142	32	hi-ann-kgtrap-s	hi-ann-kgtrap-m	hi-ann-kgtrap-g	990000	720000	980000	700000
+hi-ann	hi-IN	अपरिवर्तनीय ANN सूचकांक को कौन सा प्रमाण बाँधता है?	hi-ann-noise	0	800000	800000	false	82	22	hi-ann-noise-s	-	hi-ann-noise-g	800000	700000	0	0
+pt-ann	pt-BR	Qual evidência vincula o índice ANN imutável?	pt-ann-gold	3	650000	900000	true	134	37	pt-ann-gold-s	pt-ann-gold-m	pt-ann-gold-g	940000	10000	920000	20000
+pt-ann	pt-BR	Qual evidência vincula o índice ANN imutável?	pt-ann-support	2	550000	720000	true	114	31	pt-ann-support-s	-	pt-ann-support-g	780000	40000	0	0
+pt-ann	pt-BR	Qual evidência vincula o índice ANN imutável?	pt-ann-lextrap	0	990000	200000	false	94	25	pt-ann-lextrap-s	-	pt-ann-lextrap-g	300000	650000	0	0
+pt-ann	pt-BR	Qual evidência vincula o índice ANN imutável?	pt-ann-vectrap	0	850000	980000	false	124	29	pt-ann-vectrap-s	pt-ann-vectrap-m	pt-ann-vectrap-g	400000	600000	450000	550000
+pt-ann	pt-BR	Qual evidência vincula o índice ANN imutável?	pt-ann-kgtrap	0	880000	750000	false	144	33	pt-ann-kgtrap-s	pt-ann-kgtrap-m	pt-ann-kgtrap-g	990000	720000	980000	700000
+pt-ann	pt-BR	Qual evidência vincula o índice ANN imutável?	pt-ann-noise	0	800000	800000	false	84	23	pt-ann-noise-s	-	pt-ann-noise-g	800000	700000	0	0
