@@ -21,7 +21,7 @@ env:
 jobs:
   qualify:
     name: P1.1c.2 final-label and frozen-reference closure
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
 
     steps:
