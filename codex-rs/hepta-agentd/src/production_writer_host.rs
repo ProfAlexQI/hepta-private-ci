@@ -14,6 +14,7 @@ use codex_hepta_contracts::Authorized;
 use codex_hepta_contracts::CognitiveWriteCapability;
 use codex_hepta_contracts::ExternalEffectCapability;
 use codex_hepta_memory::CognitiveStore;
+use codex_hepta_memory::LocalOutcomeState;
 use codex_hepta_memory::ProductionAuthorityLease;
 use codex_hepta_memory::ProductionAuthorityVerifier;
 use codex_hepta_memory::ProductionDispatchReceipt;
@@ -127,8 +128,26 @@ impl AgentdProductionWriterHost {
         })
     }
 
-    pub fn writer(&self) -> Arc<ProductionDurableWriter> {
-        Arc::clone(&self.writer)
+    /// Append a durable local intent through the host-owned writer. This path
+    /// requires cognitive-write authority but does not cross an external
+    /// effect boundary.
+    pub async fn admit(
+        &self,
+        occurrence_key: impl Into<String>,
+        topic: impl Into<String>,
+        payload_json: impl Into<String>,
+    ) -> Result<ProductionQueuedReceipt, AgentdError> {
+        Ok(self
+            .writer
+            .admit(occurrence_key, topic, payload_json)
+            .await?)
+    }
+
+    pub async fn status(
+        &self,
+        occurrence_key: impl Into<String>,
+    ) -> Result<LocalOutcomeState, AgentdError> {
+        Ok(self.writer.status(occurrence_key).await?)
     }
 
     pub fn cognitive_write_capability(&self) -> &Authorized<CognitiveWriteCapability> {
@@ -137,7 +156,8 @@ impl AgentdProductionWriterHost {
 
     /// Attach an effect target only with a separately verified typed
     /// `ExternalEffectCapability`. The capability must be external, bind the
-    /// same Agent and generation as the cognitive writer, and remain unexpired.
+    /// same Agent, generation, authority epoch, and owner epoch as the
+    /// cognitive writer, and remain unexpired.
     pub fn attach_target(
         mut self,
         target: Arc<dyn ProductionOutboxTarget>,
@@ -185,7 +205,13 @@ fn validate_external_effect_capability(
     external_effect: &Authorized<ExternalEffectCapability>,
     now_unix_seconds: u64,
 ) -> Result<(), AgentdError> {
-    let binding = external_effect.external_lease_binding().ok_or_else(|| {
+    let cognitive_binding = cognitive_write.external_lease_binding().ok_or_else(|| {
+        AgentdError::Protocol(
+            "production cognitive-write capability must come from an external verified lease"
+                .to_string(),
+        )
+    })?;
+    let effect_binding = external_effect.external_lease_binding().ok_or_else(|| {
         AgentdError::Protocol(
             "production external-effect capability must come from an external verified lease"
                 .to_string(),
@@ -202,10 +228,24 @@ fn validate_external_effect_capability(
                 .to_string(),
         ));
     }
-    if binding.is_expired_at(now_unix_seconds) {
+    if effect_binding.authority_epoch() != cognitive_binding.authority_epoch()
+        || effect_binding.owner_epoch() != cognitive_binding.owner_epoch()
+    {
+        return Err(AgentdError::GenerationFenced(
+            "production external-effect capability epochs do not match cognitive writer"
+                .to_string(),
+        ));
+    }
+    if cognitive_binding.is_expired_at(now_unix_seconds) {
+        return Err(AgentdError::Protocol(format!(
+            "production cognitive-write capability expired at {}",
+            cognitive_binding.expires_at_unix_seconds()
+        )));
+    }
+    if effect_binding.is_expired_at(now_unix_seconds) {
         return Err(AgentdError::Protocol(format!(
             "production external-effect capability expired at {}",
-            binding.expires_at_unix_seconds()
+            effect_binding.expires_at_unix_seconds()
         )));
     }
     Ok(())
@@ -242,12 +282,18 @@ mod tests {
         }
     }
 
-    fn binding(agent_id: AgentId, generation: u64, expiry: u64) -> AuthorityLeaseBinding {
+    fn binding(
+        agent_id: AgentId,
+        generation: u64,
+        authority_epoch: u64,
+        owner_epoch: u64,
+        expiry: u64,
+    ) -> AuthorityLeaseBinding {
         match AuthorityLeaseBinding::new(
             agent_id,
             Sha256Digest::for_bytes(b"signed-capability-grant"),
-            7,
-            11,
+            authority_epoch,
+            owner_epoch,
             generation,
             Sha256Digest::for_bytes(b"fencing-token"),
             expiry,
@@ -269,10 +315,10 @@ mod tests {
     }
 
     #[test]
-    fn effect_target_requires_same_agent_generation_and_live_external_lease() {
+    fn effect_target_requires_matching_live_external_lease_family() {
         let owner = agent_id(OWNER_ID);
         let cognitive_write = match authorize_verified_capability::<CognitiveWriteCapability, _>(
-            binding(owner.clone(), 3, 500),
+            binding(owner.clone(), 3, 7, 11, 500),
             &owner,
             3,
             100,
@@ -282,7 +328,7 @@ mod tests {
             Err(error) => panic!("cognitive write must authorize: {error}"),
         };
         let external_effect = match authorize_verified_capability::<ExternalEffectCapability, _>(
-            binding(owner.clone(), 3, 500),
+            binding(owner.clone(), 3, 7, 11, 500),
             &owner,
             3,
             100,
@@ -306,7 +352,7 @@ mod tests {
 
         let other = agent_id(OTHER_ID);
         let other_effect = match authorize_verified_capability::<ExternalEffectCapability, _>(
-            binding(other.clone(), 3, 500),
+            binding(other.clone(), 3, 7, 11, 500),
             &other,
             3,
             100,
@@ -323,7 +369,7 @@ mod tests {
         .is_err());
 
         let newer_effect = match authorize_verified_capability::<ExternalEffectCapability, _>(
-            binding(owner.clone(), 4, 500),
+            binding(owner.clone(), 4, 7, 11, 500),
             &owner,
             4,
             100,
@@ -335,6 +381,24 @@ mod tests {
         assert!(validate_external_effect_capability(
             &cognitive_write,
             &newer_effect,
+            100
+        )
+        .is_err());
+
+        let changed_epoch_effect =
+            match authorize_verified_capability::<ExternalEffectCapability, _>(
+                binding(owner.clone(), 3, 8, 11, 500),
+                &owner,
+                3,
+                100,
+                &ExactActionVerifier(AuthorityAction::ExternalEffect),
+            ) {
+                Ok(capability) => capability,
+                Err(error) => panic!("changed-epoch effect must authorize alone: {error}"),
+            };
+        assert!(validate_external_effect_capability(
+            &cognitive_write,
+            &changed_epoch_effect,
             100
         )
         .is_err());
