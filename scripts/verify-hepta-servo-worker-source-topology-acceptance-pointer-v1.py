@@ -41,15 +41,35 @@ def require(text: str, *tokens: str) -> None:
 
 
 def canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode()
 
 
 def main() -> int:
     try:
         paths = (
-            TOOL, *PARTS, TEST, *TEST_PARTS, POLICY, POLICY_SCHEMA, CHALLENGE_SCHEMA, POINTER_SCHEMA,
-            STATUS, SPEC, CONTRACT, LIVE, SOURCE_LIVE_V2, AGGREGATE, BLOCKING,
-            CURRENT, C1_CURRENT, README,
+            TOOL,
+            *PARTS,
+            TEST,
+            *TEST_PARTS,
+            POLICY,
+            POLICY_SCHEMA,
+            CHALLENGE_SCHEMA,
+            POINTER_SCHEMA,
+            STATUS,
+            SPEC,
+            CONTRACT,
+            LIVE,
+            SOURCE_LIVE_V2,
+            AGGREGATE,
+            BLOCKING,
+            CURRENT,
+            C1_CURRENT,
+            README,
         )
         for path in paths:
             if not path.is_file():
@@ -85,7 +105,7 @@ def main() -> int:
             "compressed_archive_sha256",
             "servoshell_dependency",
             "webdriver_server_dependency",
-            "PENDING_SEPARATE_REVIEW" if "PENDING_SEPARATE_REVIEW" in tool else "REQUIRES_LIVE_APPROVAL_EVIDENCE",
+            "REQUIRES_LIVE_APPROVAL_EVIDENCE",
             "pointer_creation_command",
             "WORKER_SOURCE_TOPOLOGY_ACCEPTED_BUILD_RECIPE_REVIEW_REQUIRED_BUILD_NOT_AUTHORIZED",
             "HEPTA_WORKER_TOPOLOGY_ACCEPT_V1 ",
@@ -153,16 +173,32 @@ def main() -> int:
         require(
             aggregate,
             "workflow_call:",
-            "uses: ./.github/workflows/hepta-browser-next-required-v8.yml",
-            "uses: ./.github/workflows/hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml",
             "name: Hepta Browser next required v9",
-            "- canonical-v8",
+            "reusable workflow nesting: blocking-ci -> v9 -> leaf",
+            "browser-protocol:",
+            "uses: ./.github/workflows/hepta-browser-ci.yml",
+            "independent-source-v3:",
+            "uses: ./.github/workflows/hepta-servo-independent-source-contract-v3.yml",
+            "exact-source-review-candidate-v2:",
+            "uses: ./.github/workflows/hepta-servo-exact-source-review-candidate-v2-contract.yml",
+            "source-api-topology:",
+            "uses: ./.github/workflows/hepta-servo-worker-source-topology-contract.yml",
+            "source-acceptance-pointer-v1:",
+            "uses: ./.github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml",
+            "topology-acceptance-pointer-v1:",
+            "uses: ./.github/workflows/hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml",
+            "build-input-v3:",
+            "uses: ./.github/workflows/hepta-servo-build-input-contract-v3.yml",
+            "build-preflight:",
+            "uses: ./.github/workflows/hepta-servo-build-preflight-contract.yml",
             "- topology-acceptance-pointer-v1",
             '"worker_source_topology_accepted": False',
             '"build_authorized": False',
             '"servo_build_run": False',
             '"servo_runtime_qualified": False',
         )
+        if "uses: ./.github/workflows/hepta-browser-next-required-v8.yml" in aggregate:
+            fail("canonical v9 is nested through obsolete v8 instead of calling leaf workflows")
         require(
             blocking,
             "hepta-browser-next-v9:",
@@ -173,7 +209,9 @@ def main() -> int:
         if "hepta-browser-next-v8:" in blocking or "- hepta-browser-next-v8" in blocking:
             fail("blocking CI requires obsolete v8 alongside canonical v9")
 
-        if policy.get("claims_after_acceptance", {}).get("worker_source_topology_accepted") is not True:
+        if policy.get("claims_after_acceptance", {}).get(
+            "worker_source_topology_accepted"
+        ) is not True:
             fail("topology policy does not describe the intended topology-only acceptance")
         for key in ("build_authorized", "servo_built", "servo_runtime_qualified"):
             if policy.get("claims_after_acceptance", {}).get(key) is not False:
@@ -189,7 +227,11 @@ def main() -> int:
 
         if status.get("evidence", {}).get("local_fixture_tests") != "29_PASS":
             fail("topology acceptance status does not record 29 fixture passes")
-        for key in ("exact_servo_source_accepted", "worker_source_topology_accepted", "build_authorized"):
+        for key in (
+            "exact_servo_source_accepted",
+            "worker_source_topology_accepted",
+            "build_authorized",
+        ):
             if status.get("claims", {}).get(key) is not False:
                 fail(f"topology acceptance status overclaims {key}")
 
@@ -231,8 +273,17 @@ def main() -> int:
             fail("topology acceptance contract status drifted")
         if summary.get("pointer_creation_command") is not False:
             fail("topology acceptance contract creates pointers")
-    except (OSError, RuntimeError, UnicodeError, json.JSONDecodeError, subprocess.TimeoutExpired) as error:
-        print(f"HEPTA_SERVO_WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_STATIC=FAIL: {error}", file=sys.stderr)
+    except (
+        OSError,
+        RuntimeError,
+        UnicodeError,
+        json.JSONDecodeError,
+        subprocess.TimeoutExpired,
+    ) as error:
+        print(
+            f"HEPTA_SERVO_WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_STATIC=FAIL: {error}",
+            file=sys.stderr,
+        )
         return 1
 
     print(
@@ -240,6 +291,7 @@ def main() -> int:
             {
                 "status": "HEPTA_SERVO_WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_STATIC_PASS",
                 "fixture_tests": "29_PASS",
+                "flat_v9_graph_verified": True,
                 "trusted_base_source_review": True,
                 "trusted_base_topology_review": True,
                 "pointer_creation_command": False,
