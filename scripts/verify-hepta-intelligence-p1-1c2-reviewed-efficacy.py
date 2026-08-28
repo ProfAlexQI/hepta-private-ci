@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+P1_CRATE = ROOT / "codex-rs/hepta-memory-p1-1c-qualification"
+P1_CARGO = P1_CRATE / "Cargo.toml"
 CRATE = ROOT / "codex-rs/hepta-memory-p1-1c2-qualification"
 CARGO = CRATE / "Cargo.toml"
 LIB = CRATE / "src/lib.rs"
@@ -47,6 +49,7 @@ def contains_all(text: str, markers: tuple[str, ...]) -> bool:
 
 def main() -> int:
     files = (
+        P1_CARGO,
         CARGO,
         LIB,
         DIGEST,
@@ -82,6 +85,7 @@ def main() -> int:
         )
         return 1
 
+    p1_cargo = P1_CARGO.read_text(encoding="utf-8")
     cargo = CARGO.read_text(encoding="utf-8")
     lib = LIB.read_text(encoding="utf-8")
     digest = DIGEST.read_text(encoding="utf-8")
@@ -98,6 +102,15 @@ def main() -> int:
     receipt = json.loads(RECEIPT.read_text(encoding="utf-8"))
     parent_status = json.loads(PARENT_STATUS.read_text(encoding="utf-8"))
 
+    checks["dependency.p1c_isolated_workspace"] = contains_all(
+        p1_cargo,
+        (
+            "[workspace]",
+            "publish = false",
+            'unsafe_code = "forbid"',
+            'all = "deny"',
+        ),
+    )
     checks["crate.isolated_local_dependencies"] = contains_all(
         cargo,
         (
@@ -109,8 +122,12 @@ def main() -> int:
             'all = "deny"',
         ),
     )
-    checks["crate.not_product_workspace_member"] = (
-        "hepta-memory-p1-1c2-qualification" not in product_cargo
+    checks["crate.not_product_workspace_member"] = all(
+        name not in product_cargo
+        for name in (
+            "hepta-memory-p1-1c-qualification",
+            "hepta-memory-p1-1c2-qualification",
+        )
     )
     checks["digest.real_sha256"] = contains_all(
         digest,
@@ -235,6 +252,7 @@ def main() -> int:
             "lanes=[]",
             "source_qualified=false",
             "production_authority=false",
+            "nested, publish-disabled workspace",
         ),
     )
     checks["parent.remains_unaccepted"] = (
@@ -249,6 +267,7 @@ def main() -> int:
         and status.get("current_tranche", {}).get("reviewed_corpus_present") is False
         and status.get("current_tranche", {}).get("reviewed_corpus_evaluated") is False
         and status.get("current_tranche", {}).get("efficacy_validation") is False
+        and status.get("implementation", {}).get("transitive_workspace_isolation") is True
         and status.get("checked_in_fixture", {}).get("review_item_count") == 8
         and status.get("checked_in_fixture", {}).get("evaluation_candidate_count") == 48
         and all(authority.get(key) is False for key in AUTHORITY_KEYS)
@@ -257,6 +276,7 @@ def main() -> int:
     checks["implementation_receipt.valid_boundary"] = (
         receipt.get("status") == "IMPLEMENTED_PENDING_EXECUTABLE_QUALIFICATION"
         and receipt.get("claims", {}).get("seven_lane_rerun") is True
+        and receipt.get("claims", {}).get("transitive_workspace_isolation") is True
         and receipt.get("claims", {}).get("real_human_reviewed_corpus") is False
         and receipt.get("claims", {}).get("real_efficacy_validation") is False
         and receipt.get("fixture", {}).get("expected_to_emit_lanes") is False
@@ -279,6 +299,7 @@ def main() -> int:
         workflow,
         (
             'toolchain: "1.95.0"',
+            "Verify local workspace isolation",
             "verify-hepta-intelligence-p1-1c2-reviewed-efficacy.py",
             "cargo fmt --manifest-path",
             "cargo test --manifest-path",
