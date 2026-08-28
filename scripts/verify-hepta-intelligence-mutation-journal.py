@@ -222,7 +222,7 @@ def main() -> int:
         [
             "toolchain: 1.95.0",
             "rust-toolchain.toml",
-            "cargo fmt --all -- --check",
+            "cargo fmt -p codex-hepta-memory -- --check",
             "cargo test -p codex-hepta-memory intelligence_mutation_journal",
             "cargo clippy -p codex-hepta-memory --all-targets -- -D warnings",
         ],
