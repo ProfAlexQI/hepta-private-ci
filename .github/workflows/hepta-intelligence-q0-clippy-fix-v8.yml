@@ -1,0 +1,217 @@
+name: Hepta Intelligence Q0 strict Clippy repair v8
+
+on:
+  push:
+    branches:
+      - codex/hepta-intelligence-plan-v3-20260828
+    paths:
+      - .github/workflows/hepta-intelligence-q0-clippy-fix-v8.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-q0-clippy-fix-v8-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
+  EXPECTED_PARENT: e487e9b58179c8263a4452be6f737cfc960f5799
+  ARTIFACT_DIR: artifacts/hepta-intelligence-q0-clippy-fix-v8/arm64
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_BUILD_JOBS: 4
+  RUST_BACKTRACE: 1
+
+jobs:
+  repair-and-prove:
+    name: Repair parser and prove every frozen Q0 gate on ARM64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact v8 candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Prove exact identity and fail-closed authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$EXPECTED_BRANCH"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(uname -m)" = "aarch64"
+          test -f .github/patches/hepta-intelligence-q0-compile-fix-v1.patch
+          test -f .github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py
+          test -f .github/scripts/hepta-intelligence-q0-reconstruct-v7.py
+          mkdir -p "$ARTIFACT_DIR/gates"
+          printf '{"head":"%s","tree":"%s","parent":"%s","host":"aarch64-unknown-linux-gnu","runtime_authority":false,"source_writeback":false}\n' \
+            "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" "$(git rev-parse HEAD^)" \
+            > "$ARTIFACT_DIR/identity.json"
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Restore compiler cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            codex-rs/target/debug/.fingerprint
+            codex-rs/target/debug/build
+            codex-rs/target/debug/deps
+          key: hepta-q0-rust195-arm64-v8-${{ hashFiles('codex-rs/Cargo.lock') }}-${{ hashFiles('.github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py') }}
+          restore-keys: |
+            hepta-q0-rust195-arm64-
+
+      - name: Repair malformed parser and reconstruct deterministic source repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          needle = r"        rf'(?:async[ \t]+)?fn[ \t]+{re.escape(name)}[ \t]*\('"
+          assert lines.count(needle) == 1, lines.count(needle)
+          index = lines.index(needle)
+          assert lines[index + 1] == '    )', lines[index + 1]
+          lines.insert(index + 1, "        r')'")
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+          python3 -m py_compile \
+            .github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py \
+            .github/scripts/hepta-intelligence-q0-reconstruct-v7.py
+          python3 .github/scripts/hepta-intelligence-q0-reconstruct-v7.py
+          git restore --source=HEAD -- .github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py
+          mapfile -t files < <(git diff --name-only -- '*.rs')
+          test "${#files[@]}" -gt 0
+          rustfmt --edition 2024 --config skip_children=true "${files[@]}"
+          git diff --check
+
+      - name: Apply machine-applicable Clippy fixes
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set +e
+          cargo clippy --fix --locked -p codex-hepta-memory --all-targets \
+            --allow-dirty --allow-staged -- -D warnings \
+            2>&1 | tee "../$ARTIFACT_DIR/clippy-fix.log"
+          printf '%s\n' "${PIPESTATUS[0]}" > "../$ARTIFACT_DIR/clippy-fix.exit"
+          exit 0
+
+      - name: Format and verify repair surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(git diff --name-only -- '*.rs')
+          test "${#files[@]}" -gt 0
+          rustfmt --edition 2024 --config skip_children=true "${files[@]}"
+          rustfmt --edition 2024 --check --config skip_children=true "${files[@]}"
+          git diff --check
+
+      - name: Diagnose every frozen source and SQLite contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          gate_dir="$ARTIFACT_DIR/gates"
+          status_file=plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json
+          canonical_status=$(mktemp)
+          cp "$status_file" "$canonical_status"
+          restore_status() {
+            cp "$canonical_status" "$status_file"
+            rm -f "$canonical_status"
+          }
+          trap restore_status EXIT
+
+          run_gate() {
+            local name=$1
+            shift
+            set +e
+            "$@" >"$gate_dir/$name.log" 2>&1
+            local code=$?
+            set -e
+            printf '%s\n' "$code" >"$gate_dir/$name.exit"
+            printf '%-36s exit=%s\n' "$name" "$code"
+          }
+
+          master_plan_gate() {
+            local actual
+            actual=$(python3 scripts/verify-hepta-intelligence-master-plan.py)
+            printf '%s\n' "$actual"
+            test "$actual" = "PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_SOURCE_ONLY"
+          }
+
+          run_gate master-plan master_plan_gate
+          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
+            run_gate "status-$tranche" python3 scripts/hepta-intelligence-status-compat.py "$tranche"
+          done
+          run_gate grounding-ledger python3 scripts/verify-hepta-intelligence-grounding-ledger.py
+          run_gate grounding-gate python3 scripts/verify-hepta-intelligence-grounding-gate.py
+          run_gate mutation-state python3 scripts/verify-hepta-intelligence-mutation-state.py
+          run_gate mutation-journal-sqlite python3 scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py
+          run_gate mutation-journal python3 scripts/verify-hepta-intelligence-mutation-journal.py
+          run_gate shadow-host python3 scripts/verify-hepta-intelligence-shadow-host.py
+
+          restore_status
+          trap - EXIT
+          git diff --check
+
+      - name: Run strict memory Clippy
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set +e
+          cargo clippy --locked -p codex-hepta-memory --all-targets -- -D warnings \
+            2>&1 | tee "../$ARTIFACT_DIR/clippy-strict.log"
+          printf '%s\n' "${PIPESTATUS[0]}" > "../$ARTIFACT_DIR/clippy-strict.exit"
+          exit 0
+
+      - name: Run full memory tests
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set +e
+          cargo test --locked -p codex-hepta-memory \
+            2>&1 | tee "../$ARTIFACT_DIR/test-full-memory.log"
+          printf '%s\n' "${PIPESTATUS[0]}" > "../$ARTIFACT_DIR/test-full-memory.exit"
+          exit 0
+
+      - name: Capture exact repair surface
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --name-only | sort > "$ARTIFACT_DIR/changed-files.txt"
+          git diff --stat > "$ARTIFACT_DIR/repair-stat.txt"
+          git diff --binary > "$ARTIFACT_DIR/repair.patch"
+
+      - name: Upload v8 evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-q0-clippy-fix-v8-arm64-${{ github.sha }}
+          path: artifacts/hepta-intelligence-q0-clippy-fix-v8/arm64/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Fail closed on any remaining contract, Clippy, or test error
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat "$ARTIFACT_DIR/clippy-fix.exit")" = "0"
+          test "$(cat "$ARTIFACT_DIR/clippy-strict.exit")" = "0"
+          test "$(cat "$ARTIFACT_DIR/test-full-memory.exit")" = "0"
+          for result in "$ARTIFACT_DIR"/gates/*.exit; do
+            test "$(cat "$result")" = "0"
+          done
