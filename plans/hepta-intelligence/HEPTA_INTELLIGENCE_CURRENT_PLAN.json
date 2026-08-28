@@ -7,12 +7,12 @@
     "plan_version": "4.0.0",
     "human_document": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
     "content_sha256": "74339a00c972e64d29aaf89eea8fa416418d61a8c701dff3ce3cdfc9a326cfe8",
-    "blob_sha": null,
-    "plan_commit": null,
-    "plan_tree": null,
-    "receipt_file": null,
+    "blob_sha": "e7e73e23c4d94ee3035170fd7cab7dc6be1c3ab6",
+    "plan_commit": "298073d29bfb5b3f94ba4b08a2d3dd3d9ac3bcd4",
+    "plan_tree": "d3cb6876cff8b4c811aaeab72b7dc24e026f5e1c",
+    "receipt_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN_V4_RECEIPT_2026-08-28.json",
     "branch": "codex/hepta-intelligence-plan-v3-20260828",
-    "status": "UNRECEIPTED_PLAN_V4_CANDIDATE"
+    "status": "RECEIPTED_PLAN_V4_NO_RUNTIME_AUTHORITY"
   },
   "session_bootstrap": {
     "instructions_file": "plans/hepta-intelligence/AGENTS.md",
