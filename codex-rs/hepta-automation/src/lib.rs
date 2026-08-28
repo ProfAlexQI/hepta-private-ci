@@ -19,6 +19,7 @@ pub use model::AutomationAdmission;
 pub use model::AutomationDispatchUncertainty;
 pub use model::AutomationError;
 pub use model::AutomationLease;
+pub use model::AutomationOperationContext;
 pub use model::AutomationQueueReceipt;
 pub use model::AutomationSchedule;
 pub use model::AutomationTask;
@@ -82,4 +83,4 @@ pub use taskflow_step::TaskFlowStepReceipt;
 #[cfg(feature = "taskflow-structural-qualification")]
 pub use taskflow_step::TaskFlowStepState;
 
-pub const AUTOMATION_SCHEMA_VERSION: u32 = 3;
+pub const AUTOMATION_SCHEMA_VERSION: u32 = 4;
