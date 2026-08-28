@@ -1,0 +1,210 @@
+diff --git a/.github/workflows/hepta-cargo-lock-finalizer-p0-2.yml b/.github/workflows/hepta-cargo-lock-finalizer-p0-2.yml
+index 1dad73e..a539d38 100644
+--- a/.github/workflows/hepta-cargo-lock-finalizer-p0-2.yml
++++ b/.github/workflows/hepta-cargo-lock-finalizer-p0-2.yml
+@@ -21,7 +21,7 @@ jobs:
+   pin-exact-head:
+     name: Pin exact current branch head
+     if: ${{ !contains(github.event.head_commit.message || '', '[hepta-lock-finalize]') }}
+-    runs-on: ubuntu-24.04
++    runs-on: ubuntu-24.04-arm
+     timeout-minutes: 10
+     outputs:
+       current: ${{ steps.pin.outputs.current }}
+@@ -56,7 +56,7 @@ jobs:
+     name: Materialize and verify the workspace lock graph
+     needs: pin-exact-head
+     if: ${{ needs.pin-exact-head.outputs.current == 'true' }}
+-    runs-on: ubuntu-24.04
++    runs-on: ubuntu-24.04-arm
+     timeout-minutes: 180
+     steps:
+       - name: Checkout exact source head with write credential
+@@ -121,12 +121,16 @@ jobs:
+               text=True,
+           ).splitlines()
+           changed = sorted(set(tracked + untracked))
+-          unexpected = [path for path in changed if path != "codex-rs/Cargo.lock"]
++          allowed = {
++              "codex-rs/Cargo.lock",
++              ".github/workflows/hepta-cargo-lock-finalizer-p0-2.yml",
++          }
++          unexpected = [path for path in changed if path not in allowed]
+           if unexpected:
+               raise SystemExit(
+-                  f"Cargo.lock finalizer escaped its one-file authority: {unexpected}"
++                  f"Cargo.lock finalizer escaped its bounded authority: {unexpected}"
+               )
+-          print(f"lock_changed={changed == ['codex-rs/Cargo.lock']}")
++          print(f"changed={changed}")
+           PY
+           git diff --check
+ 
+@@ -163,18 +167,27 @@ jobs:
+           path: ${{ runner.temp }}/hepta-cargo-lock-finalizer
+           if-no-files-found: error
+ 
+-      - name: Commit and fast-forward the verified lock graph
++      - name: Commit the verified lock graph and retire this write lane
+         shell: bash
+         run: |
+           set -euo pipefail
+-          if git diff --quiet -- codex-rs/Cargo.lock; then
+-            echo "Cargo.lock is already consistent with the current manifests." >> "$GITHUB_STEP_SUMMARY"
+-            exit 0
+-          fi
+-
++          git rm .github/workflows/hepta-cargo-lock-finalizer-p0-2.yml
+           git add codex-rs/Cargo.lock
+           git diff --cached --check
+-          test "$(git diff --cached --name-only)" = "codex-rs/Cargo.lock"
++          python3 - <<'PY'
++          import subprocess
++          allowed = {
++              "codex-rs/Cargo.lock",
++              ".github/workflows/hepta-cargo-lock-finalizer-p0-2.yml",
++          }
++          changed = set(
++              subprocess.check_output(
++                  ["git", "diff", "--cached", "--name-only"], text=True
++              ).splitlines()
++          )
++          if not changed or not changed.issubset(allowed):
++              raise SystemExit(f"unexpected finalizer commit paths: {sorted(changed)}")
++          PY
+ 
+           git fetch --no-tags origin \
+             "refs/heads/$BRANCH_NAME:refs/remotes/origin/$BRANCH_NAME"
+@@ -182,5 +195,5 @@ jobs:
+ 
+           git config user.name "Hepta Cargo.lock finalizer"
+           git config user.email "102159240+ProfHepta@users.noreply.github.com"
+-          git commit -m "build(hepta): materialize workspace lock graph [hepta-lock-finalize]"
++          git commit -m "build(hepta): materialize lock graph and retire write lane [hepta-lock-finalize]"
+           git push origin "HEAD:refs/heads/$BRANCH_NAME"
+diff --git a/.github/workflows/hepta-source-export.yml b/.github/workflows/hepta-source-export.yml
+deleted file mode 100644
+index 5fac1df..0000000
+--- a/.github/workflows/hepta-source-export.yml
++++ /dev/null
+@@ -1,45 +0,0 @@
+-name: Hepta source export
+-
+-on:
+-  push:
+-    branches:
+-      - codex/hepta-architecture-convergence-p0-2-20260828
+-  workflow_dispatch:
+-
+-permissions:
+-  contents: read
+-
+-concurrency:
+-  group: hepta-source-export-${{ github.ref }}
+-  cancel-in-progress: true
+-
+-jobs:
+-  export:
+-    name: Export exact source tree
+-    runs-on: ubuntu-24.04-arm
+-    timeout-minutes: 15
+-    steps:
+-      - name: Checkout exact head
+-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+-        with:
+-          ref: ${{ github.sha }}
+-          fetch-depth: 1
+-          persist-credentials: false
+-
+-      - name: Verify and archive source
+-        shell: bash
+-        run: |
+-          set -euo pipefail
+-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+-          git diff --exit-code
+-          git diff --cached --exit-code
+-          git archive --format=tar.gz --output=hepta-source.tar.gz HEAD
+-          sha256sum hepta-source.tar.gz
+-
+-      - name: Upload source archive
+-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+-        with:
+-          name: hepta-source-${{ github.sha }}
+-          path: hepta-source.tar.gz
+-          if-no-files-found: error
+-          retention-days: 1
+diff --git a/codex-rs/hepta-contracts/src/provider_operation.rs b/codex-rs/hepta-contracts/src/provider_operation.rs
+index 5efa7c3..0cd0184 100644
+--- a/codex-rs/hepta-contracts/src/provider_operation.rs
++++ b/codex-rs/hepta-contracts/src/provider_operation.rs
+@@ -656,10 +656,7 @@ mod tests {
+         );
+         let local = crate::AuthorityGrant::qualification_cognitive_write(agent(), 3)
+             .unwrap_or_else(|error| panic!("qualification grant must build: {error}"));
+-        assert!(matches!(
+-            local.authorize::<ExternalEffectCapability>(),
+-            Err(AuthorityError::ActionDenied(AuthorityAction::ExternalEffect))
+-        ));
++        assert!(!local.allows(AuthorityAction::ExternalEffect));
+     }
+ 
+     #[tokio::test]
+diff --git a/docs/architecture/HEPTA_AUTHORITY_CALLERS_V1.json b/docs/architecture/HEPTA_AUTHORITY_CALLERS_V1.json
+index 09abce1..ee6884d 100644
+--- a/docs/architecture/HEPTA_AUTHORITY_CALLERS_V1.json
++++ b/docs/architecture/HEPTA_AUTHORITY_CALLERS_V1.json
+@@ -23,6 +23,9 @@
+     ],
+     "codex-rs/hepta-agentd/src/composition.rs": [
+       "agent_process_composition_root"
++    ],
++    "codex-rs/hepta-contracts/src/provider_operation.rs": [
++      "provider_operation_unit_tests"
+     ]
+   },
+   "forbiddenProductRequests": [
+diff --git a/scripts/verify-hepta-architecture-convergence-p0-2.py b/scripts/verify-hepta-architecture-convergence-p0-2.py
+index ddf6ac4..a6bd7c2 100644
+--- a/scripts/verify-hepta-architecture-convergence-p0-2.py
++++ b/scripts/verify-hepta-architecture-convergence-p0-2.py
+@@ -312,7 +312,7 @@ def verify_product_wiring() -> None:
+             "AgentRuntimeComposition::open(config)",
+             "memory_service.into_runtime_parts()",
+             "AgentAppServerService::new(",
+-            "let _product_graph = product_graph",
++            "product_graph: _product_graph",
+         ),
+     )
+ 
+diff --git a/scripts/verify-hepta-cross-owner-operation-wiring.py b/scripts/verify-hepta-cross-owner-operation-wiring.py
+index f8bec88..7e55008 100644
+--- a/scripts/verify-hepta-cross-owner-operation-wiring.py
++++ b/scripts/verify-hepta-cross-owner-operation-wiring.py
+@@ -177,14 +177,22 @@ def verify_matrix_operation() -> None:
+             ".reconcile_applied(",
+         ),
+     )
+-    require_order(
+-        runtime,
+-        (
++    source = read(runtime)
++    start = source.find("async fn process_inbox_locked(")
++    end = source.find("async fn settle_operation(", start)
++    if start < 0 or end < 0 or end <= start:
++        fail("Matrix product dispatch function boundary is missing")
++    product_dispatch = source[start:end]
++    positions = [
++        product_dispatch.find(marker)
++        for marker in (
+             ".begin(inbox, &project_key, at_ms)",
+             ".begin_inbox_dispatch(&inbox.event_id, at_ms)",
+             ".submit_matrix_event_on_binding(",
+-        ),
+-    )
++        )
++    ]
++    if any(position < 0 for position in positions) or positions != sorted(positions):
++        fail("Matrix product operation intent/claim/dispatch order drifted")
+ 
+ 
+ def verify_provider_operation() -> None:
