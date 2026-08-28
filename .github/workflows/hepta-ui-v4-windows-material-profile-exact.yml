@@ -1,0 +1,226 @@
+name: hepta-ui-v4-windows-material-profile-exact
+
+on:
+  pull_request:
+    paths:
+      - "scripts/hepta-ui-v4-materialize-makepad-windows-hook"
+      - "scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch"
+      - "scripts/hepta-ui-v4-exact-candidate-materialization-gate"
+      - "docs/ui/HEPTA_UI_EXACT_CANDIDATE_MATERIALIZATION_HARDENING_V1.json"
+      - "docs/ui/schemas/hepta.ui.v4.vendored-makepad-materialization.v1.schema.json"
+      - ".github/workflows/hepta-ui-v4-windows-material-profile-exact.yml"
+      - "apps/hepta-native/src/bin/hepta-ui-v4-windows-material-profile-probe.rs"
+  workflow_dispatch:
+    inputs:
+      run_windows_profile_probe:
+        description: "Run governed Windows profile producer after exact-head compile"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+concurrency:
+  group: hepta-ui-v4-windows-material-profile-exact-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: Exact-head source and patcher self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+      - name: Verify exact checkout identity
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+          git rev-parse 'HEAD^{tree}' > exact-candidate-tree.txt
+      - name: Validate contracts and run source gate
+        shell: bash
+        run: |
+          set -o pipefail
+          ruby -c scripts/hepta-ui-v4-materialize-makepad-windows-hook
+          ruby -c scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch
+          ruby -c scripts/hepta-ui-v4-exact-candidate-materialization-gate
+          ruby -rjson -e 'ARGV.each { |path| JSON.parse(File.read(path)) }' \
+            docs/ui/HEPTA_UI_EXACT_CANDIDATE_MATERIALIZATION_HARDENING_V1.json \
+            docs/ui/schemas/hepta.ui.v4.vendored-makepad-materialization.v1.schema.json
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-windows-material-profile-exact.yml")'
+          mkdir -p artifacts/exact-candidate-materialization
+          ruby scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch --self-test \
+            | tee artifacts/exact-candidate-materialization/patcher-self-test.json
+          ruby scripts/hepta-ui-v4-exact-candidate-materialization-gate \
+            | tee artifacts/exact-candidate-materialization/source-gate.json
+          printf '%s\n' "$HEPTA_CANDIDATE_SHA" > artifacts/exact-candidate-materialization/candidate-commit.txt
+          cp exact-candidate-tree.txt artifacts/exact-candidate-materialization/candidate-tree.txt
+      - name: Upload exact source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-exact-source-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: artifacts/exact-candidate-materialization
+          if-no-files-found: error
+          retention-days: 14
+
+  patch-contract:
+    name: Exact Makepad materialization with bounded failure receipt
+    needs: source-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+      - name: Verify exact checkout identity
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+      - name: Materialize exact patched checkout
+        id: materialize
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/exact-candidate-materialization
+          ruby scripts/hepta-ui-v4-materialize-makepad-windows-hook \
+            "$PWD/artifacts/exact-candidate-materialization/makepad" \
+            "$PWD/artifacts/exact-candidate-materialization/cargo-patch.toml" \
+            "$PWD/artifacts/exact-candidate-materialization/materialization.json" \
+            2>&1 | tee artifacts/exact-candidate-materialization/materialization.log
+      - name: Validate materialization receipt
+        shell: bash
+        run: |
+          OUTCOME='${{ steps.materialize.outcome }}' ruby -rjson -e '
+            receipt = JSON.parse(File.read("artifacts/exact-candidate-materialization/materialization.json"))
+            if ENV.fetch("OUTCOME") == "success"
+              abort "unexpected success status" unless receipt.fetch("status") == "PASS_PATCHED_CHECKOUT_MATERIALIZED_SOURCE_ONLY"
+              abort "patch not applied" unless receipt.dig("qualification", "patchAppliedInWorktree") == true
+            else
+              abort "missing bounded failure status" unless receipt.fetch("status") == "FAIL_PATCHED_CHECKOUT_MATERIALIZATION"
+              abort "failure stage missing" if receipt.dig("failure", "stage").to_s.empty?
+              abort "failure message missing" if receipt.dig("failure", "message").to_s.empty?
+            end
+            abort "authority escaped" unless receipt.fetch("authority").values.all? { |value| value == false }
+          '
+          test '${{ steps.materialize.outcome }}' = success
+      - name: Upload materialization evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-exact-materialization-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: |
+            artifacts/exact-candidate-materialization/materialization.json
+            artifacts/exact-candidate-materialization/materialization.patch.json
+            artifacts/exact-candidate-materialization/cargo-patch.toml
+            artifacts/exact-candidate-materialization/materialization.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  compile-contract:
+    name: Exact-head patched producer compile (${{ matrix.os }})
+    needs: patch-contract
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+      - name: Verify exact checkout identity
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Materialize patched Makepad
+        shell: bash
+        run: |
+          set -o pipefail
+          ruby scripts/hepta-ui-v4-materialize-makepad-windows-hook \
+            "$PWD/.hepta-patched-makepad" \
+            "$PWD/.cargo/config.toml" \
+            "$PWD/hepta-patched-makepad-materialization.json" \
+            > "$PWD/hepta-patched-makepad-materialization.log" 2>&1
+      - name: Format, compile, and focused tests
+        shell: bash
+        run: |
+          cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
+          cargo check --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_windows_transient_material_host::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_windows_material_profile_aggregate::tests -- --nocapture
+      - name: Compile profile producer
+        shell: bash
+        env:
+          RUSTFLAGS: ${{ runner.os == 'Windows' && '--cfg hepta_makepad_windows_ack_hook --check-cfg=cfg(hepta_makepad_windows_ack_hook)' || '' }}
+        run: |
+          cargo check --manifest-path apps/hepta-native/Cargo.toml \
+            --bin hepta-ui-v4-windows-material-profile-probe \
+            --no-default-features
+
+  windows-runtime-profile:
+    name: Governed exact-head Windows Mica/Acrylic producer
+    if: github.event_name == 'workflow_dispatch' && inputs.run_windows_profile_probe == true
+    needs: [source-contract, patch-contract, compile-contract]
+    runs-on: [self-hosted, Windows, X64, hepta-ui-dwm]
+    timeout-minutes: 45
+    env:
+      RUSTFLAGS: "--cfg hepta_makepad_windows_ack_hook --check-cfg=cfg(hepta_makepad_windows_ack_hook)"
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+      - name: Verify exact checkout identity
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne $env:HEPTA_CANDIDATE_SHA) { throw 'exact candidate checkout drifted' }
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+      - name: Materialize patched Makepad
+        shell: bash
+        run: |
+          set -o pipefail
+          ruby scripts/hepta-ui-v4-materialize-makepad-windows-hook \
+            "$PWD/.hepta-patched-makepad" \
+            "$PWD/.cargo/config.toml" \
+            "$PWD/hepta-patched-makepad-materialization.json" \
+            > "$PWD/hepta-patched-makepad-materialization.log" 2>&1
+      - name: Run governed exact-candidate producer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/exact-windows-profile | Out-Null
+          $env:HEPTA_CANDIDATE_COMMIT = $env:HEPTA_CANDIDATE_SHA
+          $env:HEPTA_CANDIDATE_TREE = (git rev-parse 'HEAD^{tree}').Trim()
+          $env:HEPTA_WINDOWS_PROFILE_RECEIPT_PATH = "$PWD/artifacts/exact-windows-profile/receipt.json"
+          cargo run --manifest-path apps/hepta-native/Cargo.toml --bin hepta-ui-v4-windows-material-profile-probe --no-default-features
+      - name: Upload governed receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-exact-windows-profile-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: |
+            artifacts/exact-windows-profile/receipt.json
+            hepta-patched-makepad-materialization.json
+            hepta-patched-makepad-materialization.log
+          if-no-files-found: error
+          retention-days: 14

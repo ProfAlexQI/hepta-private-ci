@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+require "json"
 require "open3"
 require "pathname"
 require "rbconfig"
@@ -34,13 +35,13 @@ end
 def reindent_replacement(source, base_indent)
   nonblank = source.lines.reject { |line| line.strip.empty? }
   minimum_indent = nonblank.map do |line|
-    line[/\A[ \\t]*/].to_s.length
+    line[/\A[ \t]*/].to_s.length
   end.min || 0
   source.lines.map do |line|
     if line.strip.empty?
       line
     else
-      normalized = line.sub(/\A[ \\t]{#{minimum_indent}}/, "")
+      normalized = line.sub(/\A[ \t]{#{minimum_indent}}/, "")
       base_indent + normalized
     end
   end.join
@@ -50,7 +51,7 @@ def replace_once!(path, before, after, label)
   text = path.read
   exact_count = text.scan(before).length
   if exact_count == 1
-    path.write(text.sub(before, after))
+    path.write(text.sub(before) { after })
     return
   end
   raise PatchError, "#{label}: exact source matched #{exact_count} times" if exact_count > 1
@@ -63,9 +64,9 @@ def replace_once!(path, before, after, label)
 
   matched = matches.fetch(0)
   first_line = matched.lines.find { |line| !line.strip.empty? }
-  base_indent = first_line.to_s[/\A[ \\t]*/].to_s
+  base_indent = first_line.to_s[/\A[ \t]*/].to_s
   replacement = reindent_replacement(after, base_indent)
-  path.write(text.sub(pattern, replacement))
+  path.write(text.sub(pattern) { replacement })
 end
 RUBY
 
@@ -76,33 +77,91 @@ FIXED_CHANGED_FILES = <<~'RUBY'.strip.freeze
 changed_files = run!("git", "diff", "--name-only", chdir: checkout).lines(chomp: true).sort
 RUBY
 
+def repaired_source(repo_root)
+  original = repo_root.join("scripts/hepta-ui-v4-apply-makepad-windows-ack-patch")
+  abort "canonical patcher is missing" unless original.file?
+
+  actual_blob, blob_error, blob_status = Open3.capture3(
+    "git", "hash-object", original.to_s,
+    chdir: repo_root.to_s
+  )
+  abort "hash canonical patcher failed: #{blob_error}" unless blob_status.success?
+  abort "canonical patcher drifted: #{actual_blob.strip}" unless
+    actual_blob.strip == EXPECTED_PATCHER_BLOB
+
+  source = original.read
+  function_count = source.scan(ORIGINAL_FUNCTION).length
+  abort "canonical replace_once! function drifted: #{function_count}" unless function_count == 1
+  changed_files_count = source.scan(ORIGINAL_CHANGED_FILES).length
+  abort "canonical changed-file collection drifted: #{changed_files_count}" unless changed_files_count == 1
+
+  fixed_source = source
+    .sub(ORIGINAL_FUNCTION, REPAIRED_FUNCTION)
+    .sub(ORIGINAL_CHANGED_FILES, FIXED_CHANGED_FILES)
+  abort "canonical replace_once! function repair was not installed" unless
+    fixed_source.include?("indentation_flexible_pattern") &&
+    fixed_source.include?("reindent_replacement")
+  abort "changed-file paths are not chomped" unless
+    fixed_source.include?(".lines(chomp: true).sort")
+  fixed_source
+end
+
+def run_self_test
+  sandbox = Module.new
+  sandbox.const_set(:PatchError, Class.new(StandardError))
+  sandbox.module_eval(REPAIRED_FUNCTION, "(repaired matcher)", 1)
+  worker = Object.new.extend(sandbox)
+
+  Tempfile.create("hepta-exact-match") do |file|
+    file.write("alpha\\1\n")
+    file.flush
+    worker.send(:replace_once!, Pathname.new(file.path), "alpha\\1\n", "beta\\1\n", "exact")
+    raise "exact replacement expanded backreferences" unless File.read(file.path) == "beta\\1\n"
+  end
+
+  Tempfile.create("hepta-flex-match") do |file|
+    file.write("    fn old() {\n        body();\n    }\n")
+    file.flush
+    before = "fn old() {\n    body();\n}\n"
+    after = "fn new() {\n    next();\n}\n"
+    worker.send(:replace_once!, Pathname.new(file.path), before, after, "flex")
+    expected = "    fn new() {\n        next();\n    }\n"
+    raise "flex replacement did not preserve target indentation" unless File.read(file.path) == expected
+  end
+
+  Tempfile.create("hepta-ambiguous-match") do |file|
+    file.write("  item\n    item\n")
+    file.flush
+    begin
+      worker.send(:replace_once!, Pathname.new(file.path), "item\n", "done\n", "ambiguous")
+      raise "ambiguous match was accepted"
+    rescue sandbox.const_get(:PatchError)
+      # expected
+    end
+  end
+
+  puts JSON.pretty_generate(
+    schema: "hepta.ui.v4.makepad-patcher-self-test.v1",
+    status: "PASS_MAKEPAD_PATCHER_SELF_TEST",
+    exact_match: true,
+    indentation_flexible_unique_match: true,
+    ambiguous_match_rejected: true,
+    replacement_backslashes_preserved: true,
+    changed_file_paths_chomped: true,
+    production_authority: false,
+    effect_authority: false,
+    release: false
+  )
+end
+
 repo_root = Pathname.new(__dir__).join("..").expand_path
-original = repo_root.join("scripts/hepta-ui-v4-apply-makepad-windows-ack-patch")
-abort "canonical patcher is missing" unless original.file?
+if ARGV == ["--self-test"]
+  repaired_source(repo_root)
+  run_self_test
+  exit 0
+end
 
-actual_blob, blob_error, blob_status = Open3.capture3(
-  "git", "hash-object", original.to_s,
-  chdir: repo_root.to_s
-)
-abort "hash canonical patcher failed: #{blob_error}" unless blob_status.success?
-abort "canonical patcher drifted: #{actual_blob.strip}" unless
-  actual_blob.strip == EXPECTED_PATCHER_BLOB
-
-source = original.read
-function_count = source.scan(ORIGINAL_FUNCTION).length
-abort "canonical replace_once! function drifted: #{function_count}" unless function_count == 1
-changed_files_count = source.scan(ORIGINAL_CHANGED_FILES).length
-abort "canonical changed-file collection drifted: #{changed_files_count}" unless changed_files_count == 1
-
-fixed_source = source
-  .sub(ORIGINAL_FUNCTION, REPAIRED_FUNCTION)
-  .sub(ORIGINAL_CHANGED_FILES, FIXED_CHANGED_FILES)
-abort "canonical replace_once! function repair was not installed" unless
-  fixed_source.include?("indentation_flexible_pattern") &&
-  fixed_source.include?("reindent_replacement")
-abort "changed-file paths are not chomped" unless
-  fixed_source.include?(".lines(chomp: true).sort")
-
+fixed_source = repaired_source(repo_root)
 Tempfile.create(["hepta-ui-v4-fixed-makepad-patcher", ".rb"]) do |temporary|
   temporary.write(fixed_source)
   temporary.flush

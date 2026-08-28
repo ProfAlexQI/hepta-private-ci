@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.ai/schemas/ui/hepta.ui.v4.vendored-makepad-materialization.v1.schema.json",
+  "title": "Hepta UI v4 vendored Makepad materialization receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "makepad",
+    "cargoOverride",
+    "qualification",
+    "authority"
+  ],
+  "properties": {
+    "schema": {
+      "const": "hepta.ui.v4.vendored-makepad-windows-hook-materialization.v1"
+    },
+    "status": {
+      "enum": [
+        "PASS_PATCHED_CHECKOUT_MATERIALIZED_SOURCE_ONLY",
+        "FAIL_PATCHED_CHECKOUT_MATERIALIZATION"
+      ]
+    },
+    "makepad": {
+      "type": "object"
+    },
+    "cargoOverride": {
+      "type": "object"
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage",
+        "errorClass",
+        "message",
+        "patchReceiptPresent"
+      ],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "errorClass": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "patchReceiptPresent": {
+          "type": "boolean"
+        }
+      }
+    },
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "patchedCheckoutMaterialized",
+        "patchAppliedInWorktree",
+        "patchedMakepadCompile",
+        "heptaHookCompile",
+        "windowsRuntime",
+        "backdropReadback",
+        "transientSystemMaterial",
+        "completeProfile",
+        "systemMaterialBinding",
+        "nativeProductRuntime",
+        "deviceValidation"
+      ],
+      "properties": {
+        "patchedCheckoutMaterialized": {
+          "type": "boolean"
+        },
+        "patchAppliedInWorktree": {
+          "type": "boolean"
+        },
+        "patchedMakepadCompile": {
+          "const": false
+        },
+        "heptaHookCompile": {
+          "const": false
+        },
+        "windowsRuntime": {
+          "const": false
+        },
+        "backdropReadback": {
+          "const": false
+        },
+        "transientSystemMaterial": {
+          "const": false
+        },
+        "completeProfile": {
+          "const": false
+        },
+        "systemMaterialBinding": {
+          "const": false
+        },
+        "nativeProductRuntime": {
+          "const": false
+        },
+        "deviceValidation": {
+          "const": false
+        }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "network",
+        "mutation",
+        "effect",
+        "liveAdapter",
+        "production",
+        "operatorAcceptance",
+        "promotion",
+        "release"
+      ],
+      "properties": {
+        "network": {
+          "const": false
+        },
+        "mutation": {
+          "const": false
+        },
+        "effect": {
+          "const": false
+        },
+        "liveAdapter": {
+          "const": false
+        },
+        "production": {
+          "const": false
+        },
+        "operatorAcceptance": {
+          "const": false
+        },
+        "promotion": {
+          "const": false
+        },
+        "release": {
+          "const": false
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS_PATCHED_CHECKOUT_MATERIALIZED_SOURCE_ONLY"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "failure"
+          ]
+        },
+        "properties": {
+          "qualification": {
+            "properties": {
+              "patchedCheckoutMaterialized": {
+                "const": true
+              },
+              "patchAppliedInWorktree": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "FAIL_PATCHED_CHECKOUT_MATERIALIZATION"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "failure"
+        ],
+        "properties": {
+          "qualification": {
+            "properties": {
+              "patchedCheckoutMaterialized": {
+                "const": false
+              },
+              "patchAppliedInWorktree": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

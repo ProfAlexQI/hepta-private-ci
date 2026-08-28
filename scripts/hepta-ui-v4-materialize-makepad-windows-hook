@@ -10,13 +10,20 @@ require "rbconfig"
 
 REVISION = "c4335cee10b22aca768510c9d072b0ca1bba15c8"
 REMOTE = "https://github.com/kevinaboos/makepad.git"
+CANONICAL_PATCHER_BLOB = "369e607f4f80d08d739d2f83778fb4e37aa50d4e"
+REPAIR_WRAPPER = "scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch"
+
+class MaterializationError < StandardError; end
 
 def run!(*command, chdir: nil)
   options = chdir ? { chdir: chdir.to_s } : {}
   stdout, stderr, status = Open3.capture3(*command, **options)
-  abort "#{command.join(' ')} failed: #{stderr}" unless status.success?
+  return stdout.strip if status.success?
 
-  stdout.strip
+  detail = stderr.to_s.strip
+  detail = stdout.to_s.strip if detail.empty?
+  raise MaterializationError,
+        "#{command.join(' ')} failed#{detail.empty? ? '' : ": #{detail}"}"
 end
 
 def write_json_atomic(path, value)
@@ -25,6 +32,35 @@ def write_json_atomic(path, value)
   temporary = destination.sub_ext(".tmp")
   temporary.write(JSON.pretty_generate(value) + "\n")
   File.rename(temporary, destination)
+end
+
+def false_qualification
+  {
+    patchedCheckoutMaterialized: false,
+    patchAppliedInWorktree: false,
+    patchedMakepadCompile: false,
+    heptaHookCompile: false,
+    windowsRuntime: false,
+    backdropReadback: false,
+    transientSystemMaterial: false,
+    completeProfile: false,
+    systemMaterialBinding: false,
+    nativeProductRuntime: false,
+    deviceValidation: false
+  }
+end
+
+def false_authority
+  {
+    network: false,
+    mutation: false,
+    effect: false,
+    liveAdapter: false,
+    production: false,
+    operatorAcceptance: false,
+    promotion: false,
+    release: false
+  }
 end
 
 checkout_arg = ARGV.shift or abort "usage: #{$PROGRAM_NAME} CHECKOUT_DIR CARGO_CONFIG RECEIPT_JSON"
@@ -37,72 +73,94 @@ checkout = Pathname.new(checkout_arg).expand_path
 config = Pathname.new(config_arg).expand_path
 receipt = Pathname.new(receipt_arg).expand_path
 patch_receipt = receipt.sub_ext(".patch.json")
+stage = "initialize"
 
-FileUtils.rm_rf(checkout)
-checkout.mkpath
-run!("git", "init", "--quiet", chdir: checkout)
-run!("git", "remote", "add", "origin", REMOTE, chdir: checkout)
-run!("git", "fetch", "--quiet", "--depth", "1", "origin", REVISION, chdir: checkout)
-run!("git", "checkout", "--quiet", "--detach", "FETCH_HEAD", chdir: checkout)
+begin
+  stage = "prepare_checkout"
+  FileUtils.rm_rf(checkout)
+  checkout.mkpath
+  run!("git", "init", "--quiet", chdir: checkout)
+  run!("git", "remote", "add", "origin", REMOTE, chdir: checkout)
 
-patcher = repo_root.join("scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch")
-run!(RbConfig.ruby, patcher.to_s, checkout.to_s, patch_receipt.to_s, chdir: repo_root)
-patch_payload = JSON.parse(patch_receipt.read)
-abort "patch did not reach source-only PASS" unless
-  patch_payload.fetch("status") == "PASS_PATCH_APPLIED_TO_EXACT_WORKTREE_SOURCE_ONLY"
+  stage = "fetch_exact_revision"
+  run!("git", "fetch", "--quiet", "--depth", "1", "origin", REVISION, chdir: checkout)
+  run!("git", "checkout", "--quiet", "--detach", "FETCH_HEAD", chdir: checkout)
 
-config.dirname.mkpath
-widgets = checkout.join("widgets").to_s.tr("\\", "/")
-code_editor = checkout.join("code_editor").to_s.tr("\\", "/")
-config_text = <<~TOML
-  [patch."https://github.com/kevinaboos/makepad"]
-  makepad-widgets = { path = #{widgets.inspect} }
-  makepad-code-editor = { path = #{code_editor.inspect} }
-TOML
-config.write(config_text)
+  stage = "apply_exact_patch"
+  patcher = repo_root.join(REPAIR_WRAPPER)
+  raise MaterializationError, "repair wrapper is missing" unless patcher.file?
+  run!(RbConfig.ruby, patcher.to_s, checkout.to_s, patch_receipt.to_s, chdir: repo_root)
+  raise MaterializationError, "patch receipt is missing" unless patch_receipt.file?
+  patch_payload = JSON.parse(patch_receipt.read)
+  unless patch_payload.fetch("status") == "PASS_PATCH_APPLIED_TO_EXACT_WORKTREE_SOURCE_ONLY"
+    raise MaterializationError, "patch did not reach source-only PASS"
+  end
 
-payload = {
-  schema: "hepta.ui.v4.vendored-makepad-windows-hook-materialization.v1",
-  status: "PASS_PATCHED_CHECKOUT_MATERIALIZED_SOURCE_ONLY",
-  makepad: {
-    remote: REMOTE,
-    revision: REVISION,
-    checkout: checkout.to_s,
-    head: run!("git", "rev-parse", "HEAD", chdir: checkout),
-    dirty: !run!("git", "status", "--porcelain", chdir: checkout).empty?,
-    diffSha256: patch_payload.dig("makepad", "diffSha256"),
-    changedFiles: patch_payload.dig("makepad", "changedFiles"),
-    patcher: "scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch",
-    canonicalPatcherBlob: "369e607f4f80d08d739d2f83778fb4e37aa50d4e"
-  },
-  cargoOverride: {
-    config: config.to_s,
-    sha256: Digest::SHA256.hexdigest(config_text),
-    defaultDependencyChanged: false
-  },
-  qualification: {
-    patchedCheckoutMaterialized: true,
-    patchAppliedInWorktree: true,
-    patchedMakepadCompile: false,
-    heptaHookCompile: false,
-    windowsRuntime: false,
-    backdropReadback: false,
-    transientSystemMaterial: false,
-    completeProfile: false,
-    systemMaterialBinding: false,
-    nativeProductRuntime: false,
-    deviceValidation: false
-  },
-  authority: {
-    network: false,
-    mutation: false,
-    effect: false,
-    liveAdapter: false,
-    production: false,
-    operatorAcceptance: false,
-    promotion: false,
-    release: false
+  stage = "write_cargo_override"
+  config.dirname.mkpath
+  widgets = checkout.join("widgets").to_s.tr("\\", "/")
+  code_editor = checkout.join("code_editor").to_s.tr("\\", "/")
+  config_text = <<~TOML
+    [patch."https://github.com/kevinaboos/makepad"]
+    makepad-widgets = { path = #{widgets.inspect} }
+    makepad-code-editor = { path = #{code_editor.inspect} }
+  TOML
+  config.write(config_text)
+
+  stage = "write_success_receipt"
+  payload = {
+    schema: "hepta.ui.v4.vendored-makepad-windows-hook-materialization.v1",
+    status: "PASS_PATCHED_CHECKOUT_MATERIALIZED_SOURCE_ONLY",
+    makepad: {
+      remote: REMOTE,
+      revision: REVISION,
+      checkout: checkout.to_s,
+      head: run!("git", "rev-parse", "HEAD", chdir: checkout),
+      dirty: !run!("git", "status", "--porcelain", chdir: checkout).empty?,
+      diffSha256: patch_payload.dig("makepad", "diffSha256"),
+      changedFiles: patch_payload.dig("makepad", "changedFiles"),
+      patcher: REPAIR_WRAPPER,
+      canonicalPatcherBlob: CANONICAL_PATCHER_BLOB
+    },
+    cargoOverride: {
+      config: config.to_s,
+      sha256: Digest::SHA256.hexdigest(config_text),
+      defaultDependencyChanged: false
+    },
+    qualification: false_qualification.merge(
+      patchedCheckoutMaterialized: true,
+      patchAppliedInWorktree: true
+    ),
+    authority: false_authority
   }
-}
-write_json_atomic(receipt, payload)
-puts JSON.pretty_generate(payload)
+  write_json_atomic(receipt, payload)
+  puts JSON.pretty_generate(payload)
+rescue StandardError => error
+  FileUtils.rm_f(config)
+  payload = {
+    schema: "hepta.ui.v4.vendored-makepad-windows-hook-materialization.v1",
+    status: "FAIL_PATCHED_CHECKOUT_MATERIALIZATION",
+    makepad: {
+      remote: REMOTE,
+      revision: REVISION,
+      checkout: checkout.to_s,
+      patcher: REPAIR_WRAPPER,
+      canonicalPatcherBlob: CANONICAL_PATCHER_BLOB
+    },
+    cargoOverride: {
+      config: config.to_s,
+      defaultDependencyChanged: false
+    },
+    failure: {
+      stage: stage,
+      errorClass: error.class.name,
+      message: error.message.to_s.byteslice(0, 4096),
+      patchReceiptPresent: patch_receipt.file?
+    },
+    qualification: false_qualification,
+    authority: false_authority
+  }
+  write_json_atomic(receipt, payload)
+  warn JSON.pretty_generate(payload)
+  exit 1
+end
