@@ -146,8 +146,7 @@ pub fn decide_local_semantic_route(
         tokenizer_registered: readiness.tokenizer_registered,
         embedding_provider_registered: readiness.embedding_provider_registered,
         index_opened_and_verified: readiness.index_opened_and_verified,
-        model_tokenizer_index_bindings_match: readiness
-            .model_tokenizer_index_bindings_match,
+        model_tokenizer_index_bindings_match: readiness.model_tokenizer_index_bindings_match,
         dependencies_executable_qualified: readiness.dependencies_executable_qualified,
         deterministic: true,
         runtime_wired: false,

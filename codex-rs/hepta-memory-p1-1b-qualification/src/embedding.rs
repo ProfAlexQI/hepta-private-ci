@@ -168,8 +168,7 @@ pub struct EmbeddedVector {
 impl EmbeddedVector {
     pub fn validate(&self) -> Result<(), ContractError> {
         validate_id(&self.provider_id, "embedded vector provider id")?;
-        if self.dimensions == 0
-            || usize::try_from(self.dimensions).ok() != Some(self.vector.len())
+        if self.dimensions == 0 || usize::try_from(self.dimensions).ok() != Some(self.vector.len())
         {
             return Err(ContractError::Corrupt(
                 "embedded vector dimensions do not match vector length".to_string(),
@@ -266,13 +265,10 @@ impl EmbeddingRegistry {
             });
         }
         for input in inputs {
-            if input.len()
-                > usize::try_from(descriptor.max_input_bytes).unwrap_or(usize::MAX)
-            {
+            if input.len() > usize::try_from(descriptor.max_input_bytes).unwrap_or(usize::MAX) {
                 return Err(ContractError::Limit {
                     label: "embedding input bytes",
-                    max: usize::try_from(descriptor.max_input_bytes)
-                        .unwrap_or(MAX_INPUT_BYTES),
+                    max: usize::try_from(descriptor.max_input_bytes).unwrap_or(MAX_INPUT_BYTES),
                 });
             }
         }
@@ -319,16 +315,15 @@ impl LocalEmbeddingProvider for QualificationHashOneHotProvider {
     }
 
     fn embed_batch(&self, inputs: &[&str]) -> Result<Vec<Vec<i16>>, ContractError> {
-        let dimensions = usize::try_from(self.descriptor.dimensions)
-            .map_err(|_| ContractError::Overflow)?;
+        let dimensions =
+            usize::try_from(self.descriptor.dimensions).map_err(|_| ContractError::Overflow)?;
         inputs
             .iter()
             .map(|input| {
                 let digest = Digest32::for_bytes(input.as_bytes());
                 let mut selector = [0_u8; 8];
                 selector.copy_from_slice(&digest.as_bytes()[..8]);
-                let index = usize::try_from(u64::from_be_bytes(selector))
-                    .unwrap_or(usize::MAX)
+                let index = usize::try_from(u64::from_be_bytes(selector)).unwrap_or(usize::MAX)
                     % dimensions;
                 let mut vector = vec![0_i16; dimensions];
                 vector[index] = if digest.as_bytes()[8] & 1 == 0 {
@@ -393,8 +388,8 @@ pub(crate) fn vector_digest(vector: &[i16]) -> Digest32 {
 pub(crate) fn norm_squared(vector: &[i16]) -> Result<u64, ContractError> {
     vector.iter().try_fold(0_u64, |sum, value| {
         let signed = i64::from(*value);
-        let square = u64::try_from(signed.saturating_mul(signed))
-            .map_err(|_| ContractError::Overflow)?;
+        let square =
+            u64::try_from(signed.saturating_mul(signed)).map_err(|_| ContractError::Overflow)?;
         sum.checked_add(square).ok_or(ContractError::Overflow)
     })
 }

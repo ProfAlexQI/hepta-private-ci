@@ -14,14 +14,6 @@ use hepta_intelligence_p1_1b_qualification::LocalSemanticReadiness;
 use hepta_intelligence_p1_1b_qualification::LocalSemanticRoute;
 use hepta_intelligence_p1_1b_qualification::LocalTokenizerDescriptor;
 use hepta_intelligence_p1_1b_qualification::LocalTokenizerRegistry;
-use hepta_intelligence_p1_1b_qualification::QualificationHashOneHotProvider;
-use hepta_intelligence_p1_1b_qualification::TokenCountMode;
-use hepta_intelligence_p1_1b_qualification::TokenizerContract;
-use hepta_intelligence_p1_1b_qualification::TokenizerImplementationKind;
-use hepta_intelligence_p1_1b_qualification::VectorQuantization;
-use hepta_intelligence_p1_1b_qualification::build_local_ann_index;
-use hepta_intelligence_p1_1b_qualification::decide_local_semantic_route;
-use hepta_intelligence_p1_1b_qualification::reopen_local_ann_index;
 use hepta_intelligence_p1_1b_qualification::P1_1B_CALLERS_RATCHET;
 use hepta_intelligence_p1_1b_qualification::P1_1B_CONTEXT_ATTACHMENT;
 use hepta_intelligence_p1_1b_qualification::P1_1B_DEFAULT_RECALL_CHANGED;
@@ -37,6 +29,14 @@ use hepta_intelligence_p1_1b_qualification::P1_1B_PRODUCTION_AUTHORITY;
 use hepta_intelligence_p1_1b_qualification::P1_1B_PROMOTION;
 use hepta_intelligence_p1_1b_qualification::P1_1B_REMOTE_EMBEDDING;
 use hepta_intelligence_p1_1b_qualification::P1_1B_WIRED;
+use hepta_intelligence_p1_1b_qualification::QualificationHashOneHotProvider;
+use hepta_intelligence_p1_1b_qualification::TokenCountMode;
+use hepta_intelligence_p1_1b_qualification::TokenizerContract;
+use hepta_intelligence_p1_1b_qualification::TokenizerImplementationKind;
+use hepta_intelligence_p1_1b_qualification::VectorQuantization;
+use hepta_intelligence_p1_1b_qualification::build_local_ann_index;
+use hepta_intelligence_p1_1b_qualification::decide_local_semantic_route;
+use hepta_intelligence_p1_1b_qualification::reopen_local_ann_index;
 
 fn tokenizer_descriptor() -> LocalTokenizerDescriptor {
     LocalTokenizerDescriptor {
@@ -75,7 +75,12 @@ fn embedding_descriptor() -> LocalEmbeddingDescriptor {
 
 fn temp_path(label: &str) -> PathBuf {
     let suffix = Digest32::for_bytes(
-        format!("{label}:{}:{:?}", std::process::id(), std::thread::current().id()).as_bytes(),
+        format!(
+            "{label}:{}:{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        )
+        .as_bytes(),
     )
     .to_hex();
     std::env::temp_dir().join(format!("hepta-p1-1b-{label}-{suffix}.ann"))
