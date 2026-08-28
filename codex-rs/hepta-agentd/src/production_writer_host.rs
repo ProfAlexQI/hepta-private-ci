@@ -22,7 +22,7 @@ use codex_hepta_memory::ProductionDurableWriter;
 use codex_hepta_memory::ProductionOutboxDispatcher;
 use codex_hepta_memory::ProductionOutboxTarget;
 use codex_hepta_memory::ProductionQueuedReceipt;
-use codex_hepta_memory::ProductionWriterError;
+use codex_hepta_memory_runtime::AuthorizedProductionWriter;
 
 use crate::AgentdConfig;
 use crate::AgentdError;
@@ -60,10 +60,8 @@ impl fmt::Debug for AgentdProductionWriterHost {
 }
 
 impl AgentdProductionWriterHost {
-    /// Verify and mint the typed cognitive-write witness before opening the
-    /// Cognitive store. The durable writer repeats its legacy verifier check
-    /// before lease mutation, preserving backward compatibility while the
-    /// typed authority kernel becomes the canonical host boundary.
+    /// Verify and mint the typed cognitive-write witness before the Memory
+    /// runtime opens the raw durable writer. Agentd never calls the raw opener.
     pub async fn open<V>(
         config: &AgentdConfig,
         authority: ProductionAuthorityLease,
@@ -80,33 +78,30 @@ impl AgentdProductionWriterHost {
             &config.identity().agent_id,
             lease_generation,
         )?;
-        let (authority, cognitive_write) = authorization.into_parts();
-        let store = CognitiveStore::open(&config.identity().layout)
-            .await
-            .map_err(|error| {
-                AgentdError::Protocol(format!("open production cognitive store: {error}"))
-            })?;
-        let writer =
-            ProductionDurableWriter::open(store, authority, verifier, lease_id, lease_generation)
-                .await?;
-        Ok(Self {
-            writer: Arc::new(writer),
-            cognitive_write,
-            external_effect: None,
-            dispatcher: None,
-        })
+        let runtime = AuthorizedProductionWriter::open(
+            &config.identity().layout,
+            authorization,
+            verifier,
+            lease_id,
+            lease_generation,
+        )
+        .await
+        .map_err(|error| {
+            AgentdError::Protocol(format!("open authorized production Memory runtime: {error}"))
+        })?;
+        Ok(Self::from_runtime(runtime))
     }
 
-    /// Build a host handle around an already-open Agentd-owned store. This is
-    /// useful when the runtime has already attached a CognitiveStore and keeps
-    /// the same mandatory external verifier contract.
+    /// Build a host handle around an already-open Agentd-owned store. The
+    /// Memory runtime still owns the raw writer opening and validates that the
+    /// store owner matches the externally verified capability.
     pub async fn open_with_store<V>(
         store: CognitiveStore,
         authority: ProductionAuthorityLease,
         verifier: &V,
         lease_id: impl Into<String>,
         lease_generation: u64,
-    ) -> Result<Self, ProductionWriterError>
+    ) -> Result<Self, AgentdError>
     where
         V: ProductionAuthorityVerifier + ?Sized,
     {
@@ -116,16 +111,28 @@ impl AgentdProductionWriterHost {
             store.owner_agent_id(),
             lease_generation,
         )?;
-        let (authority, cognitive_write) = authorization.into_parts();
-        let writer =
-            ProductionDurableWriter::open(store, authority, verifier, lease_id, lease_generation)
-                .await?;
-        Ok(Self {
-            writer: Arc::new(writer),
+        let runtime = AuthorizedProductionWriter::open_with_store(
+            store,
+            authorization,
+            verifier,
+            lease_id,
+            lease_generation,
+        )
+        .await
+        .map_err(|error| {
+            AgentdError::Protocol(format!("open authorized production Memory runtime: {error}"))
+        })?;
+        Ok(Self::from_runtime(runtime))
+    }
+
+    fn from_runtime(runtime: AuthorizedProductionWriter) -> Self {
+        let (writer, cognitive_write) = runtime.into_parts();
+        Self {
+            writer,
             cognitive_write,
             external_effect: None,
             dispatcher: None,
-        })
+        }
     }
 
     /// Append a durable local intent through the host-owned writer. This path
