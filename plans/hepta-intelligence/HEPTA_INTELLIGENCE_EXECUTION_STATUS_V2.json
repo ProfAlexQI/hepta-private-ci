@@ -20,10 +20,12 @@
     "qualified": false
   },
   "current_tranche": {
-    "id": "P0.4",
+    "id": "P0.4a",
     "name": "typed_intelligence_mutation_state_machine",
-    "status": "source_only_implemented_runtime_wiring_blocked",
+    "status": "source_only_implemented_hosted_runner_blocked",
     "qualified": false,
+    "source_candidate": "465ab0e7e31ee69e1c6148decf8737bc3d323ef8",
+    "hosted_blocker_receipt_commit": "1e4bb8fc428763682c729192121de69a17e97ff1",
     "files": [
       "codex-rs/hepta-memory/src/intelligence_mutation_state.rs",
       "codex-rs/hepta-memory/src/framing.rs",
@@ -32,6 +34,7 @@
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4_SOURCE_TRANCHE_2026-08-28.md",
       "plans/hepta-intelligence/models/P0_4_INTELLIGENCE_MUTATION_STATE_MACHINE.tla",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4_HOSTED_BLOCKER_2026-08-28.json",
       ".github/workflows/hepta-intelligence-grounding-ledger.yml",
       ".github/workflows/hepta-intelligence-grounding-gate.yml",
       ".github/workflows/hepta-intelligence-mutation-state-machine.yml"
@@ -61,12 +64,32 @@
       "qualification_toolchain_runtime_executed": false
     },
     "qualification": {
-      "source_gate": "pending_exact_head_execution",
-      "format": "not_run",
-      "focused_tests": "not_run",
-      "crate_tests": "not_run",
-      "clippy": "not_run",
-      "hosted_ci": "pending",
+      "source_gate": "not_run_runner_blocked",
+      "format": "not_run_runner_blocked",
+      "focused_tests": "not_run_runner_blocked",
+      "crate_tests": "not_run_runner_blocked",
+      "clippy": "not_run_runner_blocked",
+      "tla_model_check": "not_run_runner_blocked",
+      "hosted_ci": "blocked_runner_not_assigned",
+      "workflow_run": {
+        "id": 33137037704,
+        "head": "465ab0e7e31ee69e1c6148decf8737bc3d323ef8",
+        "jobs": [
+          {
+            "id": 98739196147,
+            "name": "P0.4 mutation state source contract",
+            "steps": [],
+            "runner_id": 0
+          },
+          {
+            "id": 98739196307,
+            "name": "P0.4 mutation state Rust qualification",
+            "steps": [],
+            "runner_id": 0
+          }
+        ],
+        "commands_executed": false
+      },
       "qualified": false,
       "toolchain_pin": "1.95.0_source_bound_not_run"
     }
@@ -119,20 +142,21 @@
     }
   ],
   "next_tranche": {
-    "id": "P1.1",
-    "name": "hybrid_retrieval_v2",
-    "activation": "blocked",
+    "id": "P0.4b",
+    "name": "sqlite_transition_journal_and_failpoints",
+    "activation": "source_development_allowed_on_separate_stacked_draft",
     "requirements": [
-      "P0.1-P0.4 exact-head executable qualification",
-      "P0.4 SQLite persistence and failpoint tranche",
-      "candidate freeze and readable CI artifacts",
-      "production authority remains false"
+      "append-only operation and transition journal",
+      "exact replay from genesis on reopen",
+      "before-commit and after-commit crash-window tests",
+      "schema and migration oracle",
+      "runtime and production authority remain false"
     ]
   },
   "next_actions": [
-    "Run the P0.4 source gate on one exact head.",
-    "Run Rust format, focused tests, full crate tests, and clippy with repository toolchain 1.95.0 after an assigned runner is available.",
-    "Keep the state machine dormant until P0.1-P0.3 qualify.",
-    "Implement SQLite persistence and boundary failpoints as a separate guarded tranche before runtime wiring."
+    "Preserve Draft PR #16 and its hosted blocker receipt.",
+    "Develop P0.4b on a separate stacked Draft from the latest P0.4a head.",
+    "Keep P0.4a and P0.4b dormant until executable qualification is available.",
+    "Do not activate production callers or P1.1 from source-only evidence."
   ]
 }
