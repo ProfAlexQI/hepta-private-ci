@@ -7,7 +7,9 @@ fn decode_pull_frame(frame: &[u8]) -> Result<Vec<PullEvent>, String> {
     let frame = frame.strip_suffix(b"\n").unwrap_or(frame);
     let frame = frame.strip_suffix(b"\r").unwrap_or(frame);
     if frame.is_empty() {
-        return Ok(Vec::new());
+        // Blank keepalive frames are valid no-op frames; this is unrelated to
+        // model-discovery failure handling, which remains fail-closed.
+        return Ok(Vec::default());
     }
 
     let text = std::str::from_utf8(frame)
