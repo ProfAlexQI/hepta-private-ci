@@ -1,10 +1,30 @@
 {
   "schema": "hepta.ui.windows-material-profile-aggregate.v1",
-  "status": "DUAL_RECEIPT_AGGREGATOR_SOURCE_READY_RUNTIME_EVIDENCE_REQUIRED",
+  "status": "TRANSIENT_HOST_AND_DUAL_RECEIPT_AGGREGATOR_SOURCE_READY_RUNTIME_EVIDENCE_REQUIRED",
   "candidateBranch": "codex/ui-v4-windows-material-profile-aggregate-20260828",
   "baseBranch": "codex/ui-v4-vendored-makepad-windows-hook-20260828",
   "baseCommit": "f34d13455ee114907f2756dd9ea96d67d6dd648e",
   "baseTree": "012c62e38ce49bf1fca973d7174b43912adf1ac2",
+  "transientHost": {
+    "source": "apps/hepta-native/src/shared/hepta_windows_transient_material_host.rs",
+    "productLifecycleBound": false,
+    "scriptRegistered": false,
+    "dedicatedPopupRequired": true,
+    "dedicatedHwndRequired": true,
+    "rootHwndReuseAllowed": false,
+    "exactParentWindowIdentityRequired": true,
+    "exactTransientWindowIdentityRequired": true,
+    "monotonicRequestSequence": true,
+    "singlePendingRequest": true,
+    "sequence": [
+      "AcrylicBackdropReadback",
+      "ExplicitNoneRollbackReadback",
+      "ExactDestroyedAcknowledgement"
+    ],
+    "evidenceExport": "profile_evidence",
+    "runtimeValidated": false,
+    "productBound": false
+  },
   "aggregate": {
     "source": "apps/hepta-native/src/shared/hepta_windows_material_profile_aggregate.rs",
     "rootReceipt": {
@@ -16,6 +36,7 @@
       "exactWindowIdentityRequired": true
     },
     "transientLifecycle": {
+      "source": "HeptaWindowsTransientMaterialHost::profile_evidence",
       "dedicatedHwndRequired": true,
       "rootHwndReuseAllowed": false,
       "parentIdentityMustMatchRoot": true,
@@ -31,6 +52,7 @@
   },
   "qualification": {
     "sourceImplemented": true,
+    "transientHostSourceImplemented": true,
     "nativeCompile": false,
     "windowsCompile": false,
     "rootRuntimeReceipt": false,
