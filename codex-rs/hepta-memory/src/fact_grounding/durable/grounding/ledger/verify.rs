@@ -9,8 +9,12 @@ pub(super) async fn verify_receipts(
                 g.source_id, g.source_revision, g.source_content_sha256,
                 g.fact_set_sha256, g.fact_identity_sha256,
                 g.evidence_count, g.receipt_sha256,
-                m.owner_agent_id, s.content, s.content_sha256 AS ledger_source_sha256,
-                f.entity_count, f.relation_count
+                m.owner_agent_id, m.verification, m.lifecycle,
+                m.content_sha256 AS memory_content_sha256,
+                s.content, s.content_sha256 AS ledger_source_sha256,
+                f.entity_count, f.relation_count,
+                f.source_id AS fact_source_id,
+                f.source_revision AS fact_source_revision
          FROM kg_revision_fact_grounding_receipts AS g
          JOIN memory_revisions AS m
            ON m.memory_id = g.memory_id AND m.revision = g.memory_revision
@@ -48,6 +52,14 @@ pub(super) async fn verify_receipts(
                 "fact-grounding receipt belongs to a foreign agent".to_string(),
             ));
         }
+        let verification: String = row.try_get("verification").map_err(unavailable)?;
+        let lifecycle: String = row.try_get("lifecycle").map_err(unavailable)?;
+        if verification != "verified" || lifecycle != "active" {
+            return Err(CognitiveStoreError::Corrupt(
+                "durable fact-grounding receipt is bound to an ineligible memory revision"
+                    .to_string(),
+            ));
+        }
         let contract: String = row.try_get("grounding_contract").map_err(unavailable)?;
         if contract != GROUNDING_CONTRACT {
             return Err(CognitiveStoreError::Corrupt(
@@ -62,6 +74,15 @@ pub(super) async fn verify_receipts(
                 "negative fact-grounding source revision".to_string(),
             )
         })?;
+        let fact_source_id: String = row.try_get("fact_source_id").map_err(unavailable)?;
+        let fact_source_revision_i64: i64 =
+            row.try_get("fact_source_revision").map_err(unavailable)?;
+        if fact_source_id != source_id || fact_source_revision_i64 != source_revision_i64 {
+            return Err(CognitiveStoreError::Corrupt(
+                "durable grounding source does not match the immutable fact-set citation"
+                    .to_string(),
+            ));
+        }
         let source: Vec<u8> = row.try_get("content").map_err(unavailable)?;
         let source_text = str::from_utf8(&source).map_err(|_| {
             CognitiveStoreError::Corrupt(
@@ -73,14 +94,16 @@ pub(super) async fn verify_receipts(
                 "durably grounded source exceeds the verification limit".to_string(),
             ));
         }
-        let source_content_sha256 =
-            Sha256Digest::for_bytes(&source);
+        let source_content_sha256 = Sha256Digest::for_bytes(&source);
         let stored_source_sha256: String =
             row.try_get("source_content_sha256").map_err(unavailable)?;
         let ledger_source_sha256: String =
             row.try_get("ledger_source_sha256").map_err(unavailable)?;
+        let memory_content_sha256: String =
+            row.try_get("memory_content_sha256").map_err(unavailable)?;
         if source_content_sha256.as_str() != stored_source_sha256
             || source_content_sha256.as_str() != ledger_source_sha256
+            || source_content_sha256.as_str() != memory_content_sha256
         {
             return Err(CognitiveStoreError::Corrupt(
                 "durable grounding source digest failed recomputation".to_string(),
