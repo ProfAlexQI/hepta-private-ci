@@ -1,0 +1,64 @@
+{
+  "schema": "hepta_intelligence_p0_4_hosted_blocker_v1",
+  "recorded_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "pull_request": 16,
+  "base_branch": "codex/hepta-intelligence-grounding-gate-v3-20260828",
+  "base_commit": "256a47d882413ac1f80892a80177419bb5d12c70",
+  "head_branch": "codex/hepta-intelligence-mutation-state-machine-v4-20260828",
+  "source_candidate": "465ab0e7e31ee69e1c6148decf8737bc3d323ef8",
+  "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
+  "qualified": false,
+  "workflow_runs": [
+    {
+      "id": 33137037704,
+      "name": "hepta-intelligence-mutation-state-machine",
+      "head": "465ab0e7e31ee69e1c6148decf8737bc3d323ef8",
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "id": 98739196147,
+          "name": "P0.4 mutation state source contract",
+          "steps": [],
+          "runner_id": 0
+        },
+        {
+          "id": 98739196307,
+          "name": "P0.4 mutation state Rust qualification",
+          "steps": [],
+          "runner_id": 0
+        }
+      ],
+      "commands_executed": false
+    },
+    {
+      "id": 33137037850,
+      "name": "blocking-ci",
+      "head": "465ab0e7e31ee69e1c6148decf8737bc3d323ef8",
+      "conclusion": "failure",
+      "commands_executed": false
+    },
+    {
+      "id": 33137037709,
+      "name": "v8-canary",
+      "head": "465ab0e7e31ee69e1c6148decf8737bc3d323ef8",
+      "conclusion": "failure",
+      "commands_executed": false
+    }
+  ],
+  "authority": {
+    "runtime_wired": false,
+    "sqlite_persistence": false,
+    "sqlite_failpoint_execution": false,
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "interpretation": [
+    "No checkout, Python source gate, Rust formatter, compiler, tests, clippy, TLA+ model checker, SQLite failpoint, migration, or runtime command executed in the cited jobs.",
+    "The GitHub conclusions are infrastructure evidence, not source failure and not PASS.",
+    "P0.4a remains a source-only stacked Draft; P0.4b may add an opt-in SQLite journal on a separate stacked Draft but must not wire production callers."
+  ]
+}
