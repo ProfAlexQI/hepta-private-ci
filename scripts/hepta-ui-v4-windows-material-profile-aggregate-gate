@@ -10,6 +10,7 @@ files = {
   shared: root.join("apps/hepta-native/src/shared/mod.rs"),
   lifecycle: root.join("apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs"),
   contract: root.join("docs/ui/HEPTA_WINDOWS_MATERIAL_PROFILE_AGGREGATE_V1.json"),
+  schema: root.join("docs/ui/schemas/hepta.ui.v4.windows-material-profile-aggregate.v1.schema.json"),
   status: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_14_WINDOWS_PROFILE_AGGREGATE_2026-08-28.md"),
   workflow: root.join(".github/workflows/hepta-ui-v4-windows-material-profile-aggregate.yml")
 }.freeze
@@ -53,6 +54,7 @@ source = files.fetch(:source).read
 shared = files.fetch(:shared).read
 lifecycle = files.fetch(:lifecycle).read
 contract = JSON.parse(files.fetch(:contract).read)
+schema = JSON.parse(files.fetch(:schema).read)
 workflow = files.fetch(:workflow).read
 
 checks["shared.module_declared"] =
@@ -112,8 +114,23 @@ checks["contract.source_only_boundary"] =
   contract.fetch("qualification").reject { |key, _| key == "sourceImplemented" }.values.none? &&
   contract.fetch("authority").values.none?
 
+checks["schema.identity"] =
+  schema["$id"].to_s.end_with?("hepta.ui.v4.windows-material-profile-aggregate.v1.schema.json") &&
+  schema.dig("properties", "schema", "const") == "hepta.ui.v4.windows-material-profile-aggregate.v1"
+checks["schema.product_binding_remains_false"] = %w[
+  productBound transientSystemMaterialBound completeProfileBound
+  systemMaterialBound nativeProductRuntime deviceValidation
+].all? do |key|
+  schema.dig("$defs", "qualification", "properties", key, "const") == false
+end
+checks["schema.authority_false"] =
+  schema.dig("$defs", "authority", "properties").values.all? do |definition|
+    definition["const"] == false
+  end
+
 checks["workflow.source_and_compile"] =
   workflow.include?("hepta-ui-v4-windows-material-profile-aggregate-gate") &&
+  workflow.include?("hepta.ui.v4.windows-material-profile-aggregate.v1.schema.json") &&
   %w[ubuntu-latest windows-latest macos-latest].all? { |os| workflow.include?(os) } &&
   workflow.include?("hepta_windows_material_profile_aggregate::tests")
 checks["workflow.read_only_no_release"] =
