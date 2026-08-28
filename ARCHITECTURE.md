@@ -74,6 +74,13 @@ writer repeats the legacy verifier check before lease mutation. This is intentio
 migration period. The adapter cannot mint `ExternalEffectCapability`, provider dispatch, model
 invocation, fleet mutation, operator acceptance, or promotion.
 
+A production outbox target is a separate authority boundary. `AgentdProductionWriterHost` accepts a
+target only together with an externally verified `Authorized<ExternalEffectCapability>`. Attachment
+and every dispatch require the effect witness to bind the same Agent and generation as the cognitive
+writer, and every dispatch rechecks its expiry. The legacy production-lease adapter cannot create
+this witness. Therefore cognitive-write authority alone can queue durable intent but cannot cross an
+external effect boundary.
+
 ## Agentd service boundary
 
 The task-supervision loop now owns process cancellation and task joining only. Product construction
@@ -127,6 +134,6 @@ operator_acceptance
 promotion
 ```
 
-The exact-head GitHub workflow must pass source verification, typed lease-adapter tests, real
-Agent-private SQLite service composition, default and qualification profiles, all-target check, and
-strict Clippy before the slice can be called qualified.
+The exact-head GitHub workflow must pass source verification, typed lease-adapter and external-effect
+gate tests, real Agent-private SQLite service composition, default and qualification profiles,
+all-target check, and strict Clippy before the slice can be called qualified.
