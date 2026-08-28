@@ -1,0 +1,298 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+Encoding.default_external = Encoding::UTF_8
+Encoding.default_internal = Encoding::UTF_8
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  shared: root.join("apps/hepta-native/src/shared/mod.rs"),
+  host: root.join("apps/hepta-native/src/shared/hepta_windows_transient_material_host.rs"),
+  probe: root.join("apps/hepta-native/src/bin/hepta-ui-v4-windows-transient-material-probe.rs"),
+  contract: root.join("docs/ui/HEPTA_WINDOWS_TRANSIENT_MATERIAL_HOST_V1.json"),
+  matrix: root.join("docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"),
+  schema: root.join("docs/ui/schemas/hepta.ui.v4.windows-transient-material-probe.v1.schema.json"),
+  status: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_13_WINDOWS_TRANSIENT_MATERIAL_HOST_2026-08-28.md"),
+  vendored_contract: root.join("docs/ui/HEPTA_VENDORED_MAKEPAD_WINDOWS_HOOK_V1.json"),
+  materializer: root.join("scripts/hepta-ui-v4-materialize-makepad-windows-hook"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-windows-transient-material-host.yml")
+}.freeze
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+
+def emit(checks, status)
+  failures = checks.reject { |_name, passed| passed }.keys
+  puts JSON.pretty_generate(
+    schema: "hepta.ui.v4.windows-transient-material-host-source-gate.v1",
+    status: status,
+    source_implemented: failures.empty?,
+    transient_host_source: failures.empty?,
+    isolated_probe_source: failures.empty?,
+    patched_makepad_compile_validation: false,
+    hepta_compile_validation: false,
+    windows_runtime_validation: false,
+    exact_root_hwnd_from_framework: false,
+    exact_transient_hwnd_from_framework: false,
+    root_transient_distinct: false,
+    persistent_chrome_backdrop_acknowledgement: false,
+    transient_acrylic_backdrop_acknowledgement: false,
+    focus_loss_cleanup_acknowledgement: false,
+    close_cleanup_acknowledgement: false,
+    destroyed_after_cleanup: false,
+    backdrop_readback_validation: false,
+    rollback_runtime_validation: false,
+    full_visual_readback_validation: false,
+    transient_system_material_binding: false,
+    complete_profile_binding: false,
+    system_material_binding: false,
+    native_product_runtime_validation: false,
+    device_validation: false,
+    production_authority: false,
+    effect_authority: false,
+    live_adapter_authority: false,
+    operator_acceptance: false,
+    promotion: false,
+    release: false,
+    checks: checks,
+    failures: failures
+  )
+  exit(failures.empty? ? 0 : 1)
+end
+
+emit(checks, "FAIL_MISSING_INPUT") unless checks.values.all?
+
+shared = files.fetch(:shared).read
+host = files.fetch(:host).read
+probe = files.fetch(:probe).read
+contract = JSON.parse(files.fetch(:contract).read)
+matrix = JSON.parse(files.fetch(:matrix).read)
+schema = JSON.parse(files.fetch(:schema).read)
+vendored_contract = JSON.parse(files.fetch(:vendored_contract).read)
+materializer = files.fetch(:materializer).read
+workflow = files.fetch(:workflow).read
+
+checks["shared.transient_host_declared"] =
+  shared.include?("pub mod hepta_windows_transient_material_host;")
+checks["shared.no_script_registration"] =
+  !shared.include?("hepta_windows_transient_material_host::script_mod")
+
+checks["host.separate_root_and_popup_identity"] =
+  host.include?("HeptaWindowsBackendWindowIdentity") &&
+  host.include?("HeptaWindowsTransientFrameworkWindowIdentity") &&
+  host.include?("HeptaWindowsTransientNativeWindowIdentity") &&
+  host.include?("PopupRequired") &&
+  host.include?("RootHandleReuse") &&
+  host.include?("RootWindowIdentityReuse")
+checks["host.lifecycle_phases"] = %w[
+  Unbound RootBound TransientObserved AcrylicPending AcrylicAcknowledged
+  CleanupPending SolidAcknowledged RollbackRequired ClosePending Closed
+  Rejected Shutdown
+].all? { |term| host.include?(term) }
+checks["host.single_pending_and_monotonic_sequence"] =
+  host.include?("PendingRequestExists") &&
+  host.include?("sequence <= self.last_sequence") &&
+  host.include?("StaleRequestSequence")
+checks["host.acrylic_and_explicit_solid"] =
+  host.include?("WindowBackdrop::Acrylic") &&
+  host.include?("WindowVisuals::default()") &&
+  host.include?("HeptaWindowsDwmBackdropValue::Acrylic") &&
+  host.include?("HeptaWindowsDwmBackdropValue::None")
+checks["host.cleanup_reasons"] = %w[
+  FocusLost Close Rollback Suspend Shutdown
+].all? { |term| host.include?(term) }
+checks["host.failure_requires_rollback"] =
+  host.include?("RollbackRequired") &&
+  host.include?("begin_rollback_cleanup") &&
+  host.include?("RejectedBackendFailure") &&
+  host.include?("RejectedReadbackMismatch")
+checks["host.close_cleanup_before_destroy"] =
+  host.include?("mark_close_requested") &&
+  host.include?("CleanupRequiredBeforeClose") &&
+  host.include?("cleanup_confirmed_before_close") &&
+  host.include?("process_destroyed")
+checks["host.stale_destroy_does_not_close"] =
+  host.include?("let exact = expected == Some(destroyed)") &&
+  host.include?("if accepted") &&
+  host.include?("else if exact")
+checks["host.readback_only_no_ffi_or_discovery"] =
+  host.include?("HeptaWindowsBackdropReadbackApi") &&
+  !host.match?(/\bunsafe\b/) &&
+  !host.match?(/extern\s+"(?:C|system)"/) &&
+  %w[FindWindow EnumWindows GetForegroundWindow all_windows].none? do |term|
+    host.include?(term)
+  end
+checks["host.claim_constants_fail_closed"] = %w[
+  HEPTA_WINDOWS_TRANSIENT_HOST_BOUND
+  HEPTA_WINDOWS_TRANSIENT_RUNTIME_VALIDATED
+  HEPTA_WINDOWS_TRANSIENT_BACKDROP_READBACK_VALIDATED
+  HEPTA_WINDOWS_TRANSIENT_SYSTEM_MATERIAL_BOUND
+  HEPTA_WINDOWS_TRANSIENT_COMPLETE_PROFILE_BOUND
+  HEPTA_WINDOWS_TRANSIENT_NATIVE_PRODUCT_RUNTIME
+  HEPTA_WINDOWS_TRANSIENT_DEVICE_VALIDATED
+  HEPTA_WINDOWS_TRANSIENT_PRODUCTION_AUTHORITY
+  HEPTA_WINDOWS_TRANSIENT_EFFECT_AUTHORITY
+  HEPTA_WINDOWS_TRANSIENT_LIVE_ADAPTER_AUTHORITY
+  HEPTA_WINDOWS_TRANSIENT_OPERATOR_ACCEPTANCE
+  HEPTA_WINDOWS_TRANSIENT_PROMOTION
+  HEPTA_WINDOWS_TRANSIENT_RELEASE
+].all? { |name| host.include?("#{name}: bool = false") }
+checks["host.focused_tests"] = %w[
+  transient_window_must_be_a_distinct_popup
+  acrylic_readback_is_partial_and_authority_free
+  focus_loss_cleanup_is_solid_and_allows_a_new_acrylic_cycle
+  acrylic_failure_requires_explicit_rollback_before_reuse
+  close_requires_solid_ack_and_exact_destroy_identity
+  readback_mismatch_requires_rollback_and_shutdown_is_terminal
+].all? { |term| host.include?(term) }
+
+checks["probe.windows_and_patch_cfg"] =
+  probe.include?("target_os = \"windows\"") &&
+  probe.include?("hepta_makepad_windows_ack_hook") &&
+  probe.include?("requires Windows plus the vendored Makepad hook cfg")
+checks["probe.separate_popup"] =
+  probe.include?("WindowHandle::new_popup") &&
+  probe.include?("transient popup reused the root WindowId") &&
+  probe.include?("cx.windows[popup].is_popup")
+checks["probe.exact_sequences"] = %w[
+  ROOT_MICA_SEQUENCE TRANSIENT_ACRYLIC_SEQUENCE FOCUS_CLEANUP_SEQUENCE
+  TRANSIENT_REACRYLIC_SEQUENCE CLOSE_CLEANUP_SEQUENCE
+].all? { |term| probe.include?(term) }
+checks["probe.correlated_requests_and_hook"] =
+  probe.include?("CxOsOp::SetWindowVisualsCorrelated") &&
+  probe.include?("take_windows_window_visuals_hook_events") &&
+  probe.include?("WindowsWindowVisualsHookEvent::Processed") &&
+  probe.include?("WindowsWindowVisualsHookEvent::Destroyed")
+checks["probe.root_and_transient_receipts"] =
+  probe.include?("VerifiedPersistentChromeWithBackdropReadback") &&
+  probe.include?("VerifiedAcrylicWithBackdropReadback") &&
+  probe.include?("VerifiedSolidCleanupWithBackdropReadback") &&
+  probe.include?("cleanupConfirmedBeforeClose")
+checks["probe.focus_and_close_cleanup"] =
+  probe.include?("begin_focus_loss_cleanup") &&
+  probe.include?("begin_close_cleanup") &&
+  probe.include?("mark_close_requested") &&
+  probe.include?("CxOsOp::CloseWindow")
+checks["probe.synthetic_focus_disclosed"] =
+  probe.match?(/"focusLossSynthetic":\s*true/) &&
+  probe.match?(/"physicalDevice":\s*false/)
+checks["probe.exact_candidate_and_receipt"] =
+  probe.include?("HEPTA_CANDIDATE_COMMIT") &&
+  probe.include?("HEPTA_CANDIDATE_TREE") &&
+  probe.include?("PASS_WINDOWS_TRANSIENT_MATERIAL_PROBE") &&
+  probe.include?("write_json_atomic")
+checks["probe.product_and_authority_false"] = %w[
+  fullVisualReadback transientSystemMaterial completeProfile
+  systemMaterialBinding nativeProductRuntime deviceValidation
+].all? { |key| probe.match?(/"#{key}":\s*false/) } &&
+  %w[
+    network mutation effect liveAdapter production operatorAcceptance
+    promotion release
+  ].all? { |key| probe.match?(/"#{key}":\s*false/) }
+checks["probe.no_product_or_network_startup"] =
+  !probe.include?("hepta_native::shared::script_mod") &&
+  %w[start_matrix_tokio HttpRequest WebSocket XMLHttpRequest EventSource].none? do |term|
+    probe.include?(term)
+  end
+
+checks["contract.identity"] =
+  contract["schema"] == "hepta.ui.windows-transient-material-host.v1" &&
+  contract["candidateBranch"] ==
+    "codex/ui-v4-windows-transient-material-host-20260828" &&
+  contract["baseBranch"] ==
+    "codex/ui-v4-vendored-makepad-windows-hook-20260828"
+checks["contract.separate_popup_and_cleanup"] =
+  contract.dig("host", "transientWindowMustBePopup") == true &&
+  contract.dig("host", "separateHwndRequired") == true &&
+  contract.dig("host", "rootHwndReuseAllowed") == false &&
+  contract.dig("host", "focusLossCleanupRequired") == true &&
+  contract.dig("host", "closeCleanupBeforeDestroyRequired") == true &&
+  contract.dig("host", "rollbackRequiredAfterAcrylicFailure") == true
+checks["contract.runtime_and_authority_false"] =
+  contract.fetch("qualification").reject do |key, _value|
+    %w[sourceImplemented transientHostSource isolatedProbeSource].include?(key)
+  end.values.none? &&
+  contract.fetch("authority").values.none?
+checks["contract.pinned_makepad_and_default_dependency"] =
+  contract.dig("makepad", "revision") ==
+    "c4335cee10b22aca768510c9d072b0ca1bba15c8" &&
+  contract.dig("makepad", "defaultDependencyUnchanged") == true &&
+  vendored_contract.dig("makepad", "defaultDependencyUnchanged") == true &&
+  materializer.include?("defaultDependencyChanged: false")
+
+checks["matrix.transient_node"] =
+  matrix["candidateBranch"] ==
+    "codex/ui-v4-windows-transient-material-host-20260828" &&
+  matrix.dig("windowsTransientMaterialHost", "source") ==
+    "apps/hepta-native/src/shared/hepta_windows_transient_material_host.rs" &&
+  matrix.dig("windowsTransientMaterialHost", "probe") ==
+    "apps/hepta-native/src/bin/hepta-ui-v4-windows-transient-material-probe.rs"
+checks["matrix.separate_and_unbound"] =
+  matrix.dig("windowsTransientMaterialHost", "transientPopupRequired") == true &&
+  matrix.dig("windowsTransientMaterialHost", "separateHwndRequired") == true &&
+  matrix.dig("windowsTransientMaterialHost", "hostBound") == false &&
+  matrix.dig("windowsTransientMaterialHost", "runtimeValidated") == false &&
+  matrix.dig("windowsTransientMaterialHost", "transientSystemMaterialBound") == false &&
+  matrix.dig("windowsTransientMaterialHost", "completeProfileBound") == false &&
+  matrix.dig("windowsTransientMaterialHost", "systemMaterialBindingClaim") == false
+checks["matrix.runtime_and_authority_unclaimed"] =
+  matrix.fetch("authority").values.none? &&
+  matrix.fetch("platforms").all? { |platform| platform.fetch("runtimeStatus") != "PASS" }
+
+checks["schema.identity"] =
+  schema["$id"].to_s.end_with?(
+    "hepta.ui.v4.windows-transient-material-probe.v1.schema.json"
+  )
+checks["schema.success_requires_exact_candidate"] =
+  schema.dig("$defs", "candidate", "properties", "commit", "pattern") ==
+    "^[0-9a-f]{40}$" &&
+  schema.dig("$defs", "candidate", "properties", "tree", "pattern") ==
+    "^[0-9a-f]{40}$"
+checks["schema.partial_boundary"] = %w[
+  rollbackRuntime fullVisualReadback transientSystemMaterial completeProfile
+  systemMaterialBinding nativeProductRuntime deviceValidation
+].all? do |key|
+  schema.dig("$defs", "qualification", "properties", key, "const") == false
+end
+checks["schema.authority_false"] =
+  schema.dig("$defs", "authority", "properties").values.all? do |definition|
+    definition["const"] == false
+  end
+checks["schema.pass_requires_cleanup_and_destroy"] =
+  schema.dig("allOf", 0, "then", "properties", "qualification",
+             "allOf", 1, "properties", "focusLossCleanupAcknowledged", "const") == true &&
+  schema.dig("allOf", 0, "then", "properties", "qualification",
+             "allOf", 1, "properties", "closeCleanupAcknowledged", "const") == true &&
+  schema.dig("allOf", 0, "then", "properties", "qualification",
+             "allOf", 1, "properties", "destroyedAfterCleanup", "const") == true
+
+checks["workflow.inherited_and_new_gates"] =
+  workflow.include?("ruby scripts/hepta-ui-v4-vendored-makepad-windows-hook-gate") &&
+  workflow.include?("ruby scripts/hepta-ui-v4-windows-transient-material-host-gate")
+checks["workflow.materializes_patched_makepad"] =
+  workflow.include?("hepta-ui-v4-materialize-makepad-windows-hook") &&
+  workflow.include?("PASS_PATCHED_CHECKOUT_MATERIALIZED_SOURCE_ONLY")
+checks["workflow.three_platform_compile"] =
+  %w[ubuntu-latest windows-latest macos-latest].all? do |os|
+    workflow.include?(os)
+  end &&
+  workflow.include?("hepta-ui-v4-windows-transient-material-probe") &&
+  workflow.include?("hepta_windows_transient_material_host::tests")
+checks["workflow.manual_windows_runtime"] =
+  workflow.include?("run_transient_probe") &&
+  workflow.include?("runner.os == 'Windows'") &&
+  workflow.include?("PASS_WINDOWS_TRANSIENT_MATERIAL_PROBE")
+checks["workflow.read_only_no_release"] =
+  workflow.include?("permissions:") &&
+  workflow.include?("contents: read") &&
+  !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+
+failed = checks.reject { |_name, passed| passed }
+emit(
+  checks,
+  failed.empty? ? "PASS_WINDOWS_TRANSIENT_MATERIAL_HOST_SOURCE_ONLY" :
+    "FAIL_WINDOWS_TRANSIENT_MATERIAL_HOST_SOURCE"
+)

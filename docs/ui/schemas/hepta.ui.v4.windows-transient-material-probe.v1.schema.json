@@ -1,0 +1,587 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.ai/schemas/ui/hepta.ui.v4.windows-transient-material-probe.v1.schema.json",
+  "title": "Hepta UI v4 Windows transient material probe receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "candidate",
+    "makepad",
+    "fixture",
+    "environment",
+    "qualification",
+    "authority"
+  ],
+  "properties": {
+    "schema": {
+      "const": "hepta.ui.v4.windows-transient-material-probe.v1"
+    },
+    "status": {
+      "enum": [
+        "PASS_WINDOWS_TRANSIENT_MATERIAL_PROBE",
+        "FAIL_WINDOWS_TRANSIENT_MATERIAL_PROBE"
+      ]
+    },
+    "error": {
+      "type": "string"
+    },
+    "candidate": {
+      "$ref": "#/$defs/candidate"
+    },
+    "makepad": {
+      "$ref": "#/$defs/makepad"
+    },
+    "fixture": {
+      "const": true
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "focusLossSynthetic",
+        "physicalDevice"
+      ],
+      "properties": {
+        "focusLossSynthetic": {
+          "const": true
+        },
+        "physicalDevice": {
+          "const": false
+        }
+      }
+    },
+    "rootWindow": {
+      "$ref": "#/$defs/window"
+    },
+    "transientWindow": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/window"
+        },
+        {
+          "type": "object",
+          "required": [
+            "popup",
+            "distinctFromRoot"
+          ],
+          "properties": {
+            "popup": {
+              "const": true
+            },
+            "distinctFromRoot": {
+              "const": true
+            }
+          }
+        }
+      ]
+    },
+    "requests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootMica",
+        "initialAcrylic",
+        "focusLossCleanup",
+        "secondAcrylic",
+        "closeCleanup",
+        "destroyed"
+      ],
+      "properties": {
+        "rootMica": {
+          "$ref": "#/$defs/rootAck"
+        },
+        "initialAcrylic": {
+          "$ref": "#/$defs/transientAck"
+        },
+        "focusLossCleanup": {
+          "$ref": "#/$defs/transientAck"
+        },
+        "secondAcrylic": {
+          "$ref": "#/$defs/transientAck"
+        },
+        "closeCleanup": {
+          "$ref": "#/$defs/transientAck"
+        },
+        "destroyed": {
+          "$ref": "#/$defs/destroyed"
+        }
+      }
+    },
+    "qualification": {
+      "$ref": "#/$defs/qualification"
+    },
+    "authority": {
+      "$ref": "#/$defs/authority"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS_WINDOWS_TRANSIENT_MATERIAL_PROBE"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "rootWindow",
+          "transientWindow",
+          "requests"
+        ],
+        "properties": {
+          "qualification": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/qualification"
+              },
+              {
+                "properties": {
+                  "patchedMakepadRuntime": {
+                    "const": true
+                  },
+                  "correlatedHookRuntime": {
+                    "const": true
+                  },
+                  "exactRootHwndFromFramework": {
+                    "const": true
+                  },
+                  "exactTransientHwndFromFramework": {
+                    "const": true
+                  },
+                  "rootTransientDistinct": {
+                    "const": true
+                  },
+                  "persistentChromeBackdropAcknowledged": {
+                    "const": true
+                  },
+                  "transientAcrylicBackdropAcknowledged": {
+                    "const": true
+                  },
+                  "focusLossCleanupAcknowledged": {
+                    "const": true
+                  },
+                  "focusLossSynthetic": {
+                    "const": true
+                  },
+                  "closeCleanupAcknowledged": {
+                    "const": true
+                  },
+                  "destroyedAfterCleanup": {
+                    "const": true
+                  },
+                  "backdropReadback": {
+                    "const": true
+                  },
+                  "rollbackRuntime": {
+                    "const": false
+                  },
+                  "fullVisualReadback": {
+                    "const": false
+                  },
+                  "transientSystemMaterial": {
+                    "const": false
+                  },
+                  "completeProfile": {
+                    "const": false
+                  },
+                  "systemMaterialBinding": {
+                    "const": false
+                  },
+                  "nativeProductRuntime": {
+                    "const": false
+                  },
+                  "deviceValidation": {
+                    "const": false
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commit",
+        "tree"
+      ],
+      "properties": {
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "tree": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "makepad": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revision",
+        "vendoredPatchBuild",
+        "defaultDependencySwitched"
+      ],
+      "properties": {
+        "revision": {
+          "const": "c4335cee10b22aca768510c9d072b0ca1bba15c8"
+        },
+        "vendoredPatchBuild": {
+          "const": true
+        },
+        "defaultDependencySwitched": {
+          "const": false
+        }
+      }
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "generation",
+        "nativeHandle",
+        "popup"
+      ],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nativeHandle": {
+          "type": "string",
+          "pattern": "^-?[1-9][0-9]*$"
+        },
+        "popup": {
+          "type": "boolean"
+        },
+        "distinctFromRoot": {
+          "type": "boolean"
+        }
+      }
+    },
+    "rootAck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "accepted",
+        "requestSequence",
+        "windowIndex",
+        "windowGeneration",
+        "readbackScope",
+        "observedBackdrop",
+        "backdropExact",
+        "fullVisualsExact"
+      ],
+      "properties": {
+        "status": {
+          "const": "VerifiedPersistentChromeWithBackdropReadback"
+        },
+        "accepted": {
+          "const": true
+        },
+        "requestSequence": {
+          "const": 1
+        },
+        "windowIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "windowGeneration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readbackScope": {
+          "const": "BackdropOnly"
+        },
+        "observedBackdrop": {
+          "const": "Mica"
+        },
+        "backdropExact": {
+          "const": true
+        },
+        "fullVisualsExact": {
+          "const": false
+        }
+      }
+    },
+    "transientAck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "accepted",
+        "sequence",
+        "windowIndex",
+        "windowGeneration",
+        "nativeHandle",
+        "requestKind",
+        "requestedBackdrop",
+        "observedBackdrop",
+        "backdropExact",
+        "acrylicBackdropAcknowledged",
+        "solidCleanupAcknowledged",
+        "cleanupReason",
+        "fullVisualsExact",
+        "transientSystemMaterialBound",
+        "completeProfileBound",
+        "systemMaterialBound"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "VerifiedAcrylicWithBackdropReadback",
+            "VerifiedSolidCleanupWithBackdropReadback"
+          ]
+        },
+        "accepted": {
+          "const": true
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 101,
+          "maximum": 104
+        },
+        "windowIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "windowGeneration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nativeHandle": {
+          "type": "string",
+          "pattern": "^-?[1-9][0-9]*$"
+        },
+        "requestKind": {
+          "type": "string"
+        },
+        "requestedBackdrop": {
+          "enum": [
+            "Acrylic",
+            "None"
+          ]
+        },
+        "observedBackdrop": {
+          "enum": [
+            "Acrylic",
+            "None"
+          ]
+        },
+        "backdropExact": {
+          "const": true
+        },
+        "acrylicBackdropAcknowledged": {
+          "type": "boolean"
+        },
+        "solidCleanupAcknowledged": {
+          "type": "boolean"
+        },
+        "cleanupReason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "FocusLost",
+            "Close",
+            "Rollback",
+            "Suspend",
+            "Shutdown"
+          ]
+        },
+        "fullVisualsExact": {
+          "const": false
+        },
+        "transientSystemMaterialBound": {
+          "const": false
+        },
+        "completeProfileBound": {
+          "const": false
+        },
+        "systemMaterialBound": {
+          "const": false
+        }
+      }
+    },
+    "destroyed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accepted",
+        "exactWindowIdentity",
+        "cleanupConfirmedBeforeClose",
+        "closed",
+        "windowIndex",
+        "windowGeneration",
+        "nativeHandle"
+      ],
+      "properties": {
+        "accepted": {
+          "const": true
+        },
+        "exactWindowIdentity": {
+          "const": true
+        },
+        "cleanupConfirmedBeforeClose": {
+          "const": true
+        },
+        "closed": {
+          "const": true
+        },
+        "windowIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "windowGeneration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nativeHandle": {
+          "type": "string",
+          "pattern": "^-?[1-9][0-9]*$"
+        }
+      }
+    },
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "patchedMakepadRuntime",
+        "correlatedHookRuntime",
+        "exactRootHwndFromFramework",
+        "exactTransientHwndFromFramework",
+        "rootTransientDistinct",
+        "persistentChromeBackdropAcknowledged",
+        "transientAcrylicBackdropAcknowledged",
+        "focusLossCleanupAcknowledged",
+        "focusLossSynthetic",
+        "closeCleanupAcknowledged",
+        "destroyedAfterCleanup",
+        "backdropReadback",
+        "rollbackRuntime",
+        "fullVisualReadback",
+        "transientSystemMaterial",
+        "completeProfile",
+        "systemMaterialBinding",
+        "nativeProductRuntime",
+        "deviceValidation"
+      ],
+      "properties": {
+        "patchedMakepadRuntime": {
+          "type": "boolean"
+        },
+        "correlatedHookRuntime": {
+          "type": "boolean"
+        },
+        "exactRootHwndFromFramework": {
+          "type": "boolean"
+        },
+        "exactTransientHwndFromFramework": {
+          "type": "boolean"
+        },
+        "rootTransientDistinct": {
+          "type": "boolean"
+        },
+        "persistentChromeBackdropAcknowledged": {
+          "type": "boolean"
+        },
+        "transientAcrylicBackdropAcknowledged": {
+          "type": "boolean"
+        },
+        "focusLossCleanupAcknowledged": {
+          "type": "boolean"
+        },
+        "focusLossSynthetic": {
+          "const": true
+        },
+        "closeCleanupAcknowledged": {
+          "type": "boolean"
+        },
+        "destroyedAfterCleanup": {
+          "type": "boolean"
+        },
+        "backdropReadback": {
+          "type": "boolean"
+        },
+        "rollbackRuntime": {
+          "const": false
+        },
+        "fullVisualReadback": {
+          "const": false
+        },
+        "transientSystemMaterial": {
+          "const": false
+        },
+        "completeProfile": {
+          "const": false
+        },
+        "systemMaterialBinding": {
+          "const": false
+        },
+        "nativeProductRuntime": {
+          "const": false
+        },
+        "deviceValidation": {
+          "const": false
+        }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "required": [
+        "network",
+        "mutation",
+        "effect",
+        "liveAdapter",
+        "production",
+        "operatorAcceptance",
+        "promotion",
+        "release"
+      ],
+      "properties": {
+        "network": {
+          "const": false
+        },
+        "mutation": {
+          "const": false
+        },
+        "effect": {
+          "const": false
+        },
+        "liveAdapter": {
+          "const": false
+        },
+        "production": {
+          "const": false
+        },
+        "operatorAcceptance": {
+          "const": false
+        },
+        "promotion": {
+          "const": false
+        },
+        "release": {
+          "const": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

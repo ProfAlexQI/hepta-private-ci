@@ -1,0 +1,306 @@
+name: hepta-ui-v4-windows-transient-material-host
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-windows-transient-material-host-*"
+  pull_request:
+    paths:
+      - "apps/hepta-native/src/shared/hepta_windows_transient_material_host.rs"
+      - "apps/hepta-native/src/shared/mod.rs"
+      - "apps/hepta-native/src/bin/hepta-ui-v4-windows-transient-material-probe.rs"
+      - "docs/ui/HEPTA_WINDOWS_TRANSIENT_MATERIAL_HOST_V1.json"
+      - "docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"
+      - "docs/ui/schemas/hepta.ui.v4.windows-transient-material-probe.v1.schema.json"
+      - "docs/ui/HEPTA_UI_V4_TRANCHE_13_WINDOWS_TRANSIENT_MATERIAL_HOST_2026-08-28.md"
+      - "scripts/hepta-ui-v4-windows-transient-material-host-gate"
+      - ".github/workflows/hepta-ui-v4-windows-transient-material-host.yml"
+  workflow_dispatch:
+    inputs:
+      run_transient_probe:
+        description: "Run the isolated Windows transient Acrylic lifecycle probe"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v4-windows-transient-material-host-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: Windows transient material host source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Validate source formats
+        run: |
+          ruby -c scripts/hepta-ui-v4-windows-transient-material-host-gate
+          ruby -rjson -e 'ARGV.each { |path| JSON.parse(File.read(path)) }' \
+            docs/ui/HEPTA_WINDOWS_TRANSIENT_MATERIAL_HOST_V1.json \
+            docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json \
+            docs/ui/schemas/hepta.ui.v4.windows-transient-material-probe.v1.schema.json
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-windows-transient-material-host.yml")'
+
+      - name: Run inherited and new fail-closed source gates
+        run: |
+          mkdir -p artifacts/ui-v4-windows-transient-host
+          ruby scripts/hepta-ui-v4-vendored-makepad-windows-hook-gate \
+            > artifacts/ui-v4-windows-transient-host/inherited-source-gate.json
+          ruby scripts/hepta-ui-v4-windows-transient-material-host-gate \
+            | tee artifacts/ui-v4-windows-transient-host/source-gate.json
+
+      - name: Verify source-only boundary
+        run: |
+          ruby -rjson -e '
+            receipt = JSON.parse(File.read("artifacts/ui-v4-windows-transient-host/source-gate.json"))
+            abort "unexpected source status" unless receipt.fetch("status") == "PASS_WINDOWS_TRANSIENT_MATERIAL_HOST_SOURCE_ONLY"
+            %w[
+              patched_makepad_compile_validation hepta_compile_validation
+              windows_runtime_validation exact_root_hwnd_from_framework
+              exact_transient_hwnd_from_framework root_transient_distinct
+              persistent_chrome_backdrop_acknowledgement
+              transient_acrylic_backdrop_acknowledgement
+              focus_loss_cleanup_acknowledgement close_cleanup_acknowledgement
+              destroyed_after_cleanup backdrop_readback_validation
+              rollback_runtime_validation full_visual_readback_validation
+              transient_system_material_binding complete_profile_binding
+              system_material_binding native_product_runtime_validation
+              device_validation production_authority effect_authority
+              live_adapter_authority operator_acceptance promotion release
+            ].each do |key|
+              abort "#{key} escaped source-only boundary" unless receipt.fetch(key) == false
+            end
+          '
+
+      - name: Upload source receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-windows-transient-host-source-${{ github.sha }}
+          path: artifacts/ui-v4-windows-transient-host
+          if-no-files-found: error
+          retention-days: 14
+
+  patch-contract:
+    name: Materialize exact vendored Makepad hook
+    needs: source-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Materialize patched Makepad checkout
+        run: |
+          mkdir -p artifacts/ui-v4-windows-transient-host
+          ruby scripts/hepta-ui-v4-materialize-makepad-windows-hook \
+            "$PWD/artifacts/ui-v4-windows-transient-host/makepad" \
+            "$PWD/artifacts/ui-v4-windows-transient-host/cargo-patch.toml" \
+            "$PWD/artifacts/ui-v4-windows-transient-host/materialization.json" \
+            | tee artifacts/ui-v4-windows-transient-host/materialization.stdout.json
+
+      - name: Verify patch materialization boundary
+        run: |
+          ruby -rjson -e '
+            receipt = JSON.parse(File.read("artifacts/ui-v4-windows-transient-host/materialization.json"))
+            abort "unexpected materialization status" unless receipt.fetch("status") == "PASS_PATCHED_CHECKOUT_MATERIALIZED_SOURCE_ONLY"
+            abort "revision drift" unless receipt.dig("makepad", "revision") == "c4335cee10b22aca768510c9d072b0ca1bba15c8"
+            abort "patch missing" unless receipt.dig("qualification", "patchAppliedInWorktree") == true
+            abort "default dependency changed" unless receipt.dig("cargoOverride", "defaultDependencyChanged") == false
+            %w[
+              patchedMakepadCompile heptaHookCompile windowsRuntime backdropReadback
+              transientSystemMaterial completeProfile systemMaterialBinding
+              nativeProductRuntime deviceValidation
+            ].each do |key|
+              abort "#{key} escaped patch boundary" unless receipt.dig("qualification", key) == false
+            end
+            abort "authority escaped" unless receipt.fetch("authority").values.all? { |value| value == false }
+          '
+
+      - name: Upload patch evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-windows-transient-host-patch-${{ github.sha }}
+          path: |
+            artifacts/ui-v4-windows-transient-host/materialization.json
+            artifacts/ui-v4-windows-transient-host/materialization.patch.json
+            artifacts/ui-v4-windows-transient-host/cargo-patch.toml
+          if-no-files-found: error
+          retention-days: 14
+
+  compile-contract:
+    name: Transient host and patched probe compile (${{ matrix.os }})
+    needs: patch-contract
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+
+      - name: Materialize patched Makepad and Cargo override
+        shell: bash
+        run: |
+          ruby scripts/hepta-ui-v4-materialize-makepad-windows-hook \
+            "$PWD/.hepta-patched-makepad" \
+            "$PWD/.cargo/config.toml" \
+            "$PWD/hepta-patched-makepad-materialization.json" \
+            > "$PWD/hepta-patched-makepad-materialization.stdout.json"
+
+      - name: Check repository formatting
+        run: cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
+
+      - name: Compile Native library against patched Makepad
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo check --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features
+
+      - name: Compile transient probe stub on non-Windows hosts
+        if: runner.os != 'Windows'
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo check --manifest-path apps/hepta-native/Cargo.toml --bin hepta-ui-v4-windows-transient-material-probe --no-default-features
+
+      - name: Compile correlated transient probe on Windows
+        if: runner.os == 'Windows'
+        env:
+          CARGO_TERM_COLOR: always
+          RUSTFLAGS: "--cfg hepta_makepad_windows_ack_hook --check-cfg=cfg(hepta_makepad_windows_ack_hook)"
+        run: cargo check --manifest-path apps/hepta-native/Cargo.toml --bin hepta-ui-v4-windows-transient-material-probe --no-default-features
+
+      - name: Run focused transient and inherited acknowledgement tests
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_windows_transient_material_host::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_window_visual_ack::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_windows_backend_ack_bridge::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_windows_window_ack_producer::tests -- --nocapture
+
+  windows-runtime-probe:
+    name: Isolated Windows transient Acrylic lifecycle probe
+    if: github.event_name == 'workflow_dispatch' && inputs.run_transient_probe == true
+    needs:
+      - source-contract
+      - patch-contract
+      - compile-contract
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      RUSTFLAGS: "--cfg hepta_makepad_windows_ack_hook --check-cfg=cfg(hepta_makepad_windows_ack_hook)"
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+
+      - name: Materialize patched Makepad and Cargo override
+        shell: bash
+        run: |
+          ruby scripts/hepta-ui-v4-materialize-makepad-windows-hook \
+            "$PWD/.hepta-patched-makepad" \
+            "$PWD/.cargo/config.toml" \
+            "$PWD/hepta-patched-makepad-materialization.json" \
+            > "$PWD/hepta-patched-makepad-materialization.stdout.json"
+
+      - name: Run exact-candidate transient probe
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/ui-v4-windows-transient-host | Out-Null
+          $env:HEPTA_CANDIDATE_COMMIT = $env:GITHUB_SHA
+          $env:HEPTA_CANDIDATE_TREE = (git rev-parse 'HEAD^{tree}').Trim()
+          $env:HEPTA_WINDOWS_TRANSIENT_RECEIPT_PATH = "$PWD/artifacts/ui-v4-windows-transient-host/windows-transient-material-receipt.json"
+          $process = Start-Process cargo -ArgumentList @(
+            'run',
+            '--manifest-path', 'apps/hepta-native/Cargo.toml',
+            '--bin', 'hepta-ui-v4-windows-transient-material-probe',
+            '--no-default-features'
+          ) -PassThru -NoNewWindow
+          if (-not $process.WaitForExit(900000)) {
+            Stop-Process -Id $process.Id -Force
+            throw 'Windows transient material probe timed out'
+          }
+          if ($process.ExitCode -ne 0) {
+            throw "Windows transient material probe exited with $($process.ExitCode)"
+          }
+
+      - name: Validate transient runtime receipt boundary
+        shell: pwsh
+        run: |
+          $path = 'artifacts/ui-v4-windows-transient-host/windows-transient-material-receipt.json'
+          if (-not (Test-Path $path)) { throw 'runtime receipt missing' }
+          $receipt = Get-Content -Raw $path | ConvertFrom-Json
+          if ($receipt.schema -ne 'hepta.ui.v4.windows-transient-material-probe.v1') { throw 'schema mismatch' }
+          if ($receipt.status -ne 'PASS_WINDOWS_TRANSIENT_MATERIAL_PROBE') { throw 'probe did not pass' }
+          if ($receipt.candidate.commit -ne $env:GITHUB_SHA) { throw 'commit drift' }
+          $tree = (git rev-parse 'HEAD^{tree}').Trim()
+          if ($receipt.candidate.tree -ne $tree) { throw 'tree drift' }
+          if ($receipt.makepad.revision -ne 'c4335cee10b22aca768510c9d072b0ca1bba15c8') { throw 'Makepad drift' }
+          foreach ($key in @(
+            'patchedMakepadRuntime',
+            'correlatedHookRuntime',
+            'exactRootHwndFromFramework',
+            'exactTransientHwndFromFramework',
+            'rootTransientDistinct',
+            'persistentChromeBackdropAcknowledged',
+            'transientAcrylicBackdropAcknowledged',
+            'focusLossCleanupAcknowledged',
+            'focusLossSynthetic',
+            'closeCleanupAcknowledged',
+            'destroyedAfterCleanup',
+            'backdropReadback'
+          )) {
+            if (-not $receipt.qualification.$key) { throw "$key is not qualified" }
+          }
+          foreach ($key in @(
+            'rollbackRuntime',
+            'fullVisualReadback',
+            'transientSystemMaterial',
+            'completeProfile',
+            'systemMaterialBinding',
+            'nativeProductRuntime',
+            'deviceValidation'
+          )) {
+            if ($receipt.qualification.$key) { throw "$key escaped isolated boundary" }
+          }
+          foreach ($property in $receipt.authority.PSObject.Properties) {
+            if ($property.Value) { throw "authority $($property.Name) escaped" }
+          }
+
+      - name: Upload transient runtime receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-windows-transient-material-${{ github.sha }}
+          path: |
+            artifacts/ui-v4-windows-transient-host/windows-transient-material-receipt.json
+            hepta-patched-makepad-materialization.json
+          if-no-files-found: error
+          retention-days: 14
