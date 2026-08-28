@@ -1,0 +1,75 @@
+name: p0-3-2-source-gate-align-v1
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-shared-projection-planner-v5-20260828"
+    paths:
+      - ".github/workflows/p0-3-2-source-gate-align-v1.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: p0-3-2-source-gate-align-v1
+  cancel-in-progress: false
+
+jobs:
+  align:
+    name: Align P0.3.2 source contract to qualified Rust transaction API
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    env:
+      BRANCH: codex/hepta-intelligence-shared-projection-planner-v5-20260828
+      EXPECTED_PARENT: f4fd2e07fb6b53da3da8340f810a719f39787248
+    steps:
+      - name: Checkout exact staging head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Apply bounded source-gate alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          STAGED_HEAD=$(git rev-parse HEAD)
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/verify-hepta-intelligence-shared-projection-planner-v5.py")
+          text = path.read_text(encoding="utf-8")
+          replacements = {
+              "grounding::verify_receipts(&mut **transaction": "grounding::verify_receipts(transaction",
+              "verify_schema_oracle_connection(&mut **transaction).await?;": "verify_schema_oracle_connection(transaction).await?;",
+          }
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one source-contract marker {old!r}, observed {count}")
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+          rm -f .github/workflows/p0-3-2-source-gate-align-v1.yml
+          python3 -m py_compile scripts/verify-hepta-intelligence-shared-projection-planner-v5.py
+          python3 scripts/verify-hepta-intelligence-shared-projection-planner-v5.py \
+            > /tmp/p032-source-gate.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          receipt = json.loads(Path("/tmp/p032-source-gate.json").read_text(encoding="utf-8"))
+          assert receipt["status"] == "PASS_P0_3_2_SHARED_PROJECTION_SOURCE_ONLY"
+          assert receipt["shared_projection_planner"] is True
+          assert receipt["current_projection_replanned"] is True
+          assert receipt["ledger_verified_in_snapshot"] is True
+          assert not receipt["failures"]
+          PY
+          git diff --check
+          git config user.name "Qian QI"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git add -A
+          git commit --no-gpg-sign -m "fix(ci): align P0.3.2 source gate with transaction verifier API"
+          git push \
+            --force-with-lease="refs/heads/${BRANCH}:${STAGED_HEAD}" \
+            origin "HEAD:refs/heads/${BRANCH}"
