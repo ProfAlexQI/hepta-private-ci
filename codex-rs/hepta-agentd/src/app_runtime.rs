@@ -13,6 +13,7 @@ use codex_features::Feature;
 use codex_hepta_contracts::AuthorityAction;
 use codex_hepta_contracts::AuthorityGrant;
 use codex_hepta_contracts::Authorized;
+use codex_hepta_contracts::CognitiveWriteCapability;
 use codex_hepta_contracts::SessionServeCapability;
 use codex_hepta_memory::CognitiveRuntime;
 use codex_protocol::protocol::SessionSource;
@@ -28,6 +29,7 @@ pub(crate) struct AgentAppServerService {
     identity: AgentdIdentity,
     arg0_paths: Arg0DispatchPaths,
     cognitive_runtime: CognitiveRuntime,
+    cognitive_write: Option<Authorized<CognitiveWriteCapability>>,
     authority: AuthorityGrant,
     state: Arc<AgentdState>,
     _session_serve: Authorized<SessionServeCapability>,
@@ -38,6 +40,7 @@ impl AgentAppServerService {
         identity: AgentdIdentity,
         arg0_paths: Arg0DispatchPaths,
         cognitive_runtime: CognitiveRuntime,
+        cognitive_write: Option<Authorized<CognitiveWriteCapability>>,
         authority: AuthorityGrant,
         state: Arc<AgentdState>,
     ) -> std::io::Result<Self> {
@@ -47,10 +50,12 @@ impl AgentAppServerService {
         let session_serve = authority
             .authorize::<SessionServeCapability>()
             .map_err(|error| std::io::Error::other(error.to_string()))?;
+        validate_cognitive_write_capability(&identity, &authority, cognitive_write.as_ref())?;
         Ok(Self {
             identity,
             arg0_paths,
             cognitive_runtime,
+            cognitive_write,
             authority,
             state,
             _session_serve: session_serve,
@@ -62,6 +67,7 @@ impl AgentAppServerService {
             self.identity,
             self.arg0_paths,
             self.cognitive_runtime,
+            self.cognitive_write,
             self.authority,
             self.state,
         )
@@ -73,15 +79,17 @@ async fn run_app_server(
     identity: AgentdIdentity,
     arg0_paths: Arg0DispatchPaths,
     cognitive_runtime: CognitiveRuntime,
+    cognitive_write: Option<Authorized<CognitiveWriteCapability>>,
     authority: AuthorityGrant,
     state: Arc<AgentdState>,
 ) -> std::io::Result<()> {
     let socket_path = AbsolutePathBuf::from_absolute_path(&identity.app_server_socket)?;
-    let config_overrides = app_server_config_overrides(&authority);
+    let config_overrides = app_server_config_overrides(cognitive_write.is_some());
     let runtime_options = app_server_runtime_options_for_agent_with_authority(
         &identity,
         state,
         cognitive_runtime,
+        cognitive_write,
         &authority,
     )?;
     codex_app_server::run_main_with_transport_options(
@@ -98,19 +106,16 @@ async fn run_app_server(
     .await
 }
 
-fn app_server_config_overrides(authority: &AuthorityGrant) -> CliConfigOverrides {
+fn app_server_config_overrides(cognitive_write_enabled: bool) -> CliConfigOverrides {
     CliConfigOverrides {
         raw_overrides: vec![
             "features.hepta_governance=true".to_string(),
             "features.hepta_turn_recovery=true".to_string(),
             "features.hepta_memory=true".to_string(),
             "features.hepta_memory_read_only=true".to_string(),
-            // The unified authority grant is the only positive source for the
-            // cognitive writer profile. No request/config layer can widen it.
-            format!(
-                "features.hepta_cognitive_write={}",
-                authority.allows(AuthorityAction::WriteCognitiveState)
-            ),
+            // This value is derived from possession of the typed capability,
+            // not reconstructed from request or managed configuration.
+            format!("features.hepta_cognitive_write={cognitive_write_enabled}"),
         ],
     }
 }
@@ -121,7 +126,14 @@ pub(crate) fn app_server_runtime_options(
 ) -> std::io::Result<AppServerRuntimeOptions> {
     let authority = authority_for_identity(identity)
         .map_err(|error| std::io::Error::other(error.to_string()))?;
-    app_server_runtime_options_with_writer(identity, cognitive_runtime, &authority, None)
+    let cognitive_write = cognitive_write_for_authority(&authority)?;
+    app_server_runtime_options_with_writer(
+        identity,
+        cognitive_runtime,
+        &authority,
+        cognitive_write.is_some(),
+        None,
+    )
 }
 
 pub(crate) fn app_server_runtime_options_for_agent(
@@ -131,10 +143,12 @@ pub(crate) fn app_server_runtime_options_for_agent(
 ) -> std::io::Result<AppServerRuntimeOptions> {
     let authority = authority_for_identity(identity)
         .map_err(|error| std::io::Error::other(error.to_string()))?;
+    let cognitive_write = cognitive_write_for_authority(&authority)?;
     app_server_runtime_options_for_agent_with_authority(
         identity,
         state,
         cognitive_runtime,
+        cognitive_write,
         &authority,
     )
 }
@@ -143,26 +157,40 @@ fn app_server_runtime_options_for_agent_with_authority(
     identity: &AgentdIdentity,
     state: Arc<AgentdState>,
     cognitive_runtime: CognitiveRuntime,
+    cognitive_write: Option<Authorized<CognitiveWriteCapability>>,
     authority: &AuthorityGrant,
 ) -> std::io::Result<AppServerRuntimeOptions> {
-    let writer = if authority.allows(AuthorityAction::WriteCognitiveState) {
-        qualification_turn_writer_host(identity, state, &cognitive_runtime)
-    } else {
-        None
-    };
-    app_server_runtime_options_with_writer(identity, cognitive_runtime, authority, writer)
+    validate_cognitive_write_capability(identity, authority, cognitive_write.as_ref())?;
+    let writer = qualification_turn_writer_host(
+        identity,
+        state,
+        &cognitive_runtime,
+        cognitive_write.as_ref(),
+    );
+    app_server_runtime_options_with_writer(
+        identity,
+        cognitive_runtime,
+        authority,
+        cognitive_write.is_some(),
+        writer,
+    )
 }
 
 fn app_server_runtime_options_with_writer(
     identity: &AgentdIdentity,
     cognitive_runtime: CognitiveRuntime,
     authority: &AuthorityGrant,
+    cognitive_write_enabled: bool,
     qualification_turn_writer: Option<codex_hepta_memory_extension::QualificationTurnWriterHost>,
 ) -> std::io::Result<AppServerRuntimeOptions> {
     authority
         .validate_binding(&identity.agent_id, identity.spawn_generation)
         .map_err(|error| std::io::Error::other(error.to_string()))?;
-    let cognitive_write_enabled = authority.allows(AuthorityAction::WriteCognitiveState);
+    if cognitive_write_enabled != authority.allows(AuthorityAction::WriteCognitiveState) {
+        return Err(std::io::Error::other(
+            "typed cognitive-write capability does not match the selected authority profile",
+        ));
+    }
     let turn_queue_capacity = usize::try_from(identity.resources.turn_queue_capacity)
         .map_err(|_| std::io::Error::other("turn queue capacity does not fit this platform"))?;
     let turn_queue_capacity = NonZeroUsize::new(turn_queue_capacity).ok_or_else(|| {
@@ -191,6 +219,47 @@ fn app_server_runtime_options_with_writer(
         )]),
         ..Default::default()
     })
+}
+
+fn cognitive_write_for_authority(
+    authority: &AuthorityGrant,
+) -> std::io::Result<Option<Authorized<CognitiveWriteCapability>>> {
+    if authority.allows(AuthorityAction::WriteCognitiveState) {
+        authority
+            .authorize::<CognitiveWriteCapability>()
+            .map(Some)
+            .map_err(|error| std::io::Error::other(error.to_string()))
+    } else {
+        Ok(None)
+    }
+}
+
+fn validate_cognitive_write_capability(
+    identity: &AgentdIdentity,
+    authority: &AuthorityGrant,
+    cognitive_write: Option<&Authorized<CognitiveWriteCapability>>,
+) -> std::io::Result<()> {
+    let expected = authority.allows(AuthorityAction::WriteCognitiveState);
+    if expected != cognitive_write.is_some() {
+        return Err(std::io::Error::other(
+            "typed cognitive-write capability does not match the selected authority profile",
+        ));
+    }
+    if let Some(cognitive_write) = cognitive_write {
+        if cognitive_write.is_external() {
+            return Err(std::io::Error::other(
+                "Agent App Server cannot consume external production cognitive-write authority",
+            ));
+        }
+        if cognitive_write.subject_agent_id() != &identity.agent_id
+            || cognitive_write.generation() != identity.spawn_generation
+        {
+            return Err(std::io::Error::other(
+                "typed cognitive-write capability does not match Agent identity/generation",
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -231,9 +300,7 @@ mod tests {
 
     #[test]
     fn agentd_forces_hepta_turn_recovery_on() {
-        let identity = identity_with_queue_capacity(37);
-        let authority = authority_for_identity(&identity).expect("valid build authority");
-        let overrides = app_server_config_overrides(&authority);
+        let overrides = app_server_config_overrides(false);
         assert!(
             overrides
                 .raw_overrides
@@ -243,11 +310,11 @@ mod tests {
     }
 
     #[test]
-    fn agentd_derives_cognitive_write_from_authority_grant() {
+    fn agentd_derives_cognitive_write_from_typed_capability() {
         let identity = identity_with_queue_capacity(37);
         let authority = authority_for_identity(&identity).expect("valid build authority");
         let expected = authority.allows(AuthorityAction::WriteCognitiveState);
-        let overrides = app_server_config_overrides(&authority);
+        let overrides = app_server_config_overrides(expected);
         assert!(overrides.raw_overrides.iter().any(|value| {
             value == &format!("features.hepta_cognitive_write={expected}")
         }));
