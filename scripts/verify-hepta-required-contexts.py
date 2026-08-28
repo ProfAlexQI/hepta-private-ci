@@ -82,6 +82,24 @@ def verify_sdk_runner_contract(sdk: str) -> None:
             fail(f"SDK workflow still depends on unavailable self-hosted routing: {forbidden}")
 
 
+def verify_vnext_windows_checkout_contract(vnext: str) -> None:
+    marker = "Enable Git long paths before checkout (Windows)"
+    checkout = "uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+    require(
+        vnext,
+        "Hepta vNext Windows checkout",
+        marker,
+        "if: runner.os == 'Windows'",
+        "git config --global core.longpaths true",
+        checkout,
+    )
+    portable_product = vnext.index("portable-product:")
+    marker_offset = vnext.index(marker, portable_product)
+    checkout_offset = vnext.index(checkout, portable_product)
+    if marker_offset > checkout_offset:
+        fail("Hepta vNext enables Windows long paths only after checkout")
+
+
 def main() -> int:
     try:
         for path in (POLICY, BLOCKING, BROWSER, VNEXT, SDK):
@@ -144,8 +162,9 @@ def main() -> int:
             "- browser-c0-c3",
             "- generated-and-locks",
         )
+        verify_vnext_windows_checkout_contract(vnext)
         verify_sdk_runner_contract(sdk)
-    except (OSError, UnicodeError, json.JSONDecodeError, RuntimeError) as error:
+    except (OSError, UnicodeError, json.JSONDecodeError, RuntimeError, ValueError) as error:
         print(f"HEPTA_REQUIRED_CONTEXTS=FAIL: {error}", file=sys.stderr)
         return 1
     print(
@@ -157,6 +176,7 @@ def main() -> int:
                 "single_workflow_aggregation": False,
                 "superseded_run_cancellation": True,
                 "sdk_runner": "github_hosted_ubuntu_24_04",
+                "windows_checkout_longpaths": True,
                 "branch_ruleset_configured": False,
                 "authority": "all_false",
             },
