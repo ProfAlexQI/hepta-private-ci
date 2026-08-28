@@ -1,0 +1,55 @@
+name: hepta-intelligence-local-embedding-index-slim
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-local-embedding-index-v1b-*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-local-embedding-index-slim-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  isolated-qualification:
+    name: P1.1b slim isolated qualification
+    runs-on: ubuntu-slim
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Materialize rustfmt candidate
+        run: cargo fmt --manifest-path codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml --all
+
+      - name: Upload exact formatted crate
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1b-slim-rustfmt-${{ github.sha }}
+          path: codex-rs/hepta-memory-p1-1b-qualification
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Run source gate
+        run: python3 scripts/verify-hepta-intelligence-local-embedding-index.py
+
+      - name: Run tests
+        run: cargo test --manifest-path codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml --all-targets -- --nocapture
+
+      - name: Run check
+        run: cargo check --manifest-path codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml --all-targets
+
+      - name: Run strict Clippy
+        run: cargo clippy --manifest-path codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml --all-targets -- -D warnings
+
+      - name: Require committed rustfmt output
+        run: git diff --exit-code -- codex-rs/hepta-memory-p1-1b-qualification
