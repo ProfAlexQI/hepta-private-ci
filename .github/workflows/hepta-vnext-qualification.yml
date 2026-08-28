@@ -23,13 +23,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}::runner-recovery-v2::${{ github.event.pull_request.number > 0 && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+  group: ${{ github.workflow }}::runner-recovery-v3::${{ github.event.pull_request.number > 0 && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
   cancel-in-progress: ${{ github.ref_name != 'main' }}
 
 jobs:
   runner-preflight:
     name: Runner preflight
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:
       - name: Confirm hosted runner execution
@@ -52,7 +52,7 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-24.04
+          - ubuntu-22.04
           - windows-latest
     defaults:
       run:
@@ -127,7 +127,7 @@ jobs:
   authbus-local-qualification:
     name: AuthBus local qualification (feature-on, no authority)
     needs: runner-preflight
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     defaults:
       run:
@@ -217,7 +217,7 @@ jobs:
   generated-and-locks:
     name: Generated artifacts and locks
     needs: runner-preflight
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -256,7 +256,7 @@ jobs:
       - authbus-local-qualification
       - browser-c0-c3
       - generated-and-locks
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

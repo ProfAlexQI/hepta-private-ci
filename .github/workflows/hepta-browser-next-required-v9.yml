@@ -28,7 +28,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ${{ github.workflow }}::runner-recovery-v2::${{ github.event.pull_request.number > 0 && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+  group: ${{ github.workflow }}::runner-recovery-v3::${{ github.event.pull_request.number > 0 && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
   cancel-in-progress: ${{ github.ref_name != 'main' }}
 
 # This workflow is a top-level required context. Its leaves expose workflow_call
@@ -98,7 +98,7 @@ jobs:
       - topology-acceptance-pointer-v1
       - build-input-v3
       - build-preflight
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:
       - name: Require all qualification-only dependencies

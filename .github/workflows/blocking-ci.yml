@@ -6,13 +6,13 @@ on:
     branches: [main, integration/vnext-main-20260811]
 
 concurrency:
-  group: ${{ github.workflow }}::runner-recovery-v2::${{ github.event.pull_request.number > 0 && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+  group: ${{ github.workflow }}::runner-recovery-v3::${{ github.event.pull_request.number > 0 && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
   cancel-in-progress: ${{ github.ref_name != 'main' }}
 
 jobs:
   runner-preflight:
     name: Runner preflight
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:
       - name: Confirm hosted runner execution
@@ -53,7 +53,7 @@ jobs:
   hepta-required-context-policy:
     name: Hepta required-context policy
     needs: runner-preflight
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -117,7 +117,7 @@ jobs:
       - repo-checks
       - rust-ci
       - sdk
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
