@@ -1,0 +1,122 @@
+def fixture() -> dict[str, Any]:
+    source, source_raw = source_pointer()
+    topology, topology_raw = topology_contract()
+    receipt, receipt_raw = topology_receipt(source, topology, topology_raw)
+    review_policy, review_policy_raw = policy()
+    challenge = T.compile_challenge(
+        source,
+        source_raw,
+        receipt,
+        receipt_raw,
+        topology,
+        topology_raw,
+        review_policy,
+        review_policy_raw,
+        "2026-08-28T16:20:00Z",
+    )
+    challenge_raw = T.canonical(challenge)
+    receipt_digest = receipt["receipt_id"].rsplit(":", 1)[-1]
+    challenge_digest = challenge["challenge_id"].rsplit(":", 1)[-1]
+    pointer: dict[str, Any] = {
+        "schema": T.POINTER_SCHEMA,
+        "schema_version": 1,
+        "phase": "DEVELOPMENT",
+        "claim_level": "EXACT_SOURCE_AND_WORKER_TOPOLOGY_ACCEPTED_BUILD_RECIPE_REVIEW_REQUIRED",
+        "accepted_at_utc": "2026-08-28T16:30:00Z",
+        "accepted_source_pointer": {
+            "id": source["pointer_id"],
+            "sha256": T.sha256_bytes(source_raw),
+            "bytes": len(source_raw),
+        },
+        "topology_receipt": {
+            "id": receipt["receipt_id"],
+            "sha256": T.sha256_bytes(receipt_raw),
+            "bytes": len(receipt_raw),
+            "snapshot_path": review_policy["topology_receipt_snapshot_prefix"] + receipt_digest + ".json",
+        },
+        "topology_contract": {
+            "id": topology["topology_id"],
+            "sha256": T.sha256_bytes(topology_raw),
+            "bytes": len(topology_raw),
+        },
+        "challenge": {
+            "id": challenge["challenge_id"],
+            "sha256": T.sha256_bytes(challenge_raw),
+            "bytes": len(challenge_raw),
+            "snapshot_path": review_policy["challenge_snapshot_prefix"] + challenge_digest + ".json",
+        },
+        "policy": {
+            "id": review_policy["policy_id"],
+            "sha256": T.sha256_bytes(review_policy_raw),
+            "bytes": len(review_policy_raw),
+        },
+        "hepta": copy.deepcopy(source["hepta"]),
+        "servo": copy.deepcopy(source["servo"]),
+        "bindings": {
+            "source_bundle_receipt_sha256": "a" * 64,
+            "compressed_archive_sha256": "b" * 64,
+            "topology_id": topology["topology_id"],
+            "topology_sha256": T.sha256_bytes(topology_raw),
+            "file_projection_sha256": "c" * 64,
+        },
+        "review": {
+            "mode": "GITHUB_PULL_REQUEST_REVIEW",
+            "state": "REQUIRES_LIVE_APPROVAL_EVIDENCE",
+            "policy_id": review_policy["policy_id"],
+            "challenge_id": challenge["challenge_id"],
+            "pull_request_number": 88,
+            "head_ref": "review/hepta-servo-worker-topology-acceptance-fixture",
+        },
+        "claims": copy.deepcopy(T.ACCEPTED_TOPOLOGY_CLAIMS),
+        "authority": copy.deepcopy(T.AUTHORITY),
+        "decision": "WORKER_SOURCE_TOPOLOGY_ACCEPTED_BUILD_RECIPE_REVIEW_REQUIRED_BUILD_NOT_AUTHORIZED",
+    }
+    pointer = bound(
+        pointer,
+        "pointer_id",
+        "hepta-servo-accepted-worker-source-topology-pointer:v1:",
+        T.POINTER_DOMAIN,
+    )
+    commit_sha = "d" * 40
+    pull_request = {
+        "number": 88,
+        "state": "open",
+        "draft": False,
+        "user": {"login": "author"},
+        "base": {"ref": T.BASE_BRANCH, "repo": {"full_name": T.REPOSITORY}},
+        "head": {
+            "ref": pointer["review"]["head_ref"],
+            "sha": commit_sha,
+            "repo": {"full_name": T.REPOSITORY},
+        },
+    }
+    reviews = {
+        "reviews": [
+            {
+                "state": "APPROVED",
+                "user": {"login": "reviewer"},
+                "commit_id": commit_sha,
+                "author_association": "MEMBER",
+                "body": review_policy["review"]["required_body_prefix"] + challenge["challenge_id"],
+                "submitted_at": "2026-08-28T16:41:00Z",
+            }
+        ]
+    }
+    files = {
+        "files": [
+            {"filename": review_policy["pointer_path"]},
+            {"filename": pointer["topology_receipt"]["snapshot_path"]},
+            {"filename": pointer["challenge"]["snapshot_path"]},
+        ]
+    }
+    head_commit = {
+        "sha": commit_sha,
+        "commit": {"committer": {"date": "2026-08-28T16:40:00Z"}},
+    }
+    return locals()
+
+
+def rebind(value: dict[str, Any], key: str, prefix: str, domain: bytes) -> None:
+    value.pop(key, None)
+    value[key] = prefix + T.framed(domain, T.canonical(value))
+
