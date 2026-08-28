@@ -15,12 +15,11 @@ POLICY = ROOT / "docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.jso
 STATUS = ROOT / "docs/hepta-vnext/browser/C1_EXACT_SOURCE_ACCEPTANCE_POINTER_V1_STATUS.json"
 CONTRACT = ROOT / ".github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml"
 LIVE_V2 = ROOT / ".github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml"
-AGGREGATE_V8 = ROOT / ".github/workflows/hepta-browser-next-required-v8.yml"
 AGGREGATE_V9 = ROOT / ".github/workflows/hepta-browser-next-required-v9.yml"
-BLOCKING = ROOT / ".github/workflows/blocking-ci.yml"
+CONTEXT_POLICY = ROOT / "docs/hepta-vnext/browser/CI_REQUIRED_CONTEXTS_V1.json"
+CONTEXT_VERIFIER = ROOT / "scripts/verify-hepta-required-contexts.py"
 CURRENT = ROOT / "docs/hepta-vnext/browser/CURRENT.yaml"
 C1_CURRENT = ROOT / "docs/hepta-vnext/browser/C1_CURRENT_V7.json"
-README = ROOT / "docs/hepta-vnext/browser/README.md"
 
 
 def fail(message: str) -> None:
@@ -33,6 +32,20 @@ def require(text: str, *tokens: str) -> None:
             fail(f"missing token {token!r}")
 
 
+def run_json(path: pathlib.Path, *arguments: str) -> dict[str, object]:
+    result = subprocess.run(
+        [sys.executable, str(path), *arguments],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    if result.returncode != 0:
+        fail((result.stderr or result.stdout)[-1200:])
+    return json.loads(result.stdout.strip().splitlines()[-1])
+
+
 def main() -> int:
     try:
         for path in (
@@ -43,12 +56,11 @@ def main() -> int:
             STATUS,
             CONTRACT,
             LIVE_V2,
-            AGGREGATE_V8,
             AGGREGATE_V9,
-            BLOCKING,
+            CONTEXT_POLICY,
+            CONTEXT_VERIFIER,
             CURRENT,
             C1_CURRENT,
-            README,
         ):
             if not path.is_file():
                 fail(f"missing {path.relative_to(ROOT)}")
@@ -58,13 +70,12 @@ def main() -> int:
         test = TEST.read_text(encoding="utf-8")
         contract = CONTRACT.read_text(encoding="utf-8")
         live = LIVE_V2.read_text(encoding="utf-8")
-        aggregate_v8 = AGGREGATE_V8.read_text(encoding="utf-8")
-        aggregate_v9 = AGGREGATE_V9.read_text(encoding="utf-8")
-        blocking = BLOCKING.read_text(encoding="utf-8")
+        aggregate = AGGREGATE_V9.read_text(encoding="utf-8")
         current = json.loads(CURRENT.read_text(encoding="utf-8"))
         c1 = json.loads(C1_CURRENT.read_text(encoding="utf-8"))
         policy = json.loads(POLICY.read_text(encoding="utf-8"))
         status = json.loads(STATUS.read_text(encoding="utf-8"))
+        contexts = json.loads(CONTEXT_POLICY.read_text(encoding="utf-8"))
 
         require(
             tool,
@@ -102,27 +113,29 @@ def main() -> int:
             "name: Source-only accepted pointer live review",
             "ref: ${{ github.event.pull_request.base.sha }}",
             "PR-head code executed: false",
-            "accepted-source-pointer.json",
-            "source-review-candidate.json",
-            "source-review-challenge.json",
             "PASS_LIVE_REVIEW_SOURCE_ONLY",
         )
         if "ref: ${{ github.event.pull_request.head.sha }}" in live:
             fail("source live review executes PR-head verifier code")
-        require(aggregate_v8, "source-acceptance-pointer-v1", '"build_authorized": False')
         require(
-            aggregate_v9,
-            "workflow_call:",
+            aggregate,
+            "pull_request:",
+            "name: Hepta Browser next required v9",
             "source-acceptance-pointer-v1:",
             "uses: ./.github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml",
             '"build_authorized": False',
         )
-        require(
-            blocking,
-            "hepta-browser-next-v9:",
-            "uses: ./.github/workflows/hepta-browser-next-required-v9.yml",
-            "- hepta-browser-next-v9",
-        )
+        expected_context = {
+            "check_name": "Hepta Browser next required v9",
+            "purpose": "canonical WEB-C1 source, review, topology, build-input and preflight graph",
+            "required": True,
+            "workflow": ".github/workflows/hepta-browser-next-required-v9.yml",
+        }
+        if expected_context not in contexts.get("contexts", []):
+            fail("required-context policy omits independent Browser v9 check")
+        context_summary = run_json(CONTEXT_VERIFIER)
+        if context_summary.get("status") != "PASS_VERSION_CONTROLLED_CONTEXT_CONTRACT":
+            fail("required-context verifier status drifted")
 
         review = policy.get("review", {})
         if review.get("reviewer_must_differ_from_pr_author") is not True or review.get(
@@ -149,17 +162,7 @@ def main() -> int:
         if status.get("evidence", {}).get("local_fixture_tests") != "22_PASS":
             fail("source acceptance status does not record 22 fixture passes")
 
-        command = subprocess.run(
-            [sys.executable, str(TOOL), "contract", "--policy", str(POLICY.resolve())],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-        if command.returncode != 0:
-            fail((command.stderr or command.stdout)[-1000:])
-        summary = json.loads(command.stdout)
+        summary = run_json(TOOL, "contract", "--policy", str(POLICY.resolve()))
         if summary.get("status") != "PASS_CONTRACT_ONLY" or summary.get(
             "pointer_creation_command"
         ) is not False:
@@ -181,9 +184,9 @@ def main() -> int:
             {
                 "status": "HEPTA_SERVO_EXACT_SOURCE_ACCEPTANCE_POINTER_V2_STATIC_PASS",
                 "fixture_tests": "22_PASS",
+                "independent_required_context": True,
                 "trusted_base_live_review": True,
                 "delegated_cli_surface_verified": True,
-                "pr_head_verifier_executed": False,
                 "pointer_creation_command": False,
                 "exact_servo_source_accepted": False,
                 "build_authorized": False,
