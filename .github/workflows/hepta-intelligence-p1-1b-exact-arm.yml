@@ -1,0 +1,276 @@
+name: hepta-intelligence-p1-1b-exact-arm
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-intelligence-p1-1b-exact-e6cded3-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-p1-1b-exact-e6cded3
+  cancel-in-progress: true
+
+env:
+  SOURCE_SHA: e6cded3099ec53c1b6de36bf7b389ff30a8d3718
+  WRAPPER_PATH: .github/workflows/hepta-intelligence-p1-1b-exact-arm.yml
+  CRATE_ROOT: codex-rs/hepta-memory-p1-1b-qualification
+  MANIFEST_PATH: codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml
+  ARTIFACT_DIR: artifacts/hepta-intelligence-p1-1b-exact-e6cded3
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  qualify:
+    name: P1.1b exact formatted head qualification
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout exact source plus wrapper
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify exact source binding and wrapper-only diff
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          def git(*args: str) -> str:
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+          source = os.environ["SOURCE_SHA"]
+          wrapper = os.environ["WRAPPER_PATH"]
+          changed = git("diff", "--name-only", f"{source}..HEAD").splitlines()
+          assert git("rev-parse", "HEAD^") == source
+          assert int(git("rev-list", "--count", f"{source}..HEAD")) == 1
+          assert changed == [wrapper], changed
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.exact_source_binding.v2",
+              "source_commit": source,
+              "source_tree": git("rev-parse", f"{source}^{{tree}}"),
+              "wrapper_commit": git("rev-parse", "HEAD"),
+              "wrapper_tree": git("rev-parse", "HEAD^{tree}"),
+              "wrapper_path": wrapper,
+              "wrapper_only_diff": True,
+              "runtime_wired": False,
+              "production_authority": False,
+          }
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          (artifact_dir / "source-binding.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          (artifact_dir / "wrapper-changed-paths.txt").write_text(
+              "\n".join(changed) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Isolate Cargo outputs from source tree
+        run: |
+          set -euo pipefail
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-p1-1b-exact-target" >> "$GITHUB_ENV"
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Record and verify pinned toolchain
+        run: |
+          set -euo pipefail
+          rustc --version | tee "$ARTIFACT_DIR/rustc-version.txt"
+          cargo --version | tee "$ARTIFACT_DIR/cargo-version.txt"
+          rustfmt --version | tee "$ARTIFACT_DIR/rustfmt-version.txt"
+          cargo clippy --version | tee "$ARTIFACT_DIR/clippy-version.txt"
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
+
+      - name: Run complete exact-head gate matrix
+        id: matrix
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUNNER_NAME: ${{ runner.name }}
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
+        run: |
+          set +e
+
+          run_gate() {
+            gate="$1"
+            shift
+            "$@" > "$ARTIFACT_DIR/$gate.log" 2>&1
+            code="$?"
+            printf '%s\n' "$code" > "$ARTIFACT_DIR/$gate.exit-code"
+            return 0
+          }
+
+          run_gate source_gate \
+            python3 scripts/verify-hepta-intelligence-local-embedding-index.py
+          run_gate rustfmt \
+            cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check
+          run_gate tests \
+            cargo test --manifest-path "$MANIFEST_PATH" --all-targets -- --nocapture
+          run_gate check \
+            cargo check --manifest-path "$MANIFEST_PATH" --all-targets
+          run_gate clippy \
+            cargo clippy --manifest-path "$MANIFEST_PATH" --all-targets -- -D warnings
+
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+
+          git diff --exit-code -- \
+            "$CRATE_ROOT" \
+            scripts/verify-hepta-intelligence-local-embedding-index.py \
+            plans/hepta-intelligence \
+            > "$ARTIFACT_DIR/clean_tree.log" 2>&1
+          clean_code="$?"
+          untracked="$(git ls-files --others --exclude-standard -- "$CRATE_ROOT")"
+          if [ -n "$untracked" ]; then
+            printf '%s\n' "$untracked" >> "$ARTIFACT_DIR/clean_tree.log"
+            clean_code=1
+          fi
+          printf '%s\n' "$clean_code" > "$ARTIFACT_DIR/clean_tree.exit-code"
+
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          gate_names = ["source_gate", "rustfmt", "tests", "check", "clippy", "clean_tree"]
+          exit_codes = {
+              name: int((artifact_dir / f"{name}.exit-code").read_text().strip())
+              for name in gate_names
+          }
+          gates = {name: ("success" if code == 0 else "failure") for name, code in exit_codes.items()}
+          all_pass = all(code == 0 for code in exit_codes.values())
+
+          tests_log = (artifact_dir / "tests.log").read_text(encoding="utf-8", errors="replace")
+          tests_passed = sum(int(value) for value in re.findall(r"test result: ok\. (\d+) passed", tests_log))
+
+          source_gate_status = None
+          try:
+              source_gate_status = json.loads(
+                  (artifact_dir / "source_gate.log").read_text(encoding="utf-8")
+              ).get("status")
+          except Exception:
+              source_gate_status = "unparsed"
+
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.exact_qualification.v2",
+              "status": (
+                  "PASS_P1_1B_EXACT_EXECUTABLE_GATES"
+                  if all_pass
+                  else "FAIL_P1_1B_EXACT_EXECUTABLE_GATES"
+              ),
+              "source_commit": os.environ["SOURCE_SHA"],
+              "source_tree": subprocess.check_output(
+                  ["git", "rev-parse", f"{os.environ['SOURCE_SHA']}^{{tree}}"],
+                  text=True,
+              ).strip(),
+              "wrapper_commit": subprocess.check_output(
+                  ["git", "rev-parse", "HEAD"], text=True
+              ).strip(),
+              "wrapper_path": os.environ["WRAPPER_PATH"],
+              "wrapper_only_diff": True,
+              "cargo_offline": os.environ.get("CARGO_NET_OFFLINE") == "true",
+              "cargo_target_external": True,
+              "cargo_lock_committed": False,
+              "target_artifacts_committed": False,
+              "source_gate_status": source_gate_status,
+              "gates": gates,
+              "exit_codes": exit_codes,
+              "tests_passed": tests_passed,
+              "executable_gates_passed": all_pass,
+              "runner": {
+                  "name": os.environ["RUNNER_NAME"],
+                  "os": os.environ["RUNNER_OS"],
+                  "arch": os.environ["RUNNER_ARCH"],
+              },
+              "workflow": {
+                  "run_id": int(os.environ["RUN_ID"]),
+                  "run_attempt": int(os.environ["RUN_ATTEMPT"]),
+              },
+              "qualified": False,
+              "qualification_blockers": [
+                  "P0.1-P1.1a executable qualification",
+                  "review of index format and tamper behavior",
+                  "review of tokenizer fallback and no-product-wiring proof",
+                  "operator acceptance",
+              ],
+              "runtime_wired": False,
+              "product_workspace_member": False,
+              "product_module_registered": False,
+              "default_recall_changed": False,
+              "federation_recall_changed": False,
+              "context_attachment": False,
+              "physical_send": False,
+              "remote_embedding": False,
+              "model_download": False,
+              "network_access": False,
+              "external_effects": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "callers_ratchet": False,
+              "efficacy_validation": False,
+          }
+          (artifact_dir / "qualification-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          summary = [
+              "## P1.1b exact formatted head qualification",
+              "",
+              f"- Source: `{receipt['source_commit']}`",
+              f"- Status: `{receipt['status']}`",
+              f"- Tests passed: `{tests_passed}`",
+              "- Overall `qualified` remains `false`; product authority is unchanged.",
+              "",
+              "| Gate | Outcome | Exit |",
+              "|---|---|---:|",
+          ]
+          summary.extend(
+              f"| {name} | `{gates[name]}` | `{exit_codes[name]}` |"
+              for name in gate_names
+          )
+          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(
+              "\n".join(summary) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          receipt = json.loads(
+              (Path(os.environ["ARTIFACT_DIR"]) / "qualification-receipt.json")
+              .read_text(encoding="utf-8")
+          )
+          raise SystemExit(0 if receipt["executable_gates_passed"] else 1)
+          PY
+
+      - name: Upload exact-head evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1b-exact-e6cded3-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1b-exact-e6cded3
+          if-no-files-found: warn
+          retention-days: 14
