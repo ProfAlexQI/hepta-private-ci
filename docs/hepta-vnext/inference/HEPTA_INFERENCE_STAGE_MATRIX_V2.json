@@ -62,7 +62,13 @@
       "depends_on": ["INF-0B"],
       "status": "SOURCE_PRESENT_NOT_RUN",
       "source_complete": true,
+      "transport_disconnect_harness_source_complete": true,
+      "controlled_restart_harness_source_complete": true,
+      "trusted_control_helper_source_complete": true,
       "real_software_e2e_executed": false,
+      "transport_disconnect_executed": false,
+      "controlled_restart_executed": false,
+      "backend_cancellation_acknowledged": false,
       "qualified": false,
       "operator_accepted": false,
       "promoted": false
