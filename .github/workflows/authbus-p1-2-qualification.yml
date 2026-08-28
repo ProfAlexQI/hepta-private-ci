@@ -1,0 +1,363 @@
+name: AuthBus P1.2 exact durable replay qualification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - integration/vnext-main-full-ci-authbus-p1-2-20260828
+    paths:
+      - .github/workflows/authbus-p1-2-qualification.yml
+      - codex-rs/hepta-authbus-p1-qualification/**
+      - codex-rs/hepta-authbus-p1-2-qualification/**
+      - scripts/verify-authbus-p1-1.py
+      - scripts/verify-authbus-p1-2.py
+      - docs/hepta-vnext/authbus/AUTHBUS_P1_1_DEVELOPMENT_PLAN_2026-08-28.md
+      - docs/hepta-vnext/authbus/AUTHBUS_P1_2_DEVELOPMENT_PLAN_2026-08-28.md
+      - docs/hepta-vnext/authbus/AUTHBUS_P1_2_IMPLEMENTATION_STATUS_2026-08-28.json
+      - docs/hepta-vnext/authbus/AUTHBUS_P1_2_IMPLEMENTATION_STATUS_2026-08-28.md
+      - docs/hepta-vnext/authbus/AUTHBUS_P1_2_EXECUTABLE_QUALIFICATION_2026-08-29.json
+      - docs/hepta-vnext/authbus/AUTHBUS_P1_2_EXECUTABLE_QUALIFICATION_2026-08-29.md
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  P11_MANIFEST: codex-rs/hepta-authbus-p1-qualification/Cargo.toml
+  P11_PACKAGE: codex-hepta-authbus-p1-qualification
+  P12_MANIFEST: codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
+  P12_PACKAGE: codex-hepta-authbus-p1-2-qualification
+  CARGO_INCREMENTAL: "0"
+  CARGO_BUILD_JOBS: "1"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_NET_RETRY: "10"
+  CARGO_HTTP_TIMEOUT: "120"
+
+jobs:
+  source:
+    name: Exact source, cleanup, receipt, and negative-authority contracts
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Bind exact head and prove one-shot cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse HEAD^{tree})"
+          } | tee authbus-p1-2-exact-head.txt
+
+          for path in \
+            .github/workflows/authbus-p1-2-diagnostic.yml \
+            .github/workflows/authbus-p1-2-explicit-rollback-finalize.yml \
+            .github/workflows/authbus-p1-2-failpoint-diagnostic.yml \
+            .github/workflows/authbus-p1-2-finalize.yml \
+            .github/workflows/authbus-p1-2-remediation.yml \
+            .github/workflows/authbus-p1-2-source-seed.yml \
+            scripts/authbus-p1-2-finalize.py \
+            scripts/authbus-p1-2-explicit-rollback-repair.py \
+            scripts/authbus-p1-2-source-seed.part-00.b64 \
+            scripts/authbus-p1-2-source-seed.part-01.b64 \
+            scripts/authbus-p1-2-source-seed.part-02.b64 \
+            scripts/authbus-p1-2-source-seed.part-03.b64 \
+            scripts/authbus-p1-2-source-seed.part-04.b64 \
+            scripts/authbus-p1-2-source-seed.part-05.b64 \
+            scripts/authbus-p1-2-source-seed.part-06.b64 \
+            scripts/authbus-p1-2-source-seed.part-07.b64 \
+            docs/hepta-vnext/authbus/AUTHBUS_P1_2_TEST_FAILURE_2026-08-28.txt
+          do
+            test ! -e "${path}"
+          done
+
+      - name: Verify inherited P1.1 and P1.2 source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-authbus-p1-1.py | tee authbus-p1-1-source.json
+          grep -q 'PASS_AUTHBUS_P1_1_SOURCE_ONLY' authbus-p1-1-source.json
+          python3 scripts/verify-authbus-p1-2.py | tee authbus-p1-2-source.json
+          grep -q 'PASS_AUTHBUS_P1_2_SOURCE_ONLY' authbus-p1-2-source.json
+
+      - name: Verify explicit rollback and optional executable receipt
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          import subprocess
+          import urllib.request
+          from pathlib import Path
+
+          store = Path("codex-rs/hepta-authbus-p1-2-qualification/src/store.rs").read_text(
+              encoding="utf-8"
+          )
+          assert store.count("async fn commit_or_rollback(") == 1
+          assert store.count("commit_or_rollback(transaction, P12Failpoint::") == 7
+          assert "self.maybe_fail(P12Failpoint::StorageUnavailableBeforeCommit)?;" not in store
+          assert "transaction.rollback().await.map_err(map_sqlx)?;" in store
+
+          status = json.loads(
+              Path(
+                  "docs/hepta-vnext/authbus/"
+                  "AUTHBUS_P1_2_IMPLEMENTATION_STATUS_2026-08-28.json"
+              ).read_text(encoding="utf-8")
+          )
+          assert status["implemented"] is True
+          assert status["qualified"] is False
+          assert status["wired"] is False
+          for field in (
+              "authority",
+              "effect_authority",
+              "production_caller",
+              "production_writer",
+              "operator_acceptance",
+              "promotion",
+              "g5_allowed",
+              "execute_allowed",
+              "listener_enabled",
+              "provider_call_enabled",
+              "openbao_enabled",
+              "parent_workspace_wired",
+              "private_key_storage",
+              "raw_signature_storage",
+              "secret_storage",
+          ):
+              assert status[field] is False, field
+
+          receipt_path = Path(
+              "docs/hepta-vnext/authbus/"
+              "AUTHBUS_P1_2_EXECUTABLE_QUALIFICATION_2026-08-29.json"
+          )
+          if receipt_path.exists():
+              receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+              assert receipt["schema"] == "hepta.authbus.p1.2.executable-qualification.v1"
+              assert receipt["qualified"] is True
+              assert receipt["qualification_only"] is True
+              assert receipt["authority"] is False
+              assert receipt["effect_authority"] is False
+              assert receipt["production_caller"] is False
+              assert receipt["production_writer"] is False
+              source_head = receipt["source_head"]
+              run_id = int(receipt["qualification_run_id"])
+              expected_job_ids = {int(value) for value in receipt["qualification_job_ids"]}
+              assert len(source_head) == 40
+              assert run_id > 0
+              assert len(expected_job_ids) == 3
+
+              changed = subprocess.check_output(
+                  ["git", "diff", "--name-only", f"{source_head}..HEAD"],
+                  text=True,
+              ).splitlines()
+              allowed = {
+                  str(receipt_path),
+                  "docs/hepta-vnext/authbus/"
+                  "AUTHBUS_P1_2_EXECUTABLE_QUALIFICATION_2026-08-29.md",
+              }
+              assert set(changed).issubset(allowed), changed
+
+              token = os.environ["GH_TOKEN"]
+              repository = os.environ["GITHUB_REPOSITORY"]
+
+              def api(path: str) -> dict:
+                  request = urllib.request.Request(
+                      f"https://api.github.com/repos/{repository}{path}",
+                      headers={
+                          "Accept": "application/vnd.github+json",
+                          "Authorization": f"Bearer {token}",
+                          "X-GitHub-Api-Version": "2022-11-28",
+                      },
+                  )
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      return json.load(response)
+
+              run = api(f"/actions/runs/{run_id}")
+              assert run["head_sha"] == source_head
+              assert run["status"] == "completed"
+              assert run["conclusion"] == "success"
+
+              jobs = api(f"/actions/runs/{run_id}/jobs?filter=latest&per_page=100")["jobs"]
+              by_id = {int(job["id"]): job for job in jobs}
+              assert expected_job_ids.issubset(by_id)
+              for job_id in expected_job_ids:
+                  job = by_id[job_id]
+                  assert job["status"] == "completed"
+                  assert job["conclusion"] == "success"
+                  assert int(job.get("runner_id") or 0) > 0
+                  steps = job.get("steps") or []
+                  assert steps
+                  assert all(
+                      step.get("conclusion") in {"success", "skipped"}
+                      for step in steps
+                  )
+
+          Path("authbus-p1-2-source-contract.json").write_text(
+              json.dumps(
+                  {
+                      "schema": "hepta.authbus.p1.2.source-contract.v1",
+                      "commit": os.environ["GITHUB_SHA"],
+                      "explicit_precommit_rollback": True,
+                      "rollback_sites": 7,
+                      "qualification_only": True,
+                      "authority": False,
+                      "effect_authority": False,
+                      "production_caller": False,
+                      "production_writer": False,
+                  },
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload exact source receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: authbus-p1-2-source-${{ github.run_id }}
+          path: |
+            authbus-p1-2-exact-head.txt
+            authbus-p1-1-source.json
+            authbus-p1-2-source.json
+            authbus-p1-2-source-contract.json
+          retention-days: 14
+
+  inherited-p1-1:
+    name: Inherited P1.1 signed identity and evidence matrix
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Verify exact compiler, head, and committed P1.1 lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(rustc -V | awk '{print $2}')" = "1.95.0"
+          test -s codex-rs/hepta-authbus-p1-qualification/Cargo.lock
+          cargo metadata --manifest-path "${P11_MANIFEST}" --locked --format-version 1 --no-deps >/dev/null
+
+      - name: Check P1.1 formatting
+        shell: bash
+        run: cargo fmt --manifest-path "${P11_MANIFEST}" --package "${P11_PACKAGE}" -- --check
+
+      - name: Check P1.1 default-off authority posture
+        shell: bash
+        run: cargo test --manifest-path "${P11_MANIFEST}" --locked --no-default-features --lib -- --nocapture
+
+      - name: Run P1.1 signed identity and evidence matrix
+        shell: bash
+        run: cargo test --manifest-path "${P11_MANIFEST}" --locked --features p1-qualification --tests -- --nocapture
+
+      - name: Check all P1.1 targets
+        shell: bash
+        run: cargo check --manifest-path "${P11_MANIFEST}" --locked --features p1-qualification --all-targets
+
+      - name: Run strict P1.1 Clippy
+        shell: bash
+        run: cargo clippy --manifest-path "${P11_MANIFEST}" --locked --features p1-qualification --all-targets -- -D warnings
+
+      - name: Record inherited P1.1 executable receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > authbus-p1-1-inherited-receipt.json <<EOF
+          {"schema":"hepta.authbus.p1.1.inherited-rust-receipt.v1","commit":"$(git rev-parse HEAD)","tree":"$(git rev-parse HEAD^{tree})","rustc":"$(rustc -V)","cargo":"$(cargo -V)","source":true,"format":true,"default_off":true,"tests":true,"check":true,"clippy":true,"qualification_only":true,"authority":false,"effect_authority":false,"production_caller":false,"production_writer":false,"operator_acceptance":false,"promotion":false,"g5_allowed":false,"execute_allowed":false}
+          EOF
+
+      - name: Upload inherited P1.1 executable receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: authbus-p1-1-inherited-${{ github.run_id }}
+          path: authbus-p1-1-inherited-receipt.json
+          retention-days: 14
+
+  p1-2:
+    name: AuthBus P1.2 durable replay Rust qualification
+    needs:
+      - source
+      - inherited-p1-1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Verify exact compiler, head, and committed P1.2 lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(rustc -V | awk '{print $2}')" = "1.95.0"
+          test -s codex-rs/hepta-authbus-p1-2-qualification/Cargo.lock
+          cargo metadata --manifest-path "${P12_MANIFEST}" --locked --format-version 1 --no-deps >/dev/null
+
+      - name: Check P1.2 formatting
+        shell: bash
+        run: cargo fmt --manifest-path "${P12_MANIFEST}" --package "${P12_PACKAGE}" -- --check
+
+      - name: Check P1.2 default-off authority posture
+        shell: bash
+        run: cargo test --manifest-path "${P12_MANIFEST}" --locked --no-default-features --lib -- --nocapture
+
+      - name: Run restart, replay, explicit rollback, GC, and corruption matrix
+        shell: bash
+        run: cargo test --manifest-path "${P12_MANIFEST}" --locked --features p1-2-qualification --tests -- --nocapture
+
+      - name: Check all P1.2 targets
+        shell: bash
+        run: cargo check --manifest-path "${P12_MANIFEST}" --locked --features p1-2-qualification --all-targets
+
+      - name: Run strict P1.2 Clippy
+        shell: bash
+        run: cargo clippy --manifest-path "${P12_MANIFEST}" --locked --features p1-2-qualification --all-targets -- -D warnings
+
+      - name: Record P1.2 executable receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > authbus-p1-2-rust-receipt.json <<EOF
+          {"schema":"hepta.authbus.p1.2.rust-receipt.v1","commit":"$(git rev-parse HEAD)","tree":"$(git rev-parse HEAD^{tree})","rustc":"$(rustc -V)","cargo":"$(cargo -V)","source":true,"cleanup":true,"format":true,"default_off":true,"tests":true,"check":true,"clippy":true,"explicit_precommit_rollback":true,"rollback_sites":7,"qualification_only":true,"authority":false,"effect_authority":false,"production_caller":false,"production_writer":false,"operator_acceptance":false,"promotion":false,"g5_allowed":false,"execute_allowed":false,"listener_enabled":false,"provider_call_enabled":false,"openbao_enabled":false,"parent_workspace_wired":false,"private_key_storage":false,"raw_signature_storage":false,"secret_storage":false}
+          EOF
+
+      - name: Upload P1.2 executable receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: authbus-p1-2-rust-${{ github.run_id }}
+          path: authbus-p1-2-rust-receipt.json
+          retention-days: 14
