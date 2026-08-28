@@ -871,16 +871,12 @@ where
             profile_id: request.profile_id.clone(),
             token_family_id: request.token_family_id.clone(),
             outcome,
-            access_secret_ref: if outcome == SecretRefOutcome::Succeeded {
-                result.access_secret_ref
-            } else {
-                None
-            },
-            refresh_secret_ref: if outcome == SecretRefOutcome::Succeeded {
-                result.refresh_secret_ref
-            } else {
-                None
-            },
+            access_secret_ref: (outcome == SecretRefOutcome::Succeeded)
+                .then_some(result.access_secret_ref)
+                .flatten(),
+            refresh_secret_ref: (outcome == SecretRefOutcome::Succeeded)
+                .then_some(result.refresh_secret_ref)
+                .flatten(),
             secret_revision: result.secret_revision,
             refresh_operation_key: request.refresh_operation_key.clone(),
             provider_status: result.provider_status,
@@ -978,11 +974,9 @@ where
             profile_id: request.profile_id.clone(),
             token_family_id: request.token_family_id.clone(),
             outcome,
-            new_refresh_secret_ref: if outcome == SecretRefOutcome::Succeeded {
-                result.new_refresh_secret_ref
-            } else {
-                None
-            },
+            new_refresh_secret_ref: (outcome == SecretRefOutcome::Succeeded)
+                .then_some(result.new_refresh_secret_ref)
+                .flatten(),
             secret_revision: result.secret_revision,
             refresh_operation_key: request.refresh_operation_key.clone(),
             response_digest: result.response_digest,
@@ -1099,16 +1093,12 @@ where
             audience: request.audience.clone(),
             key_epoch: 0,
             issuer: "local-mode-registry".to_string(),
-            new_access_secret_ref: if outcome == SecretRefOutcome::Succeeded {
-                result.new_access_secret_ref
-            } else {
-                None
-            },
-            new_refresh_secret_ref: if outcome == SecretRefOutcome::Succeeded {
-                result.new_refresh_secret_ref
-            } else {
-                None
-            },
+            new_access_secret_ref: (outcome == SecretRefOutcome::Succeeded)
+                .then_some(result.new_access_secret_ref)
+                .flatten(),
+            new_refresh_secret_ref: (outcome == SecretRefOutcome::Succeeded)
+                .then_some(result.new_refresh_secret_ref)
+                .flatten(),
             signature: None,
             key_id: None,
             issued_at: None,
@@ -1268,9 +1258,9 @@ where
                 .transition(SecretRefEvent::Lookup)
                 .map_err(|error| B3AdapterError::InvalidState(error.to_string()))?;
         } else if entry.record.state != SecretRefState::Reconciling {
+            let state = entry.record.state;
             return Err(B3AdapterError::InvalidState(format!(
-                "status lookup cannot advance {:?}",
-                entry.record.state
+                "status lookup cannot advance {state:?}"
             )));
         }
 
