@@ -93,9 +93,8 @@ fn prepare_old_fence_unknown(
     P03Fence,
     P03Fence,
 ) {
-    let mut scheduler =
-        P03LocalScheduler::new(resource(CanonicalQuotaLimits::known(capacity())))
-            .expect("scheduler");
+    let mut scheduler = P03LocalScheduler::new(resource(CanonicalQuotaLimits::known(capacity())))
+        .expect("scheduler");
     let permit = inserted_permit(
         scheduler
             .reserve(request(&scheduler, label, 1_000, 10_000))
@@ -104,12 +103,7 @@ fn prepare_old_fence_unknown(
     let old_fence = permit.fence.clone();
     let dispatch_revision = scheduler.revision();
     scheduler
-        .mark_dispatch_started(
-            &permit.permit_id,
-            &old_fence,
-            dispatch_revision,
-            1_100,
-        )
+        .mark_dispatch_started(&permit.permit_id, &old_fence, dispatch_revision, 1_100)
         .expect("dispatch started");
     let unknown_revision = scheduler.revision();
     scheduler
@@ -171,9 +165,8 @@ fn unknown_quota_denies_without_mutation() {
 
 #[test]
 fn exact_idempotency_replays_original_permit_and_changed_payload_conflicts() {
-    let mut scheduler =
-        P03LocalScheduler::new(resource(CanonicalQuotaLimits::known(capacity())))
-            .expect("scheduler");
+    let mut scheduler = P03LocalScheduler::new(resource(CanonicalQuotaLimits::known(capacity())))
+        .expect("scheduler");
     let original = request(&scheduler, "replay", 1_000, 2_000);
     let first = scheduler.reserve(original.clone()).expect("reserve");
     let snapshot = match first {
@@ -211,8 +204,7 @@ fn exact_idempotency_replays_original_permit_and_changed_payload_conflicts() {
 
 #[test]
 fn old_fence_consumed_reconcile_completes_once_and_replays_receipt() {
-    let (mut scheduler, permit, old_fence, current_fence) =
-        prepare_old_fence_unknown("consumed");
+    let (mut scheduler, permit, old_fence, current_fence) = prepare_old_fence_unknown("consumed");
     let held_before = scheduler.held();
     let request = P03OldPermitReconcileRequest {
         permit_id: permit.permit_id.clone(),
@@ -264,8 +256,7 @@ fn old_fence_consumed_reconcile_completes_once_and_replays_receipt() {
 
 #[test]
 fn verified_no_effect_releases_old_permit_without_usage() {
-    let (mut scheduler, permit, old_fence, current_fence) =
-        prepare_old_fence_unknown("no-effect");
+    let (mut scheduler, permit, old_fence, current_fence) = prepare_old_fence_unknown("no-effect");
     let request = P03OldPermitReconcileRequest {
         permit_id: permit.permit_id.clone(),
         old_fence,
@@ -303,8 +294,7 @@ fn verified_no_effect_releases_old_permit_without_usage() {
 
 #[test]
 fn unknown_reconcile_keeps_hold_and_later_terminal_evidence_can_settle() {
-    let (mut scheduler, permit, old_fence, current_fence) =
-        prepare_old_fence_unknown("held");
+    let (mut scheduler, permit, old_fence, current_fence) = prepare_old_fence_unknown("held");
     let held_before = scheduler.held();
     let unknown = P03OldPermitReconcileRequest {
         permit_id: permit.permit_id.clone(),
@@ -359,8 +349,7 @@ fn unknown_reconcile_keeps_hold_and_later_terminal_evidence_can_settle() {
 
 #[test]
 fn stale_or_forged_reconcile_evidence_is_non_mutating() {
-    let (mut scheduler, permit, old_fence, current_fence) =
-        prepare_old_fence_unknown("forged");
+    let (mut scheduler, permit, old_fence, current_fence) = prepare_old_fence_unknown("forged");
     let before = scheduler.clone();
     let forged = P03OldPermitReconcileRequest {
         permit_id: permit.permit_id,
@@ -402,9 +391,8 @@ fn stale_or_forged_reconcile_evidence_is_non_mutating() {
 
 #[test]
 fn expiry_releases_only_pre_dispatch_and_never_unknown_effects() {
-    let mut scheduler =
-        P03LocalScheduler::new(resource(CanonicalQuotaLimits::known(capacity())))
-            .expect("scheduler");
+    let mut scheduler = P03LocalScheduler::new(resource(CanonicalQuotaLimits::known(capacity())))
+        .expect("scheduler");
     let pre_dispatch = inserted_permit(
         scheduler
             .reserve(request(&scheduler, "pre", 1_000, 1_100))
@@ -465,9 +453,8 @@ fn expiry_releases_only_pre_dispatch_and_never_unknown_effects() {
 
 #[test]
 fn dispatch_and_unknown_markers_are_exactly_idempotent() {
-    let mut scheduler =
-        P03LocalScheduler::new(resource(CanonicalQuotaLimits::known(capacity())))
-            .expect("scheduler");
+    let mut scheduler = P03LocalScheduler::new(resource(CanonicalQuotaLimits::known(capacity())))
+        .expect("scheduler");
     let permit = inserted_permit(
         scheduler
             .reserve(request(&scheduler, "markers", 1_000, 2_000))
@@ -476,21 +463,11 @@ fn dispatch_and_unknown_markers_are_exactly_idempotent() {
     let current_fence = scheduler.resource().fence.clone();
     let dispatch_revision = scheduler.revision();
     let (_, dispatch_snapshot) = scheduler
-        .mark_dispatch_started(
-            &permit.permit_id,
-            &current_fence,
-            dispatch_revision,
-            1_100,
-        )
+        .mark_dispatch_started(&permit.permit_id, &current_fence, dispatch_revision, 1_100)
         .expect("dispatch");
     assert_eq!(
         scheduler
-            .mark_dispatch_started(
-                &permit.permit_id,
-                &current_fence,
-                dispatch_revision,
-                1_101,
-            )
+            .mark_dispatch_started(&permit.permit_id, &current_fence, dispatch_revision, 1_100,)
             .expect("dispatch replay"),
         (P03WriteDisposition::AlreadyPresent, dispatch_snapshot)
     );
@@ -513,7 +490,7 @@ fn dispatch_and_unknown_markers_are_exactly_idempotent() {
                 &current_fence,
                 unknown_revision,
                 evidence,
-                1_201,
+                1_200,
             )
             .expect("unknown replay"),
         (P03WriteDisposition::AlreadyPresent, unknown_snapshot)

@@ -501,7 +501,8 @@ struct IdempotencyRecord {
 struct ActivePermit {
     permit: P03SchedulerPermit,
     state: P03ReservationState,
-    last_unknown_evidence_sha256: Option<Sha256Digest>,
+    dispatch_marker_sha256: Option<Sha256Digest>,
+    unknown_marker_sha256: Option<Sha256Digest>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -688,7 +689,8 @@ impl P03LocalScheduler {
             ActivePermit {
                 permit,
                 state: P03ReservationState::ActiveReserved,
-                last_unknown_evidence_sha256: None,
+                dispatch_marker_sha256: None,
+                unknown_marker_sha256: None,
             },
         );
         Ok(P03AdmissionDisposition::Inserted(snapshot))
@@ -728,9 +730,14 @@ impl P03LocalScheduler {
             .get(permit_id)
             .cloned()
             .ok_or(P03SchedulerError::UnknownPermit)?;
+        let marker_sha256 = dispatch_marker_digest(permit_id, current_fence, observed_at_ms);
         if active.state == P03ReservationState::DispatchStarted
             || active.state == P03ReservationState::OutcomeUnknown
         {
+            self.validate_replay_fence(&active.permit, current_fence)?;
+            if active.dispatch_marker_sha256.as_ref() != Some(&marker_sha256) {
+                return Err(P03SchedulerError::ObservationConflict);
+            }
             return Ok((
                 P03WriteDisposition::AlreadyPresent,
                 self.snapshot_for_permit(&active.permit)?,
@@ -743,6 +750,7 @@ impl P03LocalScheduler {
         let next_revision = self.next_revision()?;
         let mut next = active;
         next.state = P03ReservationState::DispatchStarted;
+        next.dispatch_marker_sha256 = Some(marker_sha256);
         self.active.insert(permit_id.to_string(), next.clone());
         let snapshot = self.update_record_state(
             &next.permit,
@@ -790,8 +798,11 @@ impl P03LocalScheduler {
             .get(permit_id)
             .cloned()
             .ok_or(P03SchedulerError::UnknownPermit)?;
+        let marker_sha256 =
+            unknown_marker_digest(permit_id, current_fence, &evidence_sha256, observed_at_ms);
         if active.state == P03ReservationState::OutcomeUnknown {
-            if active.last_unknown_evidence_sha256.as_ref() == Some(&evidence_sha256) {
+            self.validate_replay_fence(&active.permit, current_fence)?;
+            if active.unknown_marker_sha256.as_ref() == Some(&marker_sha256) {
                 return Ok((
                     P03WriteDisposition::AlreadyPresent,
                     self.snapshot_for_permit(&active.permit)?,
@@ -806,7 +817,7 @@ impl P03LocalScheduler {
         let next_revision = self.next_revision()?;
         let mut next = active;
         next.state = P03ReservationState::OutcomeUnknown;
-        next.last_unknown_evidence_sha256 = Some(evidence_sha256);
+        next.unknown_marker_sha256 = Some(marker_sha256);
         self.active.insert(permit_id.to_string(), next.clone());
         let snapshot = self.update_record_state(
             &next.permit,
@@ -867,22 +878,14 @@ impl P03LocalScheduler {
         let request_sha256 = request.digest()?;
         let request_key = request_sha256.to_string();
 
-        if let Some(terminal_request) = self
-            .terminal_reconcile_by_permit
-            .get(&request.permit_id)
-        {
-            if terminal_request == &request_key {
-                let receipt = self
-                    .reconcile_history
-                    .get(&request_key)
-                    .cloned()
-                    .ok_or(P03SchedulerError::CorruptState)?;
-                return Ok(P03ReconcileDisposition::AlreadyPresent(receipt));
-            }
-            return Err(P03SchedulerError::TerminalImmutable);
-        }
         if let Some(receipt) = self.reconcile_history.get(&request_key) {
             return Ok(P03ReconcileDisposition::AlreadyPresent(receipt.clone()));
+        }
+        if self
+            .terminal_reconcile_by_permit
+            .contains_key(&request.permit_id)
+        {
+            return Err(P03SchedulerError::TerminalImmutable);
         }
         if request.expected_revision != self.revision {
             return Err(P03SchedulerError::StaleRevision);
@@ -976,8 +979,7 @@ impl P03LocalScheduler {
             observed_at_ms: request.observed_at_ms,
             authority: AUTHBUS_B4_P0_3_AUTHORITY,
         };
-        self.reconcile_history
-            .insert(request_key, receipt.clone());
+        self.reconcile_history.insert(request_key, receipt.clone());
         Ok(P03ReconcileDisposition::Applied(receipt))
     }
 
@@ -1063,6 +1065,23 @@ impl P03LocalScheduler {
             if !active.state.is_active() || active.permit.authority {
                 return Err(P03SchedulerError::CorruptState);
             }
+            let marker_shape_valid = match active.state {
+                P03ReservationState::ActiveReserved => {
+                    active.dispatch_marker_sha256.is_none()
+                        && active.unknown_marker_sha256.is_none()
+                }
+                P03ReservationState::DispatchStarted => {
+                    active.dispatch_marker_sha256.is_some()
+                        && active.unknown_marker_sha256.is_none()
+                }
+                P03ReservationState::OutcomeUnknown => active.dispatch_marker_sha256.is_some(),
+                P03ReservationState::Completed
+                | P03ReservationState::Released
+                | P03ReservationState::ExpiredPreDispatch => false,
+            };
+            if !marker_shape_valid {
+                return Err(P03SchedulerError::CorruptState);
+            }
             recomputed_held = recomputed_held
                 .checked_add(active.permit.reserved)
                 .ok_or(P03SchedulerError::CorruptState)?;
@@ -1097,11 +1116,11 @@ impl P03LocalScheduler {
                 return Err(P03SchedulerError::CorruptState);
             }
         }
-        if !self.resource.quota.can_hold(
-            CanonicalQuotaVector::default(),
-            CanonicalQuotaVector::default(),
-            self.used,
-        ) {
+        if !self
+            .resource
+            .quota
+            .can_hold(self.used, self.held, CanonicalQuotaVector::default())
+        {
             return Err(P03SchedulerError::CorruptState);
         }
         Ok(())
@@ -1116,6 +1135,21 @@ impl P03LocalScheduler {
         if expected_revision != self.revision {
             return Err(P03SchedulerError::StaleRevision);
         }
+        if current_fence != &self.resource.fence
+            || permit.fence != self.resource.fence
+            || permit.resource_id != self.resource.resource_id
+            || permit.resource_sha256 != self.resource.resource_sha256
+        {
+            return Err(P03SchedulerError::StaleFence);
+        }
+        Ok(())
+    }
+
+    fn validate_replay_fence(
+        &self,
+        permit: &P03SchedulerPermit,
+        current_fence: &P03Fence,
+    ) -> Result<(), P03SchedulerError> {
         if current_fence != &self.resource.fence
             || permit.fence != self.resource.fence
             || permit.resource_id != self.resource.resource_id
@@ -1159,6 +1193,34 @@ impl P03LocalScheduler {
         record.snapshot.record_revision = revision;
         Ok(record.snapshot.clone())
     }
+}
+
+fn dispatch_marker_digest(
+    permit_id: &str,
+    current_fence: &P03Fence,
+    observed_at_ms: u64,
+) -> Sha256Digest {
+    let mut bytes = Vec::new();
+    push_text(&mut bytes, "hepta.authbus.b4.p0.3.dispatch-marker.v1");
+    push_text(&mut bytes, permit_id);
+    push_fence(&mut bytes, current_fence);
+    push_u64(&mut bytes, observed_at_ms);
+    Sha256Digest::for_bytes(&bytes)
+}
+
+fn unknown_marker_digest(
+    permit_id: &str,
+    current_fence: &P03Fence,
+    evidence_sha256: &Sha256Digest,
+    observed_at_ms: u64,
+) -> Sha256Digest {
+    let mut bytes = Vec::new();
+    push_text(&mut bytes, "hepta.authbus.b4.p0.3.unknown-marker.v1");
+    push_text(&mut bytes, permit_id);
+    push_fence(&mut bytes, current_fence);
+    push_digest(&mut bytes, evidence_sha256);
+    push_u64(&mut bytes, observed_at_ms);
+    Sha256Digest::for_bytes(&bytes)
 }
 
 fn validate_text(value: &str) -> Result<(), P03SchedulerError> {
