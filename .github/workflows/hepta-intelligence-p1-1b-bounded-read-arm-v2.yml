@@ -19,7 +19,7 @@ env:
 jobs:
   qualify:
     name: P1.1b bounded index read materialization driver
-    runs-on: macos-15
+    runs-on: ubuntu-slim
     timeout-minutes: 60
     steps:
       - name: Checkout exact qualification driver with complete ancestry
