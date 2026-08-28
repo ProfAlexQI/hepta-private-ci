@@ -1,0 +1,193 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+Encoding.default_external = Encoding::UTF_8
+Encoding.default_internal = Encoding::UTF_8
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  probe: root.join("apps/hepta-native/src/bin/hepta-ui-v4-windows-material-profile-probe.rs"),
+  aggregate: root.join("apps/hepta-native/src/shared/hepta_windows_material_profile_aggregate.rs"),
+  transient: root.join("apps/hepta-native/src/shared/hepta_windows_transient_material_host.rs"),
+  lifecycle: root.join("apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs"),
+  contract: root.join("docs/ui/HEPTA_WINDOWS_MATERIAL_PROFILE_RUNTIME_V1.json"),
+  schema: root.join("docs/ui/schemas/hepta.ui.v4.windows-material-profile-aggregate.v1.schema.json"),
+  status: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_15_WINDOWS_PROFILE_RUNTIME_2026-08-28.md"),
+  materializer: root.join("scripts/hepta-ui-v4-materialize-makepad-windows-hook"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-windows-material-profile-runtime.yml")
+}.freeze
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+
+def emit(checks, status)
+  failures = checks.reject { |_name, passed| passed }.keys
+  puts JSON.pretty_generate(
+    schema: "hepta.ui.v4.windows-material-profile-runtime-source-gate.v1",
+    status: status,
+    source_implemented: failures.empty?,
+    schema_failure_shape_implemented: failures.empty?,
+    native_compile_validation: false,
+    windows_compile_validation: false,
+    patched_makepad_compile_validation: false,
+    root_runtime_receipt_validation: false,
+    transient_runtime_receipt_validation: false,
+    dual_receipt_runtime_validation: false,
+    product_integration_eligible: false,
+    product_bound: false,
+    transient_system_material_binding: false,
+    complete_profile_binding: false,
+    system_material_binding: false,
+    native_product_runtime_validation: false,
+    device_validation: false,
+    production_authority: false,
+    effect_authority: false,
+    live_adapter_authority: false,
+    operator_acceptance: false,
+    promotion: false,
+    release: false,
+    checks: checks,
+    failures: failures
+  )
+  exit(failures.empty? ? 0 : 1)
+end
+
+emit(checks, "FAIL_MISSING_INPUT") unless checks.values.all?
+
+probe = files.fetch(:probe).read
+aggregate = files.fetch(:aggregate).read
+transient = files.fetch(:transient).read
+lifecycle = files.fetch(:lifecycle).read
+contract = JSON.parse(files.fetch(:contract).read)
+schema = JSON.parse(files.fetch(:schema).read)
+workflow = files.fetch(:workflow).read
+
+checks["probe.windows_and_hook_cfg"] =
+  probe.include?('target_os = "windows"') &&
+  probe.include?("hepta_makepad_windows_ack_hook") &&
+  probe.include?("requires Windows plus the vendored Makepad hook cfg")
+checks["probe.single_process_sequences"] =
+  probe.include?("ROOT_MICA_SEQUENCE: u64 = 1") &&
+  probe.include?("TRANSIENT_ACRYLIC_SEQUENCE: u64 = 2") &&
+  probe.include?("TRANSIENT_SOLID_SEQUENCE: u64 = 3")
+checks["probe.root_mica_exact"] = %w[
+  HeptaWindowsBackendAckBridge HeptaWindowsBackendVisualsProcessed
+  VerifiedPersistentChromeWithBackdropReadback WindowBackdrop::Mica
+].all? { |term| probe.include?(term) }
+checks["probe.dedicated_popup"] =
+  probe.include?("WindowHandle::new_popup") &&
+  probe.include?("popup_window_id == root_window_id") &&
+  probe.include?("is_popup") &&
+  probe.include?("separateFromRoot")
+checks["probe.transient_lifecycle"] = %w[
+  HeptaWindowsTransientMaterialHost HeptaWindowsTransientRequestIdentity
+  VerifiedAcrylicWithBackdropReadback VerifiedSolidRollbackWithBackdropReadback
+  WindowBackdrop::Acrylic WindowVisuals::default process_destroyed profile_evidence
+].all? { |term| probe.include?(term) }
+checks["probe.explicit_close_and_destroy"] =
+  probe.include?("CxOsOp::CloseWindow(popup_window_id)") &&
+  probe.include?("WindowsWindowVisualsHookEvent::Destroyed") &&
+  probe.include?("WaitingForDestroyed")
+checks["probe.aggregate_and_exact_candidate"] =
+  probe.include?("aggregate_windows_material_profile") &&
+  probe.include?("ReadyForProductIntegrationReview") &&
+  probe.include?("HEPTA_CANDIDATE_COMMIT") &&
+  probe.include?("HEPTA_CANDIDATE_TREE") &&
+  probe.include?("PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE")
+checks["probe.failure_receipt_is_bounded"] =
+  probe.include?("FAIL_WINDOWS_MATERIAL_PROFILE_AGGREGATE") &&
+  probe.include?('"phase": format!("{phase:?}")') &&
+  probe.include?('"failures": [error]')
+checks["probe.no_product_or_network_startup"] =
+  !probe.include?("hepta_native::shared::script_mod") &&
+  %w[start_matrix_tokio HttpRequest WebSocket XMLHttpRequest EventSource].none? do |term|
+    probe.include?(term)
+  end
+checks["probe.authority_false"] = %w[
+  network mutation effect liveAdapter production operatorAcceptance promotion release
+].all? { |key| probe.match?(/"#{key}":\s*false/) }
+checks["probe.binding_claims_false"] = %w[
+  productBound transientSystemMaterialBound completeProfileBound systemMaterialBound
+  nativeProductRuntime deviceValidation
+].all? { |key| probe.match?(/"#{key}":\s*false/) }
+
+checks["aggregate.success_is_review_only"] =
+  aggregate.include?("ReadyForProductIntegrationReview") &&
+  aggregate.include?("eligible_for_product_integration_review: accepted") &&
+  aggregate.include?("product_bound: false") &&
+  aggregate.include?("system_material_bound: false")
+checks["transient.closed_only_export"] =
+  transient.include?("HeptaWindowsTransientHostPhase::Closed") &&
+  transient.include?("LifecycleNotClosed") &&
+  transient.include?("profile_evidence")
+checks["lifecycle.remains_unbound"] =
+  !lifecycle.include?("WindowsMaterialProfileProbeApp") &&
+  !lifecycle.include?("aggregate_windows_material_profile") &&
+  !lifecycle.include?("HeptaWindowsTransientMaterialHost")
+
+checks["contract.identity"] =
+  contract["schema"] == "hepta.ui.windows-material-profile-runtime.v1" &&
+  contract["candidateBranch"] == "codex/ui-v4-windows-material-profile-runtime-20260828" &&
+  contract["baseCommit"] == "b1402886bc1e3e654120d8a4b38d8002696a064d"
+checks["contract.single_process_and_self_hosted"] =
+  contract.dig("producer", "singleProcess") == true &&
+  contract.dig("producer", "rootSequence") == 1 &&
+  contract.dig("producer", "transientAcrylicSequence") == 2 &&
+  contract.dig("producer", "transientSolidSequence") == 3 &&
+  contract.dig("producer", "selfHostedRuntimeLabels") ==
+    ["self-hosted", "Windows", "X64", "hepta-ui-dwm"]
+checks["contract.runtime_false"] =
+  contract.fetch("qualification").reject do |key, _value|
+    %w[sourceImplemented schemaFailureShapeImplemented].include?(key)
+  end.values.none? &&
+  contract.fetch("authority").values.none?
+
+checks["schema.common_identity"] =
+  schema.dig("properties", "schema", "const") ==
+    "hepta.ui.v4.windows-material-profile-aggregate.v1" &&
+  schema.dig("properties", "fixture", "const") == true &&
+  schema.dig("$defs", "makepad", "properties", "vendoredPatchBuild", "const") == true &&
+  schema.dig("$defs", "makepad", "properties", "defaultDependencySwitched", "const") == false
+checks["schema.pass_requires_evidence"] =
+  schema.dig("allOf", 0, "then", "required") == ["root", "transient"] &&
+  schema.dig(
+    "allOf", 0, "then", "properties", "qualification", "properties",
+    "dualReceiptAggregateRuntime", "const"
+  ) == true
+checks["schema.fail_requires_phase_and_failures"] =
+  schema.dig("allOf", 1, "then", "required") == ["phase", "failures"] &&
+  schema.dig(
+    "allOf", 1, "then", "properties", "qualification", "properties",
+    "dualReceiptAggregateRuntime", "const"
+  ) == false
+checks["schema.product_and_authority_false"] = %w[
+  productBound transientSystemMaterialBound completeProfileBound
+  systemMaterialBound nativeProductRuntime deviceValidation
+].all? do |key|
+  schema.dig("$defs", "qualification", "properties", key, "const") == false
+end && schema.dig("$defs", "authority", "properties").values.all? do |definition|
+  definition["const"] == false
+end
+
+checks["workflow.source_patch_compile_runtime"] =
+  workflow.include?("hepta-ui-v4-windows-material-profile-runtime-gate") &&
+  workflow.include?("hepta-ui-v4-materialize-makepad-windows-hook") &&
+  workflow.include?("hepta-ui-v4-windows-material-profile-probe") &&
+  workflow.include?("PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE")
+checks["workflow.three_platform_compile"] =
+  %w[ubuntu-latest windows-latest macos-latest].all? { |os| workflow.include?(os) }
+checks["workflow.governed_runtime_runner"] =
+  %w[self-hosted Windows X64 hepta-ui-dwm].all? { |label| workflow.include?(label) } &&
+  workflow.include?("run_windows_profile_probe")
+checks["workflow.read_only_no_release"] =
+  workflow.include?("permissions:") && workflow.include?("contents: read") &&
+  !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+
+emit(
+  checks,
+  checks.values.all? ? "PASS_WINDOWS_MATERIAL_PROFILE_RUNTIME_SOURCE_ONLY" :
+    "FAIL_WINDOWS_MATERIAL_PROFILE_RUNTIME_SOURCE"
+)

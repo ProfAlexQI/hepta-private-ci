@@ -1,0 +1,75 @@
+{
+  "schema": "hepta.ui.windows-material-profile-runtime.v1",
+  "status": "SINGLE_PROCESS_ROOT_TRANSIENT_AGGREGATE_PRODUCER_SOURCE_READY_RUNTIME_REQUIRED",
+  "candidateBranch": "codex/ui-v4-windows-material-profile-runtime-20260828",
+  "baseBranch": "codex/ui-v4-windows-material-profile-aggregate-20260828",
+  "baseCommit": "b1402886bc1e3e654120d8a4b38d8002696a064d",
+  "baseTree": "0094833f52643cde4579fc4863ef9c0fbbde6d19",
+  "makepad": {
+    "repository": "kevinaboos/makepad",
+    "revision": "c4335cee10b22aca768510c9d072b0ca1bba15c8",
+    "vendoredPatchRequired": true,
+    "defaultDependencyUnchanged": true,
+    "correlatedHookCfg": "hepta_makepad_windows_ack_hook"
+  },
+  "producer": {
+    "source": "apps/hepta-native/src/bin/hepta-ui-v4-windows-material-profile-probe.rs",
+    "receiptSchema": "docs/ui/schemas/hepta.ui.v4.windows-material-profile-aggregate.v1.schema.json",
+    "fixture": true,
+    "singleProcess": true,
+    "rootSequence": 1,
+    "transientAcrylicSequence": 2,
+    "transientSolidSequence": 3,
+    "root": {
+      "ordinaryWindowRequired": true,
+      "backdrop": "Mica",
+      "status": "VerifiedPersistentChromeWithBackdropReadback"
+    },
+    "transient": {
+      "dedicatedPopupRequired": true,
+      "rootHwndReuseAllowed": false,
+      "backdrop": "Acrylic",
+      "rollbackBackdrop": "None",
+      "destroyedAcknowledgementRequired": true
+    },
+    "aggregate": {
+      "function": "aggregate_windows_material_profile",
+      "successStatus": "ReadyForProductIntegrationReview",
+      "productBindingPerformed": false,
+      "systemMaterialBindingClaim": false
+    },
+    "selfHostedRuntimeLabels": [
+      "self-hosted",
+      "Windows",
+      "X64",
+      "hepta-ui-dwm"
+    ]
+  },
+  "qualification": {
+    "sourceImplemented": true,
+    "schemaFailureShapeImplemented": true,
+    "nativeCompile": false,
+    "windowsCompile": false,
+    "patchedMakepadCompile": false,
+    "rootRuntimeReceipt": false,
+    "transientRuntimeReceipt": false,
+    "dualReceiptAggregateRuntime": false,
+    "eligibleForProductIntegrationReview": false,
+    "productBound": false,
+    "transientSystemMaterialBound": false,
+    "completeProfileBound": false,
+    "systemMaterialBound": false,
+    "nativeProductRuntime": false,
+    "deviceValidation": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

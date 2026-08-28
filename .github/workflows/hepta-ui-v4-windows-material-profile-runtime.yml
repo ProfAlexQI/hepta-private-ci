@@ -1,0 +1,278 @@
+name: hepta-ui-v4-windows-material-profile-runtime
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-windows-material-profile-runtime-*"
+  pull_request:
+    paths:
+      - "apps/hepta-native/src/bin/hepta-ui-v4-windows-material-profile-probe.rs"
+      - "docs/ui/HEPTA_WINDOWS_MATERIAL_PROFILE_RUNTIME_V1.json"
+      - "docs/ui/schemas/hepta.ui.v4.windows-material-profile-aggregate.v1.schema.json"
+      - "docs/ui/HEPTA_UI_V4_TRANCHE_15_WINDOWS_PROFILE_RUNTIME_2026-08-28.md"
+      - "scripts/hepta-ui-v4-windows-material-profile-runtime-gate"
+      - ".github/workflows/hepta-ui-v4-windows-material-profile-runtime.yml"
+  workflow_dispatch:
+    inputs:
+      run_windows_profile_probe:
+        description: "Run the full isolated Mica/Acrylic/rollback/destroy aggregate probe"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v4-windows-material-profile-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: Windows material-profile runtime source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Validate formats and fail-closed source contracts
+        run: |
+          ruby -c scripts/hepta-ui-v4-windows-material-profile-runtime-gate
+          ruby -rjson -e 'ARGV.each { |path| JSON.parse(File.read(path)) }' \
+            docs/ui/HEPTA_WINDOWS_MATERIAL_PROFILE_RUNTIME_V1.json \
+            docs/ui/schemas/hepta.ui.v4.windows-material-profile-aggregate.v1.schema.json
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-windows-material-profile-runtime.yml")'
+          mkdir -p artifacts/ui-v4-windows-profile-runtime
+          ruby scripts/hepta-ui-v4-windows-material-profile-aggregate-gate \
+            > artifacts/ui-v4-windows-profile-runtime/inherited-aggregate-source.json
+          ruby scripts/hepta-ui-v4-windows-material-profile-runtime-gate \
+            | tee artifacts/ui-v4-windows-profile-runtime/source-gate.json
+
+      - name: Verify source-only claim boundary
+        run: |
+          ruby -rjson -e '
+            receipt = JSON.parse(File.read("artifacts/ui-v4-windows-profile-runtime/source-gate.json"))
+            abort "unexpected source status" unless receipt.fetch("status") == "PASS_WINDOWS_MATERIAL_PROFILE_RUNTIME_SOURCE_ONLY"
+            %w[
+              native_compile_validation windows_compile_validation
+              patched_makepad_compile_validation root_runtime_receipt_validation
+              transient_runtime_receipt_validation dual_receipt_runtime_validation
+              product_integration_eligible product_bound
+              transient_system_material_binding complete_profile_binding
+              system_material_binding native_product_runtime_validation
+              device_validation production_authority effect_authority
+              live_adapter_authority operator_acceptance promotion release
+            ].each do |key|
+              abort "#{key} escaped source-only boundary" unless receipt.fetch(key) == false
+            end
+          '
+
+      - name: Upload source receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-windows-profile-runtime-source-${{ github.sha }}
+          path: artifacts/ui-v4-windows-profile-runtime
+          if-no-files-found: error
+          retention-days: 14
+
+  patch-contract:
+    name: Materialize exact vendored Makepad hook
+    needs: source-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Materialize exact patched checkout
+        run: |
+          mkdir -p artifacts/ui-v4-windows-profile-runtime
+          ruby scripts/hepta-ui-v4-materialize-makepad-windows-hook \
+            "$PWD/artifacts/ui-v4-windows-profile-runtime/makepad" \
+            "$PWD/artifacts/ui-v4-windows-profile-runtime/cargo-patch.toml" \
+            "$PWD/artifacts/ui-v4-windows-profile-runtime/materialization.json" \
+            | tee artifacts/ui-v4-windows-profile-runtime/materialization.stdout.json
+
+      - name: Verify patch materialization boundary
+        run: |
+          ruby -rjson -e '
+            receipt = JSON.parse(File.read("artifacts/ui-v4-windows-profile-runtime/materialization.json"))
+            abort "unexpected materialization status" unless receipt.fetch("status") == "PASS_PATCHED_CHECKOUT_MATERIALIZED_SOURCE_ONLY"
+            abort "Makepad revision drift" unless receipt.dig("makepad", "revision") == "c4335cee10b22aca768510c9d072b0ca1bba15c8"
+            abort "patch was not applied" unless receipt.dig("qualification", "patchAppliedInWorktree") == true
+            abort "default dependency changed" unless receipt.dig("cargoOverride", "defaultDependencyChanged") == false
+            abort "authority escaped" unless receipt.fetch("authority").values.all? { |value| value == false }
+          '
+
+      - name: Upload patch evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-windows-profile-runtime-patch-${{ github.sha }}
+          path: |
+            artifacts/ui-v4-windows-profile-runtime/materialization.json
+            artifacts/ui-v4-windows-profile-runtime/materialization.patch.json
+            artifacts/ui-v4-windows-profile-runtime/cargo-patch.toml
+          if-no-files-found: error
+          retention-days: 14
+
+  compile-contract:
+    name: Windows material-profile producer compile (${{ matrix.os }})
+    needs: patch-contract
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+
+      - name: Materialize patched Makepad and Cargo override
+        shell: bash
+        run: |
+          ruby scripts/hepta-ui-v4-materialize-makepad-windows-hook \
+            "$PWD/.hepta-patched-makepad" \
+            "$PWD/.cargo/config.toml" \
+            "$PWD/hepta-patched-makepad-materialization.json" \
+            > "$PWD/hepta-patched-makepad-materialization.stdout.json"
+
+      - name: Check formatting and Native library
+        run: |
+          cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
+          cargo check --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features
+
+      - name: Compile non-Windows producer stub
+        if: runner.os != 'Windows'
+        run: |
+          cargo check --manifest-path apps/hepta-native/Cargo.toml \
+            --bin hepta-ui-v4-windows-material-profile-probe \
+            --no-default-features
+
+      - name: Compile full Windows producer against patched API
+        if: runner.os == 'Windows'
+        env:
+          RUSTFLAGS: "--cfg hepta_makepad_windows_ack_hook --check-cfg=cfg(hepta_makepad_windows_ack_hook)"
+        run: |
+          cargo check --manifest-path apps/hepta-native/Cargo.toml \
+            --bin hepta-ui-v4-windows-material-profile-probe \
+            --no-default-features
+
+      - name: Run focused evidence tests
+        run: |
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_windows_transient_material_host::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_windows_material_profile_aggregate::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_windows_backend_ack_bridge::tests -- --nocapture
+
+  windows-runtime-profile:
+    name: Governed Windows Mica/Acrylic aggregate producer
+    if: github.event_name == 'workflow_dispatch' && inputs.run_windows_profile_probe == true
+    needs:
+      - source-contract
+      - patch-contract
+      - compile-contract
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+      - hepta-ui-dwm
+    timeout-minutes: 45
+    env:
+      RUSTFLAGS: "--cfg hepta_makepad_windows_ack_hook --check-cfg=cfg(hepta_makepad_windows_ack_hook)"
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+
+      - name: Materialize patched Makepad and Cargo override
+        shell: bash
+        run: |
+          ruby scripts/hepta-ui-v4-materialize-makepad-windows-hook \
+            "$PWD/.hepta-patched-makepad" \
+            "$PWD/.cargo/config.toml" \
+            "$PWD/hepta-patched-makepad-materialization.json" \
+            > "$PWD/hepta-patched-makepad-materialization.stdout.json"
+
+      - name: Run exact-candidate material-profile producer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/ui-v4-windows-profile-runtime | Out-Null
+          $env:HEPTA_CANDIDATE_COMMIT = $env:GITHUB_SHA
+          $env:HEPTA_CANDIDATE_TREE = (git rev-parse 'HEAD^{tree}').Trim()
+          $env:HEPTA_WINDOWS_PROFILE_RECEIPT_PATH = "$PWD/artifacts/ui-v4-windows-profile-runtime/windows-material-profile.json"
+          $process = Start-Process cargo -ArgumentList @(
+            'run',
+            '--manifest-path', 'apps/hepta-native/Cargo.toml',
+            '--bin', 'hepta-ui-v4-windows-material-profile-probe',
+            '--no-default-features'
+          ) -PassThru -NoNewWindow
+          if (-not $process.WaitForExit(900000)) {
+            Stop-Process -Id $process.Id -Force
+            throw 'Windows material-profile producer timed out'
+          }
+          if ($process.ExitCode -ne 0) {
+            throw "Windows material-profile producer exited with $($process.ExitCode)"
+          }
+
+      - name: Validate exact aggregate receipt
+        shell: pwsh
+        run: |
+          $path = 'artifacts/ui-v4-windows-profile-runtime/windows-material-profile.json'
+          if (-not (Test-Path $path)) { throw 'aggregate receipt missing' }
+          $receipt = Get-Content -Raw $path | ConvertFrom-Json
+          if ($receipt.schema -ne 'hepta.ui.v4.windows-material-profile-aggregate.v1') { throw 'schema mismatch' }
+          if ($receipt.status -ne 'PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE') {
+            throw "aggregate did not pass: $($receipt.failures -join '; ')"
+          }
+          if ($receipt.candidate.commit -ne $env:GITHUB_SHA) { throw 'commit drift' }
+          $tree = (git rev-parse 'HEAD^{tree}').Trim()
+          if ($receipt.candidate.tree -ne $tree) { throw 'tree drift' }
+          if ($receipt.makepad.revision -ne 'c4335cee10b22aca768510c9d072b0ca1bba15c8') { throw 'Makepad drift' }
+          if (-not $receipt.makepad.vendoredPatchBuild) { throw 'vendored patch runtime not proven' }
+          if ($receipt.makepad.defaultDependencySwitched) { throw 'default dependency changed' }
+          if (-not $receipt.fixture) { throw 'isolated fixture flag missing' }
+          if ($receipt.root.status -ne 'VerifiedPersistentChromeWithBackdropReadback') { throw 'root receipt mismatch' }
+          if ($receipt.root.observedBackdrop -ne 'Mica') { throw 'root Mica readback missing' }
+          if (-not $receipt.transient.separateFromRoot) { throw 'transient HWND was not separate' }
+          if ($receipt.transient.acrylic.status -ne 'VerifiedAcrylicWithBackdropReadback') { throw 'Acrylic receipt mismatch' }
+          if ($receipt.transient.solidRollback.status -ne 'VerifiedSolidRollbackWithBackdropReadback') { throw 'solid rollback mismatch' }
+          if (-not $receipt.transient.destroyedAcknowledged) { throw 'Destroyed acknowledgement missing' }
+          foreach ($key in @('rootRuntimeReceipt','transientRuntimeReceipt','dualReceiptAggregateRuntime','eligibleForProductIntegrationReview')) {
+            if (-not $receipt.qualification.$key) { throw "$key is not qualified" }
+          }
+          foreach ($key in @('productBound','transientSystemMaterialBound','completeProfileBound','systemMaterialBound','nativeProductRuntime','deviceValidation')) {
+            if ($receipt.qualification.$key) { throw "$key escaped fixture boundary" }
+          }
+          foreach ($property in $receipt.authority.PSObject.Properties) {
+            if ($property.Value) { throw "authority $($property.Name) escaped" }
+          }
+
+      - name: Upload runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-windows-material-profile-runtime-${{ github.sha }}
+          path: |
+            artifacts/ui-v4-windows-profile-runtime/windows-material-profile.json
+            hepta-patched-makepad-materialization.json
+          if-no-files-found: error
+          retention-days: 14
