@@ -7,86 +7,102 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: write
   contents: read
-  pull-requests: read
 
 concurrency:
-  group: hepta-pr1-queue-hygiene-v3
+  group: ${{ github.workflow }}::runner-recovery-v2::${{ github.event.pull_request.number > 0 && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
-  queue-hygiene:
-    name: Cancel obsolete exact-branch queue entries
-    runs-on: windows-latest
-    timeout-minutes: 15
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REPOSITORY: ${{ github.repository }}
-      HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
-      CURRENT_HEAD: ${{ github.event.pull_request.head.sha }}
+  ubuntu-22:
+    name: Ubuntu 22.04 allocation
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
     steps:
-      - name: Cancel only non-current queued runs on this PR branch
+      - name: Record allocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner_os=$RUNNER_OS"
+          echo "runner_arch=$RUNNER_ARCH"
+          echo "runner_name=$RUNNER_NAME"
+          echo "sha=$GITHUB_SHA"
+          test -n "$RUNNER_TEMP"
+
+  ubuntu-24:
+    name: Ubuntu 24.04 allocation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Record allocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner_os=$RUNNER_OS"
+          echo "runner_arch=$RUNNER_ARCH"
+          echo "runner_name=$RUNNER_NAME"
+          echo "sha=$GITHUB_SHA"
+          test -n "$RUNNER_TEMP"
+
+  windows:
+    name: Windows allocation
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record allocation
         shell: pwsh
-        working-directory: .
         run: |
           $ErrorActionPreference = "Stop"
-          $headers = @{
-            Accept = "application/vnd.github+json"
-            Authorization = "Bearer $env:GH_TOKEN"
-            "X-GitHub-Api-Version" = "2022-11-28"
-          }
-          $base = "https://api.github.com/repos/$env:REPOSITORY"
-          $runs = @()
-          for ($page = 1; $page -le 20; $page++) {
-            $uri = "$base/actions/runs?branch=$([uri]::EscapeDataString($env:HEAD_BRANCH))&per_page=100&page=$page"
-            $payload = Invoke-RestMethod -Headers $headers -Uri $uri -Method Get
-            $pageRuns = @($payload.workflow_runs)
-            $runs += $pageRuns
-            if ($pageRuns.Count -lt 100) { break }
-            if ($page -eq 20) { throw "queue listing exceeded the 2000-run safety bound" }
-          }
+          Write-Output "runner_os=$env:RUNNER_OS"
+          Write-Output "runner_arch=$env:RUNNER_ARCH"
+          Write-Output "runner_name=$env:RUNNER_NAME"
+          Write-Output "sha=$env:GITHUB_SHA"
+          if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) { throw "RUNNER_TEMP is empty" }
 
-          $cancellable = @("queued", "pending", "requested", "waiting")
-          $selected = @(
-            $runs |
-              Where-Object {
-                $_.head_branch -eq $env:HEAD_BRANCH -and
-                $_.head_sha -ne $env:CURRENT_HEAD -and
-                $cancellable -contains $_.status
-              } |
-              Sort-Object id
-          )
-          $cancelled = 0
-          $failures = @()
-          foreach ($run in $selected) {
-            try {
-              Invoke-RestMethod -Headers $headers -Uri "$base/actions/runs/$($run.id)/cancel" -Method Post | Out-Null
-              $cancelled++
-            } catch {
-              $status = [int]$_.Exception.Response.StatusCode
-              if ($status -ne 409) {
-                $failures += @{ id = $run.id; name = $run.name; http_status = $status }
-              }
-            }
-            Start-Sleep -Milliseconds 20
-          }
+  macos:
+    name: macOS 15 allocation
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Record allocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner_os=$RUNNER_OS"
+          echo "runner_arch=$RUNNER_ARCH"
+          echo "runner_name=$RUNNER_NAME"
+          echo "sha=$GITHUB_SHA"
+          test -n "$RUNNER_TEMP"
 
-          $result = [ordered]@{
-            schema = "hepta.ci.branch_queue_hygiene.v3"
-            branch = $env:HEAD_BRANCH
-            current_head = $env:CURRENT_HEAD
-            selected_count = $selected.Count
-            cancelled_count = $cancelled
-            failures = $failures
-            authority = [ordered]@{
-              build_authorized = $false
-              merge_authorized = $false
-              operator_acceptance = $false
-              promotion = $false
-              release_qualified = $false
-              runtime_authority = $false
-            }
+  required:
+    name: Hepta runner recovery canary v2
+    if: ${{ always() }}
+    needs:
+      - ubuntu-22
+      - ubuntu-24
+      - windows
+      - macos
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Require all allocation probes
+        shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          needs = json.loads(os.environ["NEEDS"])
+          failures = {
+              name: value.get("result")
+              for name, value in needs.items()
+              if value.get("result") != "success"
           }
-          $result | ConvertTo-Json -Depth 8 -Compress | Write-Output
-          if ($failures.Count -ne 0) { throw "one or more obsolete branch runs could not be cancelled" }
+          print(json.dumps({"authority": False, "dependencies": needs}, sort_keys=True))
+          if failures:
+              sys.exit(1)
+          PY
