@@ -35,10 +35,16 @@ use crate::StableMemoryId;
 use crate::cognitive_intelligence_writer::CanonicalFactSet;
 use crate::cognitive_store::unavailable;
 
+// This module is mounted below `framing` through a `#[path]` attribute.  Give
+// rustfmt and rustc the exact nested paths instead of relying on an implicit
+// module-name-to-file-name derivation that differs for path-mounted modules.
+#[path = "durable/grounding.rs"]
 mod grounding;
+#[path = "durable/schema.rs"]
 mod schema;
 
 #[cfg(test)]
+#[path = "durable/tests.rs"]
 mod tests;
 
 const COMPONENT_MIGRATION_VERSION: i64 = 11;
