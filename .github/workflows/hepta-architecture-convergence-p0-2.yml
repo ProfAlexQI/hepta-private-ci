@@ -60,6 +60,7 @@ jobs:
             -p codex-hepta-memory-runtime \
             -p codex-hepta-automation \
             -p codex-hepta-agentd \
+            -p codex-hepta-matrix-store \
             -p codex-hepta-matrixd \
             -- --check
 
@@ -70,6 +71,7 @@ jobs:
           cargo test --locked -p codex-hepta-contracts authority::tests -- --nocapture
           cargo test --locked -p codex-hepta-contracts operation::tests -- --nocapture
           cargo test --locked -p codex-hepta-contracts product_graph::tests -- --nocapture
+          cargo test --locked -p codex-hepta-contracts provider_operation::tests -- --nocapture
           cargo test --locked -p codex-hepta-contracts --test cross_owner_fault_matrix -- --nocapture
 
       - name: Product domain and runtime tests
@@ -81,6 +83,7 @@ jobs:
           cargo test --locked -p codex-hepta-automation --lib -- --nocapture
           cargo test --locked -p codex-hepta-agentd --lib -- --nocapture
           cargo test --locked -p codex-hepta-agentd --features qualification-cognitive-write --lib -- --nocapture
+          cargo test --locked -p codex-hepta-matrix-store --lib -- --nocapture
           cargo test --locked -p codex-hepta-matrixd --lib -- --nocapture
 
       - name: Product package graph compilation
@@ -92,6 +95,7 @@ jobs:
             -p codex-hepta-automation \
             -p codex-hepta-agentd \
             -p codex-hepta-supervisor \
+            -p codex-hepta-matrix-store \
             -p codex-hepta-matrixd \
             -p codex-hepta-native-gateway
           cargo check --locked --all-targets --no-default-features \
@@ -108,6 +112,7 @@ jobs:
             -p codex-hepta-memory-runtime \
             -p codex-hepta-automation \
             -p codex-hepta-agentd \
+            -p codex-hepta-matrix-store \
             -p codex-hepta-matrixd \
             -- -D warnings
           cargo clippy --locked --all-targets --no-default-features \
@@ -123,13 +128,12 @@ jobs:
           evidence="$RUNNER_TEMP/hepta-architecture-source-head"
           mkdir -p "$evidence"
           {
-            echo "schema=hepta_architecture_source_head_evidence_v2"
+            echo "schema=hepta_architecture_source_head_evidence_v3"
             echo "identity=source_head"
             echo "repository=$GITHUB_REPOSITORY"
             echo "workflow=$GITHUB_WORKFLOW"
             echo "run_id=$GITHUB_RUN_ID"
             echo "run_attempt=$GITHUB_RUN_ATTEMPT"
-            echo "runner_id=${RUNNER_NAME}"
             echo "runner_name=$RUNNER_NAME"
             echo "runner_os=$RUNNER_OS"
             echo "runner_arch=$RUNNER_ARCH"
@@ -199,16 +203,19 @@ jobs:
           cargo test --locked -p codex-hepta-contracts authority::tests -- --nocapture
           cargo test --locked -p codex-hepta-contracts operation::tests -- --nocapture
           cargo test --locked -p codex-hepta-contracts product_graph::tests -- --nocapture
+          cargo test --locked -p codex-hepta-contracts provider_operation::tests -- --nocapture
           cargo test --locked -p codex-hepta-contracts --test cross_owner_fault_matrix -- --nocapture
           cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
           cargo test --locked -p codex-hepta-automation --lib -- --nocapture
           cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
+          cargo test --locked -p codex-hepta-matrix-store --lib -- --nocapture
           cargo test --locked -p codex-hepta-matrixd --lib -- --nocapture
           cargo check --locked \
             -p codex-hepta-memory-runtime \
             -p codex-hepta-automation \
             -p codex-hepta-agentd \
             -p codex-hepta-supervisor \
+            -p codex-hepta-matrix-store \
             -p codex-hepta-matrixd \
             -p codex-hepta-native-gateway
 
@@ -220,7 +227,7 @@ jobs:
           evidence="$RUNNER_TEMP/hepta-architecture-merge-candidate"
           mkdir -p "$evidence"
           {
-            echo "schema=hepta_architecture_merge_candidate_evidence_v2"
+            echo "schema=hepta_architecture_merge_candidate_evidence_v3"
             echo "identity=merge_candidate"
             echo "repository=$GITHUB_REPOSITORY"
             echo "workflow=$GITHUB_WORKFLOW"
