@@ -36,10 +36,7 @@ impl HostEvidenceResolutionReceiptV1 {
             return Err("host evidence resolver receipt count mismatch".to_string());
         }
 
-        let mut previous_identity: Option<(GroundedFactKind, &str)> = None;
-        let mut previous_end_byte = 0_u32;
-        let mut expected_ordinal = 0_u32;
-        let mut per_fact_count = 0_usize;
+        let mut previous: Option<(GroundedFactKind, &str, u32, u32, usize)> = None;
         for span in &self.resolved_spans {
             if span.fact_key.trim().is_empty()
                 || span.fact_key.len() > MAX_KEY_BYTES
@@ -49,7 +46,7 @@ impl HostEvidenceResolutionReceiptV1 {
                 return Err("host evidence resolver receipt contains an invalid span".to_string());
             }
             let identity = (span.fact_kind, span.fact_key.as_str());
-            match previous_identity {
+            let per_fact_count = match previous {
                 None => {
                     if span.evidence_ordinal != 0 {
                         return Err(
@@ -57,34 +54,40 @@ impl HostEvidenceResolutionReceiptV1 {
                                 .to_string(),
                         );
                     }
-                    per_fact_count = 1;
+                    1
                 }
-                Some(previous) if previous == identity => {
-                    if span.evidence_ordinal != expected_ordinal {
-                        return Err(
-                            "host evidence resolver evidence ordinals are not contiguous"
-                                .to_string(),
-                        );
+                Some((previous_kind, previous_key, previous_ordinal, previous_end, count)) => {
+                    let previous_identity = (previous_kind, previous_key);
+                    if previous_identity == identity {
+                        let expected_ordinal =
+                            previous_ordinal.checked_add(1).ok_or_else(|| {
+                                "host evidence resolver evidence ordinal overflow".to_string()
+                            })?;
+                        if span.evidence_ordinal != expected_ordinal {
+                            return Err(
+                                "host evidence resolver evidence ordinals are not contiguous"
+                                    .to_string(),
+                            );
+                        }
+                        if span.start_byte < previous_end {
+                            return Err(
+                                "host evidence resolver receipt contains overlapping spans"
+                                    .to_string(),
+                            );
+                        }
+                        count.checked_add(1).ok_or_else(|| {
+                            "host evidence resolver per-fact count overflow".to_string()
+                        })?
+                    } else {
+                        if identity < previous_identity || span.evidence_ordinal != 0 {
+                            return Err(
+                                "host evidence resolver evidence ordering is invalid".to_string(),
+                            );
+                        }
+                        1
                     }
-                    if span.start_byte < previous_end_byte {
-                        return Err(
-                            "host evidence resolver receipt contains overlapping spans"
-                                .to_string(),
-                        );
-                    }
-                    per_fact_count = per_fact_count.checked_add(1).ok_or_else(|| {
-                        "host evidence resolver per-fact count overflow".to_string()
-                    })?;
                 }
-                Some(previous) => {
-                    if identity < previous || span.evidence_ordinal != 0 {
-                        return Err(
-                            "host evidence resolver evidence ordering is invalid".to_string(),
-                        );
-                    }
-                    per_fact_count = 1;
-                }
-            }
+            };
             if per_fact_count > MAX_SPANS_PER_FACT {
                 return Err(
                     "host evidence resolver receipt exceeds the per-fact span limit"
@@ -99,11 +102,13 @@ impl HostEvidenceResolutionReceiptV1 {
                         .to_string(),
                 );
             }
-            previous_identity = Some(identity);
-            previous_end_byte = span.end_byte;
-            expected_ordinal = span.evidence_ordinal.checked_add(1).ok_or_else(|| {
-                "host evidence resolver evidence ordinal overflow".to_string()
-            })?;
+            previous = Some((
+                span.fact_kind,
+                span.fact_key.as_str(),
+                span.evidence_ordinal,
+                span.end_byte,
+                per_fact_count,
+            ));
         }
 
         if self.receipt_sha256 != evidence_resolution_receipt_digest(self) {
