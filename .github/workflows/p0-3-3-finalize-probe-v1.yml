@@ -1,0 +1,21 @@
+name: p0-3-3-finalize-probe-v1
+
+on:
+  push:
+    branches:
+      - codex/hepta-intelligence-evidence-resolver-v4-20260828
+    paths:
+      - .github/workflows/p0-3-3-finalize-probe-v1.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -euo pipefail
+          git rev-parse HEAD
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
