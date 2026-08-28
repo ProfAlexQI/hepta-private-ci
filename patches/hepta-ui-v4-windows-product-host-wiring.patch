@@ -1,0 +1,73 @@
+diff --git a/apps/hepta-native/Cargo.toml b/apps/hepta-native/Cargo.toml
+index ffb3485..1b8b0a5 100644
+--- a/apps/hepta-native/Cargo.toml
++++ b/apps/hepta-native/Cargo.toml
+@@ -1,4 +1,8 @@
+ [features]
+ default = ["hepta-bridge"]
++## Compiles the governed Windows product-host material wiring. This feature is
++## deliberately excluded from `default`; activation still requires exact
++## review, operator, physical-device, rollback, and runtime-preference evidence.
++hepta_ui_windows_system_material_v4 = []
+ ## Compiles the side-effect-free Hepta bridge contract and disabled adapter.
+ hepta-bridge = []
+diff --git a/apps/hepta-native/src/shared/mod.rs b/apps/hepta-native/src/shared/mod.rs
+index cb63d50..a9152b3 100644
+--- a/apps/hepta-native/src/shared/mod.rs
++++ b/apps/hepta-native/src/shared/mod.rs
+@@ -4,6 +4,14 @@ pub mod hepta_windows_backend_ack_bridge;
+ pub mod hepta_windows_material_adapter;
+ pub mod hepta_windows_material_profile_aggregate;
+ pub mod hepta_windows_transient_material_host;
++#[cfg(feature = "hepta_ui_windows_system_material_v4")]
++pub mod hepta_windows_product_host_integration_review;
++#[cfg(feature = "hepta_ui_windows_system_material_v4")]
++pub mod hepta_windows_product_host_implementation;
++#[cfg(feature = "hepta_ui_windows_system_material_v4")]
++pub mod hepta_windows_product_host_wiring;
++#[cfg(feature = "hepta_ui_windows_system_material_v4")]
++pub mod hepta_windows_product_host_wiring_node;
+ pub mod hepta_windows_window_ack_producer;
+ pub mod html_or_plaintext;
+ 
+@@ -11,5 +19,9 @@ pub fn script_mod(vm: &mut ScriptVm) {
+     // acknowledgement verifier, DWM readback producer, correlated backend
+     // bridge, transient host, and profile aggregator have no Script registration.
+     hepta_material_app_lifecycle::script_mod(vm);
++    // Product material wiring remains compile-time disabled by default and has
++    // no automatic activation path even when explicitly compiled.
++    #[cfg(feature = "hepta_ui_windows_system_material_v4")]
++    hepta_windows_product_host_wiring_node::script_mod(vm);
+     helpers::script_mod(vm);
+ }
+diff --git a/apps/hepta-native/src/shared/hepta_windows_product_host_implementation/part1.rs b/apps/hepta-native/src/shared/hepta_windows_product_host_implementation/part1.rs
+index 3d8324e..fe0ae92 100644
+--- a/apps/hepta-native/src/shared/hepta_windows_product_host_implementation/part1.rs
++++ b/apps/hepta-native/src/shared/hepta_windows_product_host_implementation/part1.rs
+@@ -1,4 +1,6 @@
+ pub const HEPTA_WINDOWS_PRODUCT_HOST_SOURCE_IMPLEMENTED: bool = true;
+-pub const HEPTA_WINDOWS_PRODUCT_HOST_PRODUCT_WIRED: bool = false;
+-pub const HEPTA_WINDOWS_PRODUCT_HOST_LIFECYCLE_WIRED: bool = false;
++pub const HEPTA_WINDOWS_PRODUCT_HOST_PRODUCT_WIRED: bool =
++    cfg!(feature = "hepta_ui_windows_system_material_v4");
++pub const HEPTA_WINDOWS_PRODUCT_HOST_LIFECYCLE_WIRED: bool =
++    cfg!(feature = "hepta_ui_windows_system_material_v4");
+ pub const HEPTA_WINDOWS_PRODUCT_HOST_RUNTIME_VALIDATED: bool = false;
+diff --git a/apps/hepta-native/src/shared/hepta_windows_product_host_implementation/part3.rs b/apps/hepta-native/src/shared/hepta_windows_product_host_implementation/part3.rs
+index 45e79e4..423f36b 100644
+--- a/apps/hepta-native/src/shared/hepta_windows_product_host_implementation/part3.rs
++++ b/apps/hepta-native/src/shared/hepta_windows_product_host_implementation/part3.rs
+@@ -1,5 +1,11 @@
+         assert!(!HEPTA_WINDOWS_PRODUCT_HOST_FEATURE_DEFAULT_ENABLED);
+         assert!(!HEPTA_WINDOWS_PRODUCT_HOST_AUTOMATIC_BINDING_ALLOWED);
+-        assert!(!HEPTA_WINDOWS_PRODUCT_HOST_PRODUCT_WIRED);
+-        assert!(!HEPTA_WINDOWS_PRODUCT_HOST_LIFECYCLE_WIRED);
++        assert_eq!(
++            HEPTA_WINDOWS_PRODUCT_HOST_PRODUCT_WIRED,
++            hepta_windows_product_host_feature_compiled()
++        );
++        assert_eq!(
++            HEPTA_WINDOWS_PRODUCT_HOST_LIFECYCLE_WIRED,
++            hepta_windows_product_host_feature_compiled()
++        );
+         assert!(!HEPTA_WINDOWS_PRODUCT_HOST_PRODUCTION_AUTHORITY);

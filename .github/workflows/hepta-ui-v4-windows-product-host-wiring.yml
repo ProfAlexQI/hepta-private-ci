@@ -1,0 +1,207 @@
+name: hepta-ui-v4-windows-product-host-wiring
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-windows-product-host-wiring-candidate-*"
+  pull_request:
+    paths:
+      - "apps/hepta-native/src/shared/hepta_windows_product_host_wiring.rs"
+      - "apps/hepta-native/src/shared/hepta_windows_product_host_wiring/**"
+      - "apps/hepta-native/src/shared/hepta_windows_product_host_wiring_node.rs"
+      - "tools/hepta-ui-windows-product-host-wiring/**"
+      - "patches/hepta-ui-v4-windows-product-host-wiring.patch"
+      - "scripts/hepta-ui-v4-apply-windows-product-host-wiring"
+      - "scripts/hepta-ui-v4-windows-product-host-wiring-gate"
+      - "docs/ui/HEPTA_WINDOWS_PRODUCT_HOST_WIRING_CANDIDATE_V1.json"
+      - "docs/ui/HEPTA_UI_REMAINING_EXTERNAL_BLOCKERS_V1.json"
+      - "docs/ui/schemas/hepta.ui.v4.windows-product-host-wiring-candidate.v1.schema.json"
+      - "docs/ui/HEPTA_UI_V4_TRANCHE_24_WINDOWS_PRODUCT_HOST_WIRING_CANDIDATE_2026-08-28.md"
+      - ".github/workflows/hepta-ui-v4-windows-product-host-wiring.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v4-windows-product-host-wiring-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  HEPTA_FEATURE_NAME: hepta_ui_windows_system_material_v4
+
+jobs:
+  source-contract:
+    name: Windows product-host wiring source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+      - name: Validate source and contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -c scripts/hepta-ui-v4-apply-windows-product-host-wiring
+          ruby -c scripts/hepta-ui-v4-windows-product-host-wiring-gate
+          ruby -rjson -e 'ARGV.each { |path| JSON.parse(File.read(path)) }' \
+            docs/ui/HEPTA_WINDOWS_PRODUCT_HOST_WIRING_CANDIDATE_V1.json \
+            docs/ui/HEPTA_UI_REMAINING_EXTERNAL_BLOCKERS_V1.json \
+            docs/ui/schemas/hepta.ui.v4.windows-product-host-wiring-candidate.v1.schema.json
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-windows-product-host-wiring.yml")'
+          mkdir -p artifacts/source
+          ruby scripts/hepta-ui-v4-windows-product-host-wiring-gate \
+            | tee artifacts/source/source-gate.json
+          ruby -rjson -e '
+            r=JSON.parse(File.read("artifacts/source/source-gate.json"))
+            abort "unexpected source status" unless r.fetch("status") == "PASS_WINDOWS_PRODUCT_HOST_WIRING_SOURCE_ONLY"
+            abort "authority escaped" unless %w[production_authority effect_authority live_adapter_authority operator_acceptance promotion release].all? { |key| r.fetch(key) == false }
+          '
+          printf '%s\n' "$HEPTA_CANDIDATE_SHA" > artifacts/source/candidate-commit.txt
+          git rev-parse 'HEAD^{tree}' > artifacts/source/candidate-tree.txt
+      - name: Upload source receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-product-host-wiring-source-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: artifacts/source
+          if-no-files-found: error
+          retention-days: 14
+
+  isolated-contract:
+    name: Isolated wiring ${{ matrix.mode }} (${{ matrix.os }})
+    needs: source-contract
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, mode: default-off, cargo_args: "--no-default-features"}
+          - {os: ubuntu-latest, mode: explicit-feature, cargo_args: "--no-default-features --features hepta_ui_windows_system_material_v4"}
+          - {os: windows-latest, mode: default-off, cargo_args: "--no-default-features"}
+          - {os: windows-latest, mode: explicit-feature, cargo_args: "--no-default-features --features hepta_ui_windows_system_material_v4"}
+          - {os: macos-latest, mode: default-off, cargo_args: "--no-default-features"}
+          - {os: macos-latest, mode: explicit-feature, cargo_args: "--no-default-features --features hepta_ui_windows_system_material_v4"}
+    env:
+      HEPTA_MODE: ${{ matrix.mode }}
+      HEPTA_OS: ${{ matrix.os }}
+      HEPTA_CARGO_ARGS: ${{ matrix.cargo_args }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Format, compile, and test isolated wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          read -r -a cargo_args <<< "$HEPTA_CARGO_ARGS"
+          manifest=tools/hepta-ui-windows-product-host-wiring/Cargo.toml
+          cargo fmt --manifest-path "$manifest" -- --check
+          cargo check --manifest-path "$manifest" --all-targets "${cargo_args[@]}"
+          cargo test --manifest-path "$manifest" "${cargo_args[@]}" -- --nocapture
+      - name: Write isolated compile receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/isolated
+          ruby -rjson -e '
+            payload={schema:"hepta.ui.v4.windows-product-host-wiring-isolated-compile.v1",status:"PASS_WINDOWS_PRODUCT_HOST_WIRING_ISOLATED_COMPILE",candidate:{commit:ENV.fetch("HEPTA_CANDIDATE_SHA"),tree:`git rev-parse HEAD^{tree}`.strip},platform:ENV.fetch("HEPTA_OS"),mode:ENV.fetch("HEPTA_MODE"),qualification:{fmt:true,check:true,tests:true,productPatchApplied:false,productCallerRegistered:false,runtimeValidated:false,productBound:false,systemMaterialBound:false},authority:{network:false,mutation:false,effect:false,liveAdapter:false,production:false,operatorAcceptance:false,promotion:false,release:false}}
+            File.write("artifacts/isolated/receipt.json",JSON.pretty_generate(payload)+"\n")
+          '
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hepta-ui-v4-product-host-wiring-isolated-${{ matrix.mode }}-${{ matrix.os }}-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: artifacts/isolated/receipt.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  temporary-product-patch:
+    name: Temporary product patch ${{ matrix.mode }} (${{ matrix.os }})
+    needs: source-contract
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, mode: default-off, cargo_args: "--no-default-features"}
+          - {os: ubuntu-latest, mode: explicit-feature, cargo_args: "--no-default-features --features hepta_ui_windows_system_material_v4"}
+          - {os: windows-latest, mode: default-off, cargo_args: "--no-default-features"}
+          - {os: windows-latest, mode: explicit-feature, cargo_args: "--no-default-features --features hepta_ui_windows_system_material_v4"}
+          - {os: macos-latest, mode: default-off, cargo_args: "--no-default-features"}
+          - {os: macos-latest, mode: explicit-feature, cargo_args: "--no-default-features --features hepta_ui_windows_system_material_v4"}
+    env:
+      HEPTA_MODE: ${{ matrix.mode }}
+      HEPTA_OS: ${{ matrix.os }}
+      HEPTA_CARGO_ARGS: ${{ matrix.cargo_args }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout and apply candidate patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+          git apply --check patches/hepta-ui-v4-windows-product-host-wiring.patch
+          git apply patches/hepta-ui-v4-windows-product-host-wiring.patch
+          git diff --check
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Compile temporary product wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          read -r -a cargo_args <<< "$HEPTA_CARGO_ARGS"
+          manifest=apps/hepta-native/Cargo.toml
+          rustfmt --edition 2024 --check \
+            apps/hepta-native/src/shared/hepta_windows_product_host_wiring.rs \
+            apps/hepta-native/src/shared/hepta_windows_product_host_wiring_node.rs
+          cargo check --manifest-path "$manifest" --lib "${cargo_args[@]}"
+      - name: Verify default-off and source boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'hepta_ui_windows_system_material_v4 = []' apps/hepta-native/Cargo.toml
+          grep -F 'hepta_windows_product_host_wiring_node::script_mod(vm);' apps/hepta-native/src/shared/mod.rs
+          test -z "$(git diff --name-only | grep -Ev '^(apps/hepta-native/Cargo.toml|apps/hepta-native/src/shared/mod.rs|apps/hepta-native/src/shared/hepta_windows_product_host_implementation/part1.rs|apps/hepta-native/src/shared/hepta_windows_product_host_implementation/part3.rs)$' || true)"
+      - name: Write temporary product compile receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/product
+          ruby -rjson -e '
+            payload={schema:"hepta.ui.v4.windows-product-host-wiring-product-compile.v1",status:"PASS_WINDOWS_PRODUCT_HOST_WIRING_TEMPORARY_PRODUCT_COMPILE",candidate:{commit:ENV.fetch("HEPTA_CANDIDATE_SHA"),tree:`git rev-parse HEAD^{tree}`.strip},platform:ENV.fetch("HEPTA_OS"),mode:ENV.fetch("HEPTA_MODE"),qualification:{temporaryPatchApplied:true,productBranchModified:false,automaticBindingAllowed:false,productCallerRegistered:false,runtimeValidated:false,productBound:false,systemMaterialBound:false,nativeProductRuntime:false,deviceValidation:false},authority:{network:false,mutation:false,effect:false,liveAdapter:false,production:false,operatorAcceptance:false,promotion:false,release:false}}
+            File.write("artifacts/product/receipt.json",JSON.pretty_generate(payload)+"\n")
+          '
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hepta-ui-v4-product-host-wiring-product-${{ matrix.mode }}-${{ matrix.os }}-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: artifacts/product/receipt.json
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,0 +1,59 @@
+{
+  "schema": "hepta.ui.remaining-external-blockers.v1",
+  "status": "SOURCE_CONTROLLABLE_GAPS_CLOSED_EXTERNAL_EVIDENCE_REMAINS",
+  "sourceControllableGapsClosed": true,
+  "remainingBlockers": [
+    {
+      "id": "github-hosted-runner-assignment",
+      "class": "CI_INFRASTRUCTURE",
+      "requiredEvidence": "nonzero runner identity, nonempty steps, exact-head receipts",
+      "canBeSatisfiedByRepositorySourceAlone": false
+    },
+    {
+      "id": "windows-physical-dwm-device",
+      "class": "PHYSICAL_DEVICE",
+      "requiredEvidence": "Mica, Acrylic, explicit None rollback, high-contrast, transparency-disabled, suspend, shutdown, final Unbound",
+      "canBeSatisfiedByRepositorySourceAlone": false
+    },
+    {
+      "id": "operator-acceptance",
+      "class": "HUMAN_GOVERNANCE",
+      "requiredEvidence": "candidate-bound operator acceptance digest",
+      "canBeSatisfiedByRepositorySourceAlone": false
+    },
+    {
+      "id": "macos-appkit-runtime",
+      "class": "PHYSICAL_DEVICE",
+      "requiredEvidence": "AppKit material bind/readback, Reduce Transparency, Increase Contrast, active/inactive window",
+      "canBeSatisfiedByRepositorySourceAlone": false
+    },
+    {
+      "id": "ios-uikit-runtime",
+      "class": "PHYSICAL_DEVICE",
+      "requiredEvidence": "system navigation/sheet material, Dynamic Type, safe area, keyboard, Reduce Transparency",
+      "canBeSatisfiedByRepositorySourceAlone": false
+    },
+    {
+      "id": "android-material3-runtime",
+      "class": "PHYSICAL_DEVICE",
+      "requiredEvidence": "dynamic tonal surfaces, dynamic-color unavailable fallback, animation scale, IME and safe area",
+      "canBeSatisfiedByRepositorySourceAlone": false
+    },
+    {
+      "id": "cross-browser-visual-acceptance",
+      "class": "VISUAL_REVIEW",
+      "requiredEvidence": "Chrome, Edge, Safari, Firefox exact-candidate screenshots and accessibility review",
+      "canBeSatisfiedByRepositorySourceAlone": false
+    }
+  ],
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

@@ -1,0 +1,211 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  wiring: root.join("apps/hepta-native/src/shared/hepta_windows_product_host_wiring.rs"),
+  wiring_part1: root.join("apps/hepta-native/src/shared/hepta_windows_product_host_wiring/part1.rs"),
+  wiring_part2: root.join("apps/hepta-native/src/shared/hepta_windows_product_host_wiring/part2.rs"),
+  wiring_part3: root.join("apps/hepta-native/src/shared/hepta_windows_product_host_wiring/part3.rs"),
+  wiring_part4: root.join("apps/hepta-native/src/shared/hepta_windows_product_host_wiring/part4.rs"),
+  node: root.join("apps/hepta-native/src/shared/hepta_windows_product_host_wiring_node.rs"),
+  harness: root.join("tools/hepta-ui-windows-product-host-wiring/Cargo.toml"),
+  harness_lib: root.join("tools/hepta-ui-windows-product-host-wiring/src/lib.rs"),
+  patch: root.join("patches/hepta-ui-v4-windows-product-host-wiring.patch"),
+  apply: root.join("scripts/hepta-ui-v4-apply-windows-product-host-wiring"),
+  contract: root.join("docs/ui/HEPTA_WINDOWS_PRODUCT_HOST_WIRING_CANDIDATE_V1.json"),
+  schema: root.join("docs/ui/schemas/hepta.ui.v4.windows-product-host-wiring-candidate.v1.schema.json"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-windows-product-host-wiring.yml"),
+  document: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_24_WINDOWS_PRODUCT_HOST_WIRING_CANDIDATE_2026-08-28.md"),
+  blockers: root.join("docs/ui/HEPTA_UI_REMAINING_EXTERNAL_BLOCKERS_V1.json"),
+  product_cargo: root.join("apps/hepta-native/Cargo.toml"),
+  product_mod: root.join("apps/hepta-native/src/shared/mod.rs"),
+  product_lifecycle: root.join("apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs")
+}.freeze
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+
+wiring = %i[wiring wiring_part1 wiring_part2 wiring_part3 wiring_part4].map { |key| files.fetch(key).read }.join
+node = files.fetch(:node).read
+harness = files.fetch(:harness).read
+harness_lib = files.fetch(:harness_lib).read
+patch = files.fetch(:patch).read
+apply = files.fetch(:apply).read
+contract = JSON.parse(files.fetch(:contract).read)
+schema = JSON.parse(files.fetch(:schema).read)
+workflow = files.fetch(:workflow).read
+document = files.fetch(:document).read
+blockers = JSON.parse(files.fetch(:blockers).read)
+product_cargo = files.fetch(:product_cargo).read
+product_mod = files.fetch(:product_mod).read
+product_lifecycle = files.fetch(:product_lifecycle).read
+
+feature = "hepta_ui_windows_system_material_v4"
+false_keys = %w[network mutation effect liveAdapter production operatorAcceptance promotion release]
+
+checks["product.unmodified_feature"] = !product_cargo.include?("#{feature} = []")
+checks["product.unmodified_modules"] = %w[
+  hepta_windows_product_host_integration_review
+  hepta_windows_product_host_implementation
+  hepta_windows_product_host_wiring
+  hepta_windows_product_host_wiring_node
+].none? { |name| product_mod.include?("pub mod #{name};") }
+checks["product.lifecycle_no_caller"] =
+  !product_lifecycle.include?("HeptaWindowsProductHostEvidenceSeal") &&
+  !product_lifecycle.include?("activate_explicit")
+
+checks["wiring.default_off"] =
+  wiring.include?("FEATURE_DEFAULT_ENABLED: bool = false") &&
+  wiring.include?("AUTOMATIC_ACTIVATION: bool = false") &&
+  wiring.include?("PRODUCT_CALLER_REGISTERED: bool = false")
+checks["wiring.evidence_seal"] = %w[
+  HeptaWindowsProductHostReviewEnvelopeSeal
+  HeptaWindowsProductHostDeviceQualificationSeal
+  operator_acceptance_digest
+  device_qualification_digest
+  ReviewDigestDrift
+  DeviceReviewDigestDrift
+  RuntimeIdentityDrift
+].all? { |term| wiring.include?(term) }
+checks["wiring.fixed_runtime_chain"] =
+  wiring.include?("self.root_sequence == 1") &&
+  wiring.include?("self.acrylic_sequence == 2") &&
+  wiring.include?("self.rollback_sequence == 3") &&
+  wiring.include?("self.destroyed_acknowledged")
+checks["wiring.transactional_dwm"] = %w[
+  HeptaWindowsProductDwmBackend
+  HeptaWindowsBackdropKind::Mica
+  HeptaWindowsBackdropKind::Acrylic
+  HeptaWindowsBackdropKind::None
+  HeptaWindowsDwmBackdropValue::Mica
+  HeptaWindowsDwmBackdropValue::Acrylic
+  HeptaWindowsDwmBackdropValue::None
+  rollback_best_effort
+].all? { |term| wiring.include?(term) }
+checks["wiring.preference_rollback"] =
+  wiring.include?("!preferences.transparency_allowed || preferences.high_contrast") &&
+  wiring.include?("self.host.rollback_to_solid()") &&
+  wiring.include?("self.host.suspend()") && wiring.include?("self.host.shutdown()")
+checks["wiring.no_unsafe_or_auto"] =
+  !wiring.match?(/\bunsafe\b/) &&
+  !wiring.include?("Event::Startup") &&
+  !wiring.include?("DwmSetWindowAttribute") &&
+  !wiring.include?("std::env::var")
+checks["wiring.authority_false"] = %w[
+  PRODUCTION_AUTHORITY EFFECT_AUTHORITY LIVE_ADAPTER_AUTHORITY
+  OPERATOR_ACCEPTANCE PROMOTION RELEASE
+].all? { |term| wiring.include?("#{term}: bool = false") }
+
+checks["node.feature_only_explicit"] =
+  node.include?("activate_explicit") &&
+  !node.include?("Event::Startup") &&
+  node.include?("Event::Resume | Event::Foreground") &&
+  node.include?("Event::Pause | Event::Background") &&
+  node.include?("Event::Shutdown")
+checks["node.no_network_or_authority"] =
+  !node.match?(/(?:http|websocket|mutation|provider|production_authority)/i)
+
+checks["harness.default_off"] =
+  harness.include?("default = []") && harness.include?("#{feature} = []")
+checks["harness.canonical_sources"] = %w[
+  hepta_platform_material.rs
+  hepta_platform_material_runtime.rs
+  hepta_windows_material_adapter.rs
+  hepta_windows_product_host_integration_review.rs
+  hepta_windows_product_host_implementation.rs
+  hepta_windows_product_host_wiring.rs
+].all? { |term| harness_lib.include?(term) }
+
+checks["patch.feature_and_registration"] =
+  patch.include?("+#{feature} = []") &&
+  patch.include?("+pub mod hepta_windows_product_host_wiring;") &&
+  patch.include?("+pub mod hepta_windows_product_host_wiring_node;") &&
+  patch.include?("+    hepta_windows_product_host_wiring_node::script_mod(vm);")
+checks["patch.no_default_activation"] =
+  !patch.include?("default = [\"hepta-bridge\", \"#{feature}\"]") &&
+  !patch.include?("Event::Startup")
+checks["patch.state_constants_monotonic"] =
+  patch.include?("HEPTA_WINDOWS_PRODUCT_HOST_PRODUCT_WIRED") &&
+  patch.include?("cfg!(feature = \"#{feature}\")")
+
+checks["apply.requires_qualification"] =
+  apply.include?("PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION") &&
+  apply.include?("aba38df64c1e104a2962157dc0f944a8f9045cf1") &&
+  apply.include?("9b4b34f870dcb35ff78466896c2c7a4408ebadc2")
+checks["apply.fail_closed"] =
+  apply.include?("git apply --check") || apply.include?("\"apply\", \"--check\"")
+checks["apply.only_expected_files"] =
+  apply.include?("apps/hepta-native/Cargo.toml") &&
+  apply.include?("apps/hepta-native/src/shared/mod.rs") &&
+  apply.include?("hepta_windows_product_host_implementation/part1.rs") &&
+  apply.include?("hepta_windows_product_host_implementation/part3.rs") &&
+  apply.include?("changed files drift")
+checks["apply.authority_false"] = false_keys.all? { |key| apply.include?(key) }
+
+checks["contract.source_only"] =
+  contract.dig("qualification", "sourceImplemented") == true &&
+  contract.fetch("qualification").reject { |key, _| key == "sourceImplemented" }.values.none? &&
+  contract.fetch("authority").values.none?
+checks["contract.blockers"] =
+  contract.dig("evidence", "reviewEnvelopeRequired") == true &&
+  contract.dig("evidence", "physicalDeviceDigestRequired") == true &&
+  contract.dig("evidence", "finalStateUnboundRequired") == true
+checks["schema.authority_false"] =
+  schema.dig("$defs", "authority", "properties").values.all? { |entry| entry["const"] == false }
+checks["schema.product_false"] = %w[
+  productPatchApplied productCargoFeatureDeclared productModuleRegistered
+  productLifecycleWired automaticBindingAllowed productCallerRegistered
+  runtimeValidated productBound systemMaterialBound nativeProductRuntime deviceValidation
+].all? { |key| schema.dig("$defs", "qualification", "properties", key, "const") == false }
+
+checks["workflow.read_only"] =
+  workflow.include?("contents: read") && !workflow.match?(/^\s*(?:deploy|publish|promotion|release)\s*:/i)
+checks["workflow.matrix"] = %w[ubuntu-latest windows-latest macos-latest default-off explicit-feature].all? { |term| workflow.include?(term) }
+checks["workflow.isolated_and_product_patch"] =
+  workflow.include?("hepta-ui-windows-product-host-wiring/Cargo.toml") &&
+  workflow.include?("git apply --check patches/hepta-ui-v4-windows-product-host-wiring.patch") &&
+  workflow.include?("apps/hepta-native/Cargo.toml")
+checks["workflow.no_runtime_claim"] =
+  !workflow.include?("DwmSetWindowAttribute") && !workflow.include?("productHostMayBind=true")
+
+checks["blockers.external_only"] =
+  blockers.fetch("sourceControllableGapsClosed") == true &&
+  blockers.fetch("remainingBlockers").all? { |entry| entry.fetch("class") != "SOURCE_IMPLEMENTATION" }
+checks["document.boundary"] =
+  document.include?("default-off") && document.include?("productCallerRegistered=false") &&
+  document.include?("physical Windows") && document.include?("release=false")
+
+failures = checks.reject { |_key, value| value }.keys
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.windows-product-host-wiring-source-gate.v1",
+  status: failures.empty? ? "PASS_WINDOWS_PRODUCT_HOST_WIRING_SOURCE_ONLY" : "FAIL_WINDOWS_PRODUCT_HOST_WIRING_SOURCE",
+  source_implemented: failures.empty?,
+  isolated_default_compile: false,
+  isolated_feature_compile: false,
+  temporary_product_patch_compile: false,
+  implementation_qualification_passed: false,
+  product_patch_applied: false,
+  product_cargo_feature_declared: false,
+  product_module_registered: false,
+  product_lifecycle_wired: false,
+  automatic_binding_allowed: false,
+  product_caller_registered: false,
+  runtime_validated: false,
+  product_bound: false,
+  system_material_bound: false,
+  native_product_runtime: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  live_adapter_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  release: false,
+  checks: checks,
+  failures: failures
+)
+exit(failures.empty? ? 0 : 1)

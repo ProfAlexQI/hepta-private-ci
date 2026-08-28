@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.ai/schemas/ui/hepta.ui.v4.windows-product-host-wiring-candidate.v1.schema.json",
+  "title": "Hepta UI v4 Windows product-host wiring candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "candidate", "feature", "evidence", "qualification", "authority", "failures"],
+  "properties": {
+    "schema": {"const": "hepta.ui.v4.windows-product-host-wiring-candidate.v1"},
+    "status": {"enum": ["PASS_WINDOWS_PRODUCT_HOST_WIRING_SOURCE_ONLY", "BLOCKED_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION_REQUIRED", "FAIL_WINDOWS_PRODUCT_HOST_WIRING_CANDIDATE"]},
+    "candidate": {"$ref": "#/$defs/candidate"},
+    "feature": {"type": "object", "additionalProperties": false, "required": ["name", "defaultEnabled", "automaticActivation"], "properties": {"name": {"const": "hepta_ui_windows_system_material_v4"}, "defaultEnabled": {"const": false}, "automaticActivation": {"const": false}}},
+    "evidence": {"type": "object", "additionalProperties": true},
+    "qualification": {"$ref": "#/$defs/qualification"},
+    "authority": {"$ref": "#/$defs/authority"},
+    "failures": {"type": "array", "maxItems": 64, "items": {"type": "string", "minLength": 1, "maxLength": 4096}}
+  },
+  "$defs": {
+    "gitObject": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "candidate": {"type": "object", "additionalProperties": false, "required": ["commit", "tree"], "properties": {"commit": {"$ref": "#/$defs/gitObject"}, "tree": {"$ref": "#/$defs/gitObject"}}},
+    "qualification": {"type": "object", "additionalProperties": false, "required": ["sourceImplemented", "isolatedDefaultCompile", "isolatedFeatureCompile", "temporaryProductPatchCompile", "implementationQualificationPassed", "productPatchApplied", "productCargoFeatureDeclared", "productModuleRegistered", "productLifecycleWired", "automaticBindingAllowed", "productCallerRegistered", "runtimeValidated", "productBound", "systemMaterialBound", "nativeProductRuntime", "deviceValidation"], "properties": {
+      "sourceImplemented": {"type": "boolean"},
+      "isolatedDefaultCompile": {"type": "boolean"},
+      "isolatedFeatureCompile": {"type": "boolean"},
+      "temporaryProductPatchCompile": {"type": "boolean"},
+      "implementationQualificationPassed": {"type": "boolean"},
+      "productPatchApplied": {"const": false},
+      "productCargoFeatureDeclared": {"const": false},
+      "productModuleRegistered": {"const": false},
+      "productLifecycleWired": {"const": false},
+      "automaticBindingAllowed": {"const": false},
+      "productCallerRegistered": {"const": false},
+      "runtimeValidated": {"const": false},
+      "productBound": {"const": false},
+      "systemMaterialBound": {"const": false},
+      "nativeProductRuntime": {"const": false},
+      "deviceValidation": {"const": false}
+    }},
+    "authority": {"type": "object", "additionalProperties": false, "required": ["network", "mutation", "effect", "liveAdapter", "production", "operatorAcceptance", "promotion", "release"], "properties": {"network": {"const": false}, "mutation": {"const": false}, "effect": {"const": false}, "liveAdapter": {"const": false}, "production": {"const": false}, "operatorAcceptance": {"const": false}, "promotion": {"const": false}, "release": {"const": false}}}
+  }
+}

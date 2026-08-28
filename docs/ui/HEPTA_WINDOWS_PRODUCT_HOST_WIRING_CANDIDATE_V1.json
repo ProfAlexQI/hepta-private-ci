@@ -1,0 +1,62 @@
+{
+  "schema": "hepta.ui.windows-product-host-wiring-candidate.v1",
+  "status": "PRODUCT_WIRING_SOURCE_READY_QUALIFICATION_REQUIRED",
+  "baseBranch": "codex/ui-v4-windows-product-host-qualification-closure-v2-20260828",
+  "baseCommit": "87c503e0fdf86b6d5c8ac216c7bd2bdb1a6b5e5a",
+  "feature": {
+    "name": "hepta_ui_windows_system_material_v4",
+    "defaultEnabled": false,
+    "automaticActivation": false,
+    "explicitEvidenceSealRequired": true
+  },
+  "source": {
+    "wiringCore": "apps/hepta-native/src/shared/hepta_windows_product_host_wiring.rs",
+    "wiringNode": "apps/hepta-native/src/shared/hepta_windows_product_host_wiring_node.rs",
+    "productPatch": "patches/hepta-ui-v4-windows-product-host-wiring.patch",
+    "applyTool": "scripts/hepta-ui-v4-apply-windows-product-host-wiring",
+    "isolatedHarness": "tools/hepta-ui-windows-product-host-wiring/Cargo.toml"
+  },
+  "evidence": {
+    "reviewEnvelopeRequired": true,
+    "implementationQualificationRequired": true,
+    "operatorAcceptanceDigestRequired": true,
+    "physicalDeviceDigestRequired": true,
+    "runtimeIdentityFixed": true,
+    "requestSequences": [1, 2, 3],
+    "destroyedAcknowledgementRequired": true,
+    "highContrastFallbackRequired": true,
+    "transparencyDisabledFallbackRequired": true,
+    "suspendRollbackRequired": true,
+    "shutdownRollbackRequired": true,
+    "finalStateUnboundRequired": true
+  },
+  "qualification": {
+    "sourceImplemented": true,
+    "hostedSource": false,
+    "isolatedDefaultCompile": false,
+    "isolatedFeatureCompile": false,
+    "temporaryProductPatchCompile": false,
+    "implementationQualificationPassed": false,
+    "productPatchApplied": false,
+    "productCargoFeatureDeclared": false,
+    "productModuleRegistered": false,
+    "productLifecycleWired": false,
+    "automaticBindingAllowed": false,
+    "productCallerRegistered": false,
+    "runtimeValidated": false,
+    "productBound": false,
+    "systemMaterialBound": false,
+    "nativeProductRuntime": false,
+    "deviceValidation": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

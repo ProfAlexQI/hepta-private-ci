@@ -1,0 +1,135 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "open3"
+require "pathname"
+require "rbconfig"
+require "digest"
+
+IMPLEMENTATION_COMMIT = "aba38df64c1e104a2962157dc0f944a8f9045cf1"
+IMPLEMENTATION_TREE = "9b4b34f870dcb35ff78466896c2c7a4408ebadc2"
+QUALIFICATION_STATUS = "PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION"
+PATCH = "patches/hepta-ui-v4-windows-product-host-wiring.patch"
+
+class WiringApplyError < StandardError; end
+
+def run!(*command, chdir:)
+  out, err, status = Open3.capture3(*command, chdir: chdir.to_s)
+  return out.strip if status.success?
+  detail = err.strip.empty? ? out.strip : err.strip
+  raise WiringApplyError, "#{command.join(' ')} failed#{detail.empty? ? '' : ": #{detail}"}"
+end
+
+def write_json_atomic(path, value)
+  destination = Pathname.new(path).expand_path
+  destination.dirname.mkpath
+  temporary = destination.sub_ext(".tmp")
+  temporary.write(JSON.pretty_generate(value) + "\n")
+  File.rename(temporary, destination)
+end
+
+def false_authority
+  %w[network mutation effect liveAdapter production operatorAcceptance promotion release]
+    .to_h { |key| [key, false] }
+end
+
+checkout_arg = ARGV.shift or abort "usage: #{$PROGRAM_NAME} CHECKOUT QUALIFICATION_JSON OUTPUT_JSON"
+qualification_arg = ARGV.shift or abort "missing qualification receipt"
+output_arg = ARGV.shift or abort "missing output receipt"
+abort "unexpected arguments" unless ARGV.empty?
+
+checkout = Pathname.new(checkout_arg).expand_path
+qualification_path = Pathname.new(qualification_arg).expand_path
+output = Pathname.new(output_arg).expand_path
+repo_root = Pathname.new(__dir__).join("..").expand_path
+patch = repo_root.join(PATCH)
+
+begin
+  raise WiringApplyError, "checkout missing" unless checkout.directory?
+  raise WiringApplyError, "qualification receipt missing" unless qualification_path.file?
+  raise WiringApplyError, "wiring patch missing" unless patch.file?
+
+  qualification = JSON.parse(qualification_path.read)
+  raise WiringApplyError, "qualification status" unless qualification.fetch("status") == QUALIFICATION_STATUS
+  raise WiringApplyError, "candidate commit drift" unless qualification.dig("candidate", "commit") == IMPLEMENTATION_COMMIT
+  raise WiringApplyError, "candidate tree drift" unless qualification.dig("candidate", "tree") == IMPLEMENTATION_TREE
+  raise WiringApplyError, "qualification authority escaped" unless qualification.fetch("authority").values.all? { |value| value == false }
+  %w[productCargoFeatureDeclared productModuleRegistered productLifecycleWired automaticBindingAllowed implementationApproved productHostMayBind productBound transientSystemMaterialBound completeProfileBound systemMaterialBound nativeProductRuntime deviceValidation].each do |key|
+    raise WiringApplyError, "#{key} escaped" unless qualification.dig("qualification", key) == false
+  end
+
+  head = run!("git", "rev-parse", "HEAD", chdir: checkout)
+  tree = run!("git", "rev-parse", "HEAD^{tree}", chdir: checkout)
+  run!("git", "merge-base", "--is-ancestor", IMPLEMENTATION_COMMIT, head, chdir: checkout)
+  raise WiringApplyError, "dirty checkout" unless run!("git", "status", "--porcelain", chdir: checkout).empty?
+
+  run!("git", "apply", "--check", patch.to_s, chdir: checkout)
+  run!("git", "apply", patch.to_s, chdir: checkout)
+  run!("git", "diff", "--check", chdir: checkout)
+
+  cargo = checkout.join("apps/hepta-native/Cargo.toml").read
+  shared = checkout.join("apps/hepta-native/src/shared/mod.rs").read
+  raise WiringApplyError, "feature missing" unless cargo.include?("hepta_ui_windows_system_material_v4 = []")
+  %w[hepta_windows_product_host_integration_review hepta_windows_product_host_implementation hepta_windows_product_host_wiring hepta_windows_product_host_wiring_node].each do |name|
+    raise WiringApplyError, "module #{name} missing" unless shared.include?("pub mod #{name};")
+  end
+  raise WiringApplyError, "wiring script call missing" unless shared.include?("hepta_windows_product_host_wiring_node::script_mod(vm);")
+
+  changed = run!("git", "diff", "--name-only", chdir: checkout).lines(chomp: true).sort
+  expected = [
+    "apps/hepta-native/Cargo.toml",
+    "apps/hepta-native/src/shared/hepta_windows_product_host_implementation/part1.rs",
+    "apps/hepta-native/src/shared/hepta_windows_product_host_implementation/part3.rs",
+    "apps/hepta-native/src/shared/mod.rs"
+  ]
+  raise WiringApplyError, "changed files drift: #{changed.inspect}" unless changed == expected
+
+  payload = {
+    schema: "hepta.ui.v4.windows-product-host-wiring-application.v1",
+    status: "PASS_WINDOWS_PRODUCT_HOST_WIRING_PATCH_APPLIED_SOURCE_ONLY",
+    checkout: { commit: head, tree: tree },
+    implementationCandidate: { commit: IMPLEMENTATION_COMMIT, tree: IMPLEMENTATION_TREE },
+    qualification: {
+      receiptStatus: QUALIFICATION_STATUS,
+      patchApplied: true,
+      productCargoFeatureDeclared: true,
+      productModuleRegistered: true,
+      productLifecycleWired: true,
+      automaticBindingAllowed: false,
+      productCallerRegistered: false,
+      runtimeValidated: false,
+      productBound: false,
+      systemMaterialBound: false,
+      nativeProductRuntime: false,
+      deviceValidation: false
+    },
+    patch: { path: PATCH, sha256: Digest::SHA256.file(patch).hexdigest, changedFiles: changed },
+    authority: false_authority
+  }
+  write_json_atomic(output, payload)
+  puts JSON.pretty_generate(payload)
+rescue StandardError => error
+  payload = {
+    schema: "hepta.ui.v4.windows-product-host-wiring-application.v1",
+    status: "FAIL_WINDOWS_PRODUCT_HOST_WIRING_PATCH_APPLICATION",
+    qualification: {
+      patchApplied: false,
+      productCargoFeatureDeclared: false,
+      productModuleRegistered: false,
+      productLifecycleWired: false,
+      automaticBindingAllowed: false,
+      productCallerRegistered: false,
+      runtimeValidated: false,
+      productBound: false,
+      systemMaterialBound: false,
+      nativeProductRuntime: false,
+      deviceValidation: false
+    },
+    authority: false_authority,
+    failures: [error.message.byteslice(0, 4096)]
+  }
+  write_json_atomic(output, payload)
+  warn JSON.pretty_generate(payload)
+  exit 1
+end
