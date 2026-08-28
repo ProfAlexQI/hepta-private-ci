@@ -13,28 +13,32 @@ concurrency:
   group: hepta-architecture-convergence-p0-2-write-lane
   cancel-in-progress: true
 
+env:
+  BRANCH_NAME: codex/hepta-architecture-convergence-p0-2-20260828
+  SOURCE_HEAD: ${{ github.sha }}
+
 jobs:
   converge-and-verify:
     name: Converge and execute the product graph
     if: ${{ !contains(github.event.head_commit.message || '', '[hepta-p0-2-finalize]') }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
     steps:
-      - name: Checkout latest convergence branch
+      - name: Checkout exact triggering head
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: codex/hepta-architecture-convergence-p0-2-20260828
-          fetch-depth: 2
+          ref: ${{ env.SOURCE_HEAD }}
+          fetch-depth: 0
           persist-credentials: true
 
-      - name: Verify clean branch input
+      - name: Verify exact clean input identity
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git branch --show-current)" = codex/hepta-architecture-convergence-p0-2-20260828
+          test "$GITHUB_REF_NAME" = "$BRANCH_NAME"
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
           git diff --exit-code
           git diff --cached --exit-code
-          git rev-parse HEAD
           git rev-parse 'HEAD^{tree}'
 
       - uses: ./.github/actions/setup-ci
@@ -55,7 +59,7 @@ jobs:
       - name: Wire legacy production authority adapter
         run: python3 scripts/hepta-legacy-production-authority-adapter-p0-1.py
 
-      - name: Format owned convergence packages
+      - name: Format bounded convergence packages
         working-directory: codex-rs
         run: |
           cargo fmt \
@@ -71,90 +75,76 @@ jobs:
             -p codex-hepta-memory-runtime \
             -p codex-hepta-agentd
 
-      - name: Validate workspace, lock, and module bindings
-        run: |
-          python3 - <<'PY'
-          import pathlib
-          import tomllib
-
-          root = pathlib.Path("codex-rs")
-          workspace = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
-          members = workspace["workspace"]["members"]
-          if members.count("hepta-memory-runtime") != 1:
-              raise SystemExit("hepta-memory-runtime must be exactly one workspace member")
-          dependencies = workspace["workspace"]["dependencies"]
-          if dependencies.get("codex-hepta-memory-runtime", {}).get("path") != "hepta-memory-runtime":
-              raise SystemExit("hepta-memory-runtime workspace dependency drifted")
-
-          runtime_manifest = tomllib.loads(
-              (root / "hepta-memory-runtime/Cargo.toml").read_text(encoding="utf-8")
-          )
-          if runtime_manifest["package"]["name"] != "codex-hepta-memory-runtime":
-              raise SystemExit("Memory runtime package identity drifted")
-
-          agentd = tomllib.loads((root / "hepta-agentd/Cargo.toml").read_text(encoding="utf-8"))
-          if "codex-hepta-memory-runtime" not in agentd.get("dependencies", {}):
-              raise SystemExit("Agentd is not bound to the Memory runtime facade")
-
-          runtime_source = (root / "hepta-memory-runtime/src/lib.rs").read_text(encoding="utf-8")
-          for needle in (
-              "mod legacy_authority;",
-              "pub use legacy_authority::adopt_verified_legacy_cognitive_write;",
-              "pub struct AgentMemoryRuntime",
-          ):
-              if needle not in runtime_source:
-                  raise SystemExit(f"Memory runtime is missing {needle!r}")
-
-          lock = tomllib.loads((root / "Cargo.lock").read_text(encoding="utf-8"))
-          packages = {package["name"]: package for package in lock["package"]}
-          runtime = packages.get("codex-hepta-memory-runtime")
-          if runtime is None:
-              raise SystemExit("Memory runtime is missing from Cargo.lock")
-          agentd_lock = packages.get("codex-hepta-agentd")
-          if agentd_lock is None or "codex-hepta-memory-runtime" not in agentd_lock.get("dependencies", []):
-              raise SystemExit("Agentd lock entry is missing the Memory runtime facade")
-          PY
+      - name: Verify physical Memory extraction and lock binding
+        run: python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
 
       - name: Enforce convergence changed-path allowlist
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
+          import pathlib
           import subprocess
 
-          allowed = {
+          allowed_exact = {
               "codex-rs/Cargo.lock",
               "codex-rs/Cargo.toml",
-              "codex-rs/hepta-contracts/src/authority.rs",
-              "codex-rs/hepta-contracts/src/lib.rs",
-              "codex-rs/hepta-contracts/src/operation.rs",
-              "codex-rs/hepta-contracts/src/product_graph.rs",
-              "codex-rs/hepta-contracts/tests/cross_owner_fault_matrix.rs",
-              "codex-rs/hepta-memory/src/cognitive_runtime.rs",
-              "codex-rs/hepta-memory-runtime/src/legacy_authority.rs",
-              "codex-rs/hepta-memory-runtime/src/lib.rs",
               "codex-rs/hepta-agentd/Cargo.toml",
-              "codex-rs/hepta-agentd/src/app_runtime.rs",
-              "codex-rs/hepta-agentd/src/composition.rs",
-              "codex-rs/hepta-agentd/src/runtime.rs",
               "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_P0_2_STATUS.json",
               "docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json",
               "scripts/verify-hepta-architecture-convergence-p0-2.py",
           }
+          allowed_rust_prefixes = (
+              "codex-rs/hepta-contracts/",
+              "codex-rs/hepta-memory/",
+              "codex-rs/hepta-memory-runtime/",
+              "codex-rs/hepta-agentd/",
+          )
           changed = set(
               subprocess.check_output(
                   ["git", "diff", "--name-only", "--diff-filter=ACMRTUXB"],
                   text=True,
               ).splitlines()
           )
-          unexpected = sorted(changed - allowed)
+          unexpected = sorted(
+              path
+              for path in changed
+              if path not in allowed_exact
+              and not (
+                  path.endswith(".rs")
+                  and path.startswith(allowed_rust_prefixes)
+                  and pathlib.Path(path).is_file()
+              )
+          )
           if unexpected:
               raise SystemExit(f"P0.2 finalizer escaped the allowlist: {unexpected}")
           PY
           git diff --check
 
-      - name: Canonical architecture source gate
-        run: python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+      - name: Stage one immutable candidate tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add \
+            codex-rs/Cargo.lock \
+            codex-rs/Cargo.toml \
+            codex-rs/hepta-contracts \
+            codex-rs/hepta-memory \
+            codex-rs/hepta-memory-runtime \
+            codex-rs/hepta-agentd \
+            docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_P0_2_STATUS.json \
+            docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json \
+            scripts/verify-hepta-architecture-convergence-p0-2.py
+          git diff --cached --check
+          candidate_tree="$(git write-tree)"
+          echo "CANDIDATE_TREE=$candidate_tree" >> "$GITHUB_ENV"
+          echo "candidate_tree=$candidate_tree" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Canonical architecture and authority source gates
+        run: |
+          python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+          python3 scripts/verify-hepta-authority-callers-p0-1.py
+          python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
 
       - name: Unified authority and product graph tests
         working-directory: codex-rs
@@ -200,38 +190,31 @@ jobs:
         run: |
           cargo clippy --locked --all-targets \
             -p codex-hepta-contracts \
+            -p codex-hepta-memory \
             -p codex-hepta-memory-runtime \
             -p codex-hepta-agentd \
             -- -D warnings
 
-      - name: Commit one verified convergence snapshot
+      - name: Verify tested candidate tree remained immutable
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet; then
-            echo "The convergence snapshot is already materialized."
+          git diff --exit-code
+          git diff --cached --check
+          test "$(git write-tree)" = "$CANDIDATE_TREE"
+
+      - name: Commit and fast-forward the verified candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --cached --quiet; then
+            echo "The verified convergence candidate is already materialized."
             exit 0
           fi
           git config user.name "Hepta convergence finalizer"
           git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
-          git add \
-            codex-rs/Cargo.lock \
-            codex-rs/Cargo.toml \
-            codex-rs/hepta-contracts/src/authority.rs \
-            codex-rs/hepta-contracts/src/lib.rs \
-            codex-rs/hepta-contracts/src/operation.rs \
-            codex-rs/hepta-contracts/src/product_graph.rs \
-            codex-rs/hepta-contracts/tests/cross_owner_fault_matrix.rs \
-            codex-rs/hepta-memory/src/cognitive_runtime.rs \
-            codex-rs/hepta-memory-runtime/src/legacy_authority.rs \
-            codex-rs/hepta-memory-runtime/src/lib.rs \
-            codex-rs/hepta-agentd/Cargo.toml \
-            codex-rs/hepta-agentd/src/app_runtime.rs \
-            codex-rs/hepta-agentd/src/composition.rs \
-            codex-rs/hepta-agentd/src/runtime.rs \
-            docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_P0_2_STATUS.json \
-            docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json \
-            scripts/verify-hepta-architecture-convergence-p0-2.py
-          git diff --cached --check
           git commit -m "refactor(hepta): materialize architecture convergence P0.2 [hepta-p0-2-finalize]"
-          git push origin HEAD:refs/heads/codex/hepta-architecture-convergence-p0-2-20260828
+          test "$(git rev-parse 'HEAD^{tree}')" = "$CANDIDATE_TREE"
+          git fetch origin "refs/heads/$BRANCH_NAME:refs/remotes/origin/$BRANCH_NAME"
+          test "$(git rev-parse "origin/$BRANCH_NAME")" = "$SOURCE_HEAD"
+          git push origin "HEAD:refs/heads/$BRANCH_NAME"

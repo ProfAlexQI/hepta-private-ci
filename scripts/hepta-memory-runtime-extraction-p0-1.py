@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Materialize the physical Hepta Memory runtime facade in the real workspace.
 
-The script is intentionally idempotent and edits only dependency metadata.
-Agentd source already consumes ``AgentMemoryRuntime`` through
-``memory_service.rs``; the bootstrap workflow regenerates Cargo.lock and runs
-all affected package gates before it is allowed to commit.
+The script is idempotent and edits dependency metadata plus the machine status.
+Agentd source must already consume ``AgentMemoryRuntime`` through
+``memory_service.rs``; Cargo regenerates the lock graph and all affected gates
+must pass before the finalizer may commit.
 """
 
 from __future__ import annotations
 
+import json
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -17,6 +18,7 @@ AGENTD_MANIFEST = ROOT / "codex-rs/hepta-agentd/Cargo.toml"
 MEMORY_SERVICE = ROOT / "codex-rs/hepta-agentd/src/memory_service.rs"
 RUNTIME_MANIFEST = ROOT / "codex-rs/hepta-memory-runtime/Cargo.toml"
 RUNTIME_LIB = ROOT / "codex-rs/hepta-memory-runtime/src/lib.rs"
+STATUS = ROOT / "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_P0_2_STATUS.json"
 
 
 def insert_once(source: str, old: str, new: str, label: str) -> str:
@@ -24,7 +26,7 @@ def insert_once(source: str, old: str, new: str, label: str) -> str:
         return source
     if source.count(old) != 1:
         raise SystemExit(f"{label} source anchor drifted")
-    return source.replace(old, new)
+    return source.replace(old, new, 1)
 
 
 def materialize_workspace() -> None:
@@ -81,10 +83,23 @@ def verify_real_source_wiring() -> None:
         raise SystemExit("Agentd Memory service still bypasses the physical runtime facade")
 
 
+def update_status() -> None:
+    value = json.loads(STATUS.read_text(encoding="utf-8"))
+    implemented = value.get("implemented")
+    remaining = value.get("remaining")
+    if not isinstance(implemented, dict) or not isinstance(remaining, dict):
+        raise SystemExit("architecture status implementation boundary is missing")
+    implemented["memoryRuntimeFacadeCrate"] = True
+    implemented["physicalMemoryRuntimeCrate"] = True
+    remaining["physicalMemoryCrateExtraction"] = False
+    STATUS.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     materialize_workspace()
     materialize_agentd_dependency()
     verify_real_source_wiring()
+    update_status()
     print("MEMORY_RUNTIME_EXTRACTION_P0_1_MATERIALIZED")
     return 0
 

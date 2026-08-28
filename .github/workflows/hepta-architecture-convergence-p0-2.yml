@@ -8,8 +8,13 @@ on:
       - "ARCHITECTURE.md"
       - "docs/architecture/**"
       - "scripts/verify-hepta-architecture-convergence-p0-2.py"
+      - "scripts/verify-hepta-authority-callers-p0-1.py"
+      - "scripts/verify-hepta-memory-runtime-extraction-p0-1.py"
+      - "codex-rs/Cargo.toml"
+      - "codex-rs/Cargo.lock"
       - "codex-rs/hepta-contracts/**"
       - "codex-rs/hepta-memory/**"
+      - "codex-rs/hepta-memory-runtime/**"
       - "codex-rs/hepta-agentd/**"
       - ".github/workflows/hepta-architecture-convergence-p0-2.yml"
       - ".github/workflows/blocking-ci.yml"
@@ -21,8 +26,13 @@ on:
       - "ARCHITECTURE.md"
       - "docs/architecture/**"
       - "scripts/verify-hepta-architecture-convergence-p0-2.py"
+      - "scripts/verify-hepta-authority-callers-p0-1.py"
+      - "scripts/verify-hepta-memory-runtime-extraction-p0-1.py"
+      - "codex-rs/Cargo.toml"
+      - "codex-rs/Cargo.lock"
       - "codex-rs/hepta-contracts/**"
       - "codex-rs/hepta-memory/**"
+      - "codex-rs/hepta-memory-runtime/**"
       - "codex-rs/hepta-agentd/**"
       - ".github/workflows/hepta-architecture-convergence-p0-2.yml"
       - ".github/workflows/blocking-ci.yml"
@@ -40,8 +50,8 @@ env:
 jobs:
   exact-source-head:
     name: Exact source-head product graph
-    runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
     steps:
       - name: Checkout exact source head
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -63,8 +73,11 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Canonical architecture source gate
-        run: python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+      - name: Canonical source ratchets
+        run: |
+          python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+          python3 scripts/verify-hepta-authority-callers-p0-1.py
+          python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
 
       - name: Owned package rustfmt
         working-directory: codex-rs
@@ -72,37 +85,32 @@ jobs:
           cargo fmt \
             -p codex-hepta-contracts \
             -p codex-hepta-memory \
+            -p codex-hepta-memory-runtime \
             -p codex-hepta-agentd \
             -- --check
 
-      - name: Authority kernel tests
+      - name: Authority, operation, graph, and durability tests
         working-directory: codex-rs
-        run: cargo test --locked -p codex-hepta-contracts authority::tests -- --nocapture
+        run: |
+          cargo test --locked -p codex-hepta-contracts authority::tests -- --nocapture
+          cargo test --locked -p codex-hepta-contracts operation::tests -- --nocapture
+          cargo test --locked -p codex-hepta-contracts product_graph::tests -- --nocapture
+          cargo test --locked -p codex-hepta-contracts --test cross_owner_fault_matrix -- --nocapture
 
-      - name: Cross-owner operation and fault tests
+      - name: Memory runtime and Agentd integration tests
         working-directory: codex-rs
-        run: cargo test --locked -p codex-hepta-contracts operation::tests -- --nocapture
-
-      - name: Canonical product graph tests
-        working-directory: codex-rs
-        run: cargo test --locked -p codex-hepta-contracts product_graph::tests -- --nocapture
-
-      - name: Memory authority facade tests
-        working-directory: codex-rs
-        run: cargo test --locked -p codex-hepta-memory cognitive_runtime::authority_tests -- --nocapture
-
-      - name: Real Agentd composition tests
-        working-directory: codex-rs
-        run: cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
-
-      - name: Agentd authority integration tests
-        working-directory: codex-rs
-        run: cargo test --locked -p codex-hepta-agentd app_runtime::tests -- --nocapture
+        run: |
+          cargo test --locked -p codex-hepta-memory cognitive_runtime::authority_tests -- --nocapture
+          cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
+          cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
+          cargo test --locked -p codex-hepta-agentd app_runtime::tests -- --nocapture
+          cargo test --locked -p codex-hepta-agentd --features qualification-cognitive-write app_runtime::tests -- --nocapture
 
       - name: Product package graph compilation
         working-directory: codex-rs
         run: |
           cargo check --locked \
+            -p codex-hepta-memory-runtime \
             -p codex-hepta-agentd \
             -p codex-hepta-supervisor \
             -p codex-hepta-matrixd \
@@ -114,6 +122,7 @@ jobs:
           cargo clippy --locked --all-targets \
             -p codex-hepta-contracts \
             -p codex-hepta-memory \
+            -p codex-hepta-memory-runtime \
             -p codex-hepta-agentd \
             -- -D warnings
 
@@ -133,6 +142,7 @@ jobs:
             echo "run_attempt=$GITHUB_RUN_ATTEMPT"
             echo "runner_name=$RUNNER_NAME"
             echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
             echo "expected_commit=$SOURCE_HEAD"
             echo "actual_commit=$(git rev-parse HEAD)"
             echo "actual_tree=$(git rev-parse 'HEAD^{tree}')"
@@ -156,8 +166,8 @@ jobs:
   merge-candidate:
     name: Merge-candidate product integration
     if: ${{ github.event_name == 'pull_request' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
     steps:
       - name: Checkout merge candidate
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -181,21 +191,23 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Merge-candidate architecture gate
-        run: python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+      - name: Merge-candidate source ratchets
+        run: |
+          python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+          python3 scripts/verify-hepta-authority-callers-p0-1.py
+          python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
 
-      - name: Merge-candidate product graph tests
+      - name: Merge-candidate tests and compilation
         working-directory: codex-rs
         run: |
           cargo test --locked -p codex-hepta-contracts authority::tests -- --nocapture
           cargo test --locked -p codex-hepta-contracts operation::tests -- --nocapture
           cargo test --locked -p codex-hepta-contracts product_graph::tests -- --nocapture
+          cargo test --locked -p codex-hepta-contracts --test cross_owner_fault_matrix -- --nocapture
+          cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
           cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
-
-      - name: Merge-candidate product compilation
-        working-directory: codex-rs
-        run: |
           cargo check --locked \
+            -p codex-hepta-memory-runtime \
             -p codex-hepta-agentd \
             -p codex-hepta-supervisor \
             -p codex-hepta-matrixd \
@@ -217,6 +229,7 @@ jobs:
             echo "run_attempt=$GITHUB_RUN_ATTEMPT"
             echo "runner_name=$RUNNER_NAME"
             echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
             echo "source_head=$SOURCE_HEAD"
             echo "merge_commit=$(git rev-parse HEAD)"
             echo "merge_tree=$(git rev-parse 'HEAD^{tree}')"
@@ -245,7 +258,7 @@ jobs:
     needs:
       - exact-source-head
       - merge-candidate
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Require successful architecture identities
         env:
