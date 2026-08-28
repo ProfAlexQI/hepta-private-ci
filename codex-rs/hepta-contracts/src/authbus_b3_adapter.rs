@@ -862,7 +862,7 @@ where
         request: &RefreshWithSecretRefRequest,
         result: ProviderRefreshResult,
     ) -> Result<RefreshWithSecretRefResponse, B3AdapterError> {
-        let outcome = outcome_for_status(result.provider_status);
+        let (outcome, provider_status) = dispatch_projection(result.provider_status);
         let response = RefreshWithSecretRefResponse {
             schema_version: request.schema_version,
             response_id: result.response_id,
@@ -877,9 +877,11 @@ where
             refresh_secret_ref: (outcome == SecretRefOutcome::Succeeded)
                 .then_some(result.refresh_secret_ref)
                 .flatten(),
-            secret_revision: result.secret_revision,
+            secret_revision: (outcome != SecretRefOutcome::Indeterminate)
+                .then_some(result.secret_revision)
+                .flatten(),
             refresh_operation_key: request.refresh_operation_key.clone(),
-            provider_status: result.provider_status,
+            provider_status,
             response_digest: result.response_digest,
             idempotency_key: request.idempotency_key.clone(),
             payload_digest: request.payload_digest.clone(),
@@ -965,7 +967,7 @@ where
         request: &RotateSecretRefRequest,
         result: ProviderRotationResult,
     ) -> Result<RotateSecretRefResponse, B3AdapterError> {
-        let outcome = outcome_for_status(result.provider_status);
+        let (outcome, _) = dispatch_projection(result.provider_status);
         let response = RotateSecretRefResponse {
             schema_version: request.schema_version,
             response_id: result.response_id,
@@ -977,7 +979,9 @@ where
             new_refresh_secret_ref: (outcome == SecretRefOutcome::Succeeded)
                 .then_some(result.new_refresh_secret_ref)
                 .flatten(),
-            secret_revision: result.secret_revision,
+            secret_revision: (outcome != SecretRefOutcome::Indeterminate)
+                .then_some(result.secret_revision)
+                .flatten(),
             refresh_operation_key: request.refresh_operation_key.clone(),
             response_digest: result.response_digest,
             idempotency_key: request.idempotency_key.clone(),
@@ -1407,6 +1411,36 @@ impl RequestIdentity for RotateSecretRefRequest {
 
 fn retry_available(record: &SecretRefOperationRecord) -> bool {
     record.attempt <= record.retry_budget
+}
+
+/// Normalize a result returned from the dispatch method itself. A timeout,
+/// transport loss, or schema-invalid response after crossing that boundary is
+/// an unknown effect even when a provider implementation encoded it inside an
+/// `Ok` result rather than returning [`ProviderAdapterError`].
+fn dispatch_projection(
+    status: SecretProviderStatus,
+) -> (SecretRefOutcome, SecretProviderStatus) {
+    match status {
+        SecretProviderStatus::Succeeded | SecretProviderStatus::Rotated => {
+            (SecretRefOutcome::Succeeded, status)
+        }
+        SecretProviderStatus::InvalidGrant | SecretProviderStatus::Quarantined => {
+            (SecretRefOutcome::Quarantined, status)
+        }
+        SecretProviderStatus::Timeout
+        | SecretProviderStatus::Unavailable
+        | SecretProviderStatus::SchemaInvalid
+        | SecretProviderStatus::Unknown => {
+            (SecretRefOutcome::Indeterminate, SecretProviderStatus::Unknown)
+        }
+        SecretProviderStatus::Unauthorized
+        | SecretProviderStatus::Conflict
+        | SecretProviderStatus::Sealed
+        | SecretProviderStatus::StaleFence
+        | SecretProviderStatus::TransientFailure => {
+            (SecretRefOutcome::TransientFailure, status)
+        }
+    }
 }
 
 fn outcome_for_status(status: SecretProviderStatus) -> SecretRefOutcome {
