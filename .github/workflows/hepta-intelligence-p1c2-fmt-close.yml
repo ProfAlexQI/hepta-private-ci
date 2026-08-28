@@ -28,6 +28,10 @@ jobs:
         shell: bash
 
     steps:
+      - name: Enable Git long paths before checkout
+        shell: pwsh
+        run: git config --system core.longpaths true
+
       - name: Checkout qualification trigger
         uses: actions/checkout@v4
         with:
