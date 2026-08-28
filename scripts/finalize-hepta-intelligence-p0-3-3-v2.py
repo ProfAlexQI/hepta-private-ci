@@ -92,6 +92,7 @@ def main() -> None:
     for relative in (
         ".github/workflows/p0-3-3-format-clippy-fix-v1.yml",
         ".github/workflows/p0-3-3-finalize-probe-v1.yml",
+        ".github/workflows/p0-3-3-finalize-macos-v2.yml",
         "scripts/finalize-hepta-intelligence-p0-3-3-v2.py",
     ):
         path = ROOT / relative
