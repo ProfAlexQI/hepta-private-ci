@@ -1,0 +1,78 @@
+name: p032-a038-macos-exact-diagnostic
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-p032-a038-macos-diagnostic-20260828"
+    paths:
+      - ".github/workflows/p032-a038-macos-exact-diagnostic.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p032-a038-macos-exact-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  diagnostic:
+    name: P0.3.2 a038 exact-source macOS diagnostic
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact canonical P0.3.2 source
+        uses: actions/checkout@v4
+        with:
+          ref: a03863c8c6124a2024d959063da7ea412386de97
+          fetch-depth: 1
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Execute exact-head qualification runner
+        run: python3 scripts/run-hepta-intelligence-shared-projection-planner-v7.py
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p0-3-2-macos-a03863c8c6124a2024d959063da7ea412386de97
+          path: artifacts/hepta-intelligence-shared-projection-planner-v7
+          if-no-files-found: error
+          retention-days: 21
+
+      - name: Enforce diagnostic source quality without granting authority
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          receipt = json.loads(
+              Path(
+                  "artifacts/hepta-intelligence-shared-projection-planner-v7/qualification-receipt.json"
+              ).read_text(encoding="utf-8")
+          )
+          assert receipt["head"] == "a03863c8c6124a2024d959063da7ea412386de97"
+          for key in (
+              "wired",
+              "tool_v3_registered",
+              "tool_v4_registered",
+              "default_projection_pointer_changed",
+              "default_recall_query_changed",
+              "production_projection_gate",
+              "production_authority",
+              "external_effects",
+              "operator_accepted",
+              "promoted",
+              "callers_ratchet",
+          ):
+              assert receipt[key] is False, key
+          if not receipt["qualified"]:
+              failed = [item["id"] for item in receipt["checks"] if not item["passed"]]
+              raise SystemExit(f"P0.3.2 macOS diagnostic failed: {failed}")
+          PY
