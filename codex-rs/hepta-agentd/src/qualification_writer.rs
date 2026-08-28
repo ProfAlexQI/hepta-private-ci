@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+#[cfg(feature = "qualification-cognitive-write")]
 use codex_hepta_contracts::AuthorityAction;
 use codex_hepta_contracts::Authorized;
 use codex_hepta_contracts::CognitiveWriteCapability;
