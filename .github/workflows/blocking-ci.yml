@@ -25,8 +25,6 @@ jobs:
           test -n "$RUNNER_TEMP"
           test -d "$RUNNER_TEMP"
 
-  # Keep reusable workflow calls alphabetized. The `required` job below is the
-  # version-controlled list that the main-branch ruleset should require.
   bazel:
     name: Bazel
     needs: runner-preflight
@@ -67,6 +65,12 @@ jobs:
     name: Hepta Browser C1 private protocol
     needs: runner-preflight
     uses: ./.github/workflows/hepta-browser-c1-protocol.yml
+    secrets: inherit
+
+  hepta-browser-next-v8:
+    name: Hepta Browser canonical next gate v8
+    needs: runner-preflight
+    uses: ./.github/workflows/hepta-browser-next-required-v8.yml
     secrets: inherit
 
   hepta-servo-artifact-contract:
@@ -119,8 +123,6 @@ jobs:
 
   required:
     name: CI required
-    # Without `always()`, GitHub skips this job after a failed dependency and a
-    # required check can appear successful instead of reporting the failure.
     if: ${{ always() }}
     needs:
       - runner-preflight
@@ -131,6 +133,7 @@ jobs:
       - hepta-browser-c0-c3
       - hepta-browser-c1-artifact-gate
       - hepta-browser-c1-protocol
+      - hepta-browser-next-v8
       - hepta-servo-artifact-contract
       - hepta-servo-source-bundle-contract
       - hepta-servo-source-contract
@@ -141,8 +144,6 @@ jobs:
       - sdk
     runs-on: ubuntu-24.04
     steps:
-      # Keep the helper on the same combined revision as the child workflows so
-      # the merge gate evaluates the exact candidate they validated.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
