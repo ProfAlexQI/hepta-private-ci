@@ -205,9 +205,7 @@ impl LocalTokenizerRegistry {
         let id = descriptor.tokenizer_id.clone();
         let digest = descriptor.descriptor_sha256()?;
         match self.engines.entry(id.clone()) {
-            Entry::Occupied(_) => Err(ContractError::Duplicate(format!(
-                "tokenizer id {id}"
-            ))),
+            Entry::Occupied(_) => Err(ContractError::Duplicate(format!("tokenizer id {id}"))),
             Entry::Vacant(entry) => {
                 entry.insert(engine);
                 Ok(digest)
@@ -216,7 +214,9 @@ impl LocalTokenizerRegistry {
     }
 
     pub fn descriptor(&self, tokenizer_id: &str) -> Option<&LocalTokenizerDescriptor> {
-        self.engines.get(tokenizer_id).map(|engine| engine.descriptor())
+        self.engines
+            .get(tokenizer_id)
+            .map(|engine| engine.descriptor())
     }
 
     pub fn count_or_fallback(
@@ -253,8 +253,7 @@ impl AlphanumericPunctuationTokenizer {
     pub fn new(descriptor: LocalTokenizerDescriptor) -> Result<Self, ContractError> {
         descriptor.validate()?;
         if descriptor.contract != TokenizerContract::AlphanumericPunctuationV1
-            || descriptor.implementation_kind
-                != TokenizerImplementationKind::QualificationReference
+            || descriptor.implementation_kind != TokenizerImplementationKind::QualificationReference
         {
             return Err(ContractError::Invalid(
                 "reference tokenizer requires the qualification reference contract".to_string(),
@@ -270,13 +269,10 @@ impl LocalTokenizerEngine for AlphanumericPunctuationTokenizer {
     }
 
     fn count_tokens(&self, input: &str) -> Result<u32, ContractError> {
-        if input.len()
-            > usize::try_from(self.descriptor.max_input_bytes).unwrap_or(usize::MAX)
-        {
+        if input.len() > usize::try_from(self.descriptor.max_input_bytes).unwrap_or(usize::MAX) {
             return Err(ContractError::Limit {
                 label: "exact tokenizer input bytes",
-                max: usize::try_from(self.descriptor.max_input_bytes)
-                    .unwrap_or(MAX_INPUT_BYTES),
+                max: usize::try_from(self.descriptor.max_input_bytes).unwrap_or(MAX_INPUT_BYTES),
             });
         }
 
