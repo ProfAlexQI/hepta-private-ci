@@ -23,8 +23,8 @@ module HeptaWindowsSafetyDeviceGate
       product_mod: root.join("apps/hepta-native/src/shared/mod.rs"),
       product_lifecycle: root.join("apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs")
     }.freeze
-    host_parts = paths.fetch(:host_parts).glob("part*.rs").sort
-    device_parts = paths.fetch(:device_parts).glob("part*.rs").sort
+    host_parts = Dir.glob(paths.fetch(:host_parts).join("part*.rs").to_s).sort.map { |path| Pathname.new(path) }
+    device_parts = Dir.glob(paths.fetch(:device_parts).join("part*.rs").to_s).sort.map { |path| Pathname.new(path) }
     {
       paths: paths,
       host_parts: host_parts,
