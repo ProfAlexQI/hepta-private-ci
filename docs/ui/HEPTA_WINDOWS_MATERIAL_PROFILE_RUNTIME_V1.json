@@ -1,6 +1,6 @@
 {
   "schema": "hepta.ui.windows-material-profile-runtime.v1",
-  "status": "SINGLE_PROCESS_ROOT_TRANSIENT_AGGREGATE_PRODUCER_SOURCE_READY_PATCH_HEREDOC_REPAIR_RUNTIME_REQUIRED",
+  "status": "SINGLE_PROCESS_ROOT_TRANSIENT_AGGREGATE_PRODUCER_SOURCE_READY_UNIQUE_INDENTATION_MATCH_REPAIR_RUNTIME_REQUIRED",
   "candidateBranch": "codex/ui-v4-windows-material-profile-runtime-20260828",
   "baseBranch": "codex/ui-v4-windows-material-profile-aggregate-20260828",
   "baseCommit": "b1402886bc1e3e654120d8a4b38d8002696a064d",
@@ -14,8 +14,8 @@
     "canonicalPatcher": "scripts/hepta-ui-v4-apply-makepad-windows-ack-patch",
     "canonicalPatcherBlob": "369e607f4f80d08d739d2f83778fb4e37aa50d4e",
     "boundedRepairWrapper": "scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch",
-    "repairScope": "all canonical Rust source heredocs; remove exactly four script-structural spaces while preserving target indentation",
-    "minimumCanonicalRustHeredocs": 8,
+    "repairScope": "replace_once! matching only; exact match first, otherwise unique whole-block line-indentation-flexible match and target-base reindent",
+    "ambiguousMatchAllowed": false,
     "sourceBlobAndChangedFileGuardsPreserved": true
   },
   "producer": {
@@ -56,8 +56,9 @@
     "hostedSourceArtifact": true,
     "firstPatchFailure": "correlated WindowHandle setter indentation mismatch",
     "secondPatchFailure": "public hook reexports indentation mismatch",
-    "commonRootCause": "squiggly Rust heredocs removed target source indentation",
-    "generalizedRepairImplemented": true,
+    "thirdPatchFailure": "explicit close destruction hook indentation mismatch",
+    "commonRootCause": "canonical exact matcher could not tolerate intended target indentation embedded in squiggly Rust heredocs",
+    "uniqueIndentationMatcherRepairImplemented": true,
     "patchMaterializationValidatedAfterRepair": false
   },
   "qualification": {

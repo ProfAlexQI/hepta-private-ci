@@ -7,9 +7,67 @@ require "rbconfig"
 require "tempfile"
 
 EXPECTED_PATCHER_BLOB = "369e607f4f80d08d739d2f83778fb4e37aa50d4e"
-RUST_HEREDOC = "<<~'RUST'.chomp"
-FIXED_RUST_HEREDOC = "<<-'RUST'.chomp"
-MINIMUM_EXPECTED_RUST_HEREDOCS = 8
+
+ORIGINAL_FUNCTION = <<~'RUBY'.freeze
+def replace_once!(path, before, after, label)
+  text = path.read
+  count = text.scan(before).length
+  raise PatchError, "#{label}: expected one exact source match, got #{count}" unless count == 1
+
+  path.write(text.sub(before, after))
+end
+RUBY
+
+REPAIRED_FUNCTION = <<~'RUBY'.freeze
+def indentation_flexible_pattern(source)
+  source.lines.map do |line|
+    has_newline = line.end_with?("\n")
+    body = has_newline ? line.delete_suffix("\n") : line
+    if body.empty?
+      has_newline ? "\n" : ""
+    else
+      "^[ \\t]*#{Regexp.escape(body.lstrip)}#{has_newline ? "\n" : ""}"
+    end
+  end.join
+end
+
+def reindent_replacement(source, base_indent)
+  nonblank = source.lines.reject { |line| line.strip.empty? }
+  minimum_indent = nonblank.map do |line|
+    line[/\A[ \\t]*/].to_s.length
+  end.min || 0
+  source.lines.map do |line|
+    if line.strip.empty?
+      line
+    else
+      normalized = line.sub(/\A[ \\t]{#{minimum_indent}}/, "")
+      base_indent + normalized
+    end
+  end.join
+end
+
+def replace_once!(path, before, after, label)
+  text = path.read
+  exact_count = text.scan(before).length
+  if exact_count == 1
+    path.write(text.sub(before, after))
+    return
+  end
+  raise PatchError, "#{label}: exact source matched #{exact_count} times" if exact_count > 1
+
+  pattern = Regexp.new(indentation_flexible_pattern(before))
+  matches = text.scan(pattern)
+  raise PatchError,
+        "#{label}: expected one indentation-flexible source match, got #{matches.length}" unless
+    matches.length == 1
+
+  matched = matches.fetch(0)
+  first_line = matched.lines.find { |line| !line.strip.empty? }
+  base_indent = first_line.to_s[/\A[ \\t]*/].to_s
+  replacement = reindent_replacement(after, base_indent)
+  path.write(text.sub(pattern, replacement))
+end
+RUBY
 
 repo_root = Pathname.new(__dir__).join("..").expand_path
 original = repo_root.join("scripts/hepta-ui-v4-apply-makepad-windows-ack-patch")
@@ -24,34 +82,12 @@ abort "canonical patcher drifted: #{actual_blob.strip}" unless
   actual_blob.strip == EXPECTED_PATCHER_BLOB
 
 source = original.read
-heredoc_count = source.scan(RUST_HEREDOC).length
-abort "canonical Rust heredoc set drifted: #{heredoc_count}" unless
-  heredoc_count >= MINIMUM_EXPECTED_RUST_HEREDOCS
-
-inside_heredoc = false
-fixed_count = 0
-fixed_source = source.lines.map do |line|
-  if line.include?(RUST_HEREDOC)
-    abort "nested Rust heredoc is unsupported" if inside_heredoc
-    inside_heredoc = true
-    fixed_count += 1
-    line.sub(RUST_HEREDOC, FIXED_RUST_HEREDOC)
-  elsif inside_heredoc && line.strip == "RUST"
-    inside_heredoc = false
-    line
-  elsif inside_heredoc && !line.strip.empty?
-    abort "Rust heredoc structural indentation drifted" unless line.start_with?("    ")
-    line.sub(/\A    /, "")
-  else
-    line
-  end
-end.join
-
-abort "unterminated Rust heredoc" if inside_heredoc
-abort "not every Rust heredoc was repaired" unless fixed_count == heredoc_count
-abort "broken squiggly Rust heredoc remains" if fixed_source.include?(RUST_HEREDOC)
-abort "repaired heredoc count drifted" unless
-  fixed_source.scan(FIXED_RUST_HEREDOC).length == heredoc_count
+function_count = source.scan(ORIGINAL_FUNCTION).length
+abort "canonical replace_once! function drifted: #{function_count}" unless function_count == 1
+fixed_source = source.sub(ORIGINAL_FUNCTION, REPAIRED_FUNCTION)
+abort "canonical replace_once! function repair was not installed" unless
+  fixed_source.include?("indentation_flexible_pattern") &&
+  fixed_source.include?("reindent_replacement")
 
 Tempfile.create(["hepta-ui-v4-fixed-makepad-patcher", ".rb"]) do |temporary|
   temporary.write(fixed_source)

@@ -32,33 +32,35 @@ The pass and fail shapes share the same Schema. A failure requires the exact
 probe phase and at least one bounded failure reason, while keeping every
 qualification and authority flag false.
 
-## Hosted source result and generalized patcher repair
+## Hosted source result and matcher repair
 
-The first exact-head hosted run executed real steps and passed the source
-contract, inherited aggregate gate, runtime source gate, claim-boundary check,
-and artifact upload.
+The exact-head hosted source job executes real steps and passes the inherited
+aggregate gate, runtime source gate, claim-boundary verification, and artifact
+upload.
 
-Its patch-materialization job exposed an inherited patcher defect at the
-`correlated WindowHandle setter`: a Ruby squiggly heredoc removed both the
-script's structural indentation and the target Rust method indentation.
+Successive patch-materialization runs exposed three anchors with the same
+underlying defect:
 
-A first bounded repair restored that setter and allowed patch execution to
-continue. The next hosted run then failed at `public hook reexports`, proving
-the same indentation defect applied to the remaining Rust heredocs as well.
+- `correlated WindowHandle setter`;
+- `public hook reexports`;
+- `explicit close destruction hook`.
 
-The generalized repair remains tightly bounded:
+The canonical patcher uses squiggly Rust heredocs and then requires byte-exact
+matching. Depending on the target block, the heredoc removes all or part of the
+Rust indentation, so a single fixed indentation shift is not correct.
 
-- the canonical patcher must have Git blob
-  `369e607f4f80d08d739d2f83778fb4e37aa50d4e`;
-- only canonical `<<~'RUST'.chomp` heredocs are rewritten;
-- every heredoc is converted to an indentation-preserving indented heredoc;
-- exactly four script-structural spaces are removed from each nonblank payload
-  line, preserving the target Rust indentation;
-- nested or unterminated heredocs, an unexpectedly small heredoc set, source
-  drift, or any leftover squiggly Rust heredoc aborts fail-closed;
-- all original Makepad revision/blob checks, changed-file guards, diff checks,
-  receipt semantics, and authority boundaries remain active;
-- the default product dependency remains unchanged.
+The final repair changes only the temporary patcher's `replace_once!` matching
+function and remains bounded by the canonical patcher Git blob:
+
+- try the canonical byte-exact match first;
+- only when the exact match count is zero, construct a whole-block pattern that
+  ignores leading horizontal whitespace on each nonblank line;
+- require exactly one indentation-flexible match; zero or more than one aborts;
+- derive the target base indentation from the matched first nonblank line;
+- normalize the replacement's common indentation and reapply that target base;
+- preserve the original Makepad revision/blob checks, changed-file set, diff
+  checks, receipt semantics, and all authority boundaries;
+- keep the default product dependency unchanged.
 
 The materializer invokes
 `scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch` and records the wrapper
