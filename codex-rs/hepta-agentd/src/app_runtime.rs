@@ -58,6 +58,8 @@ fn app_server_config_overrides(authority: &AuthorityGrant) -> CliConfigOverrides
             "features.hepta_turn_recovery=true".to_string(),
             "features.hepta_memory=true".to_string(),
             "features.hepta_memory_read_only=true".to_string(),
+            // The unified authority grant is the only positive source for the
+            // cognitive writer profile. No request/config layer can widen it.
             format!(
                 "features.hepta_cognitive_write={}",
                 authority.allows(AuthorityAction::WriteCognitiveState)
@@ -126,12 +128,16 @@ fn app_server_runtime_options_with_writer(
         required_sqlite_home: Some(AbsolutePathBuf::from_absolute_path(&identity.home_root)?),
         required_thread_store_mode: Some(ThreadStoreConfig::Local),
         hepta_cognitive_runtime: cognitive_runtime,
+        // The owning agent supplies the qualification-only policy to the
+        // explicit host owner. The legacy turn callback remains disabled.
         hepta_local_turn_lifecycle_enabled: false,
         hepta_local_development_policy: Some(
             codex_hepta_memory::LocalDevelopmentLifecyclePolicy::qualification_only(),
         ),
         hepta_qualification_turn_writer_enabled: cognitive_write_enabled,
         hepta_qualification_turn_writer: qualification_turn_writer,
+        // This embedding-owned capability boundary is applied after managed
+        // config and request overrides, so those layers cannot widen it.
         required_feature_states: BTreeMap::from([(
             Feature::HeptaCognitiveWrite,
             cognitive_write_enabled,
@@ -181,7 +187,12 @@ mod tests {
         let identity = identity_with_queue_capacity(37);
         let authority = authority_for_identity(&identity).expect("valid build authority");
         let overrides = app_server_config_overrides(&authority);
-        assert!(overrides.raw_overrides.iter().any(|value| value == "features.hepta_turn_recovery=true"));
+        assert!(
+            overrides
+                .raw_overrides
+                .iter()
+                .any(|value| value == "features.hepta_turn_recovery=true")
+        );
     }
 
     #[test]
@@ -190,21 +201,44 @@ mod tests {
         let authority = authority_for_identity(&identity).expect("valid build authority");
         let expected = authority.allows(AuthorityAction::WriteCognitiveState);
         let overrides = app_server_config_overrides(&authority);
-        assert!(overrides.raw_overrides.iter().any(|value| value == &format!("features.hepta_cognitive_write={expected}")));
+        assert!(overrides.raw_overrides.iter().any(|value| {
+            value == &format!("features.hepta_cognitive_write={expected}")
+        }));
     }
 
     #[test]
     fn manifest_queue_capacity_reaches_app_server_runtime_options_exactly() {
         let identity = identity_with_queue_capacity(37);
-        let options = app_server_runtime_options(&identity, codex_hepta_memory::CognitiveRuntime::Absent)
-            .expect("valid runtime options");
+        let options =
+            app_server_runtime_options(&identity, codex_hepta_memory::CognitiveRuntime::Absent)
+                .expect("valid runtime options");
         let authority = authority_for_identity(&identity).expect("valid build authority");
         let cognitive_write_enabled = authority.allows(AuthorityAction::WriteCognitiveState);
-        assert_eq!(Some(37), options.turn_queue_capacity.map(std::num::NonZeroUsize::get));
-        assert_eq!(Some(identity.home_root.as_path()), options.required_sqlite_home.as_ref().map(codex_utils_absolute_path::AbsolutePathBuf::as_path));
-        assert_eq!(Some(&codex_app_server::ThreadStoreConfig::Local), options.required_thread_store_mode.as_ref());
+        assert_eq!(
+            Some(37),
+            options.turn_queue_capacity.map(std::num::NonZeroUsize::get)
+        );
+        assert_eq!(
+            Some(identity.home_root.as_path()),
+            options
+                .required_sqlite_home
+                .as_ref()
+                .map(codex_utils_absolute_path::AbsolutePathBuf::as_path)
+        );
+        assert_eq!(
+            Some(&codex_app_server::ThreadStoreConfig::Local),
+            options.required_thread_store_mode.as_ref()
+        );
         assert!(!options.hepta_local_turn_lifecycle_enabled);
-        assert_eq!(Some(codex_hepta_memory::LocalDevelopmentLifecyclePolicy::qualification_only()), options.hepta_local_development_policy);
-        assert_eq!(Some(&cognitive_write_enabled), options.required_feature_states.get(&Feature::HeptaCognitiveWrite));
+        assert_eq!(
+            Some(codex_hepta_memory::LocalDevelopmentLifecyclePolicy::qualification_only()),
+            options.hepta_local_development_policy
+        );
+        assert_eq!(
+            Some(&cognitive_write_enabled),
+            options
+                .required_feature_states
+                .get(&Feature::HeptaCognitiveWrite)
+        );
     }
 }
