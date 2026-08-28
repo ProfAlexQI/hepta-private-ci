@@ -1,0 +1,146 @@
+name: hepta Servo exact source acceptance pointer v1 contract
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/hepta-servo-exact-source-acceptance-pointer-v1.py"
+      - "scripts/verify-hepta-servo-exact-source-acceptance-pointer-v1.py"
+      - "scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v1.py"
+      - "docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json"
+      - "docs/hepta-vnext/browser/C1_EXACT_SOURCE_ACCEPTANCE_POINTER_V1*"
+      - "docs/hepta-vnext/browser/hepta.servo.source_acceptance_review_*"
+      - "docs/hepta-vnext/browser/hepta.servo.accepted_source_pointer.v1.schema.json"
+      - "docs/hepta-vnext/browser/source-acceptance/**"
+      - ".github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml"
+      - ".github/workflows/hepta-browser-next-required-v8.yml"
+      - ".github/workflows/blocking-ci.yml"
+  push:
+    branches:
+      - integration/vnext-main-20260811
+      - "codex/hepta-*"
+    paths:
+      - "scripts/hepta-servo-exact-source-acceptance-pointer-v1.py"
+      - "scripts/verify-hepta-servo-exact-source-acceptance-pointer-v1.py"
+      - "scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v1.py"
+      - "docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json"
+      - "docs/hepta-vnext/browser/C1_EXACT_SOURCE_ACCEPTANCE_POINTER_V1*"
+      - "docs/hepta-vnext/browser/hepta.servo.source_acceptance_review_*"
+      - "docs/hepta-vnext/browser/hepta.servo.accepted_source_pointer.v1.schema.json"
+      - "docs/hepta-vnext/browser/source-acceptance/**"
+      - ".github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml"
+      - ".github/workflows/hepta-browser-next-required-v8.yml"
+      - ".github/workflows/blocking-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance-pointer-contract:
+    name: Source-only pointer and live-review contract (fixtures only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Initialize negative-authority posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-source-acceptance-pointer-v1"
+          mkdir -p "$evidence_dir"
+          echo "HEPTA_SOURCE_ACCEPTANCE_EVIDENCE=$evidence_dir" >> "$GITHUB_ENV"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "fixture_only=true"
+            echo "real_exact_source_candidate=false"
+            echo "accepted_source_pointer=false"
+            echo "pointer_creation_command=false"
+            echo "separate_current_head_review_required=true"
+            echo "exact_servo_source_accepted=false"
+            echo "worker_source_topology_accepted=false"
+            echo "build_authorized=false"
+            echo "servo_built=false"
+            echo "worker_artifact_created=false"
+            echo "servo_runtime_qualified=false"
+            echo "machine_authority=false"
+            echo "runtime_authority=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "external_effect=false"
+            echo "external_network_allowed=false"
+            echo "credential_export_allowed=false"
+            echo "operator_acceptance=false"
+            echo "g5_allowed=false"
+            echo "execute_allowed=false"
+            echo "promotion=false"
+            echo "release_qualified=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Compile source acceptance tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-servo-exact-source-acceptance-pointer-v1.py \
+            scripts/verify-hepta-servo-exact-source-acceptance-pointer-v1.py \
+            scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v1.py \
+            2>&1 | tee "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/py-compile.log"
+
+      - name: Verify source-only acceptance contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-servo-exact-source-acceptance-pointer-v1.py contract \
+            --policy docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json \
+            2>&1 | tee "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/contract.log"
+          python3 scripts/verify-hepta-servo-exact-source-acceptance-pointer-v1.py \
+            2>&1 | tee "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/static-verifier.log"
+          for file in \
+            docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json \
+            docs/hepta-vnext/browser/C1_EXACT_SOURCE_ACCEPTANCE_POINTER_V1_STATUS.json \
+            docs/hepta-vnext/browser/hepta.servo.source_acceptance_review_policy.v1.schema.json \
+            docs/hepta-vnext/browser/hepta.servo.source_acceptance_review_challenge.v1.schema.json \
+            docs/hepta-vnext/browser/hepta.servo.accepted_source_pointer.v1.schema.json; do
+            python3 -m json.tool "$file" >/dev/null
+          done
+
+      - name: Run fail-closed source acceptance fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v1.py -v \
+            2>&1 | tee "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/tests.log"
+
+      - name: Record final qualification-only status
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "job_status=${{ job.status }}" >> "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/posture.txt"
+          {
+            echo "### Hepta exact-source acceptance pointer v1"
+            echo
+            echo "This job validates tooling and synthetic review fixtures only."
+            echo "It creates no accepted pointer and grants no build or runtime authority."
+            echo
+            sed 's/^/- /' "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload fixture-only evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hepta-servo-exact-source-acceptance-pointer-v1
+          path: ${{ env.HEPTA_SOURCE_ACCEPTANCE_EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Check clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
