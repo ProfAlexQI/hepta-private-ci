@@ -1,0 +1,60 @@
+{
+  "authority": {
+    "callers_ratchet": false,
+    "context_attachment": false,
+    "default_recall_changed": false,
+    "external_effects": false,
+    "federation_recall_changed": false,
+    "model_download": false,
+    "network_access": false,
+    "operator_acceptance": false,
+    "physical_send": false,
+    "product_module_registered": false,
+    "product_workspace_member": false,
+    "production_authority": false,
+    "promotion": false,
+    "remote_embedding": false,
+    "wired": false
+  },
+  "base_branch": "codex/hepta-intelligence-hybrid-retrieval-v2-p1a-20260828",
+  "base_commit": "906aad979ba9e606c2e41d804e7a0c226efae5cb",
+  "base_pull_request": 28,
+  "development_branch": "codex/hepta-intelligence-local-embedding-index-v1b-20260828",
+  "implemented": {
+    "create_only_file_persistence": true,
+    "dependency_free_nested_workspace": true,
+    "deterministic_lexical_fallback": true,
+    "deterministic_lsh64_v1": true,
+    "exact_local_token_receipt": true,
+    "fixed_point_cosine_search": true,
+    "immutable_ann_index": true,
+    "local_embedding_provider_contract": true,
+    "local_tokenizer_registry": true,
+    "q15_vector_validation": true,
+    "qualification_reference_provider": true,
+    "raw_memory_content_stored": false,
+    "reopen_integrity_verification": true,
+    "sha256_known_answer": true,
+    "utf8_byte_upper_bound_fallback": true
+  },
+  "limitations": [
+    "The checked-in reference tokenizer and embedding provider are qualification implementations, not production model adapters.",
+    "The ANN index is not registered in codex-hepta-memory or any runtime caller.",
+    "No semantic retrieval efficacy, multilingual corpus, latency, device, or production claim is made.",
+    "P0.1-P1.1a remain executable-qualification dependencies."
+  ],
+  "qualification": {
+    "check": "not_run",
+    "clippy": "not_run",
+    "format": "not_run",
+    "hosted_ci": "pending",
+    "qualified": false,
+    "source_gate": "pending_exact_head_execution",
+    "tests": "not_run",
+    "toolchain": "1.95.0"
+  },
+  "recorded_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "schema": "hepta_intelligence_p1_1b_implementation_receipt_v1",
+  "status": "SOURCE_ONLY_IMPLEMENTED_QUALIFICATION_PENDING"
+}
