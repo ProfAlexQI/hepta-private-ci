@@ -177,14 +177,22 @@ def verify_matrix_operation() -> None:
             ".reconcile_applied(",
         ),
     )
-    require_order(
-        runtime,
-        (
+    source = read(runtime)
+    start = source.find("async fn process_inbox_locked(")
+    end = source.find("async fn settle_operation(", start)
+    if start < 0 or end < 0 or end <= start:
+        fail("Matrix product dispatch function boundary is missing")
+    product_dispatch = source[start:end]
+    positions = [
+        product_dispatch.find(marker)
+        for marker in (
             ".begin(inbox, &project_key, at_ms)",
             ".begin_inbox_dispatch(&inbox.event_id, at_ms)",
             ".submit_matrix_event_on_binding(",
-        ),
-    )
+        )
+    ]
+    if any(position < 0 for position in positions) or positions != sorted(positions):
+        fail("Matrix product operation intent/claim/dispatch order drifted")
 
 
 def verify_provider_operation() -> None:
