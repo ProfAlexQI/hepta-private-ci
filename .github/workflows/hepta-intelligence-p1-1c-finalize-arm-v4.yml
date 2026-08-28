@@ -1,0 +1,718 @@
+name: hepta-intelligence-p1-1c-finalize-arm-v4
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-intelligence-p1-1c-finalize-arm-v4-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: hepta-intelligence-p1-1c-finalize-arm-v4
+  cancel-in-progress: false
+
+env:
+  SOURCE_BRANCH: codex/hepta-intelligence-offline-efficacy-p1c-20260828
+  FINALIZER_PATH: scripts/qualification/finalize-hepta-intelligence-p1-1c-source-v2.py
+  LEGACY_HELPER_PATH: scripts/qualification/finalize-hepta-intelligence-p1-1c-source.py
+  WRAPPER_PATH: .github/workflows/hepta-intelligence-p1-1c-finalize-arm-v4.yml
+  CRATE_ROOT: codex-rs/hepta-memory-p1-1c-qualification
+  MANIFEST_PATH: codex-rs/hepta-memory-p1-1c-qualification/Cargo.toml
+  VERIFIER_PATH: scripts/verify-hepta-intelligence-p1-1c-offline-efficacy.py
+  STATUS_PATH: plans/hepta-intelligence/P1-1C_EXECUTION_STATUS.json
+  EVIDENCE_PATH: plans/hepta-intelligence/P1-1C_SOURCE_QUALIFICATION_EVIDENCE.json
+  DEDICATED_WORKFLOW_PATH: .github/workflows/hepta-intelligence-p1-1c-offline-efficacy.yml
+  ARTIFACT_DIR: artifacts/hepta-intelligence-p1-1c-finalize-v4
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  finalize:
+    name: P1.1c atomic source qualification finalizer
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout source plus qualification wrappers
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 4
+
+      - name: Bind wrapper history to current source lease
+        id: source
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          git fetch --no-tags origin \
+            "+refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
+          source_sha="$(git rev-parse "refs/remotes/origin/$SOURCE_BRANCH")"
+          python3 - "$source_sha" <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          source = sys.argv[1]
+          expected = {
+              os.environ["WRAPPER_PATH"],
+              os.environ["FINALIZER_PATH"],
+              os.environ["LEGACY_HELPER_PATH"],
+          }
+          actual = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only", f"{source}..HEAD"], text=True
+              ).splitlines()
+          )
+          count = int(
+              subprocess.check_output(
+                  ["git", "rev-list", "--count", f"{source}..HEAD"], text=True
+              ).strip()
+          )
+          if count != 3 or actual != expected:
+              raise SystemExit(
+                  json.dumps(
+                      {
+                          "source": source,
+                          "expected_wrapper_paths": sorted(expected),
+                          "actual_wrapper_paths": sorted(actual),
+                          "commit_count": count,
+                      },
+                      indent=2,
+                      sort_keys=True,
+                  )
+              )
+          receipt = {
+              "schema": "hepta.intelligence.p1_1c.finalizer_source_binding.v4",
+              "source_branch": os.environ["SOURCE_BRANCH"],
+              "source_commit": source,
+              "source_tree": subprocess.check_output(
+                  ["git", "rev-parse", f"{source}^{{tree}}"], text=True
+              ).strip(),
+              "wrapper_head": subprocess.check_output(
+                  ["git", "rev-parse", "HEAD"], text=True
+              ).strip(),
+              "wrapper_paths": sorted(actual),
+              "wrapper_commit_count": count,
+              "runtime_wired": False,
+              "production_authority": False,
+          }
+          (Path(os.environ["ARTIFACT_DIR"]) / "source-binding.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Isolate Cargo outputs
+        run: |
+          set -euo pipefail
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-p1-1c-finalize-v4-target" >> "$GITHUB_ENV"
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Execute pre-finalization gates without evidence loss
+        id: preflight
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          rustc --version | tee "$ARTIFACT_DIR/rustc-version.txt"
+          cargo --version | tee "$ARTIFACT_DIR/cargo-version.txt"
+          rustfmt --version | tee "$ARTIFACT_DIR/rustfmt-version.txt"
+          cargo clippy --version | tee "$ARTIFACT_DIR/clippy-version.txt"
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
+
+          set +e
+          python3 -m py_compile "$VERIFIER_PATH" "$FINALIZER_PATH" "$LEGACY_HELPER_PATH" \
+            > "$ARTIFACT_DIR/python-compile.log" 2>&1
+          python_compile_code="$?"
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all \
+            > "$ARTIFACT_DIR/rustfmt-materialize.log" 2>&1
+          fmt_materialize_code="$?"
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check \
+            > "$ARTIFACT_DIR/rustfmt-check.log" 2>&1
+          fmt_check_code="$?"
+
+          python3 - <<'PY' > "$ARTIFACT_DIR/format-scope.json" 2>&1
+          import json
+          import os
+          import subprocess
+
+          allowed = {
+              "codex-rs/hepta-memory-p1-1c-qualification/src/bin/p1_1c_receipt.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/corpus.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/digest.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/evaluation.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/kg.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/lib.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/metrics.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/reranker.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/tests/p1_1c.rs",
+          }
+          actual = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only", "--", os.environ["CRATE_ROOT"]],
+                  text=True,
+              ).splitlines()
+          )
+          outside = subprocess.check_output(
+              ["git", "diff", "--name-only", "--", ".", f":(exclude){os.environ['CRATE_ROOT']}/**"],
+              text=True,
+          ).splitlines()
+          if not actual.issubset(allowed) or outside:
+              raise SystemExit(
+                  json.dumps(
+                      {"allowed": sorted(allowed), "actual": sorted(actual), "outside": outside},
+                      indent=2,
+                      sort_keys=True,
+                  )
+              )
+          print(json.dumps({"changed_paths": sorted(actual)}, indent=2, sort_keys=True))
+          PY
+          format_scope_code="$?"
+
+          python3 "$VERIFIER_PATH" > "$ARTIFACT_DIR/source-gate-pre.log" 2>&1
+          source_gate_code="$?"
+          cargo test --manifest-path "$MANIFEST_PATH" --all-targets -- --nocapture \
+            > "$ARTIFACT_DIR/tests-pre.log" 2>&1
+          tests_code="$?"
+          cargo check --manifest-path "$MANIFEST_PATH" --all-targets \
+            > "$ARTIFACT_DIR/check-pre.log" 2>&1
+          check_code="$?"
+          cargo clippy --manifest-path "$MANIFEST_PATH" --all-targets -- -D warnings \
+            > "$ARTIFACT_DIR/clippy-pre.log" 2>&1
+          clippy_code="$?"
+          cargo run --quiet --manifest-path "$MANIFEST_PATH" --bin p1_1c_receipt \
+            > "$ARTIFACT_DIR/evaluation-receipt-pre-a.json" \
+            2> "$ARTIFACT_DIR/receipt-pre-a.stderr.log"
+          receipt_a_code="$?"
+          cargo run --quiet --manifest-path "$MANIFEST_PATH" --bin p1_1c_receipt \
+            > "$ARTIFACT_DIR/evaluation-receipt-pre-b.json" \
+            2> "$ARTIFACT_DIR/receipt-pre-b.stderr.log"
+          receipt_b_code="$?"
+          cmp "$ARTIFACT_DIR/evaluation-receipt-pre-a.json" \
+              "$ARTIFACT_DIR/evaluation-receipt-pre-b.json" \
+            > "$ARTIFACT_DIR/receipt-pre-compare.log" 2>&1
+          receipt_compare_code="$?"
+
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+
+          export python_compile_code fmt_materialize_code fmt_check_code format_scope_code
+          export source_gate_code tests_code check_code clippy_code
+          export receipt_a_code receipt_b_code receipt_compare_code
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          names = [
+              "python_compile",
+              "fmt_materialize",
+              "fmt_check",
+              "format_scope",
+              "source_gate",
+              "tests",
+              "check",
+              "clippy",
+              "receipt_a",
+              "receipt_b",
+              "receipt_compare",
+          ]
+          codes = {name: int(os.environ[f"{name}_code"]) for name in names}
+          tests_log = (artifact_dir / "tests-pre.log").read_text(encoding="utf-8", errors="replace")
+          tests_passed = sum(int(value) for value in re.findall(r"test result: ok\. (\d+) passed", tests_log))
+          try:
+              scope = json.loads((artifact_dir / "format-scope.json").read_text(encoding="utf-8"))
+          except Exception:
+              scope = {"changed_paths": []}
+          evaluation_path = artifact_dir / "evaluation-receipt-pre-a.json"
+          try:
+              evaluation = json.loads(evaluation_path.read_text(encoding="utf-8"))
+          except Exception:
+              evaluation = None
+          expected_false = [
+              "network_access",
+              "model_download",
+              "product_workspace_member",
+              "product_module_registered",
+              "runtime_wired",
+              "default_recall_changed",
+              "federation_recall_changed",
+              "context_attachment",
+              "physical_send",
+              "external_effects",
+              "production_authority",
+              "efficacy_validation",
+              "efficacy_claim",
+              "operator_acceptance",
+              "promotion",
+              "callers_ratchet",
+          ]
+          semantic_ok = bool(
+              evaluation
+              and evaluation.get("status") == "PASS_P1_1C_SEED_PIPELINE"
+              and evaluation.get("corpus_provenance") == "synthetic_seed"
+              and evaluation.get("corpus_reviewed") is False
+              and evaluation.get("case_count") == 8
+              and len(evaluation.get("locales", [])) == 8
+              and len(evaluation.get("lanes", [])) == 7
+              and all(evaluation.get(key) is False for key in expected_false)
+          )
+          redaction_ok = False
+          if evaluation is not None:
+              text = evaluation_path.read_text(encoding="utf-8")
+              redaction_ok = all(
+                  token not in text
+                  for token in ["Which evidence binds", "哪些证据", "en-ann-gold-s", "zh-ann-gold-m"]
+              )
+          evaluation_sha256 = (
+              hashlib.sha256(evaluation_path.read_bytes()).hexdigest()
+              if evaluation_path.is_file()
+              else ""
+          )
+          all_pass = (
+              all(code == 0 for code in codes.values())
+              and tests_passed == 13
+              and semantic_ok
+              and redaction_ok
+          )
+          summary = {
+              "schema": "hepta.intelligence.p1_1c.finalizer_preflight.v4",
+              "status": "PASS" if all_pass else "FAIL",
+              "source_commit": os.environ["SOURCE_SHA"],
+              "exit_codes": codes,
+              "tests_passed": tests_passed,
+              "format_changed_paths": scope.get("changed_paths", []),
+              "evaluation_semantic_ok": semantic_ok,
+              "redaction_ok": redaction_ok,
+              "evaluation_receipt_sha256": evaluation_sha256,
+              "qualified": False,
+              "efficacy_validation": False,
+              "runtime_wired": False,
+              "production_authority": False,
+          }
+          (artifact_dir / "preflight-summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"passed={'true' if all_pass else 'false'}\n")
+              output.write(f"evaluation_sha256={evaluation_sha256}\n")
+          PY
+          set -e
+
+      - name: Apply source-qualification governance transition
+        if: steps.preflight.outputs.passed == 'true'
+        env:
+          SOURCE_PARENT: ${{ steps.source.outputs.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
+          EVALUATION_RECEIPT_PATH: artifacts/hepta-intelligence-p1-1c-finalize-v4/evaluation-receipt-pre-a.json
+          EVALUATION_RECEIPT_SHA256: ${{ steps.preflight.outputs.evaluation_sha256 }}
+        run: |
+          set -euo pipefail
+          python3 "$FINALIZER_PATH" | tee "$ARTIFACT_DIR/finalization-patch.json"
+          python3 -m py_compile "$VERIFIER_PATH"
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check
+          python3 "$VERIFIER_PATH" \
+            2>&1 | tee "$ARTIFACT_DIR/source-gate-transitioned.log"
+
+      - name: Create one reviewed finalization commit
+        id: candidate
+        if: steps.preflight.outputs.passed == 'true'
+        env:
+          SOURCE_PARENT: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+          git checkout --detach "$SOURCE_PARENT"
+
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          preflight = json.loads((artifact_dir / "preflight-summary.json").read_text(encoding="utf-8"))
+          format_paths = set(preflight["format_changed_paths"])
+          governance = {
+              os.environ["STATUS_PATH"],
+              os.environ["EVIDENCE_PATH"],
+              os.environ["VERIFIER_PATH"],
+              os.environ["DEDICATED_WORKFLOW_PATH"],
+          }
+          expected = format_paths | governance
+          tracked = set(
+              subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          )
+          untracked_all = subprocess.check_output(
+              ["git", "ls-files", "--others", "--exclude-standard"], text=True
+          ).splitlines()
+          untracked = {
+              path
+              for path in untracked_all
+              if path == os.environ["EVIDENCE_PATH"]
+              or path.startswith(os.environ["CRATE_ROOT"] + "/")
+          }
+          actual = tracked | untracked
+          if actual != expected:
+              raise SystemExit(
+                  json.dumps(
+                      {
+                          "expected": sorted(expected),
+                          "tracked": sorted(tracked),
+                          "untracked_source": sorted(untracked),
+                          "actual": sorted(actual),
+                      },
+                      indent=2,
+                      sort_keys=True,
+                  )
+              )
+          (artifact_dir / "finalization-changed-paths.txt").write_text(
+              "\n".join(sorted(actual)) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          mapfile -t final_paths < "$ARTIFACT_DIR/finalization-changed-paths.txt"
+          test "${#final_paths[@]}" -ge 4
+          git diff --check
+          git add -- "${final_paths[@]}"
+          test "$(git diff --cached --name-only | wc -l | tr -d ' ')" = "${#final_paths[@]}"
+          git config user.name "Hepta Qualification Bot"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git commit -m "ci(intelligence): bind qualified P1.1c seed pipeline evidence"
+          candidate_sha="$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD^)" = "$SOURCE_PARENT"
+          echo "sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Requalify exact final candidate head
+        id: exact
+        if: steps.preflight.outputs.passed == 'true'
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+
+          set +e
+          python3 "$VERIFIER_PATH" > "$ARTIFACT_DIR/source-gate-exact.log" 2>&1
+          source_gate_code="$?"
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check \
+            > "$ARTIFACT_DIR/rustfmt-exact.log" 2>&1
+          rustfmt_code="$?"
+          cargo test --manifest-path "$MANIFEST_PATH" --all-targets -- --nocapture \
+            > "$ARTIFACT_DIR/tests-exact.log" 2>&1
+          tests_code="$?"
+          cargo check --manifest-path "$MANIFEST_PATH" --all-targets \
+            > "$ARTIFACT_DIR/check-exact.log" 2>&1
+          check_code="$?"
+          cargo clippy --manifest-path "$MANIFEST_PATH" --all-targets -- -D warnings \
+            > "$ARTIFACT_DIR/clippy-exact.log" 2>&1
+          clippy_code="$?"
+          cargo run --quiet --manifest-path "$MANIFEST_PATH" --bin p1_1c_receipt \
+            > "$ARTIFACT_DIR/evaluation-receipt-exact-a.json" \
+            2> "$ARTIFACT_DIR/receipt-exact-a.stderr.log"
+          receipt_a_code="$?"
+          cargo run --quiet --manifest-path "$MANIFEST_PATH" --bin p1_1c_receipt \
+            > "$ARTIFACT_DIR/evaluation-receipt-exact-b.json" \
+            2> "$ARTIFACT_DIR/receipt-exact-b.stderr.log"
+          receipt_b_code="$?"
+          cmp "$ARTIFACT_DIR/evaluation-receipt-exact-a.json" \
+              "$ARTIFACT_DIR/evaluation-receipt-exact-b.json" \
+            > "$ARTIFACT_DIR/receipt-exact-compare.log" 2>&1
+          receipt_compare_code="$?"
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+          git diff --exit-code > "$ARTIFACT_DIR/clean-tree-exact.log" 2>&1
+          clean_tree_code="$?"
+          test -z "$(git ls-files --others --exclude-standard -- "$CRATE_ROOT")"
+          untracked_code="$?"
+
+          export source_gate_code rustfmt_code tests_code check_code clippy_code
+          export receipt_a_code receipt_b_code receipt_compare_code clean_tree_code untracked_code
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          names = [
+              "source_gate",
+              "rustfmt",
+              "tests",
+              "check",
+              "clippy",
+              "receipt_a",
+              "receipt_b",
+              "receipt_compare",
+              "clean_tree",
+              "untracked",
+          ]
+          codes = {name: int(os.environ[f"{name}_code"]) for name in names}
+          tests_log = (artifact_dir / "tests-exact.log").read_text(encoding="utf-8", errors="replace")
+          tests_passed = sum(int(value) for value in re.findall(r"test result: ok\. (\d+) passed", tests_log))
+          exact_receipt = artifact_dir / "evaluation-receipt-exact-a.json"
+          try:
+              evaluation = json.loads(exact_receipt.read_text(encoding="utf-8"))
+          except Exception:
+              evaluation = None
+          semantic_ok = bool(
+              evaluation
+              and evaluation.get("status") == "PASS_P1_1C_SEED_PIPELINE"
+              and evaluation.get("case_count") == 8
+              and len(evaluation.get("locales", [])) == 8
+              and len(evaluation.get("lanes", [])) == 7
+              and all(
+                  evaluation.get(key) is False
+                  for key in [
+                      "network_access",
+                      "model_download",
+                      "runtime_wired",
+                      "production_authority",
+                      "efficacy_validation",
+                      "efficacy_claim",
+                      "promotion",
+                  ]
+              )
+          )
+          preflight = json.loads((artifact_dir / "preflight-summary.json").read_text(encoding="utf-8"))
+          digest_matches = bool(
+              exact_receipt.is_file()
+              and hashlib.sha256(exact_receipt.read_bytes()).hexdigest()
+                  == preflight["evaluation_receipt_sha256"]
+          )
+          all_pass = (
+              all(code == 0 for code in codes.values())
+              and tests_passed == 13
+              and semantic_ok
+              and digest_matches
+          )
+          summary = {
+              "schema": "hepta.intelligence.p1_1c.finalizer_exact.v4",
+              "status": "PASS" if all_pass else "FAIL",
+              "candidate_commit": os.environ["CANDIDATE_SHA"],
+              "exit_codes": codes,
+              "tests_passed": tests_passed,
+              "evaluation_semantic_ok": semantic_ok,
+              "evaluation_digest_matches_preflight": digest_matches,
+              "source_qualified": all_pass,
+              "qualified": False,
+              "efficacy_validation": False,
+              "runtime_wired": False,
+              "production_authority": False,
+          }
+          (artifact_dir / "exact-summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"passed={'true' if all_pass else 'false'}\n")
+          PY
+          set -e
+
+      - name: Recheck source lease and fast-forward exact candidate
+        if: steps.exact.outputs.passed == 'true'
+        env:
+          SOURCE_PARENT: ${{ steps.source.outputs.sha }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          remote_sha="$(git ls-remote origin "refs/heads/$SOURCE_BRANCH" | awk '{print $1}')"
+          test "$remote_sha" = "$SOURCE_PARENT"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git rev-parse HEAD^)" = "$SOURCE_PARENT"
+          git push origin "HEAD:refs/heads/$SOURCE_BRANCH"
+
+      - name: Write final qualification receipt
+        if: steps.exact.outputs.passed == 'true'
+        env:
+          SOURCE_PARENT: ${{ steps.source.outputs.sha }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUNNER_NAME: ${{ runner.name }}
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          receipt = {
+              "schema": "hepta.intelligence.p1_1c.source_finalization.v4",
+              "status": "PASS_P1_1C_SOURCE_QUALIFIED_SEED_PIPELINE",
+              "source_parent_commit": os.environ["SOURCE_PARENT"],
+              "qualified_source_commit": os.environ["CANDIDATE_SHA"],
+              "source_branch": os.environ["SOURCE_BRANCH"],
+              "tests_passed": 13,
+              "gates": {
+                  "preflight": "success",
+                  "governance_transition": "success",
+                  "changed_path_allowlist": "success",
+                  "exact_source_gate": "success",
+                  "exact_rustfmt": "success",
+                  "exact_tests": "success",
+                  "exact_check": "success",
+                  "exact_clippy": "success",
+                  "exact_receipt_reproducibility": "success",
+                  "exact_receipt_digest_binding": "success",
+                  "exact_clean_tree": "success",
+                  "source_lease": "success",
+                  "non_force_fast_forward": "success",
+              },
+              "runner": {
+                  "name": os.environ["RUNNER_NAME"],
+                  "os": os.environ["RUNNER_OS"],
+                  "arch": os.environ["RUNNER_ARCH"],
+              },
+              "workflow": {
+                  "run_id": int(os.environ["RUN_ID"]),
+                  "run_attempt": int(os.environ["RUN_ATTEMPT"]),
+              },
+              "implemented": True,
+              "source_qualified": True,
+              "seed_pipeline_reproducible": True,
+              "qualified": False,
+              "corpus_provenance": "synthetic_seed",
+              "corpus_reviewed": False,
+              "efficacy_validation": False,
+              "efficacy_claim": False,
+              "product_workspace_member": False,
+              "product_module_registered": False,
+              "runtime_wired": False,
+              "network_access": False,
+              "model_download": False,
+              "external_effects": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "callers_ratchet": False,
+          }
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          (artifact_dir / "qualification-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          summary = [
+              "## P1.1c atomic source finalization",
+              "",
+              f"- Parent: `{receipt['source_parent_commit']}`",
+              f"- Qualified source: `{receipt['qualified_source_commit']}`",
+              "- Rust 1.95 ARM64: preflight and exact source/fmt/13 tests/check/Clippy PASS",
+              "- Evaluation receipt reproduced and digest-bound across both phases",
+              "- Source-qualified seed pipeline recorded in machine governance",
+              "- Overall `qualified=false`; real-world efficacy and production authority remain disabled",
+          ]
+          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(
+              "\n".join(summary) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Upload complete finalization evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1c-finalize-v4-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1c-finalize-v4
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Comment finalizer outcome on stacked Draft PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          pr_number="$(gh api \
+            "repos/$GITHUB_REPOSITORY/pulls?state=open&head=ProfAlexQI:$SOURCE_BRANCH" \
+            --jq '.[0].number')"
+          test -n "$pr_number"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          final_path = artifact_dir / "qualification-receipt.json"
+          exact_path = artifact_dir / "exact-summary.json"
+          preflight_path = artifact_dir / "preflight-summary.json"
+          final = json.loads(final_path.read_text()) if final_path.is_file() else None
+          exact = json.loads(exact_path.read_text()) if exact_path.is_file() else None
+          preflight = json.loads(preflight_path.read_text()) if preflight_path.is_file() else None
+          outcome = "PASS" if final else "FAIL"
+          lines = [
+              "## P1.1c atomic source finalizer",
+              "",
+              f"- Outcome: `{outcome}`",
+              f"- Parent source: `{(preflight or {}).get('source_commit', 'unknown')}`",
+              f"- Qualified source: `{(final or {}).get('qualified_source_commit', 'not produced')}`",
+              f"- Preflight tests: `{(preflight or {}).get('tests_passed', 0)}/13`",
+              f"- Exact tests: `{(exact or {}).get('tests_passed', 0)}/13`",
+              f"- Workflow: {os.environ['RUN_URL']}",
+              "",
+              "Authority remains unchanged: `qualified=false`, `efficacy_validation=false`, "
+              "`runtime_wired=false`, `production_authority=false`; the PR remains Draft.",
+          ]
+          if not final:
+              summary = exact or preflight or {}
+              lines.extend(["", "| Gate | Exit |", "|---|---:|"])
+              for name, code in summary.get("exit_codes", {}).items():
+                  lines.append(f"| {name} | `{code}` |")
+              for name in [
+                  "python-compile",
+                  "source-gate-pre",
+                  "tests-pre",
+                  "check-pre",
+                  "clippy-pre",
+                  "source-gate-transitioned",
+                  "source-gate-exact",
+                  "tests-exact",
+                  "check-exact",
+                  "clippy-exact",
+              ]:
+                  path = artifact_dir / f"{name}.log"
+                  if not path.is_file():
+                      continue
+                  tail = path.read_text(encoding="utf-8", errors="replace").splitlines()[-30:]
+                  if tail:
+                      lines.extend(["", f"<details><summary>{name} tail</summary>", "", "```text", *tail, "```", "</details>"])
+                      break
+          (artifact_dir / "pr-comment.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/$pr_number/comments" \
+            -f body="$(cat "$ARTIFACT_DIR/pr-comment.md")"
+
+      - name: Enforce finalization outcome
+        if: always()
+        run: |
+          set -euo pipefail
+          test -f "$ARTIFACT_DIR/qualification-receipt.json"
+          test "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$ARTIFACT_DIR/qualification-receipt.json")" = "PASS_P1_1C_SOURCE_QUALIFIED_SEED_PIPELINE"
