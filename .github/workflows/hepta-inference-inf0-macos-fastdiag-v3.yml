@@ -1,0 +1,191 @@
+name: Hepta inference INF-0 macOS fast diagnostics v3
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0-macos-diagnostics-v2-20260828
+    paths:
+      - ".github/workflows/hepta-inference-inf0-macos-fastdiag-v3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-inf0-macos-fastdiag-v3
+  cancel-in-progress: false
+
+env:
+  CANDIDATE: 3afce0894a597f1968169400e3b79c4a5e94ec17
+  CARGO_TERM_COLOR: never
+  RUST_BACKTRACE: "1"
+
+jobs:
+  contract:
+    name: Full-history source and formatting attribution
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Detach exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/hepta-inference-inf0-macos-fastdiag-v3.yml"
+          git checkout --detach "$CANDIDATE"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE"
+          test "$(git rev-parse HEAD^)" = "d47cd292c89cd4ac6d484232b35589d65a88f0b9"
+          test -z "$(git status --porcelain)"
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt
+
+      - name: Capture source and formatting gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/hepta-inference-inf0-fastdiag-contract"
+          mkdir -p "$out"
+          : > "$out/exit-codes.tsv"
+          run_gate() {
+            local name="$1"
+            shift
+            set +e
+            "$@" >"$out/$name.log" 2>&1
+            rc=$?
+            set -e
+            printf '%s\t%s\n' "$name" "$rc" >> "$out/exit-codes.tsv"
+          }
+          run_gate source_gate bash -lc '
+            python3 -m py_compile scripts/hepta-inference-inf0-source-gate.py scripts/hepta-inference-inf0c-real-e2e.py &&
+            python3 scripts/hepta-inference-inf0-source-gate.py
+          '
+          run_gate reference_fmt bash -lc '
+            cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml -- --check
+          '
+          run_gate fragment_fmt bash -lc '
+            cd codex-rs && rustfmt --edition 2024 --check \
+              ollama/src/client.rs ollama/src/client_*.inc.rs \
+              lmstudio/src/client.rs lmstudio/src/client_*.inc.rs
+          '
+          run_gate package_fmt bash -lc '
+            cd codex-rs && cargo fmt \
+              -p codex-lmstudio \
+              -p codex-ollama \
+              -p codex-utils-oss \
+              -p codex-responses-api-proxy \
+              -- --check
+          '
+          run_gate workspace_fmt bash -lc '
+            cd codex-rs && cargo fmt --all -- --check
+          '
+          {
+            echo "candidate=$CANDIDATE"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "qualified=false"
+            echo "ubuntu_qualification=false"
+            echo "inf1=NOT_STARTED"
+            echo "authority=false"
+          } > "$out/context.txt"
+          cat "$out/exit-codes.tsv" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload contract diagnostics
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0-fastdiag-contract-${{ env.CANDIDATE }}
+          path: ${{ runner.temp }}/hepta-inference-inf0-fastdiag-contract
+          if-no-files-found: error
+          retention-days: 7
+
+  check:
+    name: cargo check ${{ matrix.package }}
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        package:
+          - codex-lmstudio
+          - codex-ollama
+          - codex-utils-oss
+          - codex-responses-api-proxy
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Detach exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/hepta-inference-inf0-macos-fastdiag-v3.yml"
+          git checkout --detach "$CANDIDATE"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE"
+          test -z "$(git status --porcelain)"
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: clippy
+
+      - name: Capture exact package check
+        shell: bash
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          set -euo pipefail
+          safe="${PACKAGE//-/_}"
+          out="$RUNNER_TEMP/hepta-inference-inf0-fastdiag-$safe"
+          mkdir -p "$out"
+          set +e
+          (
+            cd codex-rs
+            cargo check --locked -p "$PACKAGE"
+          ) >"$out/cargo-check.log" 2>&1
+          rc=$?
+          set -e
+          {
+            echo "candidate=$CANDIDATE"
+            echo "package=$PACKAGE"
+            echo "exit_code=$rc"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "qualified=false"
+            echo "ubuntu_qualification=false"
+            echo "inf1=NOT_STARTED"
+            echo "authority=false"
+          } > "$out/receipt.txt"
+          printf 'package=%s exit_code=%s\n' "$PACKAGE" "$rc" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload exact package diagnostic
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0-fastdiag-${{ matrix.package }}-${{ env.CANDIDATE }}
+          path: ${{ runner.temp }}/hepta-inference-inf0-fastdiag-*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Preserve diagnostic-only posture
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "diagnostic_only=true"
+            echo "qualified=false"
+            echo "ubuntu_qualification=false"
+            echo "INF-1=NOT_STARTED"
+            echo "production/effect/model-NPU/remote/promotion authority=false"
+          } >> "$GITHUB_STEP_SUMMARY"
