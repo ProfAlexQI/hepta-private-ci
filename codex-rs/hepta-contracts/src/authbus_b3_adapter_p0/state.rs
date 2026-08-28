@@ -36,7 +36,7 @@ where
         Ok(())
     }
 
-    fn build_terminal_replay(
+    fn build_status_replay(
         &self,
         operation_id: &str,
         status: &RefreshStatusByOperationKeyResponse,
