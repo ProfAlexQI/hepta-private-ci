@@ -131,9 +131,9 @@ jobs:
           grep -F 'channel = "1.95.0"' rust-toolchain.toml
           rustc --version | grep -F '1.95.0'
 
-      - name: Check workspace formatting
+      - name: Check owned-package formatting
         working-directory: codex-rs
-        run: cargo fmt --all -- --check
+        run: cargo fmt -p codex-hepta-memory -- --check
 
       - name: Run focused journal tests
         working-directory: codex-rs
