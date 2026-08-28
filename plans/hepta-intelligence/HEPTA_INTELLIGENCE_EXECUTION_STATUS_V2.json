@@ -4,7 +4,7 @@
   "repository": "ProfAlexQI/hepta-private-ci",
   "default_branch": "integration/vnext-main-20260811",
   "document_snapshot_head": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
-  "development_branch": "codex/hepta-intelligence-shadow-host-adapter-v4c-20260828",
+  "development_branch": "codex/hepta-intelligence-hybrid-retrieval-v2-p1a-20260828",
   "authority": {
     "production_authority": false,
     "external_effects": false,
@@ -13,102 +13,65 @@
     "callers_ratchet": false
   },
   "dependency": {
-    "id": "P0.4b",
-    "branch": "codex/hepta-intelligence-mutation-journal-v4b-r2-20260828",
-    "head": "a5de899e9f6a97fa0803cc1e73d664be8b7d68bc",
-    "pull_request": 21,
-    "status": "source_and_sqlite_contract_implemented_hosted_runner_blocked",
+    "id": "P0.4c",
+    "branch": "codex/hepta-intelligence-shadow-host-adapter-v4c-20260828",
+    "head": "7691978b786dd00c69477d1a3355be13db2c4d67",
+    "pull_request": 23,
+    "status": "source_only_implemented_hosted_runner_blocked",
     "qualified": false
   },
   "current_tranche": {
-    "id": "P0.4c",
-    "name": "shadow_host_orchestration_adapter",
-    "status": "source_only_implemented_hosted_runner_blocked",
+    "id": "P1.1a",
+    "name": "shadow_hybrid_retrieval_query_planner_and_fusion_contract",
+    "status": "source_only_contract_implemented_activation_blocked",
     "qualified": false,
-    "source_candidate": "7bb26ec016c2e2c83084756485ea324e79bcddbe",
-    "hosted_blocker_receipt_commit": "23361416536f23791979e4bbc83b17c3c09a3c09",
-    "source_commits": {
-      "core_adapter": "27b64141575f1a937ae12d5d1e3bf344f7818491",
-      "core_registration": "0b60f474992b4ac490444ec575bed82bea317360",
-      "agentd_adapter": "8ad52c71074e465b861b488cd6a09112a00cb6c2",
-      "agentd_feature": "8b473361073d042c06eacca0d35832a800f9a5a6",
-      "agentd_export": "cd3f0227a8d3d4caf254c71b0a172e299027f88f",
-      "agentd_prepare_append_hardening": "914917b4a1f71189042e2654a6be2ea10d176023",
-      "source_gate": "d0b19ca7644b672406af079ff485bc10ca880dda",
-      "workflow": "59832f15548dcbd86d47d6c41035e68a04b759f8",
-      "plan": "a1f0f1e4a5c10c84a71a4a39d90791f13e02bf7b",
-      "implementation_receipt": "7bb26ec016c2e2c83084756485ea324e79bcddbe"
-    },
+    "source_candidate": "pending_exact_head_freeze",
     "files": [
-      "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
-      "codex-rs/hepta-memory/src/framing.rs",
-      "codex-rs/hepta-agentd/src/shadow_intelligence_mutation_host.rs",
-      "codex-rs/hepta-agentd/src/lib.rs",
-      "codex-rs/hepta-agentd/Cargo.toml",
-      "scripts/verify-hepta-intelligence-shadow-host.py",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4C_SHADOW_HOST_2026-08-28.md",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4C_IMPLEMENTATION_RECEIPT_2026-08-28.json",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4C_HOSTED_BLOCKER_2026-08-28.json",
+      "codex-rs/hepta-memory/src/shadow_hybrid_retrieval_v2.rs",
+      "codex-rs/hepta-memory/tests/shadow_hybrid_retrieval_v2_contract.rs",
+      "scripts/verify-hepta-intelligence-hybrid-retrieval.py",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1A_SHADOW_HYBRID_RETRIEVAL_2026-08-28.md",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1A_IMPLEMENTATION_RECEIPT_2026-08-28.json",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
-      ".github/workflows/hepta-intelligence-shadow-host.yml"
+      ".github/workflows/hepta-intelligence-hybrid-retrieval.yml"
     ],
     "claims": {
-      "core_shadow_adapter_implemented": true,
-      "agentd_shadow_host_seam_implemented": true,
-      "agentd_feature_default_off": true,
-      "prepared_request_digest_binding": true,
-      "exact_retry_supported": true,
-      "postcommit_ack_loss_adoption_test_present": true,
-      "zero_product_source_memory_projection_rows_test_present": true,
-      "p0_4b_journal_delegation": true,
-      "agentd_prepare_returns_host_envelope": true,
-      "agentd_append_validates_and_unwraps_prepare_envelope": true,
-      "agentd_cross_spawn_envelope_rejected": true,
-      "agentd_payload_and_authority_tamper_rejected": true,
-      "agentd_operation_id_spawn_bound": true,
-      "agentd_lease_id_spawn_bound": true,
-      "agentd_causal_root_spawn_bound": true,
+      "typed_query_plan_contract": true,
+      "multilingual_term_normalization": true,
+      "typed_channel_evidence": true,
+      "deterministic_fixed_point_fusion": true,
+      "stable_tie_break": true,
+      "risk_aware_grounding_filter": true,
+      "kg_channel_requires_grounding": true,
+      "contradiction_filter": true,
+      "secret_filter": true,
+      "lifecycle_filter": true,
+      "bounded_context_selection": true,
+      "utf8_byte_token_upper_bound": true,
+      "plan_candidate_result_receipt_digests": true,
+      "compiled_by_isolated_integration_test": true,
+      "product_module_registered": false,
+      "query_execution_implemented": false,
+      "vector_backend_registered": false,
+      "reranker_registered": false,
       "runtime_wired": false,
-      "default_open_wired": false,
-      "app_runtime_attached": false,
-      "tool_registered": false,
-      "memory_write_authority": false,
-      "projection_write_authority": false,
-      "outbox_dispatch_authority": false,
+      "default_recall_changed": false,
+      "federation_recall_changed": false,
+      "context_attachment": false,
+      "physical_send": false,
       "production_authority": false,
       "external_effects": false
     },
     "qualification": {
-      "source_gate": "not_run_runner_blocked",
-      "format": "not_run_runner_blocked",
-      "memory_focused_tests": "not_run_runner_blocked",
-      "agentd_feature_focused_tests": "not_run_runner_blocked",
-      "memory_crate_tests": "not_run_runner_blocked",
-      "agentd_feature_crate_tests": "not_run_runner_blocked",
-      "memory_clippy": "not_run_runner_blocked",
-      "agentd_feature_clippy": "not_run_runner_blocked",
-      "hosted_ci": "blocked_runner_not_assigned",
-      "workflow_run": {
-        "id": 33144320922,
-        "head": "7bb26ec016c2e2c83084756485ea324e79bcddbe",
-        "jobs": [
-          {
-            "id": 98761923318,
-            "name": "P0.4c shadow host source contract",
-            "steps": [],
-            "runner_id": 0
-          },
-          {
-            "id": 98761923512,
-            "name": "P0.4c shadow host Rust qualification",
-            "steps": [],
-            "runner_id": 0
-          }
-        ],
-        "commands_executed": false
-      },
+      "source_gate": "pending_exact_head_execution",
+      "format": "not_run",
+      "focused_contract_test": "not_run",
+      "memory_crate_tests": "not_run",
+      "focused_clippy": "not_run",
+      "memory_clippy": "not_run",
+      "hosted_ci": "pending",
       "qualified": false,
-      "toolchain_pin": "1.95.0_source_bound_not_run"
+      "toolchain_pin": "1.95.0"
     }
   },
   "capabilities": [
@@ -176,6 +139,15 @@
       "promoted": false
     },
     {
+      "id": "hybrid_retrieval_query_planner_and_fusion_contract",
+      "implemented": true,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
       "id": "hybrid_retrieval_v2",
       "implemented": false,
       "wired": false,
@@ -186,20 +158,22 @@
     }
   ],
   "next_tranche": {
-    "id": "P1.1",
-    "name": "hybrid_retrieval_v2",
-    "activation": "blocked",
+    "id": "P1.1b",
+    "name": "local_embedding_and_tokenizer_adapter",
+    "activation": "source_development_allowed_on_separate_stacked_draft",
     "requirements": [
-      "P0.1-P0.4c exact-head executable qualification",
-      "readable source, SQLite, Rust and crash-window artifacts",
-      "P0.4c candidate freeze and operator review",
-      "production authority and default runtime wiring remain false until a separate CALLERS decision"
+      "local embedding adapter remains opt-in and backend-absent by default",
+      "model and tokenizer digest binding",
+      "bounded batch and vector-dimension contracts",
+      "deterministic no-backend fallback",
+      "no default recall, context attachment or physical-send wiring",
+      "P0.1-P1.1a exact-head executable qualification before activation"
     ]
   },
   "next_actions": [
-    "Preserve P0.4c Draft PR #23 and its hosted blocker receipt.",
-    "Run the source, formatting, focused, full and clippy gates when a runner is assigned.",
-    "Keep the Agentd feature off by default and leave runtime/app/tool registration unchanged.",
-    "Do not activate P1.1, production callers, default open paths or external effects from source-only evidence."
+    "Run the P1.1a source, formatting, focused test, full test and clippy gates on one exact head.",
+    "Preserve the existing cognitive_retrieval, federation, extension contributor and Agentd runtime paths unchanged.",
+    "Develop P1.1b only as a separate stacked source Draft with no registered backend.",
+    "Do not activate Hybrid Retrieval v2, context attachment, production callers or external effects from source-only evidence."
   ]
 }
