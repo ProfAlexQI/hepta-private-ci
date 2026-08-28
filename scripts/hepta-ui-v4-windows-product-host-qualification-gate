@@ -1,0 +1,196 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+producer_parts = (1..3).map { |index| root.join("scripts/hepta-ui-v4-windows-product-host-qualification.part#{index}.rb") }
+files = {
+  loader: root.join("scripts/hepta-ui-v4-windows-product-host-qualification"),
+  candidate_gate: root.join("scripts/hepta-ui-v4-windows-product-host-implementation-candidate-gate"),
+  contract: root.join("docs/ui/HEPTA_WINDOWS_PRODUCT_HOST_QUALIFICATION_V1.json"),
+  schema: root.join("docs/ui/schemas/hepta.ui.v4.windows-product-host-qualification.v1.schema.json"),
+  device_schema: root.join("docs/ui/schemas/hepta.ui.v4.windows-product-host-device-drill.v1.schema.json"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-windows-product-host-qualification.yml"),
+  document: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_23_WINDOWS_PRODUCT_HOST_QUALIFICATION_2026-08-28.md"),
+  product_cargo: root.join("apps/hepta-native/Cargo.toml"),
+  shared_mod: root.join("apps/hepta-native/src/shared/mod.rs"),
+  lifecycle: root.join("apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs"),
+  implementation: root.join("apps/hepta-native/src/shared/hepta_windows_product_host_implementation.rs"),
+  implementation_contract: root.join("docs/ui/HEPTA_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_CANDIDATE_V1.json")
+}.freeze
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+producer_parts.each_with_index { |path, index| checks["file.producer_part#{index + 1}"] = path.file? && !path.zero? }
+
+producer = producer_parts.map(&:read).join
+contract = JSON.parse(files.fetch(:contract).read)
+schema = JSON.parse(files.fetch(:schema).read)
+device_schema = JSON.parse(files.fetch(:device_schema).read)
+workflow = files.fetch(:workflow).read
+document = files.fetch(:document).read
+product_cargo = files.fetch(:product_cargo).read
+shared_mod = files.fetch(:shared_mod).read
+lifecycle = files.fetch(:lifecycle).read
+implementation = files.fetch(:implementation).read
+implementation_contract = JSON.parse(files.fetch(:implementation_contract).read)
+
+checks["producer.statuses"] = %w[
+  BLOCKED_WINDOWS_PRODUCT_HOST_REVIEW_ENVELOPE_REQUIRED
+  BLOCKED_WINDOWS_PRODUCT_HOST_DEVICE_QUALIFICATION_REQUIRED
+  PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION
+  FAIL_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION
+  PASS_WINDOWS_PRODUCT_HOST_QUALIFICATION_SELF_TEST
+].all? { |status| producer.include?(status) }
+checks["producer.compile_matrix"] = %w[
+  ubuntu-latest windows-latest macos-latest default-off explicit-feature
+  PASS_WINDOWS_PRODUCT_HOST_CANDIDATE_COMPILE
+].all? { |term| producer.include?(term) }
+checks["producer.review_device_chain"] =
+  producer.include?("PASS_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_ENVELOPE") &&
+  producer.include?("PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_DEVICE_DRILL") &&
+  producer.include?("review binding digest missing") &&
+  producer.include?("device review binding drift")
+checks["producer.device_drill"] = %w[
+  activationObserved rootMicaExact transientAcrylicExact explicitRollback
+  rootNoneExact transientNoneExact highContrastFallback transparencyDisabledFallback
+  suspendRollback shutdownRollback rollbackDrillValidated physicalDeviceValidated Unbound
+].all? { |term| producer.include?(term) }
+checks["producer.failure_receipt_schema_shape"] =
+  producer.include?("empty_compile_matrix") &&
+  producer.include?("false_compile_evidence") &&
+  producer.include?("FAIL_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION")
+checks["producer.identity_authority"] =
+  producer.include?("device root/transient identity reused") &&
+  producer.include?("device root/transient HWND reused") &&
+  producer.include?("require_false_hash!") && producer.include?("reject_true_keys!")
+checks["producer.atomic_bounded"] =
+  producer.include?("write_json_atomic") && producer.include?("MAX_FAILURES = 64") &&
+  producer.include?("MAX_FAILURE_BYTES = 4096")
+checks["producer.self_tests"] = %w[
+  review-blocked device-blocked qualification\ PASS candidate-drift authority
+].all? { |term| producer.include?(term.tr("\\", "")) }
+checks["producer.feature_default_off"] =
+  producer.include?("hepta_ui_windows_system_material_v4") &&
+  producer.include?("\"defaultEnabled\" => false")
+
+checks["product.feature_not_declared"] = !product_cargo.match?(/^hepta_ui_windows_system_material_v4\s*=/)
+checks["product.module_not_registered"] = !shared_mod.include?("hepta_windows_product_host_implementation")
+checks["product.lifecycle_not_wired"] =
+  !lifecycle.include?("HeptaWindowsProductMaterialHost") &&
+  !lifecycle.include?("hepta_windows_product_host_implementation")
+checks["implementation.no_script_or_unsafe"] =
+  !implementation.include?("script_mod!") && !implementation.include?("unsafe")
+
+checks["contract.source_only"] =
+  contract.dig("qualification", "sourceImplemented") == true &&
+  contract.fetch("qualification").reject { |key, _| key == "sourceImplemented" }.values.none? &&
+  contract.fetch("authority").values.none?
+checks["contract.matrix"] =
+  contract.dig("producer", "compilePlatforms") == %w[ubuntu-latest windows-latest macos-latest] &&
+  contract.dig("producer", "compileModes") == %w[default-off explicit-feature]
+checks["contract.feature_wiring_false"] = %w[
+  defaultEnabled productCargoFeatureDeclared productModuleRegistered
+  productLifecycleWired automaticBindingAllowed
+].all? { |key| contract.dig("feature", key) == false }
+checks["candidate_contract.still_source_only"] =
+  implementation_contract.is_a?(Hash) &&
+  implementation_contract.fetch("authority", {}).values.none? &&
+  !JSON.generate(implementation_contract).match?(/"(?:productHostMayBind|productBound|systemMaterialBound)":true/)
+
+expected_statuses = %w[
+  BLOCKED_WINDOWS_PRODUCT_HOST_REVIEW_ENVELOPE_REQUIRED
+  BLOCKED_WINDOWS_PRODUCT_HOST_DEVICE_QUALIFICATION_REQUIRED
+  PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION
+  FAIL_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION
+]
+checks["schema.statuses"] = schema.dig("properties", "status", "enum") == expected_statuses
+checks["schema.failed_compile_supported"] =
+  schema.dig("$defs", "compileEvidence", "oneOf").is_a?(Array) &&
+  schema.dig("$defs", "compileEvidence", "oneOf").length == 2
+checks["schema.product_false"] = %w[
+  productCargoFeatureDeclared productModuleRegistered productLifecycleWired automaticBindingAllowed
+  implementationApproved productHostMayBind productBound transientSystemMaterialBound
+  completeProfileBound systemMaterialBound nativeProductRuntime deviceValidation
+].all? { |key| schema.dig("$defs", "qualification", "properties", key, "const") == false }
+checks["schema.authority_false"] =
+  schema.dig("$defs", "authority", "properties").values.all? { |entry| entry["const"] == false }
+checks["schema.failure_bounded"] =
+  schema.dig("properties", "failures", "maxItems") == 64 &&
+  schema.dig("properties", "failures", "items", "maxLength") == 4096
+checks["device_schema.status_feature"] =
+  device_schema.dig("properties", "status", "const") == "PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_DEVICE_DRILL" &&
+  device_schema.dig("properties", "feature", "properties", "name", "const") == "hepta_ui_windows_system_material_v4" &&
+  device_schema.dig("properties", "feature", "properties", "enabled", "const") == true
+checks["device_schema.product_authority_false"] =
+  device_schema.dig("$defs", "qualification", "properties", "productHostMayBind", "const") == false &&
+  device_schema.dig("$defs", "qualification", "properties", "productBound", "const") == false &&
+  device_schema.dig("$defs", "qualification", "properties", "systemMaterialBound", "const") == false &&
+  device_schema.dig("$defs", "authority", "properties").values.all? { |entry| entry["const"] == false }
+
+checks["workflow.triggers_permissions"] =
+  workflow.include?("pull_request:") && workflow.include?("workflow_dispatch:") &&
+  workflow.include?("contents: read") && workflow.include?("actions: read")
+checks["workflow.compile_matrix"] =
+  %w[ubuntu-latest windows-latest macos-latest default-off explicit-feature].all? { |term| workflow.include?(term) } &&
+  workflow.include?("hepta_ui_windows_system_material_v4")
+checks["workflow.exact_checkout"] =
+  workflow.include?("HEPTA_CANDIDATE_SHA") &&
+  workflow.scan('ref: ${{ env.HEPTA_CANDIDATE_SHA }}').length >= 3 &&
+  workflow.include?("git rev-parse HEAD")
+checks["workflow.source_self_test"] =
+  workflow.include?("hepta-ui-v4-windows-product-host-implementation-candidate-gate") &&
+  workflow.include?("hepta-ui-v4-windows-product-host-qualification --self-test") &&
+  workflow.include?("hepta-ui-v4-windows-product-host-qualification-gate")
+checks["workflow.external_evidence"] =
+  workflow.include?("review_envelope_artifact_id") &&
+  workflow.include?("device_receipt_artifact_id") &&
+  workflow.include?("archive_download_url") && workflow.include?("path traversal archive entry")
+checks["workflow.fail_receipt_survives_missing_artifacts"] =
+  workflow.include?("continue-on-error: true") && workflow.include?("qualification receipt missing")
+checks["workflow.no_release"] = !workflow.match?(/^\s*(?:deploy|publish|promotion|release)\s*:/i)
+
+checks["document.boundary"] =
+  document.include?("BLOCKED_WINDOWS_PRODUCT_HOST_REVIEW_ENVELOPE_REQUIRED") &&
+  document.include?("BLOCKED_WINDOWS_PRODUCT_HOST_DEVICE_QUALIFICATION_REQUIRED") &&
+  document.include?("PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION") &&
+  document.include?("productHostMayBind=false") && document.include?("release=false")
+
+failures = checks.reject { |_key, value| value }.keys
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.windows-product-host-qualification-source-gate.v1",
+  status: failures.empty? ? "PASS_WINDOWS_PRODUCT_HOST_QUALIFICATION_SOURCE_ONLY" : "FAIL_WINDOWS_PRODUCT_HOST_QUALIFICATION_SOURCE",
+  source_implemented: failures.empty?,
+  hosted_source: false,
+  default_off_compile: false,
+  explicit_feature_compile: false,
+  compile_matrix: false,
+  review_envelope: false,
+  physical_device: false,
+  rollback_drill: false,
+  implementation_candidate_qualified: false,
+  eligible_for_product_wiring_review: false,
+  product_cargo_feature_declared: false,
+  product_module_registered: false,
+  product_lifecycle_wired: false,
+  automatic_binding_allowed: false,
+  implementation_approved: false,
+  product_host_may_bind: false,
+  product_bound: false,
+  transient_system_material_binding: false,
+  complete_profile_binding: false,
+  system_material_binding: false,
+  native_product_runtime: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  live_adapter_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  release: false,
+  checks: checks,
+  failures: failures
+)
+exit(failures.empty? ? 0 : 1)
