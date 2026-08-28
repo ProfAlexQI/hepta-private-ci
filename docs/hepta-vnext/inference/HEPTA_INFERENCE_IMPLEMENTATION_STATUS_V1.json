@@ -10,17 +10,17 @@
   },
   "development_branch": "codex/hepta-inference-runtime-v2-20260828",
   "candidate_binding_mode": "append_only_receipt_binds_source_parent",
-  "status": "PLAN_SOURCE_PRESENT_IMPLEMENTATION_PENDING",
+  "status": "SOURCE_PRESENT_NOT_RUN",
   "qualified": false,
   "implemented": {
     "source_bound_plan_v2": true,
     "stage_matrix_v2": true,
-    "reference_contract_crate": false,
-    "source_gate": false,
-    "dedicated_ci_workflow": false,
-    "lmstudio_load_readiness_fence": false,
-    "ollama_readiness_fail_closed": false,
-    "unknown_oss_provider_fail_closed": false,
+    "reference_contract_crate": true,
+    "source_gate": true,
+    "dedicated_ci_workflow": true,
+    "lmstudio_load_readiness_fence": true,
+    "ollama_readiness_fail_closed": true,
+    "unknown_oss_provider_fail_closed": true,
     "hepta_inferd": false,
     "native_worker": false,
     "real_model_e2e": false,
@@ -43,5 +43,28 @@
     "promotion": false,
     "release": false
   },
-  "plan_git_blob_sha1": "4381207acce1bf6371c248dc3280fff1f2ae59ce"
+  "plan_git_blob_sha1": "4381207acce1bf6371c248dc3280fff1f2ae59ce",
+  "source_candidate_binding": {
+    "mode": "append_only_receipt_binds_source_parent",
+    "source_candidate_commit": "BOUND_BY_RECEIPT_PARENT",
+    "source_candidate_tree": "BOUND_BY_RECEIPT_PARENT_TREE"
+  },
+  "validation": {
+    "python_source_gate_syntax": "LOCAL_PASS",
+    "json_parse": "LOCAL_PASS",
+    "workflow_yaml_parse": "LOCAL_PASS",
+    "rust_fmt": "NOT_RUN_TOOLCHAIN_UNAVAILABLE",
+    "rust_test": "NOT_RUN_TOOLCHAIN_UNAVAILABLE",
+    "rust_clippy": "NOT_RUN_TOOLCHAIN_UNAVAILABLE",
+    "exact_head_ci": "NOT_RUN"
+  },
+  "known_gaps": [
+    "exact-head CI has not executed",
+    "hepta-inferd, UDS protocol, real model execution and hardware receipts are absent",
+    "Ollama fetch_models non-2xx error typing remains an INF-0C completion item",
+    "LM Studio download subprocess timeout and executable provenance remain INF-0C items",
+    "responses-api-proxy raw body dump privacy hardening remains a separate item",
+    "provider/model capability defaults remain broader than the future exact manifest intersection"
+  ],
+  "next_stage": "INF-0C_COMPLETION_THEN_INF-1"
 }

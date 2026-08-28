@@ -1,0 +1,153 @@
+name: Hepta inference INF-0 qualification
+
+on:
+  pull_request:
+    paths:
+      - "docs/hepta-vnext/inference/**"
+      - "tools/hepta-inference-inf0/**"
+      - "scripts/hepta-inference-inf0-source-gate.py"
+      - "codex-rs/lmstudio/src/lib.rs"
+      - "codex-rs/ollama/src/lib.rs"
+      - "codex-rs/utils/oss/src/lib.rs"
+      - ".github/workflows/hepta-inference-inf0.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    name: Source and authority contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Verify source-bound INF-0 contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0-source-gate.py | tee "$RUNNER_TEMP/hepta-inference-inf0-source.txt"
+
+      - name: Record qualification-only source posture
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### Hepta inference INF-0 source posture"
+            echo
+            echo "- commit: $(git rev-parse HEAD)"
+            echo "- tree: $(git rev-parse 'HEAD^{tree}')"
+            echo "- source candidate: $(git rev-parse HEAD^)"
+            echo "- qualification_only: true"
+            echo "- qualified: false"
+            echo "- production_authority: false"
+            echo "- model_npu: false"
+            echo "- remote_inference: false"
+            echo "- promotion: false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload source evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0-source
+          path: ${{ runner.temp }}/hepta-inference-inf0-source.txt
+          if-no-files-found: warn
+
+  reference-contract:
+    name: Reference contracts
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Format standalone reference crate
+        shell: bash
+        run: cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml -- --check
+
+      - name: Test standalone reference crate
+        shell: bash
+        run: cargo test --manifest-path tools/hepta-inference-inf0/Cargo.toml --locked
+
+      - name: Strict Clippy for standalone reference crate
+        shell: bash
+        run: |
+          cargo clippy --manifest-path tools/hepta-inference-inf0/Cargo.toml \
+            --all-targets --locked -- -D warnings
+
+  compatibility-readiness:
+    name: Compatibility readiness hardening
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: codex-rs
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Workspace formatting
+        shell: bash
+        run: cargo fmt --all -- --check
+
+      - name: Compile readiness adapters
+        shell: bash
+        run: cargo check --locked -p codex-lmstudio -p codex-ollama -p codex-utils-oss
+
+      - name: Test readiness adapters
+        shell: bash
+        run: cargo test --locked -p codex-lmstudio -p codex-ollama -p codex-utils-oss
+
+      - name: Strict readiness Clippy
+        shell: bash
+        run: |
+          cargo clippy --locked --all-targets \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -- -D warnings
+
+  qualification-summary:
+    name: Qualification-only aggregate
+    if: always()
+    needs:
+      - source-contract
+      - reference-contract
+      - compatibility-readiness
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Enforce aggregate result
+        shell: bash
+        env:
+          SOURCE_RESULT: ${{ needs.source-contract.result }}
+          REFERENCE_RESULT: ${{ needs.reference-contract.result }}
+          COMPATIBILITY_RESULT: ${{ needs.compatibility-readiness.result }}
+        run: |
+          set -euo pipefail
+          printf 'source=%s\nreference=%s\ncompatibility=%s\n' \
+            "$SOURCE_RESULT" "$REFERENCE_RESULT" "$COMPATIBILITY_RESULT"
+          test "$SOURCE_RESULT" = success
+          test "$REFERENCE_RESULT" = success
+          test "$COMPATIBILITY_RESULT" = success
+          echo "PASS_HEPTA_INFERENCE_INF0_QUALIFICATION_ONLY"

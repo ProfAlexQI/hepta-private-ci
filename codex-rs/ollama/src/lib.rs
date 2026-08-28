@@ -19,25 +19,20 @@ pub const DEFAULT_OSS_MODEL: &str = "gpt-oss:20b";
 ///
 /// - Ensures a local Ollama server is reachable.
 /// - Checks if the model exists locally and pulls it if missing.
+///
+/// Model discovery is part of the readiness fence. Discovery failures cannot be
+/// downgraded to warnings because doing so would let callers proceed with an
+/// unknown model state.
 pub async fn ensure_oss_ready(config: &Config, client: &OllamaClient) -> std::io::Result<()> {
-    // Only download when the requested model is the default OSS model (or when -m is not provided).
     let model = match config.model.as_ref() {
         Some(model) => model,
         None => DEFAULT_OSS_MODEL,
     };
 
-    // If the model is not present locally, pull it.
-    match client.fetch_models().await {
-        Ok(models) => {
-            if !models.iter().any(|m| m == model) {
-                let mut reporter = crate::CliProgressReporter::new();
-                client.pull_with_reporter(model, &mut reporter).await?;
-            }
-        }
-        Err(err) => {
-            // Not fatal; higher layers may still proceed and surface errors later.
-            tracing::warn!("Failed to query local models from Ollama: {}.", err);
-        }
+    let models = client.fetch_models().await?;
+    if !models.iter().any(|candidate| candidate == model) {
+        let mut reporter = crate::CliProgressReporter::new();
+        client.pull_with_reporter(model, &mut reporter).await?;
     }
 
     Ok(())
@@ -53,10 +48,13 @@ fn supports_responses(version: &Version) -> bool {
 
 /// Ensure the running Ollama server is new enough to support the Responses API.
 ///
-/// Returns `Ok(())` when the version endpoint is missing or unparsable.
+/// A missing or unparsable version is not evidence of compatibility and fails
+/// closed. Development version `0.0.0` remains explicitly supported.
 pub async fn ensure_responses_supported(client: &OllamaClient) -> std::io::Result<()> {
     let Some(version) = client.fetch_version().await? else {
-        return Ok(());
+        return Err(std::io::Error::other(
+            "Unable to determine the Ollama version; refusing to assume Responses API support.",
+        ));
     };
 
     if supports_responses(&version) {
@@ -124,6 +122,45 @@ mod tests {
             vec!["gpt-oss:20b"]
         );
 
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn missing_version_fails_closed() {
+        if std::env::var(codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR).is_ok() {
+            tracing::info!(
+                "{} set; skipping missing_version_fails_closed",
+                codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR
+            );
+            return;
+        }
+
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/api/tags"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/api/version"))
+            .respond_with(wiremock::ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = create_oss_provider_with_base_url(&server.uri(), WireApi::Responses);
+        let client = OllamaClient::try_from_provider(
+            &provider,
+            HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+        )
+        .await
+        .expect("create Ollama client");
+
+        let error = ensure_responses_supported(&client)
+            .await
+            .expect_err("missing version must fail closed");
+        assert!(error.to_string().contains("Unable to determine"));
         server.verify().await;
     }
 
