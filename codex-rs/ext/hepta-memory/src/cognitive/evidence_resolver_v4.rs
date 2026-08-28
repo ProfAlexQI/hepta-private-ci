@@ -18,12 +18,17 @@ use codex_hepta_memory::GroundedKgFactSetDraft;
 use serde::Deserialize;
 use serde::Serialize;
 
+#[path = "evidence_resolver_v4/receipt.rs"]
 mod receipt;
+#[path = "evidence_resolver_v4/resolver.rs"]
 mod resolver;
+#[path = "evidence_resolver_v4/schema.rs"]
 mod schema;
+#[path = "evidence_resolver_v4/support.rs"]
 mod support;
 
 #[cfg(test)]
+#[path = "evidence_resolver_v4/tests.rs"]
 mod tests;
 
 pub(crate) fn grounded_tool_v4_schema() -> serde_json::Value {
