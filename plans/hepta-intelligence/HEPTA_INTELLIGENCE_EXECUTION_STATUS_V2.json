@@ -23,8 +23,10 @@
   "current_tranche": {
     "id": "P0.4b",
     "name": "sqlite_transition_journal_and_failpoints",
-    "status": "source_and_sqlite_contract_implemented_hosted_pending",
+    "status": "source_and_sqlite_contract_implemented_hosted_runner_blocked",
     "qualified": false,
+    "source_candidate": "09d3fbb54021fdac8de0f35d3c013a4bb992fc4d",
+    "hosted_blocker_receipt_commit": "c6bb068c3b1946ee6e0fe6765f12136205d3100a",
     "files": [
       "codex-rs/hepta-memory/mutation-migrations/0012_intelligence_mutation_journal.sql",
       "codex-rs/hepta-memory/src/intelligence_mutation_journal_v3.rs",
@@ -37,6 +39,7 @@
       "scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py",
       "scripts/verify-hepta-intelligence-mutation-journal.py",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4B_SQLITE_JOURNAL_2026-08-28.md",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4B_HOSTED_BLOCKER_2026-08-28.json",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
       ".github/workflows/hepta-intelligence-mutation-journal.yml"
     ],
@@ -61,15 +64,34 @@
       "external_effects": false
     },
     "qualification": {
-      "source_gate": "pending_exact_head_execution",
-      "sqlite_selftest": "pending_exact_head_execution",
-      "format": "not_run",
-      "focused_tests": "not_run",
-      "crate_tests": "not_run",
-      "clippy": "not_run",
-      "hosted_ci": "pending",
+      "source_gate": "not_run_runner_blocked",
+      "sqlite_selftest": "not_run_runner_blocked",
+      "format": "not_run_runner_blocked",
+      "focused_tests": "not_run_runner_blocked",
+      "crate_tests": "not_run_runner_blocked",
+      "clippy": "not_run_runner_blocked",
+      "hosted_ci": "blocked_runner_not_assigned",
+      "workflow_run": {
+        "id": 33142073039,
+        "head": "09d3fbb54021fdac8de0f35d3c013a4bb992fc4d",
+        "jobs": [
+          {
+            "id": 98754880885,
+            "name": "P0.4b mutation journal source and SQLite contract",
+            "steps": [],
+            "runner_id": 0
+          },
+          {
+            "id": 98754881015,
+            "name": "P0.4b mutation journal Rust qualification",
+            "steps": [],
+            "runner_id": 0
+          }
+        ],
+        "commands_executed": false
+      },
       "qualified": false,
-      "toolchain_pin": "1.95.0"
+      "toolchain_pin": "1.95.0_source_bound_not_run"
     }
   },
   "capabilities": [
@@ -128,6 +150,15 @@
       "promoted": false
     },
     {
+      "id": "shadow_host_orchestration_adapter",
+      "implemented": false,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
       "id": "hybrid_retrieval_v2",
       "implemented": false,
       "wired": false,
@@ -140,18 +171,20 @@
   "next_tranche": {
     "id": "P0.4c",
     "name": "shadow_host_orchestration_adapter",
-    "activation": "blocked_until_p0_4b_executable_qualification",
+    "activation": "source_development_allowed_on_separate_stacked_draft",
     "requirements": [
-      "P0.1-P0.4b exact-head executable qualification",
+      "adapter must be opt-in and shadow-only",
+      "no default Agentd or CognitiveStore wiring",
+      "no tool, projection, recall, physical-send or external effects",
+      "P0.1-P0.4b exact-head executable qualification before any activation",
       "readable source, SQLite, Rust and crash-window artifacts",
-      "candidate freeze and operator review",
-      "shadow-only host adapter with production authority false"
+      "candidate freeze and operator review"
     ]
   },
   "next_actions": [
-    "Run the P0.4b source and SQLite gates on one exact remote head.",
-    "Run Rust format, focused tests, full crate tests and strict clippy with repository toolchain 1.95.0.",
-    "Keep migration 0012 opt-in and default CognitiveStore::open unchanged.",
-    "Do not activate P0.4c, P1.1, production callers or external effects from source-only evidence."
+    "Preserve canonical P0.4b Draft PR #21 and its hosted blocker receipt.",
+    "Develop P0.4c on a separate stacked Draft from the latest P0.4b head.",
+    "Keep the host adapter dormant, in-memory or opt-in, and authority-negative.",
+    "Do not activate P1.1, production callers, default open paths or external effects from source-only evidence."
   ]
 }
