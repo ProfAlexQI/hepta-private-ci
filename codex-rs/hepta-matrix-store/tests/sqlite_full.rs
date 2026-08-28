@@ -1,4 +1,5 @@
 use codex_hepta_contracts::AgentId;
+use codex_hepta_contracts::OperationPhase;
 use codex_hepta_matrix_protocol::MatrixEventId;
 use codex_hepta_matrix_protocol::MatrixRoomId;
 use codex_hepta_matrix_protocol::MatrixUserId;
@@ -9,7 +10,6 @@ use codex_hepta_matrix_store::MatrixDurableConfig;
 use codex_hepta_matrix_store::MatrixDurableError;
 use codex_hepta_matrix_store::MatrixDurableStore;
 use codex_hepta_matrix_store::MatrixOperationJournal;
-use codex_hepta_matrix_store::OperationPhase;
 use codex_hepta_matrix_store::RoomBindingDraft;
 use codex_hepta_paths::HeptaFleetRoot;
 use codex_state::SqliteConfig;
