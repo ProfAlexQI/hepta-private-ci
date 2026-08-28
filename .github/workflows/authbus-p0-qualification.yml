@@ -1,0 +1,128 @@
+name: AuthBus P0 qualification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "integration/vnext-main-full-ci-authbus-*"
+  pull_request:
+    branches:
+      - integration/vnext-main-20260811
+    paths:
+      - "codex-rs/hepta-contracts/**"
+      - ".github/workflows/authbus-p0-qualification.yml"
+      - "docs/hepta-vnext/authbus/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: authbus-p0-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  authbus-p0:
+    name: AuthBus P0.1 (qualification-only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: codex-rs
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Initialize exact-head qualification evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/authbus-p0-qualification"
+          mkdir -p "$evidence_dir"
+          {
+            echo "plan=AUTHBUS-P0-PLAN-2026-08-28"
+            echo "stage=P0.1"
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "cargo_lock_sha256=$(sha256sum Cargo.lock | cut -d' ' -f1)"
+            echo "feature=authbus-local-qualification"
+            echo "qualification_only=true"
+            echo "authority=false"
+            echo "effect_authority=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "g5_allowed=false"
+            echo "execute_allowed=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Rustfmt
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/authbus-p0-qualification"
+          cargo fmt --all -- --check 2>&1 | tee "$evidence_dir/fmt.log"
+          echo "fmt=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Locked feature-on tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/authbus-p0-qualification"
+          cargo test --locked --no-default-features \
+            -p codex-hepta-contracts \
+            --features authbus-local-qualification \
+            --tests -- --nocapture 2>&1 | tee "$evidence_dir/tests.log"
+          echo "tests=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Locked feature-on check
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/authbus-p0-qualification"
+          cargo check --locked --no-default-features \
+            -p codex-hepta-contracts \
+            --features authbus-local-qualification \
+            --all-targets 2>&1 | tee "$evidence_dir/check.log"
+          echo "check=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Strict feature-on Clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/authbus-p0-qualification"
+          cargo clippy --locked --no-default-features \
+            -p codex-hepta-contracts \
+            --features authbus-local-qualification \
+            --all-targets -- -D warnings 2>&1 | tee "$evidence_dir/clippy.log"
+          echo "clippy=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/authbus-p0-qualification"
+          echo "job_status=${{ job.status }}" >> "$evidence_dir/posture.txt"
+          {
+            echo "### AuthBus P0.1 qualification"
+            echo
+            echo "This lane is qualification-only and grants no runtime or production authority."
+            echo
+            sed 's/^/- /' "$evidence_dir/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload exact-head evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: authbus-p0-qualification
+          path: ${{ runner.temp }}/authbus-p0-qualification
+          if-no-files-found: error
