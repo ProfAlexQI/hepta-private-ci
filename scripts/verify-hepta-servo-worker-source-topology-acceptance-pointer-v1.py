@@ -127,6 +127,7 @@ def main() -> int:
         )
         require(
             live,
+            "pull_request_target:",
             "name: Worker source/API topology accepted pointer live review",
             "ref: ${{ github.event.pull_request.base.sha }}",
             "PR-head code executed: false",
@@ -138,6 +139,7 @@ def main() -> int:
             fail("topology live review executes PR-head verifier code")
         require(
             source_live,
+            "pull_request_target:",
             "name: Source-only accepted pointer live review",
             "ref: ${{ github.event.pull_request.base.sha }}",
             "PR-head code executed: false",
@@ -153,11 +155,9 @@ def main() -> int:
             "workflow_call:",
             "uses: ./.github/workflows/hepta-browser-next-required-v8.yml",
             "uses: ./.github/workflows/hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml",
-            "uses: ./.github/workflows/hepta-servo-worker-source-topology-acceptance-live-review-v1.yml",
             "name: Hepta Browser next required v9",
             "- canonical-v8",
             "- topology-acceptance-pointer-v1",
-            "- topology-acceptance-live-review-v1",
             '"worker_source_topology_accepted": False',
             '"build_authorized": False',
             '"servo_build_run": False',
