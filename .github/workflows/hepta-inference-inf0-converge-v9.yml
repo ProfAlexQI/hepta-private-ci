@@ -1,0 +1,128 @@
+name: Hepta inference INF-0 exact-head convergence v9
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0-macos-diagnostics-v2-20260828
+    paths:
+      - ".github/workflows/hepta-inference-inf0-converge-v9.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  # Share the v8 group so this job cannot race the already-running bounded repair.
+  group: hepta-inference-inf0-apply-repair-v8
+  cancel-in-progress: false
+
+jobs:
+  converge:
+    name: Converge source repair and canonical qualification ownership
+    runs-on: macos-15-intel
+    timeout-minutes: 240
+    env:
+      BRANCH: codex/hepta-inference-runtime-v2-20260828
+      ROOT_HEAD: 3afce0894a597f1968169400e3b79c4a5e94ec17
+      RECEIPT: docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_SOURCE_RECEIPT_2026-08-28.json
+      SELF: .github/workflows/hepta-inference-inf0-converge-v9.yml
+      CARGO_TERM_COLOR: never
+      RUST_BACKTRACE: "1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Bind serialized exact input and isolated executors
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          git show "$GITHUB_SHA:scripts/hepta-inference-inf0-converge-source-v9.py" \
+            > "$RUNNER_TEMP/converge.py"
+          git show "$GITHUB_SHA:scripts/hepta-inference-inf0-rebind-converged-receipt-v9.py" \
+            > "$RUNNER_TEMP/rebind.py"
+          git show "$GITHUB_SHA:scripts/hepta-inference-inf0-apply-convergence-v9.sh" \
+            > "$RUNNER_TEMP/apply.sh"
+          python3 -m py_compile "$RUNNER_TEMP/converge.py" "$RUNNER_TEMP/rebind.py"
+          chmod +x "$RUNNER_TEMP/apply.sh"
+
+          git fetch --no-tags origin "$BRANCH"
+          INPUT_HEAD="$(git rev-parse FETCH_HEAD)"
+          git merge-base --is-ancestor "$ROOT_HEAD" "$INPUT_HEAD"
+          python3 - "$ROOT_HEAD" "$INPUT_HEAD" "$RECEIPT" <<'PY'
+          from __future__ import annotations
+
+          import subprocess
+          import sys
+
+          root, head, receipt = sys.argv[1:]
+          source_files = {
+              "codex-rs/lmstudio/src/lib.rs",
+              "codex-rs/lmstudio/src/sha256.rs",
+              "codex-rs/ollama/src/client_support.inc.rs",
+              "codex-rs/ollama/src/lib.rs",
+              "codex-rs/responses-api-proxy/src/dump.rs",
+              "codex-rs/responses-api-proxy/src/sha256.rs",
+              "codex-rs/utils/oss/src/lib.rs",
+          }
+          allowed = source_files | {receipt}
+
+          def git(*args: str) -> str:
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+          changed = set(filter(None, git("diff", "--name-only", root, head).splitlines()))
+          if not changed <= allowed:
+              raise SystemExit(f"unexpected files since root head: {sorted(changed - allowed)}")
+
+          commits = list(filter(None, git("rev-list", "--reverse", f"{root}..{head}").splitlines()))
+          if len(commits) not in (0, 2):
+              raise SystemExit(f"unexpected serialized predecessor commit count: {len(commits)}")
+          if len(commits) == 2:
+              first = set(filter(None, git("diff-tree", "--no-commit-id", "--name-only", "-r", commits[0]).splitlines()))
+              second = set(filter(None, git("diff-tree", "--no-commit-id", "--name-only", "-r", commits[1]).splitlines()))
+              if first != source_files:
+                  raise SystemExit(f"unexpected v8 source delta: {sorted(first)}")
+              if second != {receipt}:
+                  raise SystemExit(f"unexpected v8 receipt delta: {sorted(second)}")
+          PY
+          echo "INPUT_HEAD=$INPUT_HEAD" >> "$GITHUB_ENV"
+          git checkout --detach "$INPUT_HEAD"
+          test "$(git rev-parse HEAD)" = "$INPUT_HEAD"
+          test -z "$(git status --porcelain)"
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Validate, commit, rebind, and fast-forward converged head
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "$RUNNER_TEMP/apply.sh" 2>&1 | tee "$RUNNER_TEMP/hepta-inference-inf0-converge-v9.log"
+
+      - name: Upload convergence execution log
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0-converge-v9-${{ env.INPUT_HEAD }}
+          path: |
+            ${{ runner.temp }}/hepta-inference-inf0-converge-v9.log
+            ${{ runner.temp }}/source-gate.txt
+            ${{ runner.temp }}/changed.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Preserve fail-closed posture
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "qualified=false"
+            echo "INF-1=NOT_STARTED"
+            echo "production/effect/model-NPU/remote/promotion authority=false"
+          } >> "$GITHUB_STEP_SUMMARY"
