@@ -1,0 +1,58 @@
+{
+  "schema": "hepta_intelligence_p0_2_hosted_blocker_v1",
+  "recorded_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "pull_request": 13,
+  "branch": "codex/hepta-intelligence-grounding-ledger-v2-20260828",
+  "head_before_receipt": "08fba4a4f2422d3cacd16884112655c73339e5b6",
+  "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
+  "qualified": false,
+  "workflow_runs": [
+    {
+      "id": 33133549933,
+      "name": "hepta-intelligence-grounding-ledger",
+      "head": "e21a63d64ef85d369d5498aa299d654d9dd899c6",
+      "jobs": [
+        {
+          "id": 98728378939,
+          "name": "P0.2 durable grounding source contract",
+          "steps": []
+        },
+        {
+          "id": 98728378822,
+          "name": "P0.2 durable grounding Rust qualification",
+          "steps": []
+        }
+      ],
+      "commands_executed": false
+    },
+    {
+      "id": 33133550077,
+      "name": "blocking-ci",
+      "head": "e21a63d64ef85d369d5498aa299d654d9dd899c6",
+      "commands_executed": false
+    },
+    {
+      "id": 33133549936,
+      "name": "v8-canary",
+      "head": "e21a63d64ef85d369d5498aa299d654d9dd899c6",
+      "commands_executed": false
+    }
+  ],
+  "authority": {
+    "wired": false,
+    "main_sqlx_migration_lineage_promoted": false,
+    "default_open_wired": false,
+    "production_projection_gate": false,
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "interpretation": [
+    "No checkout, source gate, Rust formatter, compiler, test, clippy, Bazel, migration, or runtime command executed in the cited jobs.",
+    "The GitHub conclusions are infrastructure evidence, not source failure and not PASS.",
+    "P0.2 remains implemented but unqualified; P0.3 may only proceed as a separate source-only stacked Draft."
+  ]
+}
