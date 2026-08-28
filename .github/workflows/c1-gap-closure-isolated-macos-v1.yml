@@ -1,0 +1,36 @@
+name: C1 gap closure isolated macOS v1
+
+on:
+  push:
+    branches:
+      - qualification/c1-gap-closure-isolated-macos-v1-20260829
+
+permissions:
+  contents: write
+
+concurrency:
+  group: c1-gap-closure-isolated-macos-v1
+  cancel-in-progress: true
+
+jobs:
+  close-exact-pr-head:
+    name: Close exact PR head gaps on macOS
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      EXPECTED_HEAD: 2d4ffd2559e4472bd8690d46286317a58a85fa22
+      HEAD_REF: codex/hepta-vnext-plan-browser-c0-c3-20260827
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: 2d4ffd2559e4472bd8690d46286317a58a85fa22
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Execute fail-closed exact-head closure
+        run: python3 scripts/c1_hosted_gap_closure_v1.py
