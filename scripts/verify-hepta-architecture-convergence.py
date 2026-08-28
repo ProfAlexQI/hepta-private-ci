@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed source verifier for Hepta Architecture Convergence P0."""
+"""Fail-closed source verifier for Hepta Architecture Convergence P0.2."""
 
 from __future__ import annotations
 
@@ -149,6 +149,12 @@ def verify_negative_authority(manifest: dict[str, Any]) -> None:
 
     kernel = manifest.get("authority_kernel")
     require(isinstance(kernel, dict), "authority_kernel must be an object")
+    require(kernel.get("contract_schema_version") == 2, "authority kernel contract must be v2")
+    require(
+        kernel.get("legacy_production_adapter")
+        == "codex-hepta-agentd::production_authority_adapter",
+        "legacy production authority adapter is not canonical",
+    )
     forbidden = set(kernel.get("forbidden_actions", []))
     require(
         forbidden
@@ -168,11 +174,15 @@ def verify_source_wiring() -> None:
     contracts_lib = read("codex-rs/hepta-contracts/src/lib.rs")
     authority = read("codex-rs/hepta-contracts/src/authority.rs")
     graph = read("codex-rs/hepta-contracts/src/product_graph.rs")
-    memory = read("codex-rs/hepta-memory/src/cognitive_runtime.rs")
+    memory_runtime = read("codex-rs/hepta-memory/src/cognitive_runtime.rs")
     agentd_lib = read("codex-rs/hepta-agentd/src/lib.rs")
     composition = read("codex-rs/hepta-agentd/src/composition.rs")
+    memory_service = read("codex-rs/hepta-agentd/src/memory_service.rs")
+    automation_service = read("codex-rs/hepta-agentd/src/automation_service.rs")
     runtime = read("codex-rs/hepta-agentd/src/runtime.rs")
     app_runtime = read("codex-rs/hepta-agentd/src/app_runtime.rs")
+    authority_adapter = read("codex-rs/hepta-agentd/src/production_authority_adapter.rs")
+    production_host = read("codex-rs/hepta-agentd/src/production_writer_host.rs")
 
     for declaration in ("mod authority;", "mod product_graph;"):
         require(declaration in contracts_lib, f"missing contract module declaration: {declaration}")
@@ -182,7 +192,14 @@ def verify_source_wiring() -> None:
         "pub fn qualification_cognitive_write",
     ):
         require(constructor in authority, f"missing closed-world authority constructor: {constructor}")
+    require("AUTHORITY_KERNEL_SCHEMA_VERSION: u32 = 2" in authority, "authority kernel is not v2")
     require("pub struct Authorized<C>" in authority, "typed Authorized<C> capability token is missing")
+    require("pub struct AuthorityLeaseBinding" in authority, "typed lease binding is missing")
+    require("pub trait CapabilityVerifier" in authority, "capability verifier seam is missing")
+    require(
+        "pub fn authorize_verified_capability" in authority,
+        "externally verified capability constructor is missing",
+    )
     require("pub fn dangerous_actions" in authority, "authority escape audit is missing")
 
     require("pub struct ProductGraph" in graph, "product graph contract is missing")
@@ -190,28 +207,71 @@ def verify_source_wiring() -> None:
     require("DuplicateDataWriter" in graph, "single-writer validation is missing")
     require("DependencyCycle" in graph, "cycle validation is missing")
 
-    require("pub async fn open_agent_owned" in memory, "Memory open facade is missing")
+    require("pub async fn open_agent_owned" in memory_runtime, "Memory open facade is missing")
     require(
-        "pub async fn with_discovered_federation" in memory,
+        "pub async fn with_discovered_federation" in memory_runtime,
         "Memory federation facade is missing",
     )
-    require("mod composition;" in agentd_lib, "Agentd composition module is not registered")
+    for declaration in (
+        "mod composition;",
+        "mod memory_service;",
+        "mod automation_service;",
+        "mod production_authority_adapter;",
+    ):
+        require(declaration in agentd_lib, f"Agentd module is not registered: {declaration}")
+
     require(
         "ProductGraph::agent_local(&authority)" in composition,
         "Agentd does not consume the real ProductGraph",
     )
     require(
-        "CognitiveRuntime::open_agent_owned" in composition,
-        "Agentd does not consume the Memory runtime facade",
+        "AgentMemoryService::open" in composition,
+        "Agentd composition does not construct the Memory service",
     )
+    require(
+        "AgentAutomationService::open" in composition,
+        "Agentd composition does not construct the Automation service",
+    )
+    require("CognitiveRuntime" not in composition, "composition still owns raw Memory runtime logic")
+    require("AutomationStore" not in composition, "composition still owns raw Automation store logic")
+
+    require(
+        "CognitiveRuntime::open_agent_owned" in memory_service,
+        "Memory service does not consume the Memory runtime facade",
+    )
+    require(
+        "authorize::<CognitiveWriteCapability>" in memory_service,
+        "Memory service does not retain typed cognitive-write capability",
+    )
+    require(
+        "authorize::<AutomationMutationCapability>" in automation_service,
+        "Automation service does not retain typed mutation capability",
+    )
+    require(
+        "run_automation_scheduler" in automation_service,
+        "Automation service does not own scheduler execution",
+    )
+
     require(
         "AgentRuntimeComposition::open(config)" in runtime,
         "Agentd supervision loop bypasses the composition root",
     )
-    require("CognitiveStore::open" not in runtime, "Agentd supervision loop still opens Memory directly")
     require(
-        "FederatedRecallSet::discover" not in runtime,
-        "Agentd supervision loop still discovers federation directly",
+        "AgentAppServerService::new" in runtime,
+        "Agentd supervision loop does not construct the App Server service",
+    )
+    require(
+        "automation_service.run" in runtime,
+        "Agentd supervision loop does not execute the Automation service",
+    )
+    require("CognitiveStore::open" not in runtime, "Agentd supervision loop still opens Memory directly")
+    require("AutomationStore::open" not in runtime, "Agentd supervision loop still opens Automation directly")
+    require("run_automation_scheduler" not in runtime, "Agentd supervision loop still owns scheduler internals")
+
+    require("pub(crate) struct AgentAppServerService" in app_runtime, "App Server service is missing")
+    require(
+        "authorize::<SessionServeCapability>" in app_runtime,
+        "App Server service does not retain typed session authority",
     )
     require(
         "COGNITIVE_WRITE_ENABLED" not in app_runtime,
@@ -221,6 +281,31 @@ def verify_source_wiring() -> None:
         "authority.allows(AuthorityAction::WriteCognitiveState)" in app_runtime,
         "App Server cognitive-write state is not derived from AuthorityGrant",
     )
+
+    require(
+        "authorize_verified_capability::<CognitiveWriteCapability" in authority_adapter,
+        "legacy production lease is not mapped to typed cognitive-write authority",
+    )
+    require(
+        "AuthorityAction::WriteCognitiveState" in authority_adapter,
+        "legacy production adapter does not constrain the action",
+    )
+    require(
+        "ExternalEffectCapability" not in authority_adapter,
+        "legacy production adapter must not mint external-effect authority",
+    )
+    require(
+        "Authorized<CognitiveWriteCapability>" in production_host,
+        "production writer host does not retain typed cognitive-write authority",
+    )
+    require(
+        "ExternalEffectCapability" not in production_host,
+        "production writer host must not gain external-effect authority",
+    )
+    adapter_index = production_host.find("ProductionCognitiveWriteAuthorization::verify")
+    store_index = production_host.find("CognitiveStore::open")
+    require(adapter_index >= 0 and store_index >= 0, "production writer open sequence is incomplete")
+    require(adapter_index < store_index, "typed authority must be verified before Cognitive store open")
 
 
 def main() -> int:
@@ -234,17 +319,19 @@ def main() -> int:
         verify_negative_authority(manifest)
         verify_source_wiring()
     except VerificationError as error:
-        print(f"FAIL_ARCHITECTURE_CONVERGENCE_P0: {error}", file=sys.stderr)
+        print(f"FAIL_ARCHITECTURE_CONVERGENCE_P0_2: {error}", file=sys.stderr)
         return 1
 
     print(
         json.dumps(
             {
-                "result": "PASS_ARCHITECTURE_CONVERGENCE_P0_SOURCE",
+                "result": "PASS_ARCHITECTURE_CONVERGENCE_P0_2_SOURCE",
                 "schema": manifest["schema"],
                 "status": manifest["status"],
                 "component_count": len(manifest["components"]),
                 "data_authority_count": len(manifest["data_authorities"]),
+                "typed_legacy_adapter": True,
+                "service_builders": True,
                 "runtime_authority": False,
                 "external_effect": False,
                 "promotion": False,
