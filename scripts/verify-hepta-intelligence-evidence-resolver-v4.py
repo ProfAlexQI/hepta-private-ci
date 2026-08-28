@@ -23,6 +23,8 @@ FILES = {
     / "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/tests.rs",
     "framing": ROOT / "codex-rs/ext/hepta-memory/src/framing.rs",
     "tools": ROOT / "codex-rs/ext/hepta-memory/src/cognitive/tools.rs",
+    "workflow": ROOT
+    / ".github/workflows/hepta-intelligence-evidence-resolver-v4.yml",
     "status": ROOT
     / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json",
     "plan": ROOT
@@ -91,6 +93,7 @@ def main() -> int:
     )
     framing = FILES["framing"].read_text(encoding="utf-8")
     tools = FILES["tools"].read_text(encoding="utf-8")
+    workflow = FILES["workflow"].read_text(encoding="utf-8")
     plan = FILES["plan"].read_text(encoding="utf-8")
     tranche = FILES["tranche"].read_text(encoding="utf-8")
     try:
@@ -106,6 +109,31 @@ def main() -> int:
             '#[path = "cognitive/evidence_resolver_v4.rs"]',
             "pub(crate) mod evidence_resolver_v4;",
         ],
+    )
+    checks["resolver.explicit_child_paths"] = contains_all(
+        resolver_root,
+        [
+            '#[path = "evidence_resolver_v4/receipt.rs"]',
+            '#[path = "evidence_resolver_v4/resolver.rs"]',
+            '#[path = "evidence_resolver_v4/schema.rs"]',
+            '#[path = "evidence_resolver_v4/support.rs"]',
+            '#[path = "evidence_resolver_v4/tests.rs"]',
+        ],
+    )
+    checks["workflow.repository_toolchain_and_scoped_fmt"] = (
+        contains_all(
+            workflow,
+            [
+                "toolchain: 1.95.0",
+                "Check P0.3.3 candidate formatting",
+                "rustfmt --edition 2024 --check",
+                "ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs",
+                "ext/hepta-memory/src/cognitive/evidence_resolver_v4/tests.rs",
+                "github.event.pull_request.head.sha || github.sha",
+            ],
+        )
+        and "cargo fmt --all -- --check" not in workflow
+        and "toolchain: 1.88.0" not in workflow
     )
     checks["resolver.contract"] = contains_all(
         resolver,
@@ -207,12 +235,11 @@ def main() -> int:
         ],
     )
 
-    schema_block = resolver_schema
     checks["schema.no_model_offsets_or_digests"] = (
-        bool(schema_block)
-        and '"start_byte"' not in schema_block
-        and '"end_byte"' not in schema_block
-        and '"sha256"' not in schema_block
+        bool(resolver_schema)
+        and '"start_byte"' not in resolver_schema
+        and '"end_byte"' not in resolver_schema
+        and '"sha256"' not in resolver_schema
     )
     checks["runtime.not_registered"] = (
         "evidence_resolver_v4" not in tools
