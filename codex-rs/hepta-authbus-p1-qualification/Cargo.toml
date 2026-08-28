@@ -1,0 +1,40 @@
+[package]
+name = "codex-hepta-authbus-p1-qualification"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.95"
+license = "Apache-2.0"
+publish = false
+
+# P1.1 remains an isolated, default-off qualification workspace. It verifies
+# signatures and replay semantics only; it is not a listener or product writer.
+[workspace]
+resolver = "3"
+
+[features]
+default = []
+p1-qualification = [
+    "dep:codex-hepta-contracts",
+    "dep:ed25519-dalek",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:thiserror",
+]
+
+[dependencies]
+codex-hepta-contracts = { path = "../hepta-contracts", optional = true }
+ed25519-dalek = { version = "=2.2.0", default-features = false, features = ["std"], optional = true }
+serde = { version = "1.0.228", features = ["derive"], optional = true }
+serde_json = { version = "1.0.149", optional = true }
+thiserror = { version = "2.0.17", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"

@@ -1,0 +1,183 @@
+name: AuthBus P1.1 signed identity qualification
+
+on:
+  push:
+    branches:
+      - integration/vnext-main-full-ci-authbus-p1-1-20260828
+    paths:
+      - codex-rs/hepta-authbus-p1-qualification/**
+      - scripts/verify-authbus-p1-1.py
+      - docs/hepta-vnext/authbus/AUTHBUS_P1_1_DEVELOPMENT_PLAN_2026-08-28.md
+      - .github/workflows/authbus-p1-1-qualification.yml
+  pull_request:
+    branches:
+      - integration/vnext-main-full-ci-authbus-p0-3-20260828
+    paths:
+      - codex-rs/hepta-authbus-p1-qualification/**
+      - scripts/verify-authbus-p1-1.py
+      - docs/hepta-vnext/authbus/AUTHBUS_P1_1_DEVELOPMENT_PLAN_2026-08-28.md
+      - .github/workflows/authbus-p1-1-qualification.yml
+
+permissions:
+  contents: read
+
+env:
+  P03_MANIFEST: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
+  P03_PACKAGE: codex-hepta-authbus-p0-3-qualification
+  P11_MANIFEST: codex-rs/hepta-authbus-p1-qualification/Cargo.toml
+  P11_PACKAGE: codex-hepta-authbus-p1-qualification
+
+jobs:
+  source:
+    name: AuthBus P0.3/P1.1 source and negative-authority contracts
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Bind exact head and tree
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse HEAD^{tree})"
+          } | tee authbus-p1-1-exact-head.txt
+
+      - name: Verify inherited P0.3 source
+        shell: bash
+        run: python3 scripts/verify-authbus-p0-3.py | tee authbus-p1-1-p0-3-source.json
+
+      - name: Verify P1.1 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-authbus-p1-1.py | tee authbus-p1-1-source.json
+          grep -q 'PASS_AUTHBUS_P1_1_SOURCE_ONLY' authbus-p1-1-source.json
+
+      - name: Upload source receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: authbus-p1-1-source-${{ github.run_id }}
+          path: |
+            authbus-p1-1-exact-head.txt
+            authbus-p1-1-p0-3-source.json
+            authbus-p1-1-source.json
+          retention-days: 14
+
+  inherited-p0-3:
+    name: Inherited P0.3 reservation and reconcile matrix
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Verify exact compiler and committed lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(rustc -V | awk '{print $2}')" = "1.95.0"
+          test -s codex-rs/hepta-authbus-p0-3-qualification/Cargo.lock
+          cargo metadata --manifest-path "${P03_MANIFEST}" --locked --format-version 1 --no-deps >/dev/null
+
+      - name: Check inherited package formatting
+        shell: bash
+        run: cargo fmt --manifest-path "${P03_MANIFEST}" --package "${P03_PACKAGE}" -- --check
+
+      - name: Run inherited default-off posture
+        shell: bash
+        run: cargo test --manifest-path "${P03_MANIFEST}" --locked --no-default-features --lib -- --nocapture
+
+      - name: Run inherited reservation and reconcile matrix
+        shell: bash
+        run: cargo test --manifest-path "${P03_MANIFEST}" --locked --features p0-3-qualification --tests -- --nocapture
+
+      - name: Check inherited all targets
+        shell: bash
+        run: cargo check --manifest-path "${P03_MANIFEST}" --locked --features p0-3-qualification --all-targets
+
+      - name: Run inherited strict Clippy
+        shell: bash
+        run: cargo clippy --manifest-path "${P03_MANIFEST}" --locked --features p0-3-qualification --all-targets -- -D warnings
+
+  p1-1:
+    name: AuthBus P1.1 Rust qualification
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Verify exact compiler, head, and committed lock
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+          test "$(rustc -V | awk '{print $2}')" = "1.95.0"
+          test -s codex-rs/hepta-authbus-p1-qualification/Cargo.lock
+          cargo metadata --manifest-path "${P11_MANIFEST}" --locked --format-version 1 --no-deps >/dev/null
+
+      - name: Check package-scoped formatting
+        shell: bash
+        run: cargo fmt --manifest-path "${P11_MANIFEST}" --package "${P11_PACKAGE}" -- --check
+
+      - name: Check default-off authority posture
+        shell: bash
+        run: cargo test --manifest-path "${P11_MANIFEST}" --locked --no-default-features --lib -- --nocapture
+
+      - name: Run signed identity and evidence matrix
+        shell: bash
+        run: cargo test --manifest-path "${P11_MANIFEST}" --locked --features p1-qualification --tests -- --nocapture
+
+      - name: Check all targets
+        shell: bash
+        run: cargo check --manifest-path "${P11_MANIFEST}" --locked --features p1-qualification --all-targets
+
+      - name: Run strict Clippy
+        shell: bash
+        run: cargo clippy --manifest-path "${P11_MANIFEST}" --locked --features p1-qualification --all-targets -- -D warnings
+
+      - name: Record executable receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > authbus-p1-1-rust-receipt.json <<EOF
+          {"schema":"hepta.authbus.p1.1.rust-receipt.v1","commit":"$(git rev-parse HEAD)","tree":"$(git rev-parse HEAD^{tree})","rustc":"$(rustc -V)","cargo":"$(cargo -V)","source":true,"format":true,"default_off":true,"tests":true,"check":true,"clippy":true,"qualification_only":true,"authority":false,"effect_authority":false,"production_caller":false,"production_writer":false,"operator_acceptance":false,"promotion":false,"g5_allowed":false,"execute_allowed":false}
+          EOF
+
+      - name: Upload executable receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: authbus-p1-1-rust-${{ github.run_id }}
+          path: authbus-p1-1-rust-receipt.json
+          retention-days: 14
