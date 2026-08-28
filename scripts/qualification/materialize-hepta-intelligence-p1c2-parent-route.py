@@ -173,7 +173,8 @@ P1.1c.2 adds only the empty `[workspace]` isolation marker to the frozen P1.1c m
 A preserved descendant emits `hepta.intelligence.p1_1c.stack_route.v1`, skips duplicate parent execution, and requires the P1.1c.2 workflow plus source verifier to be present. Any parent semantic drift fails before the child gate. This routing does not qualify P1.1c, P1.1c.1 or P1.1c.2 and grants no runtime or production authority.
 
 """
-    replace_once(plan_path, "## Exit semantics\n", section + "## Exit semantics\n")
+    heading = "## 10. Exit and follow-on\n"
+    replace_once(plan_path, heading, section + heading)
 
     status_path = Path("plans/hepta-intelligence/P1-1C2_EXECUTION_STATUS.json")
     status = json.loads(status_path.read_text(encoding="utf-8"))
