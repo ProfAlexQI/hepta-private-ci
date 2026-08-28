@@ -1,0 +1,105 @@
+name: Hepta inference INF-0C stacked evidence exact-head ARM qualification
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0c-evidence-exact-arm-20260828
+    paths:
+      - ".github/workflows/hepta-inference-inf0c-evidence-exact-arm.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-evidence:
+    name: Exact semantic, helper, disconnect, tool and SSE source qualification
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    env:
+      SELF: .github/workflows/hepta-inference-inf0c-evidence-exact-arm.yml
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify isolated branch and detach exact protocol receipt head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          candidate="$(git rev-parse HEAD^)"
+          echo "CANDIDATE=$candidate" >> "$GITHUB_ENV"
+          git checkout --detach "$candidate"
+          test "$(git rev-parse HEAD)" = "$candidate"
+          test -z "$(git status --porcelain)"
+
+      - name: Verify all Python sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-inference-inf0-source-gate.py \
+            scripts/hepta-inference-inf0c-real-e2e.py \
+            scripts/hepta-inference-inf0c-evidence-v2.py \
+            scripts/hepta-inference-inf0c-evidence-v2-loopback-selftest.py \
+            scripts/hepta-inference-inf0c-evidence-v2-source-gate.py \
+            scripts/hepta-inference-inf0c-protocol-evidence.py \
+            scripts/hepta-inference-inf0c-protocol-evidence-selftest.py \
+            scripts/hepta-inference-inf0c-protocol-evidence-source-gate.py
+
+      - name: Verify semantic, helper and disconnect evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-evidence-v2.py --self-test
+          python3 scripts/hepta-inference-inf0c-evidence-v2-loopback-selftest.py
+          python3 scripts/hepta-inference-inf0c-evidence-v2-source-gate.py
+
+      - name: Verify exact tool call and strict SSE fault matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-protocol-evidence.py --self-test
+          python3 scripts/hepta-inference-inf0c-protocol-evidence-selftest.py
+          python3 scripts/hepta-inference-inf0c-protocol-evidence-source-gate.py
+
+      - name: Verify parent append-only source binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0-source-gate.py
+
+      - name: Emit stacked exact-head receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          receipt="$RUNNER_TEMP/hepta-inference-inf0c-stacked-evidence-arm.txt"
+          {
+            echo "candidate=$CANDIDATE"
+            echo "candidate_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "python_syntax=PASS"
+            echo "semantic_helper_disconnect_selftests=PASS"
+            echo "evidence_v2_source_gate=PASS"
+            echo "tool_call_and_strict_sse_selftests=PASS"
+            echo "protocol_source_gate=PASS"
+            echo "parent_source_gate=PASS"
+            echo "real_model_execution=false"
+            echo "backend_cancellation_acknowledged=false"
+            echo "qualified=false"
+            echo "INF-1=NOT_STARTED"
+            echo "production_effect_model_npu_remote_promotion_authority=false"
+          } | tee "$receipt"
+          cat "$receipt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload stacked exact-head receipt
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0c-stacked-evidence-arm-${{ env.CANDIDATE }}
+          path: ${{ runner.temp }}/hepta-inference-inf0c-stacked-evidence-arm.txt
+          if-no-files-found: error
+          retention-days: 14
