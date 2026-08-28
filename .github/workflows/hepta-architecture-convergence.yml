@@ -56,6 +56,7 @@ jobs:
             echo "runner_os=${RUNNER_OS}"
             echo "qualification_only=true"
             echo "typed_legacy_adapter=true"
+            echo "typed_external_effect_gate=true"
             echo "service_builders=true"
             echo "physical_memory_schema_extraction=false"
             echo "runtime_authority=false"
@@ -103,6 +104,14 @@ jobs:
           cargo test --locked -p codex-hepta-agentd production_authority_adapter \
             -- --nocapture 2>&1 | tee "$EVIDENCE_DIR/production-authority-adapter-tests.log"
           echo "production_authority_adapter_tests=passed" >> "$EVIDENCE_DIR/receipt.txt"
+
+      - name: Typed external-effect dispatch gate tests
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-agentd production_writer_host::tests \
+            -- --nocapture 2>&1 | tee "$EVIDENCE_DIR/external-effect-gate-tests.log"
+          echo "external_effect_gate_tests=passed" >> "$EVIDENCE_DIR/receipt.txt"
 
       - name: Default real product service tests
         working-directory: codex-rs
