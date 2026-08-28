@@ -22,7 +22,8 @@ FILES = {
     "shadow": ROOT
     / "codex-rs/hepta-memory/src/fact_grounding/shadow_projection_gate.rs",
     "framing": ROOT / "codex-rs/hepta-memory/src/framing.rs",
-    "qualification_workflow": ROOT / ".github/workflows/hepta-intelligence-shared-projection-planner-v5.yml",
+    "qualification_workflow": ROOT
+    / ".github/workflows/hepta-intelligence-shared-projection-planner-v5.yml",
     "restack": ROOT / ".github/workflows/restack-p0-3-3-on-p0-3-2.yml",
 }
 
@@ -152,7 +153,7 @@ def main() -> int:
         (
             "pub(crate) async fn verify_durable_fact_grounding_ledger_tx",
             "schema::verify_tx(transaction).await?;",
-            "grounding::verify_receipts(&mut **transaction",
+            "grounding::verify_receipts(transaction",
             "let mut transaction = self.pool.begin().await.map_err(unavailable)?;",
         ),
     )
@@ -160,7 +161,7 @@ def main() -> int:
         schema,
         (
             "pub(super) async fn verify_tx(",
-            "verify_schema_oracle_connection(&mut **transaction).await?;",
+            "verify_schema_oracle_connection(transaction).await?;",
             "verify_migration_ledger_connection(",
             "connection: &mut SqliteConnection",
         ),
@@ -214,7 +215,6 @@ def main() -> int:
             "assert!(!installed);",
         ),
     )
-
     checks["governance.exact_retrigger"] = has_all(
         qualification_workflow,
         (
