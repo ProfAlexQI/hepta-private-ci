@@ -1,0 +1,17 @@
+[package]
+name = "codex-hepta-memory-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "codex_hepta_memory_runtime"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-hepta-contracts = { workspace = true }
+codex-hepta-memory = { workspace = true }
+codex-hepta-paths = { workspace = true }
