@@ -11,7 +11,9 @@ on:
       - "codex-rs/hepta-memory/src/fact_grounding/durable/**"
       - "codex-rs/hepta-memory/src/framing.rs"
       - "codex-rs/hepta-memory/BUILD.bazel"
+      - "scripts/hepta-intelligence-status-compat.py"
       - "scripts/verify-hepta-intelligence-grounding-ledger.py"
+      - "plans/hepta-intelligence/status-snapshots/HEPTA_INTELLIGENCE_P0_2_STATUS_SNAPSHOT_V1.json"
       - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json"
       - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_2_IMPLEMENTATION_2026-08-28.md"
       - ".github/workflows/hepta-intelligence-grounding-ledger.yml"
@@ -19,6 +21,9 @@ on:
 
 permissions:
   contents: read
+
+env:
+  EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 concurrency:
   group: hepta-intelligence-grounding-ledger-${{ github.ref }}
@@ -30,12 +35,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout exact candidate
+      - name: Checkout explicit candidate identity
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Validate Python and machine status
+      - name: Prove checked-out commit
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Validate Python and immutable tranche status
         run: |
-          python3 -m py_compile scripts/verify-hepta-intelligence-grounding-ledger.py
+          python3 -m py_compile \
+            scripts/hepta-intelligence-status-compat.py \
+            scripts/verify-hepta-intelligence-grounding-ledger.py
+          python3 scripts/hepta-intelligence-status-compat.py P0.2
           python3 -m json.tool \
             plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json \
             >/dev/null
@@ -77,7 +92,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-intelligence-grounding-ledger-source-${{ github.sha }}
+          name: hepta-intelligence-grounding-ledger-source-${{ env.EXPECTED_SHA }}
           path: artifacts/hepta-intelligence-grounding-ledger/source-gate.json
           if-no-files-found: error
           retention-days: 14
@@ -87,8 +102,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - name: Checkout exact candidate
+      - name: Checkout explicit candidate identity
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove checked-out commit
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Install repository Rust toolchain
         uses: dtolnay/rust-toolchain@stable
