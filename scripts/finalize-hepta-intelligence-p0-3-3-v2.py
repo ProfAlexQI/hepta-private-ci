@@ -23,6 +23,11 @@ RUST_FILES = [
     "ext/hepta-memory/src/cognitive/evidence_resolver_v4/tests.rs",
 ]
 
+GOVERNED_MARKDOWN = [
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_DEVELOPMENT_PLAN_V3_2_2026-08-28.md",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_3_3_HOST_EVIDENCE_RESOLVER_2026-08-28.md",
+]
+
 ALLOWED_DELTA = {
     ".github/workflows/hepta-intelligence-evidence-resolver-v4.yml",
     "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs",
@@ -66,6 +71,14 @@ def replace_once(path: Path, old: str, new: str) -> None:
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
+def normalize_markdown(path: Path) -> None:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    path.write_text(
+        "\n".join(line.rstrip() for line in lines) + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> None:
     staged_head = run("git", "rev-parse", "HEAD", capture=True)
     run("git", "merge-base", "--is-ancestor", P032_HEAD, staged_head)
@@ -88,6 +101,9 @@ def main() -> None:
         assert!(!MODEL_SUPPLIED_DIGESTS);
     }""",
     )
+
+    for relative in GOVERNED_MARKDOWN:
+        normalize_markdown(ROOT / relative)
 
     for relative in (
         ".github/workflows/p0-3-3-format-clippy-fix-v1.yml",
