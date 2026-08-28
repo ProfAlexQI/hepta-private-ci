@@ -299,8 +299,20 @@ def verify_source_wiring() -> None:
         "production writer host does not retain typed cognitive-write authority",
     )
     require(
-        "ExternalEffectCapability" not in production_host,
-        "production writer host must not gain external-effect authority",
+        "Authorized<ExternalEffectCapability>" in production_host,
+        "production writer host target is not guarded by typed external-effect authority",
+    )
+    require(
+        "validate_external_effect_capability" in production_host,
+        "production writer host does not revalidate effect authority at dispatch",
+    )
+    require(
+        "external_effect.external_lease_binding()" in production_host,
+        "production writer host accepts non-external effect authority",
+    )
+    require(
+        "external_effect: Authorized<ExternalEffectCapability>" in production_host,
+        "target attachment does not require an explicit effect capability",
     )
     adapter_index = production_host.find("ProductionCognitiveWriteAuthorization::verify")
     store_index = production_host.find("CognitiveStore::open")
@@ -331,6 +343,7 @@ def main() -> int:
                 "component_count": len(manifest["components"]),
                 "data_authority_count": len(manifest["data_authorities"]),
                 "typed_legacy_adapter": True,
+                "typed_external_effect_gate": True,
                 "service_builders": True,
                 "runtime_authority": False,
                 "external_effect": False,
