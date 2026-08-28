@@ -3,7 +3,8 @@
   "generated_at": "2026-08-28",
   "repository": "ProfAlexQI/hepta-private-ci",
   "default_branch": "integration/vnext-main-20260811",
-  "development_branch": "codex/hepta-intelligence-mutation-state-machine-v4-20260828",
+  "document_snapshot_head": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+  "development_branch": "codex/hepta-intelligence-mutation-journal-v4b-r2-20260828",
   "authority": {
     "production_authority": false,
     "external_effects": false,
@@ -12,86 +13,63 @@
     "callers_ratchet": false
   },
   "dependency": {
-    "id": "P0.3",
-    "branch": "codex/hepta-intelligence-grounding-gate-v3-20260828",
-    "head": "256a47d882413ac1f80892a80177419bb5d12c70",
-    "pull_request": 14,
+    "id": "P0.4a",
+    "branch": "codex/hepta-intelligence-mutation-state-machine-v4-20260828",
+    "head": "39c30cc1f07c90c4d5176da05e9bd97e1792bd2a",
+    "pull_request": 16,
     "status": "source_only_implemented_hosted_runner_blocked",
     "qualified": false
   },
   "current_tranche": {
-    "id": "P0.4a",
-    "name": "typed_intelligence_mutation_state_machine",
-    "status": "source_only_implemented_hosted_runner_blocked",
+    "id": "P0.4b",
+    "name": "sqlite_transition_journal_and_failpoints",
+    "status": "source_and_sqlite_contract_implemented_hosted_pending",
     "qualified": false,
-    "source_candidate": "465ab0e7e31ee69e1c6148decf8737bc3d323ef8",
-    "hosted_blocker_receipt_commit": "1e4bb8fc428763682c729192121de69a17e97ff1",
     "files": [
-      "codex-rs/hepta-memory/src/intelligence_mutation_state.rs",
+      "codex-rs/hepta-memory/mutation-migrations/0012_intelligence_mutation_journal.sql",
+      "codex-rs/hepta-memory/src/intelligence_mutation_journal_v3.rs",
+      "codex-rs/hepta-memory/src/intelligence_mutation_journal_v3/digest.rs",
+      "codex-rs/hepta-memory/src/intelligence_mutation_journal_v3/schema.rs",
+      "codex-rs/hepta-memory/src/intelligence_mutation_journal_v3/replay.rs",
+      "codex-rs/hepta-memory/src/intelligence_mutation_journal_v3/tests.rs",
       "codex-rs/hepta-memory/src/framing.rs",
-      "codex-rs/rust-toolchain.toml",
-      "scripts/verify-hepta-intelligence-mutation-state.py",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4_SOURCE_TRANCHE_2026-08-28.md",
-      "plans/hepta-intelligence/models/P0_4_INTELLIGENCE_MUTATION_STATE_MACHINE.tla",
+      "codex-rs/hepta-memory/BUILD.bazel",
+      "scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py",
+      "scripts/verify-hepta-intelligence-mutation-journal.py",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4B_SQLITE_JOURNAL_2026-08-28.md",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4_HOSTED_BLOCKER_2026-08-28.json",
-      ".github/workflows/hepta-intelligence-grounding-ledger.yml",
-      ".github/workflows/hepta-intelligence-grounding-gate.yml",
-      ".github/workflows/hepta-intelligence-mutation-state-machine.yml"
+      ".github/workflows/hepta-intelligence-mutation-journal.yml"
     ],
     "claims": {
-      "explicit_transition_table": true,
-      "operation_binding": true,
-      "lease_epoch_binding": true,
-      "expected_revision_binding": true,
-      "projection_generation_binding": true,
-      "causal_parent_binding": true,
-      "exact_duplicate_replay": true,
-      "changed_duplicate_rejected": true,
-      "reorder_rejected": true,
-      "terminal_requires_outbox_settlement": true,
-      "double_write_rejected": true,
-      "double_projection_publish_rejected": true,
-      "stale_generation_rejected": true,
-      "indeterminate_resolution": true,
-      "tla_model": true,
+      "component_migration_0012": true,
+      "main_sqlx_migration_lineage_promoted": false,
+      "append_only_operation_binding": true,
+      "append_only_transition_receipts": true,
+      "exact_replay_from_genesis": true,
+      "action_payload_reconstruction": true,
+      "request_and_transition_digest_recomputation": true,
+      "schema_inventory_object_count": 14,
+      "scratch_database_schema_oracle": true,
+      "before_insert_failpoint": true,
+      "after_insert_before_commit_failpoint": true,
+      "after_commit_before_return_failpoint": true,
+      "exact_retry_adopts_committed_receipt": true,
+      "changed_retry_rejected": true,
       "runtime_wired": false,
-      "sqlite_persistence": false,
-      "sqlite_failpoint_execution": false,
+      "default_open_wired": false,
       "production_authority": false,
-      "external_effects": false,
-      "qualification_toolchains_aligned_to_workspace": true,
-      "qualification_toolchain_runtime_executed": false
+      "external_effects": false
     },
     "qualification": {
-      "source_gate": "not_run_runner_blocked",
-      "format": "not_run_runner_blocked",
-      "focused_tests": "not_run_runner_blocked",
-      "crate_tests": "not_run_runner_blocked",
-      "clippy": "not_run_runner_blocked",
-      "tla_model_check": "not_run_runner_blocked",
-      "hosted_ci": "blocked_runner_not_assigned",
-      "workflow_run": {
-        "id": 33137037704,
-        "head": "465ab0e7e31ee69e1c6148decf8737bc3d323ef8",
-        "jobs": [
-          {
-            "id": 98739196147,
-            "name": "P0.4 mutation state source contract",
-            "steps": [],
-            "runner_id": 0
-          },
-          {
-            "id": 98739196307,
-            "name": "P0.4 mutation state Rust qualification",
-            "steps": [],
-            "runner_id": 0
-          }
-        ],
-        "commands_executed": false
-      },
+      "source_gate": "pending_exact_head_execution",
+      "sqlite_selftest": "pending_exact_head_execution",
+      "format": "not_run",
+      "focused_tests": "not_run",
+      "crate_tests": "not_run",
+      "clippy": "not_run",
+      "hosted_ci": "pending",
       "qualified": false,
-      "toolchain_pin": "1.95.0_source_bound_not_run"
+      "toolchain_pin": "1.95.0"
     }
   },
   "capabilities": [
@@ -139,24 +117,41 @@
       "efficacy_proven": false,
       "operator_accepted": false,
       "promoted": false
+    },
+    {
+      "id": "intelligence_mutation_sqlite_journal",
+      "implemented": true,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "hybrid_retrieval_v2",
+      "implemented": false,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false
     }
   ],
   "next_tranche": {
-    "id": "P0.4b",
-    "name": "sqlite_transition_journal_and_failpoints",
-    "activation": "source_development_allowed_on_separate_stacked_draft",
+    "id": "P0.4c",
+    "name": "shadow_host_orchestration_adapter",
+    "activation": "blocked_until_p0_4b_executable_qualification",
     "requirements": [
-      "append-only operation and transition journal",
-      "exact replay from genesis on reopen",
-      "before-commit and after-commit crash-window tests",
-      "schema and migration oracle",
-      "runtime and production authority remain false"
+      "P0.1-P0.4b exact-head executable qualification",
+      "readable source, SQLite, Rust and crash-window artifacts",
+      "candidate freeze and operator review",
+      "shadow-only host adapter with production authority false"
     ]
   },
   "next_actions": [
-    "Preserve Draft PR #16 and its hosted blocker receipt.",
-    "Develop P0.4b on a separate stacked Draft from the latest P0.4a head.",
-    "Keep P0.4a and P0.4b dormant until executable qualification is available.",
-    "Do not activate production callers or P1.1 from source-only evidence."
+    "Run the P0.4b source and SQLite gates on one exact remote head.",
+    "Run Rust format, focused tests, full crate tests and strict clippy with repository toolchain 1.95.0.",
+    "Keep migration 0012 opt-in and default CognitiveStore::open unchanged.",
+    "Do not activate P0.4c, P1.1, production callers or external effects from source-only evidence."
   ]
 }
