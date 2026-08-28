@@ -43,9 +43,14 @@ IMPLEMENTED = (
     "lmstudio_cli_sha256_provenance", "lmstudio_bounded_stderr",
     "ollama_readiness_fail_closed", "ollama_non_2xx_typed_failure",
     "ollama_pull_stream_fail_closed", "ollama_pull_frame_bound",
+    "ollama_pull_idle_timeout",
     "ollama_implicit_install_disabled", "unknown_oss_provider_fail_closed",
     "responses_proxy_digest_only_dump", "responses_proxy_owner_only_dump",
-    "responses_proxy_dump_retention_and_count_bound", "real_software_e2e_harness",
+    "responses_proxy_dump_retention_and_count_bound",
+    "responses_proxy_atomic_file_reservation", "responses_proxy_partial_write_cleanup",
+    "real_software_e2e_harness", "real_e2e_proxy_and_redirect_disabled",
+    "local_provider_loopback_only", "local_provider_direct_no_proxy_no_redirect",
+    "lmstudio_sanitized_subprocess_environment", "control_response_body_bound",
 )
 
 
@@ -68,7 +73,7 @@ def object_json(path: Path) -> dict[str, Any]:
         value = json.loads(text(path))
     except json.JSONDecodeError as error:
         raise GateError(f"invalid JSON in {path.relative_to(ROOT)}: {error}") from error
-    require(isinstance(value, dict), f"{path.relative_to(ROOT)} must be an object")
+    require(isinstance(value, dict), f"{path.relative_to(ROOT)} must contain a JSOT object")
     return value
 
 
@@ -89,6 +94,13 @@ def git(*args: str) -> str:
 def tokens(source: str, required: tuple[str, ...], label: str) -> None:
     for token in required:
         require(token in source, f"{label} missing token: {token}")
+
+
+
+def rust_bundle(directory: Path, stem: str) -> str:
+    paths = sorted(directory.glob(f"{stem}*.rs"))
+    require(paths, f"no Rust sources found for {directory.relative_to(ROOT)}/{stem}*.rs")
+    return "\n".join(text(path) for path in paths)
 
 
 def authority(value: dict[str, Any], label: str) -> None:
@@ -144,11 +156,22 @@ def main() -> int:
 
     ollama_cargo = table_toml(ROOT / "codex-rs/ollama/Cargo.toml")
     ollama_lib = text(ROOT / "codex-rs/ollama/src/lib.rs")
-    ollama_client = text(ROOT / "codex-rs/ollama/src/client.rs")
+    ollama_client = rust_bundle(ROOT / "codex-rs/ollama/src", "client")
     ollama_buffer = text(ROOT / "codex-rs/ollama/src/line_buffer.rs")
+    ollama_tokio = ollama_cargo.get("dependencies", {}).get("tokio", {})
+    require("time" in set(ollama_tokio.get("features", [])), "Ollama tokio time feature missing")
     require("wiremock" not in ollama_cargo.get("dependencies", {}), "wiremock runtime dependency")
     require("wiremock" in ollama_cargo.get("dev-dependencies", {}), "wiremock test dependency missing")
-    tokens(ollama_client, ("OLLAMA_HTTP_STATUS", "OLLAMA_PULL_TRANSPORT_ERROR", "OLLAMA_PULL_INVALID_UTF8", "OLLAMA_PULL_INVALID_JSON", "OLLAMA_PULL_SERVER_ERROR", "OLLAMA_PULL_FRAME_TOO_LARGE", "MAX_PULL_FRAME_BYTES"), "Ollama")
+    tokens(ollama_client, (
+        "OLLAMA_HTTP_STATUS", "OLLAMA_PULL_TRANSPORT_ERROR",
+        "OLLAMA_PULL_INVALID_UTF8", "OLLAMA_PULL_INVALID_JSON",
+        "OLLAMA_PULL_SERVER_ERROR", "OLLAMA_PULL_FRAME_TOO_LARGE",
+        "OLLAMA_PULL_UNEXPECTED_EOF", "OLLAMA_PULL_IDLE_TIMEOUT",
+        "MAX_PULL_FRAME_BYTES", "MAX_CONTROL_RESPONSE_BYTES",
+        "OLLAMA_CONTROL_RESPONSE_TOO_LARGE",
+        "OLLAMA_BASE_URL_NOT_LOOPBACK_HTTP", "validate_loopback_http_base_url",
+        "build_direct", "without_redirects", "without_request_logging",
+    ), "Ollama")
     require("return Ok(Vec::new())" not in ollama_client, "Ollama folds failure into empty list")
     require("pull_with_reporter(model" not in ollama_lib and "automatic model installation is disabled" in ollama_lib, "Ollama implicit install fence missing")
     require("take_remaining" in ollama_buffer, "Ollama trailing frame support missing")
@@ -156,11 +179,20 @@ def main() -> int:
 
     lm_cargo = table_toml(ROOT / "codex-rs/lmstudio/Cargo.toml")
     lm_lib = text(ROOT / "codex-rs/lmstudio/src/lib.rs")
-    lm_client = text(ROOT / "codex-rs/lmstudio/src/client.rs")
+    lm_client = rust_bundle(ROOT / "codex-rs/lmstudio/src", "client")
     lm_sha = text(ROOT / "codex-rs/lmstudio/src/sha256.rs")
     tokio = lm_cargo.get("dependencies", {}).get("tokio", {})
     require({"io-util", "macros", "process", "rt", "time"}.issubset(set(tokio.get("features", []))), "LM Studio tokio features incomplete")
-    tokens(lm_client, ("CODEX_LMS_CLI_SHA256", "LMSTUDIO_CLI_DIGEST_REQUIRED", "LMSTUDIO_CLI_DIGEST_MISMATCH", "tokio::process::Command", "tokio::time::timeout", ".kill_on_drop(true)", "read_bounded_stderr", "MAX_STDERR_BYTES"), "LM Studio")
+    tokens(lm_client, (
+        "CODEX_LMS_CLI_SHA256", "LMSTUDIO_CLI_DIGEST_REQUIRED",
+        "LMSTUDIO_CLI_DIGEST_MISMATCH", "tokio::process::Command",
+        "tokio::time::timeout", ".kill_on_drop(true)",
+        "read_bounded_stderr", "MAX_STDERR_BYTES",
+        "LMSTUDIO_BASE_URL_NOT_LOOPBACK_HTTP", "validate_loopback_http_base_url",
+        "build_direct", "without_redirects", "without_request_logging",
+        ".env_clear()", "apply_sanitized_environment",
+        "MAX_CONTROL_RESPONSE_BYTES", "LMSTUDIO_CONTROL_RESPONSE_TOO_LARGE",
+    ), "LM Studio")
     require("std::process::Command" not in lm_client, "LM Studio still uses blocking Command")
     require("download_model(model)" not in lm_lib and "automatic model installation is disabled" in lm_lib, "LM Studio implicit install fence missing")
     tokens(lm_sha, ("known_answer_abc", "digest_reader"), "LM Studio SHA-256")
@@ -168,13 +200,24 @@ def main() -> int:
     proxy_lib = text(ROOT / "codex-rs/responses-api-proxy/src/lib.rs")
     proxy_dump = text(ROOT / "codex-rs/responses-api-proxy/src/dump.rs")
     proxy_sha = text(ROOT / "codex-rs/responses-api-proxy/src/sha256.rs")
-    tokens(proxy_dump, ("sha256_digest_v1", "byte_length", "complete", "create_new(true)", "0o600", "0o700", "DUMP_RETENTION", "MAX_DUMP_FILES", "ResponseBodyDump"), "proxy dump")
+    tokens(proxy_dump, (
+        "sha256_digest_v1", "byte_length", "complete", "create_new(true)",
+        "0o600", "0o700", "DUMP_RETENTION", "MAX_DUMP_FILES",
+        "ResponseBodyDump", "reserve_capacity", "release_capacity",
+        "symlink_metadata", "fs::remove_file(path)",
+    ), "proxy dump")
     for banned in ("body: Vec<u8>", "dump_body(", "String::from_utf8_lossy(body)"):
         require(banned not in proxy_dump, f"proxy persists raw body via {banned}")
     require("Raw request and response bodies are never persisted" in proxy_lib, "proxy privacy wording missing")
     tokens(proxy_sha, ("known_answer_abc", "Sha256"), "proxy SHA-256")
 
-    tokens(e2e, ("ALLOWED_HOSTS", "endpoint host is not loopback", "implicit_download", "raw_model_output_persisted", "cancellation_executed", "controlled_restart_executed", "--execute", "urllib.request"), "real E2E harness")
+    tokens(e2e, (
+        "ALLOWED_HOSTS", "endpoint host is not loopback",
+        "urllib.request.ProxyHandler({})", "NoRedirect",
+        "implicit_download", "raw_model_output_persisted",
+        "cancellation_executed", "controlled_restart_executed",
+        "--execute", "urllib.request",
+    ), "real E2E harness")
     require("SOURCE_PRESENT_NOT_RUN" in note, "status note evidence boundary missing")
     for token in ("cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml", "cargo test --manifest-path tools/hepta-inference-inf0/Cargo.toml", "cargo clippy --manifest-path tools/hepta-inference-inf0/Cargo.toml", "-p codex-responses-api-proxy", "python3 scripts/hepta-inference-inf0c-real-e2e.py"):
         require(token in workflow, f"workflow missing {token}")

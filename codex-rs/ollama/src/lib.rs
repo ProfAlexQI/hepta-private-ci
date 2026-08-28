@@ -22,6 +22,7 @@ pub const DEFAULT_OSS_MODEL: &str = "gpt-oss:20b";
 /// explicit operator action before this fence can pass.
 pub async fn ensure_oss_ready(config: &Config, client: &OllamaClient) -> std::io::Result<()> {
     let model = config.model.as_deref().unwrap_or(DEFAULT_OSS_MODEL);
+    client::validate_model_identifier(model)?;
     let models = client.fetch_models().await?;
     if models.iter().any(|candidate| candidate == model) {
         return Ok(());
@@ -30,7 +31,10 @@ pub async fn ensure_oss_ready(config: &Config, client: &OllamaClient) -> std::io
     Err(std::io::Error::new(
         std::io::ErrorKind::NotFound,
         format!(
-            "OLLAMA_MODEL_NOT_INSTALLED model={model}; automatic model installation is disabled. Run `ollama pull {model}` explicitly and retry."
+            concat!(
+                "OLLAMA_MODEL_NOT_INSTALLED model={model}; automatic model installation is ",
+                "disabled. Run `ollama pull {model}` explicitly and retry."
+            )
         ),
     ))
 }
@@ -68,8 +72,6 @@ mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used)]
 
     use super::*;
-    use codex_http_client::HttpClientFactory;
-    use codex_http_client::OutboundProxyPolicy;
     use codex_model_provider_info::WireApi;
     use codex_model_provider_info::create_oss_provider_with_base_url;
 
@@ -98,12 +100,9 @@ mod tests {
             .await;
 
         let provider = create_oss_provider_with_base_url(&server.uri(), WireApi::Responses);
-        let client = OllamaClient::try_from_provider(
-            &provider,
-            HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
-        )
-        .await
-        .expect("client");
+        let client = OllamaClient::try_from_provider(&provider)
+            .await
+            .expect("client");
         ensure_responses_supported(&client)
             .await
             .expect("supported version");
@@ -127,12 +126,9 @@ mod tests {
             .await;
 
         let provider = create_oss_provider_with_base_url(&server.uri(), WireApi::Responses);
-        let client = OllamaClient::try_from_provider(
-            &provider,
-            HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
-        )
-        .await
-        .expect("client");
+        let client = OllamaClient::try_from_provider(&provider)
+            .await
+            .expect("client");
         let error = ensure_responses_supported(&client)
             .await
             .expect_err("missing version must fail");

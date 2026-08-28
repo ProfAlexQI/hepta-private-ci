@@ -15,8 +15,10 @@
 
 - non-2xx model/version/pull responses fail closed with stable error codes;
 - malformed model and version payloads fail closed;
-- pull transport, UTF-8, JSON, remote-error and unexpected-EOF paths are terminal failures;
-- individual pull frames are bounded to 1 MiB;
+- pull transport, UTF-8, JSON, remote-error, idle-timeout and unexpected-EOF paths are terminal failures;
+- individual pull frames are bounded to 1 MiB and control responses to 4 MiB;
+- provider base URLs must be loopback HTTP with explicit ports and no userinfo, query, fragment, or unsupported path;
+- the HTTP transport is direct, no-proxy, no-redirect, and suppresses request/header diagnostics;
 - a trailing frame without a newline is parsed;
 - success is emitted once;
 - normal readiness no longer performs an implicit `ollama pull`;
@@ -30,7 +32,10 @@
 - `CODEX_LMS_CLI_SHA256=sha256:<64 lowercase hex>` binds executable provenance;
 - the CLI runs through `tokio::process::Command` with a hard timeout and `kill_on_drop`;
 - stderr is drained but only the first bounded diagnostic bytes are retained;
-- endpoint and payload failures carry stable error codes.
+- endpoint and payload failures carry stable error codes and control responses are bounded to 4 MiB;
+- provider base URLs must resolve only to loopback addresses;
+- the HTTP transport bypasses proxy discovery and redirects;
+- the approved CLI receives an allowlisted subprocess environment rather than inherited credentials.
 
 ### Debug dump privacy
 
@@ -38,15 +43,18 @@
 - raw prompt, source code, tool arguments and model output are not persisted;
 - authorization, cookie, token, secret and API-key headers are redacted;
 - Unix directories/files are forced to `0700`/`0600`;
-- dump retention is bounded to 24 hours and 256 JSON files;
-- files are create-only and cannot silently overwrite earlier evidence.
+- expired files are pruned before exchanges using a 24-hour retention boundary;
+- file slots are reserved atomically and abandoned/failed response slots are released;
+- at most 256 JSON files are admitted;
+- files are create-only, partial failed writes are removed, and earlier evidence cannot be silently overwritten.
 
 ### Real-software harness
 
 `scripts/hepta-inference-inf0c-real-e2e.py` is an explicit, loopback-only,
 no-download harness for pre-provisioned Ollama and LM Studio models. It records
-only response hashes, lengths, status and timing. Its current scope does not
-claim cancellation or controlled restart evidence.
+only response hashes, lengths, status and timing. Environment proxies and HTTP
+redirects are disabled so a loopback endpoint cannot escape the local boundary.
+Its current scope does not claim cancellation or controlled restart evidence.
 
 ## Evidence boundary
 

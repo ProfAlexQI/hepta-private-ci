@@ -30,6 +30,26 @@ MAX_HTTP_BODY = 4 * 1024 * 1024
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        request: urllib.request.Request,
+        file_pointer: Any,
+        code: int,
+        message: str,
+        headers: Any,
+        new_url: str,
+    ) -> None:
+        del request, file_pointer, code, message, headers, new_url
+        return None
+
+
+LOOPBACK_OPENER = urllib.request.build_opener(
+    urllib.request.ProxyHandler({}),
+    NoRedirect(),
+)
+
+
 class QualificationError(RuntimeError):
     pass
 
@@ -93,7 +113,7 @@ def request_json(method: str, url: str, timeout: float, payload: dict[str, Any] 
     request = urllib.request.Request(url, method=method, headers=headers, data=data)
     started = time.monotonic_ns()
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with LOOPBACK_OPENER.open(request, timeout=timeout) as response:
             body = response.read(MAX_HTTP_BODY + 1)
             status = response.status
     except urllib.error.HTTPError as error:

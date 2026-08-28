@@ -10,7 +10,9 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -25,22 +27,28 @@ const REDACTED_HEADER_VALUE: &str = "[REDACTED]";
 const DIGEST_SCHEMA: &str = "sha256_digest_v1";
 const DUMP_RETENTION: Duration = Duration::from_secs(24 * 60 * 60);
 const MAX_DUMP_FILES: usize = 256;
+static NEXT_DUMP_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 pub(crate) struct ExchangeDumper {
     dump_dir: PathBuf,
-    next_sequence: AtomicU64,
+    allocated_files: Arc<AtomicUsize>,
 }
 
 impl ExchangeDumper {
     pub(crate) fn new(dump_dir: PathBuf) -> io::Result<Self> {
         fs::create_dir_all(&dump_dir)?;
         secure_directory(&dump_dir)?;
-        prune_expired_dumps(&dump_dir, SystemTime::now())?;
-        ensure_capacity(&dump_dir, 2)?;
+        let _ = prune_expired_dumps(&dump_dir, SystemTime::now())?;
+        let allocated_files = count_dump_files(&dump_dir)?;
+        if allocated_files > MAX_DUMP_FILES {
+            return Err(io::Error::other(format!(
+                "response dump file limit exceeded: maximum={MAX_DUMP_FILES}"
+            )));
+        }
 
         Ok(Self {
             dump_dir,
-            next_sequence: AtomicU64::new(1),
+            allocated_files: Arc::new(AtomicUsize::new(allocated_files)),
         })
     }
 
@@ -51,8 +59,10 @@ impl ExchangeDumper {
         headers: &[Header],
         body: &[u8],
     ) -> io::Result<ExchangeDump> {
-        ensure_capacity(&self.dump_dir, 2)?;
-        let sequence = self.next_sequence.fetch_add(1, Ordering::Relaxed);
+        let removed = prune_expired_dumps(&self.dump_dir, SystemTime::now())?;
+        release_capacity(&self.allocated_files, removed);
+        reserve_capacity(&self.allocated_files, 2)?;
+        let sequence = NEXT_DUMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
         let timestamp_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |duration| duration.as_millis());
@@ -70,25 +80,37 @@ impl ExchangeDumper {
             headers: headers.iter().map(HeaderDump::from).collect(),
             body: BodyDigest::complete(body),
         };
-        write_json_dump(&request_path, &request_dump)?;
-        Ok(ExchangeDump { response_path })
+        if let Err(error) = write_json_dump(&request_path, &request_dump) {
+            release_capacity(&self.allocated_files, 2);
+            return Err(error);
+        }
+        Ok(ExchangeDump {
+            response_path,
+            allocated_files: self.allocated_files.clone(),
+            response_reserved: true,
+        })
     }
 }
 
 pub(crate) struct ExchangeDump {
     response_path: PathBuf,
+    allocated_files: Arc<AtomicUsize>,
+    response_reserved: bool,
 }
 
 impl ExchangeDump {
     pub(crate) fn tee_response_body<R: Read>(
-        self,
+        mut self,
         status: u16,
         headers: &HeaderMap,
         response_body: R,
     ) -> ResponseBodyDump<R> {
+        self.response_reserved = false;
         ResponseBodyDump {
             response_body,
-            response_path: self.response_path,
+            response_path: self.response_path.clone(),
+            allocated_files: self.allocated_files.clone(),
+            response_reserved: true,
             status,
             headers: headers.iter().map(HeaderDump::from).collect(),
             hasher: Sha256::new(),
@@ -99,9 +121,20 @@ impl ExchangeDump {
     }
 }
 
+impl Drop for ExchangeDump {
+    fn drop(&mut self) {
+        if self.response_reserved {
+            release_capacity(&self.allocated_files, 1);
+            self.response_reserved = false;
+        }
+    }
+}
+
 pub(crate) struct ResponseBodyDump<R> {
     response_body: R,
     response_path: PathBuf,
+    allocated_files: Arc<AtomicUsize>,
+    response_reserved: bool,
     status: u16,
     headers: Vec<HeaderDump>,
     hasher: Sha256,
@@ -127,11 +160,20 @@ impl<R> ResponseBodyDump<R> {
                 complete: self.complete,
             },
         };
-        if let Err(error) = write_json_dump(&self.response_path, &response_dump) {
-            eprintln!(
-                "responses-api-proxy failed to write {}: {error}",
-                self.response_path.display()
-            );
+        match write_json_dump(&self.response_path, &response_dump) {
+            Ok(()) => {
+                self.response_reserved = false;
+            }
+            Err(error) => {
+                if self.response_reserved {
+                    release_capacity(&self.allocated_files, 1);
+                    self.response_reserved = false;
+                }
+                eprintln!(
+                    "responses-api-proxy failed to write {}: {error}",
+                    self.response_path.display()
+                );
+            }
         }
     }
 }
@@ -263,23 +305,46 @@ fn write_json_dump(path: &Path, dump: &impl Serialize) -> io::Result<()> {
     #[cfg(unix)]
     options.mode(0o600);
     let mut file = options.open(path)?;
-    serde_json::to_writer_pretty(&mut file, dump)
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-    file.write_all(b"\n")?;
-    file.sync_all()
+    let result = (|| {
+        serde_json::to_writer_pretty(&mut file, dump)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        file.write_all(b"\n")?;
+        file.sync_all()
+    })();
+    if result.is_err() {
+        drop(file);
+        let _ = fs::remove_file(path);
+    }
+    result
 }
 
-fn ensure_capacity(directory: &Path, additional_files: usize) -> io::Result<()> {
-    let count = fs::read_dir(directory)?
+fn count_dump_files(directory: &Path) -> io::Result<usize> {
+    Ok(fs::read_dir(directory)?
         .filter_map(Result::ok)
         .filter(|entry| is_json_path(&entry.path()))
-        .count();
-    if count.saturating_add(additional_files) > MAX_DUMP_FILES {
-        return Err(io::Error::other(format!(
+        .count())
+}
+
+fn reserve_capacity(allocated: &AtomicUsize, additional_files: usize) -> io::Result<()> {
+    allocated
+        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+            current
+                .checked_add(additional_files)
+                .filter(|next| *next <= MAX_DUMP_FILES)
+        })
+        .map(|_| ())
+        .map_err(|_| io::Error::other(format!(
             "response dump file limit exceeded: maximum={MAX_DUMP_FILES}"
-        )));
+        )))
+}
+
+fn release_capacity(allocated: &AtomicUsize, released_files: usize) {
+    if released_files == 0 {
+        return;
     }
-    Ok(())
+    let _ = allocated.fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+        Some(current.saturating_sub(released_files))
+    });
 }
 
 fn is_json_path(path: &Path) -> bool {
@@ -287,14 +352,19 @@ fn is_json_path(path: &Path) -> bool {
         .is_some_and(|extension| extension == std::ffi::OsStr::new("json"))
 }
 
-fn prune_expired_dumps(directory: &Path, now: SystemTime) -> io::Result<()> {
+fn prune_expired_dumps(directory: &Path, now: SystemTime) -> io::Result<usize> {
+    let mut removed = 0usize;
     for entry in fs::read_dir(directory)? {
         let entry = entry?;
         let path = entry.path();
         if !is_json_path(&path) {
             continue;
         }
-        let metadata = entry.metadata()?;
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error),
+        };
         let Ok(modified) = metadata.modified() else {
             continue;
         };
@@ -302,16 +372,27 @@ fn prune_expired_dumps(directory: &Path, now: SystemTime) -> io::Result<()> {
             continue;
         };
         if age > DUMP_RETENTION {
-            fs::remove_file(path)?;
+            match fs::remove_file(path) {
+                Ok(()) => removed = removed.saturating_add(1),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
         }
     }
-    Ok(())
+    Ok(removed)
 }
 
 fn secure_directory(directory: &Path) -> io::Result<()> {
+    let metadata = fs::symlink_metadata(directory)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "response dump path must be a real directory, not a symlink",
+        ));
+    }
     #[cfg(unix)]
     {
-        let mut permissions = fs::metadata(directory)?.permissions();
+        let mut permissions = metadata.permissions();
         permissions.set_mode(0o700);
         fs::set_permissions(directory, permissions)?;
     }
@@ -330,6 +411,7 @@ mod tests {
     use reqwest::header::HeaderValue;
     use std::io::Cursor;
     use std::sync::atomic::AtomicU64;
+    use std::sync::atomic::AtomicUsize;
 
     static NEXT_TEST_DIR: AtomicU64 = AtomicU64::new(0);
 
@@ -386,7 +468,7 @@ mod tests {
         let raw = b"data: private model output\n\n";
         let mut received = Vec::new();
         exchange
-            .tee_response_body(200, &headers, std::io::Cursor::new(raw.to_vec()))
+            .tee_response_body(200, &headers, Cursor::new(raw.to_vec()))
             .read_to_end(&mut received)
             .expect("read response");
         assert_eq!(received, raw);
@@ -432,6 +514,30 @@ mod tests {
         assert_eq!(value["body"]["byte_length"].as_u64(), Some(first.len() as u64));
         assert_eq!(value["body"]["complete"], false);
         fs::remove_dir_all(dump_dir).expect("remove dump dir");
+    }
+
+    #[test]
+    fn abandoned_exchange_releases_unused_response_slot() {
+        let dump_dir = test_dump_dir();
+        let dumper = ExchangeDumper::new(dump_dir.clone()).expect("dumper");
+        let exchange = dumper
+            .dump_request(&Method::Post, "/v1/responses", &[], b"{}")
+            .expect("request dump");
+        assert_eq!(dumper.allocated_files.load(Ordering::Acquire), 2);
+        drop(exchange);
+        assert_eq!(dumper.allocated_files.load(Ordering::Acquire), 1);
+        fs::remove_dir_all(dump_dir).expect("remove dump dir");
+    }
+
+    #[test]
+    fn capacity_reservation_is_atomic() {
+        let allocated = AtomicUsize::new(MAX_DUMP_FILES - 1);
+        assert!(reserve_capacity(&allocated, 2).is_err());
+        assert_eq!(allocated.load(Ordering::Acquire), MAX_DUMP_FILES - 1);
+        reserve_capacity(&allocated, 1).expect("last slot");
+        assert_eq!(allocated.load(Ordering::Acquire), MAX_DUMP_FILES);
+        release_capacity(&allocated, 1);
+        assert_eq!(allocated.load(Ordering::Acquire), MAX_DUMP_FILES - 1);
     }
 
     #[cfg(unix)]

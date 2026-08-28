@@ -36,7 +36,15 @@
     "hepta_inferd": false,
     "native_worker": false,
     "real_model_e2e": false,
-    "hardware_receipt": false
+    "hardware_receipt": false,
+    "local_provider_loopback_only": true,
+    "responses_proxy_atomic_file_reservation": true,
+    "responses_proxy_partial_write_cleanup": true,
+    "real_e2e_proxy_and_redirect_disabled": true,
+    "local_provider_direct_no_proxy_no_redirect": true,
+    "lmstudio_sanitized_subprocess_environment": true,
+    "ollama_pull_idle_timeout": true,
+    "control_response_body_bound": true
   },
   "authority": {
     "qualification_only": true,

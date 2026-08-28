@@ -14,13 +14,17 @@ pub const DEFAULT_OSS_MODEL: &str = "openai/gpt-oss-20b";
 /// present and a bounded minimal Responses request has loaded it.
 pub async fn ensure_oss_ready(config: &Config) -> std::io::Result<()> {
     let model = config.model.as_deref().unwrap_or(DEFAULT_OSS_MODEL);
+    client::validate_model_identifier(model)?;
     let client = LMStudioClient::try_from_provider(config).await?;
     let models = client.fetch_models().await?;
     if !models.iter().any(|candidate| candidate == model) {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!(
-                "LMSTUDIO_MODEL_NOT_INSTALLED model={model}; automatic model installation is disabled. Install the model explicitly in LM Studio and retry."
+                concat!(
+                    "LMSTUDIO_MODEL_NOT_INSTALLED model={model}; automatic model installation ",
+                    "is disabled. Install the model explicitly in LM Studio and retry."
+                )
             ),
         ));
     }
