@@ -28,8 +28,7 @@ use crate::AgentdControlServer;
 use crate::AgentdError;
 use crate::AgentdIdentity;
 use crate::AgentdState;
-use crate::app_runtime::run_app_server;
-use crate::automation::run_automation_scheduler;
+use crate::app_runtime::AgentAppServerService;
 use crate::composition::AgentRuntimeComposition;
 use crate::composition::AgentRuntimeParts;
 
@@ -50,13 +49,20 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
     let AgentRuntimeParts {
         identity,
         state,
-        cognitive_runtime,
-        automation_store,
+        memory_service,
+        automation_service,
         authority,
         product_graph: _product_graph,
         writer_lock: _writer_lock,
     } = AgentRuntimeComposition::open(config).await?.into_parts();
 
+    let app_server = AgentAppServerService::new(
+        identity.clone(),
+        arg0_paths,
+        memory_service.into_runtime(),
+        authority,
+        Arc::clone(&state),
+    )?;
     let cancellation = CancellationToken::new();
     let control = AgentdControlServer::bind(
         identity.control_socket.clone(),
@@ -65,28 +71,13 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
     )
     .await?;
     let mut control_task = tokio::spawn(control.run());
-    let mut app_server_task = tokio::spawn(run_app_server(
-        identity.clone(),
-        arg0_paths,
-        cognitive_runtime,
-        authority,
-        Arc::clone(&state),
-    ));
+    let mut app_server_task = tokio::spawn(app_server.run());
     let mut monitor_task = tokio::spawn(monitor_runtime(Arc::clone(&state)));
-    let automation_cancellation = cancellation.clone();
-    let automation_state = Arc::clone(&state);
-    let mut automation_task = tokio::spawn(async move {
-        match automation_store {
-            Some(store) => {
-                run_automation_scheduler(store, automation_state, identity, automation_cancellation)
-                    .await
-            }
-            None => {
-                automation_cancellation.cancelled().await;
-                Ok(())
-            }
-        }
-    });
+    let mut automation_task = tokio::spawn(automation_service.run(
+        Arc::clone(&state),
+        identity,
+        cancellation.clone(),
+    ));
 
     let (outcome, completed_task) = tokio::select! {
         result = &mut control_task => (
