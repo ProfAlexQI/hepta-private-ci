@@ -1,9 +1,9 @@
 use crate::{
     ContractError, Digest32, MAX_BLOCKED_REASONS, MAX_PROJECTION_ENTRIES, framed_digest,
-    p1c1_digest, p1c_digest, validate_commit_oid, validate_id,
+    p1c_digest, p1c1_digest, validate_commit_oid, validate_id,
 };
 use hepta_memory_p1_1c_qualification::{CandidateFixture, CorpusCase, OfflineCorpus};
-use hepta_memory_p1_1c1_qualification::ReviewBatch;
+use hepta_memory_p1_1c1_qualification::{ReviewBatch, ReviewRecord};
 use std::collections::{BTreeMap, BTreeSet};
 
 const PROJECTION_SCHEMA: &str = "hepta.intelligence.p1_1c2.review_projection.v1";
@@ -62,6 +62,7 @@ impl ReviewProjection {
                 "review projection TSV column header mismatch".to_string(),
             ));
         }
+
         let mut entries = Vec::new();
         for line in lines {
             if entries.len() >= MAX_PROJECTION_ENTRIES {
@@ -91,6 +92,7 @@ impl ReviewProjection {
                 .then_with(|| left.candidate_id.cmp(&right.candidate_id))
                 .then_with(|| left.item_id.cmp(&right.item_id))
         });
+
         let mut projection = Self {
             schema,
             fixture_only,
@@ -110,19 +112,17 @@ impl ReviewProjection {
     ) -> Result<Self, ContractError> {
         corpus.validate()?;
         validate_commit_oid(p1_1c1_source_commit, "P1.1c.1 source commit")?;
-        let candidate_count = corpus
-            .cases
-            .iter()
-            .try_fold(0_usize, |count, case| {
-                count
-                    .checked_add(case.candidates.len())
-                    .ok_or(ContractError::Overflow)
-            })?;
+        let candidate_count = corpus.cases.iter().try_fold(0_usize, |count, case| {
+            count
+                .checked_add(case.candidates.len())
+                .ok_or(ContractError::Overflow)
+        })?;
         if candidate_count > MAX_PROJECTION_ENTRIES {
             return Err(ContractError::Invalid(format!(
                 "evaluation corpus exceeds {MAX_PROJECTION_ENTRIES} candidates"
             )));
         }
+
         let mut entries = Vec::with_capacity(candidate_count);
         for case in &corpus.cases {
             for candidate in &case.candidates {
@@ -140,6 +140,7 @@ impl ReviewProjection {
                 .cmp(&right.case_id)
                 .then_with(|| left.candidate_id.cmp(&right.candidate_id))
         });
+
         let mut projection = Self {
             schema: PROJECTION_SCHEMA.to_string(),
             fixture_only,
@@ -167,6 +168,7 @@ impl ReviewProjection {
                 "projection entries must contain 1..={MAX_PROJECTION_ENTRIES} rows"
             )));
         }
+
         let mut item_ids = BTreeSet::new();
         let mut candidate_ids = BTreeSet::new();
         for entry in &self.entries {
@@ -207,14 +209,11 @@ impl ReviewProjection {
             blockers.insert("projection.p1c1_source_commit_mismatch".to_string());
         }
 
-        let candidate_count = corpus
-            .cases
-            .iter()
-            .try_fold(0_usize, |count, case| {
-                count
-                    .checked_add(case.candidates.len())
-                    .ok_or(ContractError::Overflow)
-            })?;
+        let candidate_count = corpus.cases.iter().try_fold(0_usize, |count, case| {
+            count
+                .checked_add(case.candidates.len())
+                .ok_or(ContractError::Overflow)
+        })?;
         if self.entries.len() != candidate_count {
             blockers.insert("projection.candidate_coverage_incomplete".to_string());
         }
@@ -262,23 +261,24 @@ impl ReviewProjection {
 
             let expected_query = p1c_digest(case.query_sha256)?;
             let expected_candidate = candidate_projection_digest(case, candidate);
-            if entry.query_sha256 != expected_query
-                || item_reviews
-                    .iter()
-                    .any(|review| p1c1_digest(review.query_sha256).ok() != Some(expected_query))
-            {
+            let mut query_bindings_match = entry.query_sha256 == expected_query;
+            let mut candidate_bindings_match = entry.candidate_sha256 == expected_candidate;
+            let mut locale_bindings_match = true;
+            for review in item_reviews {
+                query_bindings_match &= p1c1_digest(review.query_sha256)? == expected_query;
+                candidate_bindings_match &=
+                    p1c1_digest(review.candidate_sha256)? == expected_candidate;
+                locale_bindings_match &= review.locale == case.locale;
+            }
+            if !query_bindings_match {
                 blockers.insert("projection.query_digest_mismatch".to_string());
                 continue;
             }
-            if entry.candidate_sha256 != expected_candidate
-                || item_reviews.iter().any(|review| {
-                    p1c1_digest(review.candidate_sha256).ok() != Some(expected_candidate)
-                })
-            {
+            if !candidate_bindings_match {
                 blockers.insert("projection.candidate_digest_mismatch".to_string());
                 continue;
             }
-            if item_reviews.iter().any(|review| review.locale != case.locale) {
+            if !locale_bindings_match {
                 blockers.insert("projection.locale_mismatch".to_string());
                 continue;
             }
@@ -322,12 +322,13 @@ impl ReviewProjection {
             .iter()
             .map(ProjectionEntry::digest)
             .collect::<Vec<_>>();
+        let fixture_only = [u8::from(self.fixture_only)];
         let mut parts = Vec::with_capacity(entry_digests.len().saturating_add(3));
         parts.push(self.schema.as_bytes());
-        parts.push(&[u8::from(self.fixture_only)]);
+        parts.push(fixture_only.as_slice());
         parts.push(self.p1_1c1_source_commit.as_bytes());
         for digest in &entry_digests {
-            parts.push(digest.as_bytes());
+            parts.push(digest.as_bytes().as_slice());
         }
         framed_digest(
             b"hepta:intelligence:p1.1c2:review-projection:v1",
@@ -422,9 +423,7 @@ pub fn candidate_projection_digest(
     )
 }
 
-fn reviews_by_item(
-    reviews: &ReviewBatch,
-) -> BTreeMap<&str, Vec<&hepta_memory_p1_1c1_qualification::ReviewRecord>> {
+fn reviews_by_item<'a>(reviews: &'a ReviewBatch) -> BTreeMap<&'a str, Vec<&'a ReviewRecord>> {
     let mut grouped = BTreeMap::<&str, Vec<_>>::new();
     for review in &reviews.reviews {
         grouped.entry(review.item_id.as_str()).or_default().push(review);
