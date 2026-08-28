@@ -1,14 +1,14 @@
-name: restack-p0-3-3-on-p0-3-2
+name: restack-p0-3-3-on-p0-3-2-v2
 
 on:
   workflow_dispatch:
     inputs:
       qualified_head:
-        description: Exact P0.3.2 head whose receipt is fully green
+        description: Exact P0.3.2 head whose v7 receipt is fully green
         required: true
         type: string
       qualification_run_id:
-        description: Exact-head workflow run containing the P0.3.2 receipt artifact
+        description: Exact v7 workflow run containing the P0.3.2 receipt artifact
         required: true
         type: string
 
@@ -18,13 +18,19 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: restack-p0-3-3-on-p0-3-2
+  group: restack-p0-3-3-on-p0-3-2-v2
   cancel-in-progress: false
+
+env:
+  REPO: ProfAlexQI/hepta-private-ci
+  P032_BRANCH: codex/hepta-intelligence-shared-projection-planner-v5-20260828
+  P033_BRANCH: codex/hepta-intelligence-evidence-resolver-v4-20260828
+  P033_PR: "30"
 
 jobs:
   restack:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 180
     steps:
       - name: Checkout exact P0.3.2 branch
         uses: actions/checkout@v4
@@ -32,11 +38,18 @@ jobs:
           ref: codex/hepta-intelligence-shared-projection-planner-v5-20260828
           fetch-depth: 0
 
-      - name: Verify exact qualified P0.3.2 receipt
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Verify exact executable P0.3.2 admission
         env:
           GH_TOKEN: ${{ github.token }}
           QUALIFIED_HEAD: ${{ inputs.qualified_head }}
           QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+        shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$QUALIFIED_HEAD"
@@ -45,26 +58,66 @@ jobs:
             *[!0-9a-f]*) echo "qualified_head is not lowercase SHA-1" >&2; exit 1 ;;
           esac
 
+          gh api "repos/$REPO/actions/runs/$QUALIFICATION_RUN_ID" > /tmp/p032-run.json
+          gh api "repos/$REPO/actions/runs/$QUALIFICATION_RUN_ID/jobs?per_page=100" \
+            > /tmp/p032-jobs.json
+          gh api "repos/$REPO/actions/runs/$QUALIFICATION_RUN_ID/artifacts?per_page=100" \
+            > /tmp/p032-artifacts.json
+
+          python3 - "$QUALIFIED_HEAD" "$QUALIFICATION_RUN_ID" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          expected_head = sys.argv[1]
+          expected_run = int(sys.argv[2])
+          run = json.loads(Path("/tmp/p032-run.json").read_text())
+          jobs = json.loads(Path("/tmp/p032-jobs.json").read_text())["jobs"]
+          artifacts = json.loads(Path("/tmp/p032-artifacts.json").read_text())["artifacts"]
+          assert run["id"] == expected_run
+          assert run["head_sha"] == expected_head
+          assert run["path"] == ".github/workflows/hepta-intelligence-shared-projection-planner-v5.yml"
+          assert run["status"] == "completed"
+          assert run["conclusion"] == "success"
+          assert jobs
+          for job in jobs:
+              assert (job.get("runner_id") or 0) > 0, job.get("name")
+              assert job.get("steps"), job.get("name")
+              assert job.get("conclusion") == "success", job.get("name")
+              assert all(step.get("conclusion") in {"success", "skipped"} for step in job["steps"])
+          expected_artifact = f"hepta-intelligence-p0-3-2-{expected_head}"
+          matching = [item for item in artifacts if item.get("name") == expected_artifact]
+          assert len(matching) == 1
+          assert matching[0].get("expired") is False
+          Path("/tmp/p032-artifact-id").write_text(str(matching[0]["id"]))
+          PY
+
           rm -rf /tmp/p032-evidence
           mkdir -p /tmp/p032-evidence
           gh run download "$QUALIFICATION_RUN_ID" \
-            --repo ProfAlexQI/hepta-private-ci \
+            --repo "$REPO" \
             --name "hepta-intelligence-p0-3-2-$QUALIFIED_HEAD" \
             --dir /tmp/p032-evidence
-
           RECEIPT=$(find /tmp/p032-evidence -name qualification-receipt.json -type f -print -quit)
           test -n "$RECEIPT"
-          python3 - "$RECEIPT" "$QUALIFIED_HEAD" <<'PY'
+          TREE=$(git rev-parse HEAD^{tree})
+          python3 - "$RECEIPT" "$QUALIFIED_HEAD" "$TREE" <<'PY'
           import json
           import sys
           from pathlib import Path
 
           receipt = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          expected = sys.argv[2]
-          assert receipt["head"] == expected
+          assert receipt["schema"] == "hepta_intelligence_p0_3_2_exact_head_qualification_v7"
+          assert receipt["head"] == sys.argv[2]
+          assert receipt["tree"] == sys.argv[3]
           assert receipt["qualified"] is True
           assert receipt["shared_projection_planner"] is True
+          assert receipt["current_projection_replanned"] is True
           assert receipt["ledger_verified_in_snapshot"] is True
+          assert receipt["test_root_canonicalized"] is True
+          checks = receipt.get("checks") or []
+          assert checks
+          assert all(check.get("passed") is True and check.get("exit_code") == 0 for check in checks)
           for key in (
               "wired",
               "tool_v3_registered",
@@ -79,21 +132,31 @@ jobs:
               "callers_ratchet",
           ):
               assert receipt[key] is False, key
-          assert all(check["passed"] for check in receipt["checks"])
           PY
 
-      - name: Restack only the governed P0.3.3 source surface
+      - name: Build and preflight governed P0.3.3 restack
         env:
           GH_TOKEN: ${{ github.token }}
-          P032_BRANCH: codex/hepta-intelligence-shared-projection-planner-v5-20260828
-          P033_BRANCH: codex/hepta-intelligence-evidence-resolver-v4-20260828
           QUALIFIED_HEAD: ${{ inputs.qualified_head }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+        shell: bash
         run: |
           set -euo pipefail
           git fetch origin "$P033_BRANCH:refs/remotes/origin/$P033_BRANCH"
           P033_OLD_HEAD=$(git rev-parse "refs/remotes/origin/$P033_BRANCH")
-          git switch --detach "$QUALIFIED_HEAD"
+          gh api "repos/$REPO/pulls/$P033_PR" > /tmp/p033-pr-before.json
+          python3 - "$P033_BRANCH" "$P033_OLD_HEAD" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          pr = json.loads(Path("/tmp/p033-pr-before.json").read_text())
+          assert pr["state"] == "open"
+          assert pr["draft"] is True
+          assert pr["head"]["ref"] == sys.argv[1]
+          assert pr["head"]["sha"] == sys.argv[2]
+          PY
 
+          git switch --detach "$QUALIFIED_HEAD"
           paths=(
             .github/workflows/hepta-intelligence-evidence-resolver-v4.yml
             codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs
@@ -107,50 +170,20 @@ jobs:
             plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json
             plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_3_3_HOST_EVIDENCE_RESOLVER_2026-08-28.md
             scripts/verify-hepta-intelligence-evidence-resolver-v4.py
+            scripts/check-hepta-intelligence-p0-3-3-clippy.py
+            scripts/run-hepta-intelligence-evidence-resolver-v5.py
           )
+          printf '%s\n' "${paths[@]}" > /tmp/p033-governed-paths.txt
           for path in "${paths[@]}"; do
             git cat-file -e "refs/remotes/origin/$P033_BRANCH:$path"
             git checkout "refs/remotes/origin/$P033_BRANCH" -- "$path"
           done
+          test ! -e .github/workflows/one-shot-orchestrate-p033-after-p032-v2.yml
 
-          python3 - "$QUALIFIED_HEAD" <<'PY'
+          python3 - "$QUALIFIED_HEAD" "$QUALIFICATION_RUN_ID" <<'PY'
           import json
           import sys
           from pathlib import Path
-
-          facade = Path(
-              "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs"
-          )
-          text = facade.read_text(encoding="utf-8")
-          replacements = {
-              "mod receipt;": '#[path = "evidence_resolver_v4/receipt.rs"]\nmod receipt;',
-              "mod resolver;": '#[path = "evidence_resolver_v4/resolver.rs"]\nmod resolver;',
-              "mod schema;": '#[path = "evidence_resolver_v4/schema.rs"]\nmod schema;',
-              "mod support;": '#[path = "evidence_resolver_v4/support.rs"]\nmod support;',
-              "#[cfg(test)]\nmod tests;": (
-                  '#[cfg(test)]\n#[path = "evidence_resolver_v4/tests.rs"]\nmod tests;'
-              ),
-          }
-          for old, new in replacements.items():
-              if new not in text:
-                  if old not in text:
-                      raise SystemExit(f"missing facade marker: {old}")
-                  text = text.replace(old, new, 1)
-          facade.write_text(text, encoding="utf-8")
-
-          workflow = Path(
-              ".github/workflows/hepta-intelligence-evidence-resolver-v4.yml"
-          )
-          text = workflow.read_text(encoding="utf-8")
-          text = text.replace("toolchain: 1.88.0", "toolchain: 1.95.0")
-          text = text.replace(
-              "cargo fmt --all -- --check",
-              (
-                  "cargo fmt -p codex-hepta-memory-extension "
-                  "-p codex-hepta-memory -- --check"
-              ),
-          )
-          workflow.write_text(text, encoding="utf-8")
 
           status_path = Path(
               "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json"
@@ -169,31 +202,133 @@ jobs:
                   "repository_branch": "codex/hepta-intelligence-shared-projection-planner-v5-20260828",
                   "implemented_in_repository": True,
                   "qualified": True,
+                  "qualified_head": sys.argv[1],
+                  "qualification_run_id": int(sys.argv[2]),
                   "activation_blocking": False,
                   "ledger_verified_in_snapshot": True,
               }
           )
           current = status.setdefault("current_tranche", {})
-          current["wired"] = False
-          current["qualified"] = False
-          current["tool_v4_registered"] = False
-          current["production_projection_gate"] = False
-          current["production_authority"] = False
+          current.update(
+              {
+                  "status": "restacked_exact_qualification_pending",
+                  "wired": False,
+                  "qualified": False,
+                  "tool_v4_registered": False,
+                  "production_projection_gate": False,
+                  "production_authority": False,
+                  "external_effects": False,
+              }
+          )
+          qualification = current.setdefault("qualification", {})
+          qualification.update(
+              {
+                  "contract": "hepta_intelligence_p0_3_3_exact_head_qualification_v5",
+                  "source_gate": "pending_exact_head",
+                  "format": "pending_exact_head",
+                  "focused_tests": "pending_exact_head",
+                  "core_compatibility_tests": "pending_exact_head",
+                  "extension_full_tests": "pending_exact_head",
+                  "core_full_tests": "pending_exact_head",
+                  "extension_scoped_clippy": "pending_exact_head",
+                  "qualified": False,
+              }
+          )
+          status["next_actions"] = [
+              "Run the P0.3.3 v5 exact-head workflow on the restacked commit.",
+              "Require source, format, all-target checks, focused tests, full tests, scoped Clippy, and clean-tree exit codes to be zero.",
+              "Keep v4 unregistered and all production authority false after qualification.",
+              "Start P0.3.4 inventory only after the restacked P0.3.3 receipt is executable and all-green.",
+          ]
           status_path.write_text(
               json.dumps(status, indent=2, sort_keys=True) + "\n",
               encoding="utf-8",
           )
           PY
 
-          git config user.name "Qian QI"
-          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          python3 -m py_compile \
+            scripts/verify-hepta-intelligence-evidence-resolver-v4.py \
+            scripts/check-hepta-intelligence-p0-3-3-clippy.py \
+            scripts/run-hepta-intelligence-evidence-resolver-v5.py
+          python3 -m json.tool \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json \
+            >/dev/null
+          python3 scripts/verify-hepta-intelligence-evidence-resolver-v4.py \
+            > /tmp/p033-source-gate.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          receipt = json.loads(Path("/tmp/p033-source-gate.json").read_text())
+          assert receipt["status"] == "PASS_P0_3_3_HOST_EVIDENCE_RESOLVER_SOURCE_ONLY"
+          assert receipt["p0_3_2_dependency_qualified"] is True
+          assert receipt["tool_v4_registered"] is False
+          assert receipt["production_authority"] is False
+          PY
+
+          cd codex-rs
+          rustfmt --edition 2024 --check \
+            ext/hepta-memory/src/framing.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/receipt.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/resolver.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/schema.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/support.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/tests.rs
+          cargo check -p codex-hepta-memory-extension --all-targets
+          cargo check -p codex-hepta-memory --all-targets
+          cd ..
+
           git add "${paths[@]}"
           git diff --cached --check
-          git commit -m "feat(memory): restack host-owned evidence resolver P0.3.3"
+          git diff --cached --name-only | sort -u > /tmp/p033-observed-paths.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          allowed = set(Path("/tmp/p033-governed-paths.txt").read_text().splitlines())
+          observed = set(Path("/tmp/p033-observed-paths.txt").read_text().splitlines())
+          required = {
+              ".github/workflows/hepta-intelligence-evidence-resolver-v4.yml",
+              "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json",
+              "scripts/verify-hepta-intelligence-evidence-resolver-v4.py",
+              "scripts/check-hepta-intelligence-p0-3-3-clippy.py",
+              "scripts/run-hepta-intelligence-evidence-resolver-v5.py",
+          }
+          assert observed <= allowed, sorted(observed - allowed)
+          assert required <= observed, sorted(required - observed)
+          assert ".github/workflows/one-shot-orchestrate-p033-after-p032-v2.yml" not in observed
+          PY
+
+          git config user.name "Qian QI"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git commit --no-gpg-sign -m "feat(memory): restack host-owned evidence resolver P0.3.3"
           P033_NEW_HEAD=$(git rev-parse HEAD)
-          git push --force-with-lease="refs/heads/$P033_BRANCH:$P033_OLD_HEAD" \
+          echo "$P033_OLD_HEAD" > /tmp/p033-old-head
+          echo "$P033_NEW_HEAD" > /tmp/p033-new-head
+
+      - name: Publish with force-with-lease and retarget Draft PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          P033_OLD_HEAD=$(cat /tmp/p033-old-head)
+          P033_NEW_HEAD=$(cat /tmp/p033-new-head)
+          git push \
+            --force-with-lease="refs/heads/$P033_BRANCH:$P033_OLD_HEAD" \
             origin "HEAD:refs/heads/$P033_BRANCH"
-          gh api --method PATCH repos/ProfAlexQI/hepta-private-ci/pulls/30 \
-            -f base="$P032_BRANCH" >/dev/null
-          printf 'P0.3.2 qualified head: %s\nP0.3.3 old head: %s\nP0.3.3 new head: %s\n' \
-            "$QUALIFIED_HEAD" "$P033_OLD_HEAD" "$P033_NEW_HEAD"
+          gh api --method PATCH "repos/$REPO/pulls/$P033_PR" \
+            -f base="$P032_BRANCH" >/tmp/p033-pr-after.json
+          REMOTE_HEAD=$(git ls-remote origin "refs/heads/$P033_BRANCH" | awk '{print $1}')
+          test "$REMOTE_HEAD" = "$P033_NEW_HEAD"
+          python3 - "$P032_BRANCH" "$P033_BRANCH" "$P033_NEW_HEAD" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          pr = json.loads(Path("/tmp/p033-pr-after.json").read_text())
+          assert pr["state"] == "open"
+          assert pr["draft"] is True
+          assert pr["base"]["ref"] == sys.argv[1]
+          assert pr["head"]["ref"] == sys.argv[2]
+          assert pr["head"]["sha"] == sys.argv[3]
+          PY
+          printf 'P0.3.3 restacked head: %s\n' "$P033_NEW_HEAD" >> "$GITHUB_STEP_SUMMARY"

@@ -15,6 +15,10 @@ on:
       - "scripts/run-hepta-intelligence-shared-projection-planner-v7.py"
       - "scripts/verify-hepta-intelligence-shared-projection-planner-v5.py"
       - ".github/workflows/hepta-intelligence-shared-projection-planner-v5.yml"
+      - ".github/workflows/restack-p0-3-3-on-p0-3-2.yml"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_DEVELOPMENT_PLAN_V3_10_2026-08-28.md"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_10.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_3_3_QUALIFICATION_CHAIN_V2_2026-08-28.md"
   pull_request:
     paths:
       - "codex-rs/hepta-memory/src/cognitive_store.rs"
@@ -27,6 +31,10 @@ on:
       - "scripts/run-hepta-intelligence-shared-projection-planner-v7.py"
       - "scripts/verify-hepta-intelligence-shared-projection-planner-v5.py"
       - ".github/workflows/hepta-intelligence-shared-projection-planner-v5.yml"
+      - ".github/workflows/restack-p0-3-3-on-p0-3-2.yml"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_DEVELOPMENT_PLAN_V3_10_2026-08-28.md"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_10.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_3_3_QUALIFICATION_CHAIN_V2_2026-08-28.md"
   workflow_dispatch:
 
 permissions:

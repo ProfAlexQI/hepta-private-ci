@@ -22,6 +22,8 @@ FILES = {
     "shadow": ROOT
     / "codex-rs/hepta-memory/src/fact_grounding/shadow_projection_gate.rs",
     "framing": ROOT / "codex-rs/hepta-memory/src/framing.rs",
+    "qualification_workflow": ROOT / ".github/workflows/hepta-intelligence-shared-projection-planner-v5.yml",
+    "restack": ROOT / ".github/workflows/restack-p0-3-3-on-p0-3-2.yml",
 }
 
 
@@ -47,6 +49,8 @@ def main() -> int:
     verify = text["verify"]
     shadow = text["shadow"]
     framing = text["framing"]
+    qualification_workflow = text["qualification_workflow"]
+    restack = text["restack"]
 
     checks["planner.shared_contract"] = has_all(
         planner,
@@ -148,7 +152,7 @@ def main() -> int:
         (
             "pub(crate) async fn verify_durable_fact_grounding_ledger_tx",
             "schema::verify_tx(transaction).await?;",
-            "grounding::verify_receipts(transaction",
+            "grounding::verify_receipts(&mut **transaction",
             "let mut transaction = self.pool.begin().await.map_err(unavailable)?;",
         ),
     )
@@ -156,7 +160,7 @@ def main() -> int:
         schema,
         (
             "pub(super) async fn verify_tx(",
-            "verify_schema_oracle_connection(transaction).await?;",
+            "verify_schema_oracle_connection(&mut **transaction).await?;",
             "verify_migration_ledger_connection(",
             "connection: &mut SqliteConnection",
         ),
@@ -211,6 +215,34 @@ def main() -> int:
         ),
     )
 
+    checks["governance.exact_retrigger"] = has_all(
+        qualification_workflow,
+        (
+            "name: hepta-intelligence-shared-projection-planner-v7",
+            ".github/workflows/restack-p0-3-3-on-p0-3-2.yml",
+            "HEPTA_INTELLIGENCE_KG_DEVELOPMENT_PLAN_V3_10_2026-08-28.md",
+            "HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_10.json",
+            "run-hepta-intelligence-shared-projection-planner-v7.py",
+            "contents: read",
+        ),
+    )
+    checks["governance.restack_v2"] = has_all(
+        restack,
+        (
+            "name: restack-p0-3-3-on-p0-3-2-v2",
+            "QUALIFICATION_RUN_ID",
+            "run[\"path\"]",
+            "runner_id",
+            "job.get(\"steps\")",
+            "receipt[\"tree\"]",
+            "scripts/run-hepta-intelligence-evidence-resolver-v5.py",
+            "scripts/check-hepta-intelligence-p0-3-3-clippy.py",
+            "cargo check -p codex-hepta-memory-extension --all-targets",
+            "cargo check -p codex-hepta-memory --all-targets",
+            "force-with-lease",
+            "pr[\"draft\"] is True",
+        ),
+    ) and "one-shot-orchestrate-p033-after-p032-v2.yml" in restack
     return emit(checks)
 
 

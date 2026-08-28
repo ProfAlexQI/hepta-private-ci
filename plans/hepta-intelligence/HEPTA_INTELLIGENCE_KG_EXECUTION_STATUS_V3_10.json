@@ -1,0 +1,49 @@
+{
+  "authority": {
+    "callers_ratchet": false,
+    "default_projection_pointer_changed": false,
+    "default_recall_query_changed": false,
+    "external_effects": false,
+    "operator_accepted": false,
+    "p0_3_4_started": false,
+    "production_authority": false,
+    "production_projection_gate": false,
+    "promoted": false,
+    "tool_v3_registered": false,
+    "tool_v4_registered": false,
+    "wired": false
+  },
+  "blockers_fixed_by_patch": [
+    "post-restack dependency=true no longer contradicts the source verifier",
+    "whole-crate strict warning debt no longer substitutes for tranche-scoped diagnostics",
+    "restack performs exact run/job/artifact/tree verification",
+    "restack performs source/rustfmt/all-target compile preflight before push"
+  ],
+  "generated_at": "2026-08-28",
+  "p0_3_2": {
+    "branch": "codex/hepta-intelligence-shared-projection-planner-v5-20260828",
+    "classification": "QUEUED_RUNNER_NOT_ASSIGNED",
+    "head": "a03863c8c6124a2024d959063da7ea412386de97",
+    "implemented_on_branch": true,
+    "latest_formal_job": 98879255372,
+    "latest_formal_run": 33180214919,
+    "pull_request": 40,
+    "qualified": false,
+    "runner_id": 0,
+    "steps": []
+  },
+  "p0_3_3": {
+    "base_branch": "codex/hepta-intelligence-grounding-gate-v3-20260828",
+    "branch": "codex/hepta-intelligence-evidence-resolver-v4-20260828",
+    "exact_head_v5_patch": true,
+    "governed_scoped_clippy_patch": true,
+    "head": "cdfd1abe36f8de45300fd66c3dedb663e8d51b48",
+    "implemented_on_branch": true,
+    "pull_request": 30,
+    "qualified": false,
+    "restacked": false,
+    "source_gate_dependency_state_aware_patch": true
+  },
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "schema": "hepta_intelligence_kg_execution_status_v3_10_patch_candidate"
+}
