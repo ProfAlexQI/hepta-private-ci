@@ -17,7 +17,8 @@
       "branch": "codex/hepta-intelligence-offline-efficacy-p1c-20260828",
       "commit": "fe33565ce74c013e574c307e4fab101820c0ea88",
       "source_qualified": false,
-      "seed_pipeline_reproducible": false
+      "seed_pipeline_reproducible": false,
+      "isolated_workspace": true
     },
     "p1_1c1": {
       "branch": "codex/hepta-intelligence-reviewed-corpus-acceptance-p1c1-20260828",
@@ -25,11 +26,13 @@
       "review_pipeline_validated": true,
       "reviewed_corpus_accepted": false,
       "corpus_reviewed": false,
-      "human_review_attested": false
+      "human_review_attested": false,
+      "isolated_workspace": true
     }
   },
   "implementation": {
     "isolated_rust_workspace": true,
+    "transitive_workspace_isolation": true,
     "local_path_dependencies_only": true,
     "acceptance_receipt_recomputation": true,
     "acceptance_receipt_exact_match": true,
