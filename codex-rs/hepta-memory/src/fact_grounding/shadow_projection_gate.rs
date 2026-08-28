@@ -187,8 +187,7 @@ impl CognitiveStore {
                             "grounded semantic plan included a head without a receipt".to_string(),
                         )
                     })?;
-                    Sha256Digest::parse(receipt.clone())
-                        .map_err(CognitiveStoreError::Corrupt)?;
+                    Sha256Digest::parse(receipt.clone()).map_err(CognitiveStoreError::Corrupt)?;
                     included.push(ShadowProjectionHead {
                         memory_id: head.memory_id.clone(),
                         revision: memory_revision,
@@ -270,9 +269,8 @@ impl CognitiveStore {
         revision: u64,
     ) -> Result<String, CognitiveStoreError> {
         self.authorize(access, expected_scope)?;
-        let revision_i64 = i64::try_from(revision).map_err(|_| {
-            CognitiveStoreError::Invalid("memory revision exceeds i64".to_string())
-        })?;
+        let revision_i64 = i64::try_from(revision)
+            .map_err(|_| CognitiveStoreError::Invalid("memory revision exceeds i64".to_string()))?;
         let (scope_kind, workspace_sha256) = expected_scope.database_parts();
         let mut transaction = self.pool.begin().await.map_err(unavailable)?;
         self.verify_durable_fact_grounding_ledger_tx(&mut transaction)
@@ -299,7 +297,9 @@ impl CognitiveStore {
         .fetch_optional(&mut *transaction)
         .await
         .map_err(unavailable)?
-        .ok_or_else(|| CognitiveStoreError::Invalid("memory revision does not exist".to_string()))?;
+        .ok_or_else(|| {
+            CognitiveStoreError::Invalid("memory revision does not exist".to_string())
+        })?;
         let entity_count = nonnegative_u64(
             row.try_get("entity_count").map_err(unavailable)?,
             "entity count",
@@ -308,8 +308,7 @@ impl CognitiveStore {
             row.try_get("relation_count").map_err(unavailable)?,
             "relation count",
         )?;
-        let receipt_sha256: Option<String> =
-            row.try_get("receipt_sha256").map_err(unavailable)?;
+        let receipt_sha256: Option<String> = row.try_get("receipt_sha256").map_err(unavailable)?;
         let status = if entity_count + relation_count == 0 {
             "zero_fact"
         } else if receipt_sha256.is_some() {
@@ -356,9 +355,7 @@ impl CognitiveStore {
                     .map_err(|_| {
                         CognitiveStoreError::Corrupt("negative grounding end byte".to_string())
                     })?,
-                    evidence_sha256: span
-                        .try_get("evidence_sha256")
-                        .map_err(unavailable)?,
+                    evidence_sha256: span.try_get("evidence_sha256").map_err(unavailable)?,
                 })
             })
             .collect::<Result<Vec<_>, CognitiveStoreError>>()?;
@@ -372,9 +369,7 @@ impl CognitiveStore {
             verification: row.try_get("verification").map_err(unavailable)?,
             lifecycle: row.try_get("lifecycle").map_err(unavailable)?,
             fact_set_sha256: row.try_get("fact_set_sha256").map_err(unavailable)?,
-            fact_identity_sha256: row
-                .try_get("fact_identity_sha256")
-                .map_err(unavailable)?,
+            fact_identity_sha256: row.try_get("fact_identity_sha256").map_err(unavailable)?,
             grounding_receipt_sha256: receipt_sha256,
             grounding_status: status,
             entity_count,
@@ -484,8 +479,7 @@ fn verify_current_projection(
             || planned_edges != 0
         {
             return Err(CognitiveStoreError::Corrupt(
-                "zero KG projection generation does not match the shared semantic plan"
-                    .to_string(),
+                "zero KG projection generation does not match the shared semantic plan".to_string(),
             ));
         }
         return Ok(());
@@ -507,8 +501,7 @@ fn verify_current_projection(
         || current.edge_count != planned_edges
     {
         return Err(CognitiveStoreError::Corrupt(
-            "current KG projection generation diverges from the shared semantic plan"
-                .to_string(),
+            "current KG projection generation diverges from the shared semantic plan".to_string(),
         ));
     }
     Ok(())
@@ -558,9 +551,7 @@ async fn read_heads(
                 fact_set_sha256: row.try_get("fact_set_sha256").map_err(unavailable)?,
                 entity_count: row.try_get("entity_count").map_err(unavailable)?,
                 relation_count: row.try_get("relation_count").map_err(unavailable)?,
-                grounding_receipt_sha256: row
-                    .try_get("receipt_sha256")
-                    .map_err(unavailable)?,
+                grounding_receipt_sha256: row.try_get("receipt_sha256").map_err(unavailable)?,
             })
         })
         .collect()
@@ -601,14 +592,11 @@ async fn read_nodes(
     rows.into_iter()
         .map(|row| {
             let memory_id: String = row.try_get("memory_id").map_err(unavailable)?;
-            let memory_revision: i64 =
-                row.try_get("memory_revision").map_err(unavailable)?;
+            let memory_revision: i64 = row.try_get("memory_revision").map_err(unavailable)?;
             let entity_key: String = row.try_get("entity_key").map_err(unavailable)?;
             Ok(ProjectionNode {
                 node_id: occurrence_node_id(&memory_id, memory_revision, &entity_key),
-                canonical_entity_id: row
-                    .try_get("canonical_entity_id")
-                    .map_err(unavailable)?,
+                canonical_entity_id: row.try_get("canonical_entity_id").map_err(unavailable)?,
                 entity_key,
                 entity_type: row.try_get("entity_type").map_err(unavailable)?,
                 label: row.try_get("label").map_err(unavailable)?,
@@ -661,24 +649,15 @@ async fn read_edges(
     rows.into_iter()
         .map(|row| {
             let memory_id: String = row.try_get("memory_id").map_err(unavailable)?;
-            let memory_revision: i64 =
-                row.try_get("memory_revision").map_err(unavailable)?;
+            let memory_revision: i64 = row.try_get("memory_revision").map_err(unavailable)?;
             let relation_key: String = row.try_get("relation_key").map_err(unavailable)?;
-            let from_entity_key: String =
-                row.try_get("from_entity_key").map_err(unavailable)?;
-            let to_entity_key: String =
-                row.try_get("to_entity_key").map_err(unavailable)?;
+            let from_entity_key: String = row.try_get("from_entity_key").map_err(unavailable)?;
+            let to_entity_key: String = row.try_get("to_entity_key").map_err(unavailable)?;
             Ok(ProjectionEdge {
                 edge_id: occurrence_edge_id(&memory_id, memory_revision, &relation_key),
-                canonical_relation_id: row
-                    .try_get("canonical_relation_id")
-                    .map_err(unavailable)?,
+                canonical_relation_id: row.try_get("canonical_relation_id").map_err(unavailable)?,
                 relation_key,
-                from_node_id: occurrence_node_id(
-                    &memory_id,
-                    memory_revision,
-                    &from_entity_key,
-                ),
+                from_node_id: occurrence_node_id(&memory_id, memory_revision, &from_entity_key),
                 to_node_id: occurrence_node_id(&memory_id, memory_revision, &to_entity_key),
                 from_entity_key,
                 to_entity_key,
@@ -706,8 +685,7 @@ fn positive_u64(value: i64, label: &str) -> Result<u64, CognitiveStoreError> {
 }
 
 fn nonnegative_u64(value: i64, label: &str) -> Result<u64, CognitiveStoreError> {
-    u64::try_from(value)
-        .map_err(|_| CognitiveStoreError::Corrupt(format!("negative {label}")))
+    u64::try_from(value).map_err(|_| CognitiveStoreError::Corrupt(format!("negative {label}")))
 }
 
 fn signed_delta(candidate: u64, current: u64) -> Result<i64, CognitiveStoreError> {
@@ -783,14 +761,16 @@ mod tests {
         let end = start + label.len();
         GroundedKgFactSetDraft {
             facts: facts(label),
-            evidence: vec![FactEvidenceSpanDraft::from_source_text(
-                GroundedFactKind::Entity,
-                label.to_ascii_lowercase(),
-                text,
-                start,
-                end,
-            )
-            .expect("evidence")],
+            evidence: vec![
+                FactEvidenceSpanDraft::from_source_text(
+                    GroundedFactKind::Entity,
+                    label.to_ascii_lowercase(),
+                    text,
+                    start,
+                    end,
+                )
+                .expect("evidence"),
+            ],
         }
     }
 

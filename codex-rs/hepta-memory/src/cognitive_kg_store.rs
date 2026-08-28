@@ -339,8 +339,7 @@ impl CognitiveStore {
             || semantic_plan.input_heads_sha256 != input_heads_sha256
         {
             return Err(CognitiveStoreError::Corrupt(
-                "shared semantic planner diverged from the product projection input"
-                    .to_string(),
+                "shared semantic planner diverged from the product projection input".to_string(),
             ));
         }
         let nodes = semantic_plan.nodes;

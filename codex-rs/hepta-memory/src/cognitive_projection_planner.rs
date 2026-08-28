@@ -147,12 +147,10 @@ impl ProjectionSemanticPlan {
         let mut node_ids = BTreeSet::new();
         let mut actual_entities = BTreeMap::<(String, i64), i64>::new();
         for node in &filtered_nodes {
-            let expected_canonical =
-                canonical_entity_id(owner_agent_id, scope, &node.entity_key);
+            let expected_canonical = canonical_entity_id(owner_agent_id, scope, &node.entity_key);
             if node.canonical_entity_id != expected_canonical {
                 return Err(CognitiveStoreError::Corrupt(
-                    "semantic projection entity identity does not match its scoped key"
-                        .to_string(),
+                    "semantic projection entity identity does not match its scoped key".to_string(),
                 ));
             }
             let expected_node =
@@ -205,8 +203,7 @@ impl ProjectionSemanticPlan {
         let mut edge_ids = BTreeSet::new();
         let mut actual_relations = BTreeMap::<(String, i64), i64>::new();
         for edge in &filtered_edges {
-            let from_canonical =
-                canonical_entity_id(owner_agent_id, scope, &edge.from_entity_key);
+            let from_canonical = canonical_entity_id(owner_agent_id, scope, &edge.from_entity_key);
             let to_canonical = canonical_entity_id(owner_agent_id, scope, &edge.to_entity_key);
             let expected_canonical = canonical_relation_id(
                 owner_agent_id,
@@ -229,24 +226,17 @@ impl ProjectionSemanticPlan {
                         .to_string(),
                 ));
             }
-            let expected_from = occurrence_node_id(
-                &edge.memory_id,
-                edge.memory_revision,
-                &edge.from_entity_key,
-            );
-            let expected_to = occurrence_node_id(
-                &edge.memory_id,
-                edge.memory_revision,
-                &edge.to_entity_key,
-            );
+            let expected_from =
+                occurrence_node_id(&edge.memory_id, edge.memory_revision, &edge.from_entity_key);
+            let expected_to =
+                occurrence_node_id(&edge.memory_id, edge.memory_revision, &edge.to_entity_key);
             if edge.from_node_id != expected_from
                 || edge.to_node_id != expected_to
                 || !node_ids.contains(&edge.from_node_id)
                 || !node_ids.contains(&edge.to_node_id)
             {
                 return Err(CognitiveStoreError::Corrupt(
-                    "semantic projection relation has an invalid occurrence endpoint"
-                        .to_string(),
+                    "semantic projection relation has an invalid occurrence endpoint".to_string(),
                 ));
             }
             let count = actual_relations
@@ -263,10 +253,7 @@ impl ProjectionSemanticPlan {
             if decision.disposition != ProjectionHeadDisposition::Included {
                 continue;
             }
-            let identity = (
-                decision.head.memory_id.clone(),
-                decision.head.revision,
-            );
+            let identity = (decision.head.memory_id.clone(), decision.head.revision);
             let entity_count = actual_entities.get(&identity).copied().unwrap_or_default();
             let relation_count = actual_relations.get(&identity).copied().unwrap_or_default();
             if entity_count != decision.head.entity_count
@@ -301,10 +288,7 @@ fn eligibility_digest(
     decisions: &[ProjectionHeadDecision],
 ) -> Sha256Digest {
     let mut hasher = Sha256::new();
-    frame_part(
-        &mut hasher,
-        b"hepta:cognitive:kg-projection-eligibility:v1",
-    );
+    frame_part(&mut hasher, b"hepta:cognitive:kg-projection-eligibility:v1");
     frame_part(&mut hasher, projection_scope.as_bytes());
     frame_part(&mut hasher, policy.as_str().as_bytes());
     frame_part(
@@ -344,14 +328,12 @@ mod tests {
         ProjectionHead {
             memory_id: label.to_string(),
             revision: 1,
-            content_sha256:
-                "1111111111111111111111111111111111111111111111111111111111111111"
-                    .to_string(),
+            content_sha256: "1111111111111111111111111111111111111111111111111111111111111111"
+                .to_string(),
             verification: "verified".to_string(),
             lifecycle: "active".to_string(),
-            fact_set_sha256:
-                "2222222222222222222222222222222222222222222222222222222222222222"
-                    .to_string(),
+            fact_set_sha256: "2222222222222222222222222222222222222222222222222222222222222222"
+                .to_string(),
             entity_count: 0,
             relation_count: 0,
             grounding_receipt_sha256: receipt.map(str::to_string),

@@ -49,9 +49,7 @@ pub(in super::super) async fn stored_fact_supports(
     .fetch_all(&mut *connection)
     .await
     .map_err(unavailable)?;
-    if to_i64_len(relation_rows.len(), "stored relation count")?
-        != declared_relation_count
-    {
+    if to_i64_len(relation_rows.len(), "stored relation count")? != declared_relation_count {
         return Err(CognitiveStoreError::Corrupt(
             "durable grounding relation count differs from the fact-set receipt".to_string(),
         ));
@@ -62,14 +60,10 @@ pub(in super::super) async fn stored_fact_supports(
         let to_key: String = row.try_get("to_entity_key").map_err(unavailable)?;
         let relation: String = row.try_get("relation").map_err(unavailable)?;
         let from_label = labels.get(&from_key).cloned().ok_or_else(|| {
-            CognitiveStoreError::Corrupt(
-                "stored relation has no source entity label".to_string(),
-            )
+            CognitiveStoreError::Corrupt("stored relation has no source entity label".to_string())
         })?;
         let to_label = labels.get(&to_key).cloned().ok_or_else(|| {
-            CognitiveStoreError::Corrupt(
-                "stored relation has no target entity label".to_string(),
-            )
+            CognitiveStoreError::Corrupt("stored relation has no target entity label".to_string())
         })?;
         supports.insert(
             FactIdentity {
@@ -114,9 +108,7 @@ pub(in super::super) fn durable_receipt_digest(
     super::super::frame_part(&mut hasher, fact_identity_sha256.as_bytes());
     super::super::frame_part(
         &mut hasher,
-        &u64::try_from(spans.len())
-            .unwrap_or(u64::MAX)
-            .to_be_bytes(),
+        &u64::try_from(spans.len()).unwrap_or(u64::MAX).to_be_bytes(),
     );
     for span in spans {
         super::super::frame_part(&mut hasher, span.identity.kind.as_str().as_bytes());
@@ -124,10 +116,7 @@ pub(in super::super) fn durable_receipt_digest(
         super::super::frame_part(&mut hasher, &span.ordinal.to_be_bytes());
         super::super::frame_part(&mut hasher, &span.start_byte.to_be_bytes());
         super::super::frame_part(&mut hasher, &span.end_byte.to_be_bytes());
-        super::super::frame_part(
-            &mut hasher,
-            span.evidence_sha256.as_str().as_bytes(),
-        );
+        super::super::frame_part(&mut hasher, span.evidence_sha256.as_str().as_bytes());
     }
     Sha256Digest::from_sha256_output(hasher.finalize())
 }
@@ -162,17 +151,11 @@ pub(in super::super) fn validate_span_range_corrupt(
     Ok(())
 }
 
-pub(in super::super) fn to_i64_len(
-    value: usize,
-    label: &str,
-) -> Result<i64, CognitiveStoreError> {
-    i64::try_from(value)
-        .map_err(|_| CognitiveStoreError::Invalid(format!("{label} exceeds i64")))
+pub(in super::super) fn to_i64_len(value: usize, label: &str) -> Result<i64, CognitiveStoreError> {
+    i64::try_from(value).map_err(|_| CognitiveStoreError::Invalid(format!("{label} exceeds i64")))
 }
 
-pub(in super::super) fn limit_plus_one(
-    value: usize,
-) -> Result<i64, CognitiveStoreError> {
+pub(in super::super) fn limit_plus_one(value: usize) -> Result<i64, CognitiveStoreError> {
     value
         .checked_add(1)
         .and_then(|next| i64::try_from(next).ok())

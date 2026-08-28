@@ -229,7 +229,7 @@ impl CognitiveRuntime {
                 ));
             }
             Some(LocalOutcomeState::Indeterminate) => {
-                return Err(LocalCompactHooksError::Indeterminate)
+                return Err(LocalCompactHooksError::Indeterminate);
             }
         };
 
@@ -339,8 +339,6 @@ fn bounded_error(error: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cognitive_test_support::agent_id;
-    use crate::cognitive_test_support::layout;
     use crate::CognitiveStore;
     use crate::CompactFence;
     use crate::CompactLease;
@@ -348,6 +346,8 @@ mod tests {
     use crate::CompactProtectedRef;
     use crate::CompactSummaryReceipt;
     use crate::LocalLeaseAcquire;
+    use crate::cognitive_test_support::agent_id;
+    use crate::cognitive_test_support::layout;
     use tempfile::TempDir;
 
     fn snapshot(fence: CompactFence) -> CompactParentSnapshot {
@@ -372,7 +372,7 @@ mod tests {
             checkpoint_id,
             CompactLease::from_snapshot(snapshot),
             vec![
-                CompactProtectedRef::new("approval:hook", "approval", true).expect("protected ref")
+                CompactProtectedRef::new("approval:hook", "approval", true).expect("protected ref"),
             ],
             CompactSummaryReceipt::new(
                 Sha256Digest::for_bytes(b"summary"),
