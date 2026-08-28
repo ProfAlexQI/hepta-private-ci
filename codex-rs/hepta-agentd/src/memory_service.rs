@@ -8,13 +8,14 @@ use codex_hepta_contracts::Authorized;
 use codex_hepta_contracts::CognitiveWriteCapability;
 use codex_hepta_contracts::MemoryReadCapability;
 use codex_hepta_memory::CognitiveRuntime;
+use codex_hepta_memory_runtime::AgentMemoryRuntime;
 
 use crate::AgentdError;
 use crate::AgentdIdentity;
 use crate::AgentdState;
 
 pub(crate) struct AgentMemoryService {
-    runtime: CognitiveRuntime,
+    runtime: AgentMemoryRuntime,
     _read: Authorized<MemoryReadCapability>,
     cognitive_write: Option<Authorized<CognitiveWriteCapability>>,
 }
@@ -49,11 +50,15 @@ impl AgentMemoryService {
         };
 
         state.refresh_generation()?;
-        let mut runtime = CognitiveRuntime::open_agent_owned(&identity.layout, authority)
-            .await
-            .map_err(|error| {
-                AgentdError::Protocol(format!("open Agent Memory runtime: {error}"))
-            })?;
+        let mut runtime = AgentMemoryRuntime::open(
+            identity.agent_id.clone(),
+            &identity.layout,
+            authority,
+        )
+        .await
+        .map_err(|error| {
+            AgentdError::Protocol(format!("open Agent Memory runtime facade: {error}"))
+        })?;
         state.refresh_generation()?;
 
         if cognitive_write.is_some()
@@ -65,15 +70,16 @@ impl AgentMemoryService {
         {
             return Err(AgentdError::QualificationCognitiveRuntimeUnavailable);
         }
-        if let Some(store) = runtime.available_store() {
+        if let Some(store) = runtime.cognitive_runtime().available_store() {
             state.attach_cognitive_store(Arc::clone(store))?;
         }
 
-        if runtime.available_store().is_some() && !federation_owner_layouts.is_empty() {
+        if runtime.cognitive_runtime().available_store().is_some()
+            && !federation_owner_layouts.is_empty()
+        {
             state.refresh_generation()?;
             runtime = runtime
                 .with_discovered_federation(
-                    identity.agent_id.clone(),
                     federation_owner_layouts,
                     now_unix_seconds()?,
                     authority,
@@ -94,7 +100,7 @@ impl AgentMemoryService {
 
     #[cfg(test)]
     pub(crate) fn is_available(&self) -> bool {
-        self.runtime.available_store().is_some()
+        self.runtime.cognitive_runtime().available_store().is_some()
     }
 
     #[cfg(test)]
@@ -108,7 +114,7 @@ impl AgentMemoryService {
         CognitiveRuntime,
         Option<Authorized<CognitiveWriteCapability>>,
     ) {
-        (self.runtime, self.cognitive_write)
+        (self.runtime.into_cognitive_runtime(), self.cognitive_write)
     }
 }
 
