@@ -43,6 +43,7 @@ jobs:
             echo "hepta_tree=$(git rev-parse 'HEAD^{tree}')"
             echo "canonical_generator=scripts/hepta-servo-independent-source-v2.py"
             echo "canonical_verifier=scripts/hepta-servo-source-bundle-verify-v2.py"
+            echo "git_archive_root_entry_compatibility=exact_directory_only"
             echo "source_fetch_performed=false"
             echo "external_network=false"
             echo "exact_source_accepted=false"
@@ -70,13 +71,13 @@ jobs:
             scripts/tests/test_hepta_servo_source_bundle_verify.py \
             scripts/tests/test_hepta_servo_source_bundle_verify_v2.py
 
-      - name: Run independent source acquisition fixture suites
+      - name: Run canonical independent source acquisition fixtures
         shell: bash
         run: |
           set -euo pipefail
           evidence_dir="$RUNNER_TEMP/hepta-servo-source-contract-v3"
-          python3 scripts/tests/test_hepta_servo_independent_source.py 2>&1 | tee "$evidence_dir/source-core-tests.log"
-          python3 scripts/tests/test_hepta_servo_independent_source_v2.py 2>&1 | tee "$evidence_dir/source-v2-tests.log"
+          python3 scripts/tests/test_hepta_servo_independent_source_v2.py \
+            2>&1 | tee "$evidence_dir/source-v2-tests.log"
           echo "source_fixture_tests=passed" >> "$evidence_dir/posture.txt"
 
       - name: Run offline verifier core and Git-order regression suites
@@ -84,8 +85,10 @@ jobs:
         run: |
           set -euo pipefail
           evidence_dir="$RUNNER_TEMP/hepta-servo-source-contract-v3"
-          python3 scripts/tests/test_hepta_servo_source_bundle_verify.py 2>&1 | tee "$evidence_dir/verifier-core-tests.log"
-          python3 scripts/tests/test_hepta_servo_source_bundle_verify_v2.py 2>&1 | tee "$evidence_dir/verifier-v2-tests.log"
+          python3 scripts/tests/test_hepta_servo_source_bundle_verify.py \
+            2>&1 | tee "$evidence_dir/verifier-core-tests.log"
+          python3 scripts/tests/test_hepta_servo_source_bundle_verify_v2.py \
+            2>&1 | tee "$evidence_dir/verifier-v2-tests.log"
           echo "git_tree_ordering_tests=passed" >> "$evidence_dir/posture.txt"
 
       - name: Verify canonical source pointer
@@ -108,6 +111,8 @@ jobs:
           generator = (root / pointer["canonical_generator"]).read_text(encoding="utf-8")
           verifier = (root / pointer["canonical_offline_verifier"]).read_text(encoding="utf-8")
           assert '"GIT_CONFIG_KEY_0": "tar.umask"' in generator
+          assert "install_archive_root_compatibility" in generator
+          assert 'member.name == root_name' in generator
           assert "git_tree_entry_compare" in verifier
           assert 'ord("/")' in verifier
           assert "cmp_to_key" in verifier
