@@ -9,6 +9,7 @@ on:
       - "apps/hepta-native/src/shared/hepta_windows_material_profile_aggregate.rs"
       - "apps/hepta-native/src/shared/mod.rs"
       - "docs/ui/HEPTA_WINDOWS_MATERIAL_PROFILE_AGGREGATE_V1.json"
+      - "docs/ui/schemas/hepta.ui.v4.windows-material-profile-aggregate.v1.schema.json"
       - "docs/ui/HEPTA_UI_V4_TRANCHE_14_WINDOWS_PROFILE_AGGREGATE_2026-08-28.md"
       - "scripts/hepta-ui-v4-windows-material-profile-aggregate-gate"
       - ".github/workflows/hepta-ui-v4-windows-material-profile-aggregate.yml"
@@ -31,8 +32,9 @@ jobs:
       - name: Validate formats and source boundary
         run: |
           ruby -c scripts/hepta-ui-v4-windows-material-profile-aggregate-gate
-          ruby -rjson -e 'JSON.parse(File.read(ARGV.fetch(0)))' \
-            docs/ui/HEPTA_WINDOWS_MATERIAL_PROFILE_AGGREGATE_V1.json
+          ruby -rjson -e 'ARGV.each { |path| JSON.parse(File.read(path)) }' \
+            docs/ui/HEPTA_WINDOWS_MATERIAL_PROFILE_AGGREGATE_V1.json \
+            docs/ui/schemas/hepta.ui.v4.windows-material-profile-aggregate.v1.schema.json
           ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-windows-material-profile-aggregate.yml")'
           ruby scripts/hepta-ui-v4-windows-material-profile-aggregate-gate \
             | tee windows-material-profile-aggregate-source.json
