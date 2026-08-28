@@ -39,6 +39,20 @@ jobs:
           toolchain: "1.95.0"
           components: rustfmt,clippy
 
+      - name: Align machine-readable plan boundary
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("scripts/qualification/materialize-hepta-intelligence-p1-1b-bounded-read.py")
+          text = path.read_text(encoding="utf-8")
+          old = "qualified=false\nwired=false\nproduct_workspace_member=false"
+          new = "qualified=false\nruntime_wired=false\nproduct_workspace_member=false"
+          if text.count(old) != 1:
+              raise SystemExit("bounded-read plan marker is not unique")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
       - name: Execute fail-closed qualification runner
         run: bash scripts/qualification/run-hepta-intelligence-p1-1b-bounded-read.sh
 
