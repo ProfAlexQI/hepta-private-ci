@@ -1,0 +1,223 @@
+name: Hepta inference INF-0 macOS preflight
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0-macos-preflight-20260828
+    paths:
+      - ".github/workflows/hepta-inference-inf0-macos-preflight.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-inf0-macos-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Exact-head source, Rust, and Clippy preflight
+    runs-on: macos-latest
+    timeout-minutes: 120
+    env:
+      CANDIDATE: 3afce0894a597f1968169400e3b79c4a5e94ec17
+      EXPECTED_PARENT: 3afce0894a597f1968169400e3b79c4a5e94ec17
+      SELF: .github/workflows/hepta-inference-inf0-macos-preflight.yml
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+
+      - name: Verify isolated preflight branch shape
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          test -z "$(git status --porcelain)"
+          git checkout --detach "$CANDIDATE"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE"
+          test -z "$(git status --porcelain)"
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Verify source and authority contract
+        id: source
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-inference-inf0-source-gate.py \
+            scripts/hepta-inference-inf0c-real-e2e.py
+          python3 scripts/hepta-inference-inf0-source-gate.py
+
+      - name: Check standalone reference formatting
+        id: reference_fmt
+        continue-on-error: true
+        shell: bash
+        run: cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml -- --check
+
+      - name: Test standalone reference crate
+        id: reference_test
+        continue-on-error: true
+        shell: bash
+        run: cargo test --manifest-path tools/hepta-inference-inf0/Cargo.toml --locked
+
+      - name: Strict Clippy for standalone reference crate
+        id: reference_clippy
+        continue-on-error: true
+        shell: bash
+        run: |
+          cargo clippy --manifest-path tools/hepta-inference-inf0/Cargo.toml \
+            --all-targets --locked -- -D warnings
+
+      - name: Set up repository CI tools
+        id: setup_ci
+        continue-on-error: true
+        uses: ./.github/actions/setup-ci
+
+      - name: Check included inference source fragments
+        id: fragment_fmt
+        continue-on-error: true
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          rustfmt --edition 2024 --check \
+            ollama/src/client.rs \
+            ollama/src/client_*.inc.rs \
+            lmstudio/src/client.rs \
+            lmstudio/src/client_*.inc.rs
+
+      - name: Check workspace formatting
+        id: workspace_fmt
+        continue-on-error: true
+        shell: bash
+        working-directory: codex-rs
+        run: cargo fmt --all -- --check
+
+      - name: Compile readiness and privacy adapters
+        id: compatibility_check
+        continue-on-error: true
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo check --locked \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy
+
+      - name: Test readiness and privacy adapters
+        id: compatibility_test
+        continue-on-error: true
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo test --locked \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy
+
+      - name: Strict readiness and privacy Clippy
+        id: compatibility_clippy
+        continue-on-error: true
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo clippy --locked --all-targets \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy \
+            -- -D warnings
+
+      - name: Emit fail-closed preflight receipt
+        if: always()
+        shell: bash
+        env:
+          SOURCE: ${{ steps.source.outcome }}
+          REFERENCE_FMT: ${{ steps.reference_fmt.outcome }}
+          REFERENCE_TEST: ${{ steps.reference_test.outcome }}
+          REFERENCE_CLIPPY: ${{ steps.reference_clippy.outcome }}
+          SETUP_CI: ${{ steps.setup_ci.outcome }}
+          FRAGMENT_FMT: ${{ steps.fragment_fmt.outcome }}
+          WORKSPACE_FMT: ${{ steps.workspace_fmt.outcome }}
+          COMPATIBILITY_CHECK: ${{ steps.compatibility_check.outcome }}
+          COMPATIBILITY_TEST: ${{ steps.compatibility_test.outcome }}
+          COMPATIBILITY_CLIPPY: ${{ steps.compatibility_clippy.outcome }}
+        run: |
+          set -euo pipefail
+          receipt="$RUNNER_TEMP/hepta-inference-inf0-macos-preflight.txt"
+          {
+            echo "candidate=$CANDIDATE"
+            echo "runner_os=macOS"
+            echo "source=$SOURCE"
+            echo "reference_fmt=$REFERENCE_FMT"
+            echo "reference_test=$REFERENCE_TEST"
+            echo "reference_clippy=$REFERENCE_CLIPPY"
+            echo "setup_ci=$SETUP_CI"
+            echo "fragment_fmt=$FRAGMENT_FMT"
+            echo "workspace_fmt=$WORKSPACE_FMT"
+            echo "compatibility_check=$COMPATIBILITY_CHECK"
+            echo "compatibility_test=$COMPATIBILITY_TEST"
+            echo "compatibility_clippy=$COMPATIBILITY_CLIPPY"
+            echo "qualified=false"
+            echo "ubuntu_qualification=false"
+            echo "inf1=NOT_STARTED"
+            echo "production_authority=false"
+            echo "effect_authority=false"
+            echo "model_npu=false"
+            echo "remote_inference=false"
+            echo "promotion=false"
+          } | tee "$receipt"
+          cat "$receipt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload preflight receipt
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0-macos-preflight-${{ env.CANDIDATE }}
+          path: ${{ runner.temp }}/hepta-inference-inf0-macos-preflight.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce complete preflight success
+        if: always()
+        shell: bash
+        env:
+          SOURCE: ${{ steps.source.outcome }}
+          REFERENCE_FMT: ${{ steps.reference_fmt.outcome }}
+          REFERENCE_TEST: ${{ steps.reference_test.outcome }}
+          REFERENCE_CLIPPY: ${{ steps.reference_clippy.outcome }}
+          SETUP_CI: ${{ steps.setup_ci.outcome }}
+          FRAGMENT_FMT: ${{ steps.fragment_fmt.outcome }}
+          WORKSPACE_FMT: ${{ steps.workspace_fmt.outcome }}
+          COMPATIBILITY_CHECK: ${{ steps.compatibility_check.outcome }}
+          COMPATIBILITY_TEST: ${{ steps.compatibility_test.outcome }}
+          COMPATIBILITY_CLIPPY: ${{ steps.compatibility_clippy.outcome }}
+        run: |
+          set -euo pipefail
+          for result in \
+            "$SOURCE" \
+            "$REFERENCE_FMT" \
+            "$REFERENCE_TEST" \
+            "$REFERENCE_CLIPPY" \
+            "$SETUP_CI" \
+            "$FRAGMENT_FMT" \
+            "$WORKSPACE_FMT" \
+            "$COMPATIBILITY_CHECK" \
+            "$COMPATIBILITY_TEST" \
+            "$COMPATIBILITY_CLIPPY"
+          do
+            test "$result" = success
+          done
+          echo "PASS_HEPTA_INFERENCE_INF0_MACOS_PREFLIGHT_ONLY"
