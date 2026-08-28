@@ -19,7 +19,7 @@ env:
 jobs:
   qualify:
     name: P1.1c.2 object, label, reference and receipt closure
-    runs-on: macos-15
+    runs-on: ubuntu-slim
     timeout-minutes: 60
 
     steps:
