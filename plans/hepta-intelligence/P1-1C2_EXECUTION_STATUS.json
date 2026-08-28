@@ -1,0 +1,91 @@
+{
+  "schema": "hepta.intelligence.p1_1c2.execution_status.v1",
+  "current_tranche": {
+    "id": "P1.1c.2",
+    "name": "Reviewed Corpus Offline Efficacy Re-run",
+    "branch": "codex/hepta-p1c2-eval-20260828",
+    "implemented": true,
+    "source_qualified": false,
+    "reviewed_corpus_present": false,
+    "reviewed_corpus_evaluated": false,
+    "efficacy_validation": false,
+    "efficacy_claim": false,
+    "status": "IMPLEMENTED_SOURCE_ONLY_REAL_CORPUS_DEPENDENCY_BLOCKED"
+  },
+  "stack": {
+    "p1_1c": {
+      "branch": "codex/hepta-intelligence-offline-efficacy-p1c-20260828",
+      "commit": "fe33565ce74c013e574c307e4fab101820c0ea88",
+      "source_qualified": false,
+      "seed_pipeline_reproducible": false
+    },
+    "p1_1c1": {
+      "branch": "codex/hepta-intelligence-reviewed-corpus-acceptance-p1c1-20260828",
+      "commit": "f961a056ac0a35c1967a934de7cf5bf7ffb92a05",
+      "review_pipeline_validated": true,
+      "reviewed_corpus_accepted": false,
+      "corpus_reviewed": false,
+      "human_review_attested": false
+    }
+  },
+  "implementation": {
+    "isolated_rust_workspace": true,
+    "local_path_dependencies_only": true,
+    "acceptance_receipt_recomputation": true,
+    "acceptance_receipt_exact_match": true,
+    "review_to_candidate_projection": true,
+    "query_digest_binding": true,
+    "candidate_projection_digest_binding": true,
+    "locale_binding": true,
+    "complete_candidate_coverage": true,
+    "seven_ablation_lanes": true,
+    "seed_baseline_deltas": true,
+    "fixed_point_metrics": true,
+    "deterministic_redacted_receipt": true
+  },
+  "checked_in_fixture": {
+    "fixture_only": true,
+    "review_item_count": 8,
+    "projection_entry_count": 8,
+    "evaluation_case_count": 8,
+    "evaluation_candidate_count": 48,
+    "candidate_coverage_complete": false,
+    "eligible_for_reviewed_evaluation": false,
+    "expected_status": "BLOCKED_P1_1C2_REVIEWED_CORPUS_DEPENDENCY"
+  },
+  "source_policy": {
+    "minimum_cases": 8,
+    "minimum_locales": 8,
+    "minimum_full_recall_at_4_ppm": 750000,
+    "minimum_full_ndcg_at_4_ppm": 700000,
+    "minimum_full_citation_precision_ppm": 400000,
+    "maximum_full_p95_latency_micros": 1000,
+    "maximum_full_mean_token_cost": 512,
+    "production_calibrated": false
+  },
+  "blockers": [
+    "P1.1c exact-head source qualification",
+    "P1.1c seed-pipeline reproducibility",
+    "P1.1c.1 external human-reviewed corpus acceptance",
+    "P1.1c.1 human-review attestation",
+    "complete two-review coverage for every evaluation candidate",
+    "non-fixture review-to-evaluation projection",
+    "external privacy, license and reviewer-trust acceptance"
+  ],
+  "authority": {
+    "product_workspace_member": false,
+    "product_module_registered": false,
+    "runtime_wired": false,
+    "default_recall_changed": false,
+    "federation_recall_changed": false,
+    "context_attachment": false,
+    "physical_send": false,
+    "network_access": false,
+    "model_download": false,
+    "external_effects": false,
+    "production_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  }
+}
