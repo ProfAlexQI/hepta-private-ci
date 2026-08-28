@@ -21,7 +21,8 @@ from apply_qualification_chain_v2 import (  # noqa: E402
 )
 from patch_logic import patch_verifier  # noqa: E402
 
-EXPECTED_HEAD = '30e9202f5b37ca2fca1f32866a98579cd5ae1057'
+EXPECTED_HEAD = 'c3bf4315339539050256dcd03b484aca39ff6dbe'
+EXPECTED_WORKFLOW_SHA256 = '805a556a5de01ed33f610bf1852776f82f3b645f7d71cbf59ac196b38ab144b1'
 WORKFLOW = '.github/workflows/hepta-intelligence-evidence-resolver-v4.yml'
 VERIFIER = 'scripts/verify-hepta-intelligence-evidence-resolver-v4.py'
 SCOPED_CLIPPY = 'scripts/check-hepta-intelligence-p0-3-3-clippy.py'
@@ -76,11 +77,15 @@ def main() -> int:
     worktree = temp / 'p033'
     try:
         git(repo, 'worktree', 'add', '--detach', str(worktree), f'origin/{P033_BRANCH}', capture=False)
-        verify_blob(worktree, P033_BRANCH, WORKFLOW)
         verify_blob(worktree, P033_BRANCH, VERIFIER)
         verify_blob(worktree, P033_BRANCH, STATUS)
+        actual_workflow_sha256 = hashlib.sha256((worktree / WORKFLOW).read_bytes()).hexdigest()
+        if actual_workflow_sha256 != EXPECTED_WORKFLOW_SHA256:
+            raise RuntimeError(
+                f'P0.3.3 workflow payload drift: expected {EXPECTED_WORKFLOW_SHA256}, '
+                f'observed {actual_workflow_sha256}'
+            )
 
-        copy_payload(BUNDLE, worktree, WORKFLOW)
         copy_payload(BUNDLE, worktree, SCOPED_CLIPPY)
         copy_payload(BUNDLE, worktree, RUNNER)
         verifier = worktree / VERIFIER
@@ -88,15 +93,8 @@ def main() -> int:
         verifier.write_text(align_v5_workflow_gate(patched), encoding='utf-8')
         update_pre_restack_status(worktree / STATUS)
 
-        # Validate the complete final tree, including the v5 workflow, before
-        # publishing any part of it.
         validate_static(worktree, True)
         git(worktree, 'diff', '--check', capture=False)
-        workflow_sha256 = hashlib.sha256((worktree / WORKFLOW).read_bytes()).hexdigest()
-
-        # The Actions GITHUB_TOKEN cannot update workflow files. Publish only
-        # the already-validated non-workflow source/status changes here; the
-        # connector publishes the exact validated workflow payload next.
         git(worktree, 'add', VERIFIER, SCOPED_CLIPPY, RUNNER, STATUS, capture=False)
         git(worktree, 'config', 'user.name', 'Qian QI', capture=False)
         git(worktree, 'config', 'user.email', '102159240+ProfAlexQI@users.noreply.github.com', capture=False)
@@ -121,8 +119,8 @@ def main() -> int:
             'schema': 'hepta_p033_qchain_v2_source_publish_result',
             'old_head': EXPECTED_HEAD,
             'new_head': new_head,
-            'workflow_sha256': workflow_sha256,
-            'workflow_publication_pending': True,
+            'workflow_sha256': actual_workflow_sha256,
+            'workflow_publication_pending': False,
             'pushed': True,
             'qualified': False,
             'production_authority': False,
