@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 env:
-  EXPECTED_PARENT: c3955a1fc542f2409fb8bf6fc4228ee09e74a6ab
+  EXPECTED_PARENT: 454aa50a47a0df55cfa8df748656a5d2f845cec5
   ARCHIVE_SHA256: 1a5570e79a842c389b9af929926030f5ce9d98b3f46e2f35d7f639d8a1aaa8fc
   MANIFEST: codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
   PACKAGE: codex-hepta-authbus-p1-2-qualification
@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 2
           persist-credentials: true
 
-      - name: Verify branch, exact head, and observed-failure parent
+      - name: Verify branch, exact head, and diagnostic parent
         shell: bash
         run: |
           set -euo pipefail
@@ -122,7 +122,7 @@ jobs:
           grep -q 'PASS_AUTHBUS_P1_2_SOURCE_ONLY' /tmp/authbus-p1-2-source.json
           git diff --check
 
-      - name: Apply bounded digest persistence and exact TTL-boundary repairs
+      - name: Apply bounded digest, TTL, and canonical SQLite shim repairs
         shell: bash
         run: |
           set -euo pipefail
@@ -132,13 +132,58 @@ jobs:
           import re
           from pathlib import Path
 
+          cargo_path = Path("codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml")
+          cargo = cargo_path.read_text(encoding="utf-8")
+          feature_before = '''    "dep:codex-hepta-contracts",
+              "dep:serde",
+          '''.replace("              ", "    ")
+          feature_after = '''    "dep:codex-hepta-contracts",
+              "dep:codex-state",
+              "dep:codex-utils-absolute-path",
+              "dep:serde",
+          '''.replace("              ", "    ")
+          if cargo.count(feature_before) != 1:
+              raise SystemExit("expected exactly one P1.2 feature dependency anchor")
+          cargo = cargo.replace(feature_before, feature_after)
+
+          dependency_before = '''codex-hepta-contracts = { path = "../hepta-contracts", optional = true }
+          serde = { version = "1.0.228", features = ["derive"], optional = true }
+          '''.replace("          ", "")
+          dependency_after = '''codex-hepta-contracts = { path = "../hepta-contracts", optional = true }
+          codex-state = { path = "../state", optional = true }
+          codex-utils-absolute-path = { path = "../utils/absolute-path", optional = true }
+          serde = { version = "1.0.228", features = ["derive"], optional = true }
+          '''.replace("          ", "")
+          if cargo.count(dependency_before) != 1:
+              raise SystemExit("expected exactly one P1.2 dependency table anchor")
+          cargo = cargo.replace(dependency_before, dependency_after)
+          cargo_path.write_text(cargo, encoding="utf-8")
+
           store_path = Path("codex-rs/hepta-authbus-p1-2-qualification/src/store.rs")
           store = store_path.read_text(encoding="utf-8")
 
-          unused_import = "use serde::Deserialize;\n"
-          if store.count(unused_import) != 1:
-              raise SystemExit("expected exactly one unused serde::Deserialize import")
-          store = store.replace(unused_import, "")
+          removals = [
+              "use std::time::Duration;\n",
+              "use serde::Deserialize;\n",
+              "use sqlx::sqlite::SqliteConnectOptions;\n",
+              "use sqlx::sqlite::SqliteJournalMode;\n",
+              "use sqlx::sqlite::SqlitePoolOptions;\n",
+              "use sqlx::sqlite::SqliteSynchronous;\n",
+          ]
+          for removal in removals:
+              if store.count(removal) != 1:
+                  raise SystemExit(f"expected exactly one import to remove: {removal!r}")
+              store = store.replace(removal, "")
+
+          import_anchor = "use codex_hepta_contracts::Sha256Digest;\n"
+          import_replacement = (
+              import_anchor
+              + "use codex_state::SqliteConfig;\n"
+              + "use codex_utils_absolute_path::AbsolutePathBuf;\n"
+          )
+          if store.count(import_anchor) != 1:
+              raise SystemExit("expected exactly one canonical SQLite import anchor")
+          store = store.replace(import_anchor, import_replacement)
 
           patterns = (
               re.compile(
@@ -165,6 +210,32 @@ jobs:
                   f"expected exactly 29 Sha256Digest text repairs, got {digest_repairs}"
               )
 
+          pool_before = '''        let database_path = root.join(DATABASE_FILE);
+                  let options = SqliteConnectOptions::new()
+                      .filename(&database_path)
+                      .create_if_missing(true)
+                      .journal_mode(SqliteJournalMode::Wal)
+                      .synchronous(SqliteSynchronous::Full)
+                      .foreign_keys(true)
+                      .busy_timeout(Duration::from_secs(5));
+                  let pool = SqlitePoolOptions::new()
+                      .max_connections(1)
+                      .connect_with(options)
+                      .await
+                      .map_err(map_sqlx)?;
+          '''.replace("                  ", "        ")
+          pool_after = '''        let absolute_root = AbsolutePathBuf::try_from(root.clone())
+                      .map_err(|_| P12Error::StorageUnavailable)?;
+                  let database_path = root.join(DATABASE_FILE);
+                  let pool = SqliteConfig::from_sqlite_home(absolute_root)
+                      .open_durable_evidence_pool(&database_path)
+                      .await
+                      .map_err(map_sqlx)?;
+          '''.replace("                  ", "        ")
+          if store.count(pool_before) != 1:
+              raise SystemExit("expected exactly one direct SQLite pool construction block")
+          store = store.replace(pool_before, pool_after)
+
           suspicious = [
               (line_number, line)
               for line_number, line in enumerate(store.splitlines(), start=1)
@@ -173,30 +244,38 @@ jobs:
           ]
           if suspicious:
               raise SystemExit(f"unrepaired digest text conversions: {suspicious}")
+          if "connect_with" in store or "SqlitePoolOptions" in store:
+              raise SystemExit("direct SQLite pool construction survived remediation")
           store_path.write_text(store, encoding="utf-8")
 
           test_path = Path("codex-rs/hepta-authbus-p1-2-qualification/tests/p1_2.rs")
           tests = test_path.read_text(encoding="utf-8")
-          before = '''        "nonce-two",
+          ttl_before = '''        "nonce-two",
                   NOW + 300,
           '''.replace("                  ", "        ")
-          after = '''        "nonce-two",
+          ttl_after = '''        "nonce-two",
                   // `issued_at` is `NOW - 2`; this exercises the exact 300-second TTL limit.
                   NOW + 298,
           '''.replace("                  ", "        ")
-          if tests.count(before) != 1:
+          if tests.count(ttl_before) != 1:
               raise SystemExit("expected exactly one nonce-two TTL fixture")
-          tests = tests.replace(before, after)
+          tests = tests.replace(ttl_before, ttl_after)
           test_path.write_text(tests, encoding="utf-8")
 
           print(f"applied_sha256_digest_text_repairs={digest_repairs}")
           print("applied_exact_ttl_boundary_repairs=1")
+          print("applied_canonical_sqlite_shim_repairs=1")
           PY
-          grep -q 'as_str().to_owned()' "${CRATE_ROOT}/src/store.rs"
-          ! grep -q '^use serde::Deserialize;$' "${CRATE_ROOT}/src/store.rs"
+          grep -q 'dep:codex-state' "${MANIFEST}"
+          grep -q 'dep:codex-utils-absolute-path' "${MANIFEST}"
+          grep -q 'use codex_state::SqliteConfig;' "${CRATE_ROOT}/src/store.rs"
+          grep -q 'open_durable_evidence_pool' "${CRATE_ROOT}/src/store.rs"
+          ! grep -q 'connect_with' "${CRATE_ROOT}/src/store.rs"
+          ! grep -q 'SqlitePoolOptions' "${CRATE_ROOT}/src/store.rs"
           grep -q 'NOW + 298' "${CRATE_ROOT}/tests/p1_2.rs"
           ! grep -A2 '"nonce-two"' "${CRATE_ROOT}/tests/p1_2.rs" | grep -q 'NOW + 300'
           git diff --check -- \
+            "${MANIFEST}" \
             "${CRATE_ROOT}/src/store.rs" \
             "${CRATE_ROOT}/tests/p1_2.rs"
 
