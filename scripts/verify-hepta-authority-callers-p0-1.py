@@ -20,7 +20,7 @@ PRODUCTION_WRITER_OPEN = "ProductionDurableWriter::open("
 
 
 def fail(message: str) -> NoReturn:
-    raise SystemExit(f"FAIL_HEPTA_AUTHORITY_CALLERS_P0_3: {message}")
+    raise SystemExit(f"FAIL_HEPTA_AUTHORITY_CALLERS_P0_4: {message}")
 
 
 def read(relative: str) -> str:
@@ -38,8 +38,8 @@ def main() -> int:
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         fail(f"cannot read authority caller manifest: {error}")
-    if manifest.get("schemaVersion") != 2:
-        fail("authority caller manifest must be schemaVersion 2")
+    if manifest.get("schemaVersion") != 3:
+        fail("authority caller manifest must be schemaVersion 3")
 
     callers = manifest.get("grantConstructorCallers")
     if not isinstance(callers, dict) or not callers:
@@ -88,16 +88,20 @@ def main() -> int:
     if not isinstance(legacy, dict):
         fail("legacyProductionAdapter must be an object")
     legacy_path = legacy.get("path")
+    raw_writer_path = legacy.get("rawWriterOpenPath")
     consumer_path = legacy.get("agentdConsumerPath")
     writer_host_path = legacy.get("productionWriterHostPath")
-    if not isinstance(legacy_path, str):
-        fail("canonical legacy adapter path is missing")
-    if not isinstance(consumer_path, str):
-        fail("Agentd adapter consumer path is missing")
-    if not isinstance(writer_host_path, str):
-        fail("production writer host path is missing")
+    for label, value in (
+        ("canonical legacy adapter path", legacy_path),
+        ("raw writer runtime path", raw_writer_path),
+        ("Agentd adapter consumer path", consumer_path),
+        ("production writer host path", writer_host_path),
+    ):
+        if not isinstance(value, str):
+            fail(f"{label} is missing")
 
     legacy_source = read(legacy_path)
+    raw_writer_source = read(raw_writer_path)
     consumer_source = read(consumer_path)
     writer_host_source = read(writer_host_path)
 
@@ -116,6 +120,21 @@ def main() -> int:
     for forbidden in forbidden_requests:
         if forbidden in legacy_source:
             fail(f"legacy adapter requests forbidden capability {forbidden}")
+
+    required_runtime_markers = (
+        "pub struct AuthorizedProductionWriter",
+        "ProductionDurableWriter::open(",
+        "ProductionCognitiveWriteAuthorization",
+        "authorization.capability().is_external()",
+        "authorization.capability().subject_agent_id()",
+        "authorization.capability().generation()",
+    )
+    for marker in required_runtime_markers:
+        if marker not in raw_writer_source:
+            fail(f"Memory runtime writer marker is missing: {marker}")
+    for forbidden in forbidden_requests:
+        if forbidden in raw_writer_source:
+            fail(f"Memory runtime writer requests forbidden capability {forbidden}")
 
     required_consumer_markers = (
         "pub(crate) use codex_hepta_memory_runtime::ProductionCognitiveWriteAuthorization;",
@@ -137,26 +156,32 @@ def main() -> int:
         fail("production dispatch must require a separate typed effect capability")
     if legacy.get("existingProductionWriterCallerMigrated") is not True:
         fail("existing production writer caller must be marked migrated")
+    if legacy.get("agentdMayCallRawWriterOpen") is not False:
+        fail("Agentd raw writer opening must remain forbidden")
     if legacy.get("localQualificationProfileAcceptedAsProductionAuthority") is not False:
         fail("local qualification profile cannot be accepted as production authority")
 
     if writer_host_source.count("ProductionCognitiveWriteAuthorization::verify(") < 2:
-        fail("all production writer open paths must pass through the typed adapter")
+        fail("all production writer host open paths must pass through the typed adapter")
     required_host_markers = (
         "cognitive_write: Authorized<CognitiveWriteCapability>",
         "external_effect: Option<Authorized<ExternalEffectCapability>>",
         "external_effect: Authorized<ExternalEffectCapability>",
+        "AuthorizedProductionWriter::open(",
+        "AuthorizedProductionWriter::open_with_store(",
         "validate_external_effect_capability(",
         "production external-effect capability is not explicitly attached",
     )
     for marker in required_host_markers:
         if marker not in writer_host_source:
             fail(f"production writer host marker is missing: {marker}")
+    if PRODUCTION_WRITER_OPEN in writer_host_source:
+        fail("Agentd production writer host still calls the raw opener")
     if "pub fn attach_target(mut self, target: Arc<dyn ProductionOutboxTarget>) -> Self" in writer_host_source:
         fail("production target attachment still bypasses typed effect authority")
-    if sorted(set(cross_owner_writer_open_callers)) != [writer_host_path]:
+    if sorted(set(cross_owner_writer_open_callers)) != [raw_writer_path]:
         fail(
-            "cross-owner production writer open callers are not fully migrated: "
+            "raw production writer opening escaped the Memory runtime: "
             f"{sorted(set(cross_owner_writer_open_callers))}"
         )
 
@@ -164,7 +189,7 @@ def main() -> int:
     if not isinstance(authority, dict) or any(authority.values()):
         fail("authority caller manifest must retain a fully closed authority boundary")
 
-    print("PASS_HEPTA_AUTHORITY_CALLERS_P0_3_CANONICAL_SOURCE_ONLY")
+    print("PASS_HEPTA_AUTHORITY_CALLERS_P0_4_CANONICAL_SOURCE_ONLY")
     return 0
 
 
