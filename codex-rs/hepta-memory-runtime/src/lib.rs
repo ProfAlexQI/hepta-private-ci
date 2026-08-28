@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod legacy_authority;
+
 use std::fmt;
 
 use codex_hepta_contracts::AgentId;
@@ -11,6 +13,8 @@ use codex_hepta_contracts::MemoryReadCapability;
 use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_memory::CognitiveRuntime;
 use codex_hepta_paths::HeptaAgentLayout;
+
+pub use legacy_authority::ProductionCognitiveWriteAuthorization;
 
 /// Physical product boundary between Agent composition and the legacy
 /// `codex-hepta-memory` implementation crate.
