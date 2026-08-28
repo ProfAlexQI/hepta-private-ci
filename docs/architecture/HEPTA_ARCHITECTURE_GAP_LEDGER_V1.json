@@ -1,0 +1,49 @@
+{
+  "schema": "hepta.architecture-gap-ledger.v1",
+  "schemaVersion": 1,
+  "canonicalBranch": "codex/hepta-architecture-convergence-p0-2-20260828",
+  "canonicalPullRequest": 53,
+  "sourceClosure": {
+    "canonicalArchitectureAuthority": {"state": "closed", "evidence": ["ARCHITECTURE.md", "docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json", "docs/architecture/HEPTA_DOCUMENT_AUTHORITY_INDEX_V1.json"]},
+    "singleWriterDataOwnership": {"state": "closed", "evidence": ["docs/architecture/DATA_AUTHORITY_MAP.md", "codex-rs/hepta-contracts/src/product_graph.rs"]},
+    "unifiedTypedAuthorityKernel": {"state": "closed", "evidence": ["codex-rs/hepta-contracts/src/authority.rs", "docs/architecture/HEPTA_AUTHORITY_CALLERS_V1.json"]},
+    "legacyProductionLeaseAttenuation": {"state": "closed", "evidence": ["codex-rs/hepta-memory-runtime/src/legacy_authority.rs", "codex-rs/hepta-memory-runtime/src/production_writer.rs", "codex-rs/hepta-agentd/src/production_writer_host.rs"]},
+    "separateExternalEffectCapability": {"state": "closed", "evidence": ["codex-rs/hepta-agentd/src/production_writer_host.rs"]},
+    "thinAgentdCompositionRoot": {"state": "closed", "evidence": ["codex-rs/hepta-agentd/src/composition.rs", "codex-rs/hepta-agentd/src/memory_service.rs", "codex-rs/hepta-agentd/src/automation_service.rs", "codex-rs/hepta-agentd/src/app_runtime.rs"]},
+    "physicalMemoryRuntimeBoundary": {"state": "closed", "evidence": ["codex-rs/hepta-memory-runtime/Cargo.toml", "codex-rs/hepta-memory-runtime/src/lib.rs"]},
+    "automationCrossOwnerOperation": {"state": "closed", "evidence": ["codex-rs/hepta-contracts/src/operation.rs", "codex-rs/hepta-automation/src/model.rs", "codex-rs/hepta-automation/src/scheduler.rs"]},
+    "writeEnabledQualificationBootstrapRetired": {"state": "closed", "evidence": [".github/workflows/hepta-architecture-convergence-p0-2.yml"]},
+    "singleReadOnlyRequiredWorkflow": {"state": "closed", "evidence": [".github/workflows/hepta-architecture-convergence-p0-2.yml", ".github/workflows/blocking-ci.yml"]}
+  },
+  "hostedQualification": {
+    "exactSourceHead": "external_gate_pending",
+    "mergeCandidate": "external_gate_pending",
+    "requiredContext": "Hepta architecture convergence required",
+    "sourceMutationAllowed": false,
+    "queuedOrEmptyJobCountsAsQualification": false
+  },
+  "postP0ProductWork": {
+    "matrixOperationContractMigration": "planned_non_blocking",
+    "providerEffectOperationContractMigration": "planned_non_blocking",
+    "memoryBoundedContextPhysicalExtraction": "planned_non_blocking",
+    "actualProductStoreFaultInjection": "planned_non_blocking",
+    "resourceBudgetRuntimeEnforcement": "planned_non_blocking"
+  },
+  "externalDecisionGates": {
+    "operatorAcceptance": "not_self_issued",
+    "promotion": "not_self_issued",
+    "release": "not_self_issued"
+  },
+  "authorityBoundary": {
+    "productionCaller": false,
+    "productionWriter": false,
+    "effectAuthority": false,
+    "externalEffect": false,
+    "modelInvocationAuthority": false,
+    "providerDispatchAuthority": false,
+    "fleetMutationAuthority": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
