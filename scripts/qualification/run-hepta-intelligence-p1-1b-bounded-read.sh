@@ -14,7 +14,7 @@ HARDENING_VERIFIER="scripts/verify-hepta-intelligence-p1-1b-hardening.py"
 BOUNDED_READ_VERIFIER="scripts/verify-hepta-intelligence-p1-1b-bounded-read.py"
 
 mkdir -p "$ARTIFACT_DIR"
-test "$(git rev-list --count "$SOURCE_SHA"..HEAD)" = "3"
+test "$(git rev-list --count "$SOURCE_SHA"..HEAD)" = "4"
 python3 - "$SOURCE_SHA" "$PATCH_SCRIPT" "$RUNNER_SCRIPT" "$WRAPPER_PATH" <<'PY'
 import subprocess
 import sys
@@ -59,7 +59,11 @@ expected = [
     "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_STATUS_2026-08-28.json",
     "scripts/verify-hepta-intelligence-p1-1b-bounded-read.py",
 ]
-actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+tracked = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+untracked = subprocess.check_output(
+    ["git", "ls-files", "--others", "--exclude-standard"], text=True
+).splitlines()
+actual = sorted(set(tracked + [path for path in untracked if not path.startswith("artifacts/")]))
 if actual != expected:
     raise SystemExit(json.dumps({"expected": expected, "actual": actual}, indent=2))
 Path("artifacts/hepta-intelligence-p1-1b-bounded-read/changed-paths.txt").write_text(
@@ -107,7 +111,11 @@ expected = [
     "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_STATUS_2026-08-28.json",
     "scripts/verify-hepta-intelligence-p1-1b-bounded-read.py",
 ]
-actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+tracked = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+untracked = subprocess.check_output(
+    ["git", "ls-files", "--others", "--exclude-standard"], text=True
+).splitlines()
+actual = sorted(set(tracked + [path for path in untracked if not path.startswith("artifacts/")]))
 if actual != expected:
     raise SystemExit(json.dumps({"expected": expected, "actual": actual}, indent=2))
 PY
