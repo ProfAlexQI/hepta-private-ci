@@ -6,7 +6,8 @@ require "pathname"
 
 root = Pathname.new(__dir__).join("..").expand_path
 files = {
-  source: root.join("apps/hepta-native/src/shared/hepta_windows_material_profile_aggregate.rs"),
+  aggregate: root.join("apps/hepta-native/src/shared/hepta_windows_material_profile_aggregate.rs"),
+  transient: root.join("apps/hepta-native/src/shared/hepta_windows_transient_material_host.rs"),
   shared: root.join("apps/hepta-native/src/shared/mod.rs"),
   lifecycle: root.join("apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs"),
   contract: root.join("docs/ui/HEPTA_WINDOWS_MATERIAL_PROFILE_AGGREGATE_V1.json"),
@@ -24,6 +25,7 @@ def emit(checks, status)
     schema: "hepta.ui.v4.windows-material-profile-aggregate-source-gate.v1",
     status: status,
     source_implemented: failures.empty?,
+    transient_host_source_implemented: failures.empty?,
     native_compile_validation: false,
     windows_compile_validation: false,
     root_runtime_receipt_validation: false,
@@ -50,38 +52,42 @@ end
 
 emit(checks, "FAIL_MISSING_INPUT") unless checks.values.all?
 
-source = files.fetch(:source).read
+aggregate = files.fetch(:aggregate).read
+transient = files.fetch(:transient).read
 shared = files.fetch(:shared).read
 lifecycle = files.fetch(:lifecycle).read
 contract = JSON.parse(files.fetch(:contract).read)
 schema = JSON.parse(files.fetch(:schema).read)
 workflow = files.fetch(:workflow).read
 
-checks["shared.module_declared"] =
-  shared.include?("pub mod hepta_windows_material_profile_aggregate;")
+checks["shared.modules_declared"] =
+  shared.include?("pub mod hepta_windows_material_profile_aggregate;") &&
+  shared.include?("pub mod hepta_windows_transient_material_host;")
 checks["shared.no_script_registration"] =
-  !shared.include?("hepta_windows_material_profile_aggregate::script_mod")
+  !shared.include?("hepta_windows_material_profile_aggregate::script_mod") &&
+  !shared.include?("hepta_windows_transient_material_host::script_mod")
 checks["lifecycle.product_path_unbound"] =
   !lifecycle.include?("HeptaWindowsMaterialProfileAggregateReceipt") &&
+  !lifecycle.include?("HeptaWindowsTransientMaterialHost") &&
   !lifecycle.include?("aggregate_windows_material_profile")
 
-checks["source.root_receipt_exact"] = %w[
+checks["aggregate.root_receipt_exact"] = %w[
   VerifiedPersistentChromeWithBackdropReadback BackdropOnly WindowsDwm
   WindowBackdrop::Mica RejectedRootReceipt RejectedRootIdentity
-].all? { |term| source.include?(term) }
-checks["source.transient_identity_and_order"] = %w[
+].all? { |term| aggregate.include?(term) }
+checks["aggregate.transient_identity_and_order"] = %w[
   VerifiedAcrylicWithBackdropReadback VerifiedSolidRollbackWithBackdropReadback
   RejectedTransientParent RejectedTransientIdentity RejectedSequenceOrder
   RejectedDestroyedEvidence
-].all? { |term| source.include?(term) }
-checks["source.separate_hwnd"] =
-  source.include?("transient.transient.hwnd == root_identity.hwnd") &&
-  source.include?("transient.destroyed != transient.transient")
-checks["source.authority_contained"] =
-  source.include?("RejectedAuthorityEscape") &&
-  source.include?("ReadyForProductIntegrationReview") &&
-  source.include?("eligible_for_product_integration_review: accepted")
-checks["source.no_product_binding"] = %w[
+].all? { |term| aggregate.include?(term) }
+checks["aggregate.separate_hwnd"] =
+  aggregate.include?("transient.transient.hwnd == root_identity.hwnd") &&
+  aggregate.include?("transient.destroyed != transient.transient")
+checks["aggregate.authority_contained"] =
+  aggregate.include?("RejectedAuthorityEscape") &&
+  aggregate.include?("ReadyForProductIntegrationReview") &&
+  aggregate.include?("eligible_for_product_integration_review: accepted")
+checks["aggregate.no_product_binding"] = %w[
   HEPTA_WINDOWS_PROFILE_AGGREGATE_RUNTIME_VALIDATED
   HEPTA_WINDOWS_PROFILE_PRODUCT_INTEGRATION_ELIGIBLE
   HEPTA_WINDOWS_PROFILE_PRODUCT_BOUND
@@ -96,23 +102,78 @@ checks["source.no_product_binding"] = %w[
   HEPTA_WINDOWS_PROFILE_OPERATOR_ACCEPTANCE
   HEPTA_WINDOWS_PROFILE_PROMOTION
   HEPTA_WINDOWS_PROFILE_RELEASE
-].all? { |name| source.include?("#{name}: bool = false") }
-checks["source.focused_tests"] = %w[
+].all? { |name| aggregate.include?("#{name}: bool = false") }
+checks["aggregate.focused_tests"] = %w[
   exact_dual_receipt_set_is_review_eligible_but_unbound
   reused_root_hwnd_or_missing_destroy_is_rejected
   sequence_and_authority_escape_are_rejected
-].all? { |term| source.include?(term) }
-checks["source.no_unsafe_or_ffi"] =
-  !source.match?(/\bunsafe\b/) && !source.match?(/extern\s+"(?:C|system)"/)
+].all? { |term| aggregate.include?(term) }
+
+checks["transient.lifecycle_and_popup"] = %w[
+  HeptaWindowsTransientHostPhase PopupWindowRequired SeparateTransientHostRequired
+  AcrylicAcknowledged SolidRollbackAcknowledged Closing Closed
+].all? { |term| transient.include?(term) }
+checks["transient.acrylic_rollback_destroy"] =
+  transient.include?("VerifiedAcrylicWithBackdropReadback") &&
+  transient.include?("VerifiedSolidRollbackWithBackdropReadback") &&
+  transient.include?("SolidRollbackRequiredBeforeClose") &&
+  transient.include?("process_destroyed") &&
+  transient.include?("profile_evidence")
+checks["transient.exact_identity_and_sequence"] =
+  transient.include?("request_sequence <= self.last_registered_sequence") &&
+  transient.include?("event.hwnd == parent.hwnd") &&
+  transient.include?("event.window_id != request.transient_window_id") &&
+  transient.include?("self.transient != Some(destroyed)")
+checks["transient.backend_failure_skips_readback"] =
+  transient.index("if !event.backend_apply_succeeded") <
+    transient.index(".read_backdrop(identity.hwnd)")
+checks["transient.export_is_fail_closed"] =
+  transient.include?("LifecycleNotClosed") &&
+  transient.include?("MissingAcceptedReceipt") &&
+  transient.include?("runtime_validated: false") &&
+  transient.include?("product_bound: false")
+checks["transient.authority_constants_false"] = %w[
+  HEPTA_WINDOWS_TRANSIENT_HOST_RUNTIME_VALIDATED
+  HEPTA_WINDOWS_TRANSIENT_HOST_PRODUCT_BOUND
+  HEPTA_WINDOWS_TRANSIENT_ACRYLIC_ACKNOWLEDGED
+  HEPTA_WINDOWS_TRANSIENT_SOLID_ROLLBACK_ACKNOWLEDGED
+  HEPTA_WINDOWS_TRANSIENT_DESTROYED_ACKNOWLEDGED
+  HEPTA_WINDOWS_TRANSIENT_SYSTEM_MATERIAL_BOUND
+  HEPTA_WINDOWS_TRANSIENT_COMPLETE_PROFILE_BOUND
+  HEPTA_WINDOWS_TRANSIENT_NATIVE_PRODUCT_RUNTIME
+  HEPTA_WINDOWS_TRANSIENT_DEVICE_VALIDATED
+  HEPTA_WINDOWS_TRANSIENT_PRODUCTION_AUTHORITY
+  HEPTA_WINDOWS_TRANSIENT_EFFECT_AUTHORITY
+  HEPTA_WINDOWS_TRANSIENT_LIVE_ADAPTER_AUTHORITY
+  HEPTA_WINDOWS_TRANSIENT_OPERATOR_ACCEPTANCE
+  HEPTA_WINDOWS_TRANSIENT_PROMOTION
+  HEPTA_WINDOWS_TRANSIENT_RELEASE
+].all? { |name| transient.include?("#{name}: bool = false") }
+checks["transient.focused_tests"] = %w[
+  separate_popup_acrylic_rollback_destroy_exports_valid_evidence
+  root_hwnd_reuse_and_close_without_rollback_fail_closed
+  backend_failure_skips_readback_and_stale_destroy_is_ignored
+].all? { |term| transient.include?(term) }
+checks["sources.no_unsafe_or_ffi"] =
+  [aggregate, transient].none? do |source|
+    source.match?(/\bunsafe\b/) || source.match?(/extern\s+"(?:C|system)"/)
+  end
 
 checks["contract.identity"] =
   contract["schema"] == "hepta.ui.windows-material-profile-aggregate.v1" &&
   contract["candidateBranch"] == "codex/ui-v4-windows-material-profile-aggregate-20260828" &&
   contract["baseCommit"] == "f34d13455ee114907f2756dd9ea96d67d6dd648e"
+checks["contract.transient_source"] =
+  contract.dig("transientHost", "source") ==
+    "apps/hepta-native/src/shared/hepta_windows_transient_material_host.rs" &&
+  contract.dig("transientHost", "rootHwndReuseAllowed") == false &&
+  contract.dig("transientHost", "productLifecycleBound") == false
 checks["contract.source_only_boundary"] =
   contract.dig("qualification", "sourceImplemented") == true &&
-  contract.fetch("qualification").reject { |key, _| key == "sourceImplemented" }.values.none? &&
-  contract.fetch("authority").values.none?
+  contract.dig("qualification", "transientHostSourceImplemented") == true &&
+  contract.fetch("qualification").reject do |key, _|
+    %w[sourceImplemented transientHostSourceImplemented].include?(key)
+  end.values.none? && contract.fetch("authority").values.none?
 
 checks["schema.identity"] =
   schema["$id"].to_s.end_with?("hepta.ui.v4.windows-material-profile-aggregate.v1.schema.json") &&
@@ -132,7 +193,8 @@ checks["workflow.source_and_compile"] =
   workflow.include?("hepta-ui-v4-windows-material-profile-aggregate-gate") &&
   workflow.include?("hepta.ui.v4.windows-material-profile-aggregate.v1.schema.json") &&
   %w[ubuntu-latest windows-latest macos-latest].all? { |os| workflow.include?(os) } &&
-  workflow.include?("hepta_windows_material_profile_aggregate::tests")
+  workflow.include?("hepta_windows_material_profile_aggregate::tests") &&
+  workflow.include?("hepta_windows_transient_material_host::tests")
 checks["workflow.read_only_no_release"] =
   workflow.include?("permissions:") && workflow.include?("contents: read") &&
   !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
