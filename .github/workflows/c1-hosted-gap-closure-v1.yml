@@ -13,6 +13,7 @@ concurrency:
   group: c1-hosted-gap-closure-v1-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+# Exact-head closure epoch 2. This is the sole temporary producer lane.
 jobs:
   close-current-gaps:
     name: Close current hosted qualification gaps
