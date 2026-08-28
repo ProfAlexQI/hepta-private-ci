@@ -1,0 +1,146 @@
+{
+  "schema": "hepta.current-architecture.v1",
+  "schemaVersion": 1,
+  "authority": {
+    "status": "canonical_product_architecture",
+    "humanEntryPoint": "ARCHITECTURE.md",
+    "machineEntryPoint": "docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json",
+    "rustAuthority": [
+      "codex-rs/hepta-contracts/src/authority.rs",
+      "codex-rs/hepta-contracts/src/product_graph.rs",
+      "codex-rs/hepta-contracts/src/operation.rs"
+    ],
+    "externalPlanSnapshotsAreAuthority": false,
+    "qualificationReceiptsAreProductAuthority": false,
+    "draftPullRequestsAreProductAuthority": false
+  },
+  "runtimeProfiles": [
+    {
+      "id": "snapshot_read_only",
+      "actions": ["read_memory"],
+      "externalEffects": false,
+      "modelInvocation": false,
+      "promotion": false
+    },
+    {
+      "id": "agent_local",
+      "actions": [
+        "serve_session",
+        "read_memory",
+        "mutate_memory_federation",
+        "mutate_automation"
+      ],
+      "externalEffects": false,
+      "modelInvocation": false,
+      "cognitiveWrite": false,
+      "promotion": false
+    },
+    {
+      "id": "qualification_cognitive_write",
+      "actions": [
+        "serve_session",
+        "read_memory",
+        "mutate_memory_federation",
+        "mutate_automation",
+        "write_cognitive_state"
+      ],
+      "qualificationOnly": true,
+      "externalEffects": false,
+      "modelInvocation": false,
+      "promotion": false
+    }
+  ],
+  "components": [
+    {
+      "id": "supervisor",
+      "plane": "control",
+      "role": "lifecycle_and_release_owner",
+      "durableDomains": ["fleet_registry", "agent_lifecycle", "release_promotion"]
+    },
+    {
+      "id": "agentd",
+      "plane": "composition",
+      "role": "thin_composition_root",
+      "durableDomains": []
+    },
+    {
+      "id": "app_server",
+      "plane": "execution",
+      "role": "session_execution_spine",
+      "durableDomains": ["thread_session"]
+    },
+    {
+      "id": "memory_runtime",
+      "plane": "domain",
+      "role": "memory_and_knowledge_owner",
+      "durableDomains": ["memory_ledger", "knowledge_projection"]
+    },
+    {
+      "id": "automation_runtime",
+      "plane": "domain",
+      "role": "automation_owner",
+      "durableDomains": ["automation_schedule"]
+    },
+    {
+      "id": "matrix_ingress",
+      "plane": "adapter",
+      "role": "matrix_delivery_owner",
+      "durableDomains": ["ingress_projection"]
+    },
+    {
+      "id": "qualification_plane",
+      "plane": "qualification",
+      "role": "read_only_evidence_consumer",
+      "durableDomains": [],
+      "productDependencyAllowed": false
+    }
+  ],
+  "dataAuthorities": [
+    {"domain": "fleet_registry", "writer": "supervisor", "store": "json_registry"},
+    {"domain": "agent_lifecycle", "writer": "supervisor", "store": "json_registry"},
+    {"domain": "release_promotion", "writer": "supervisor", "store": "signed_release_state"},
+    {"domain": "thread_session", "writer": "app_server", "store": "agent_private_sqlite"},
+    {"domain": "memory_ledger", "writer": "memory_runtime", "store": "agent_private_sqlite"},
+    {"domain": "knowledge_projection", "writer": "memory_runtime", "store": "agent_private_sqlite"},
+    {"domain": "automation_schedule", "writer": "automation_runtime", "store": "agent_private_sqlite"},
+    {"domain": "ingress_projection", "writer": "matrix_ingress", "store": "agent_private_sqlite"},
+    {"domain": "runtime_health", "writer": "agentd", "store": "process_memory"}
+  ],
+  "crossOwnerProtocol": {
+    "transport": "transactional_outbox",
+    "delivery": "at_least_once",
+    "destinationRequirement": "idempotent_digest_bound_commit",
+    "blindRetryAfterBoundary": false,
+    "requiredBindings": [
+      "operation_id",
+      "idempotency_key",
+      "payload_sha256",
+      "authority_epoch",
+      "owner_epoch",
+      "generation",
+      "fencing_token_sha256"
+    ]
+  },
+  "recoveryOrder": [
+    "release_identity",
+    "supervisor_registry_and_lifecycle",
+    "agent_private_store_integrity",
+    "schema_and_migration_oracles",
+    "operation_and_outbox_reconciliation",
+    "agentd_product_graph_composition",
+    "app_server_execution_spine",
+    "memory_and_automation_attachment",
+    "ingress_adapters",
+    "readiness"
+  ],
+  "authorityBoundary": {
+    "productionCaller": false,
+    "productionWriter": false,
+    "effectAuthority": false,
+    "externalEffect": false,
+    "modelInvocationAuthority": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
