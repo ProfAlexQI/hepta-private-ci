@@ -160,6 +160,8 @@ impl std::error::Error for ProductionWriterRuntimeError {}
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Display;
+
     use codex_hepta_contracts::AgentId;
     use codex_hepta_contracts::Sha256Digest;
     use codex_hepta_memory::ProductionAuthorityLease;
@@ -174,27 +176,54 @@ mod tests {
 
     const OWNER_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 
+    fn must<T, E>(result: Result<T, E>, label: &str) -> T
+    where
+        E: Display,
+    {
+        match result {
+            Ok(value) => value,
+            Err(error) => panic!("{label}: {error}"),
+        }
+    }
+
     fn agent_id() -> AgentId {
-        AgentId::parse(OWNER_ID)
-            .unwrap_or_else(|error| panic!("test AgentId must parse: {error}"))
+        must(AgentId::parse(OWNER_ID), "test AgentId must parse")
     }
 
     fn lease() -> ProductionAuthorityLease {
-        let expiry = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_else(|error| panic!("clock must work: {error}"))
-            .as_secs()
-            + 3_600;
-        ProductionAuthorityLease::from_verified_parts(
-            agent_id(),
-            Sha256Digest::for_bytes(b"signed-production-grant"),
-            4,
-            9,
-            expiry,
-            ProductionAuthorityToken::from_verified_bytes(b"opaque-token".to_vec())
-                .unwrap_or_else(|error| panic!("token must be valid: {error}")),
+        let expiry = must(
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH),
+            "clock must work",
         )
-        .unwrap_or_else(|error| panic!("lease must be valid: {error}"))
+        .as_secs()
+            + 3_600;
+        must(
+            ProductionAuthorityLease::from_verified_parts(
+                agent_id(),
+                Sha256Digest::for_bytes(b"signed-production-grant"),
+                4,
+                9,
+                expiry,
+                must(
+                    ProductionAuthorityToken::from_verified_bytes(b"opaque-token".to_vec()),
+                    "token must be valid",
+                ),
+            ),
+            "lease must be valid",
+        )
+    }
+
+    fn layout() -> (tempfile::TempDir, codex_hepta_paths::HeptaAgentLayout) {
+        let temp = must(tempfile::tempdir(), "create temporary root");
+        let fleet_root_path = temp.path().join("fleet");
+        must(
+            std::fs::create_dir_all(&fleet_root_path),
+            "create fleet root",
+        );
+        let canonical = must(fleet_root_path.canonicalize(), "canonicalize fleet root");
+        let fleet_root = must(HeptaFleetRoot::parse(canonical), "parse fleet root");
+        let layout = fleet_root.layout().agent(&agent_id());
+        (temp, layout)
     }
 
     struct AllowVerifier;
@@ -214,56 +243,44 @@ mod tests {
 
     #[tokio::test]
     async fn typed_runtime_handle_is_required_before_raw_writer_open() {
-        let temp = tempfile::tempdir().expect("temporary root");
-        let fleet_root_path = temp.path().join("fleet");
-        std::fs::create_dir_all(&fleet_root_path).expect("create fleet root");
-        let fleet_root = HeptaFleetRoot::parse(
-            fleet_root_path
-                .canonicalize()
-                .expect("canonical fleet root"),
-        )
-        .expect("valid fleet root");
-        let layout = fleet_root.layout().agent(&agent_id());
-        let authorization = ProductionCognitiveWriteAuthorization::verify(
-            lease(),
-            &AllowVerifier,
-            &agent_id(),
-            3,
-        )
-        .expect("typed authorization");
-        let runtime = AuthorizedProductionWriter::open(
-            &layout,
-            authorization,
-            &AllowVerifier,
-            "production:runtime:test",
-            3,
-        )
-        .await
-        .expect("open typed production writer runtime");
+        let (_temp, layout) = layout();
+        let authorization = must(
+            ProductionCognitiveWriteAuthorization::verify(
+                lease(),
+                &AllowVerifier,
+                &agent_id(),
+                3,
+            ),
+            "create typed authorization",
+        );
+        let runtime = must(
+            AuthorizedProductionWriter::open(
+                &layout,
+                authorization,
+                &AllowVerifier,
+                "production:runtime:test",
+                3,
+            )
+            .await,
+            "open typed production writer runtime",
+        );
         assert!(runtime.cognitive_write_capability().is_external());
         assert_eq!(runtime.cognitive_write_capability().generation(), 3);
-        runtime.writer().release().await.expect("release writer lease");
+        must(runtime.writer().release().await, "release writer lease");
     }
 
     #[tokio::test]
     async fn generation_drift_is_rejected_before_store_open() {
-        let temp = tempfile::tempdir().expect("temporary root");
-        let fleet_root_path = temp.path().join("fleet");
-        std::fs::create_dir_all(&fleet_root_path).expect("create fleet root");
-        let fleet_root = HeptaFleetRoot::parse(
-            fleet_root_path
-                .canonicalize()
-                .expect("canonical fleet root"),
-        )
-        .expect("valid fleet root");
-        let layout = fleet_root.layout().agent(&agent_id());
-        let authorization = ProductionCognitiveWriteAuthorization::verify(
-            lease(),
-            &AllowVerifier,
-            &agent_id(),
-            3,
-        )
-        .expect("typed authorization");
+        let (_temp, layout) = layout();
+        let authorization = must(
+            ProductionCognitiveWriteAuthorization::verify(
+                lease(),
+                &AllowVerifier,
+                &agent_id(),
+                3,
+            ),
+            "create typed authorization",
+        );
         let result = AuthorizedProductionWriter::open(
             &layout,
             authorization,
