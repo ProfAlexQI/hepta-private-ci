@@ -1,0 +1,71 @@
+{
+  "schema": "hepta.ui.windows-product-host-implementation-candidate.v1",
+  "status": "IMPLEMENTATION_CANDIDATE_SOURCE_READY_REVIEW_ENVELOPE_REQUIRED",
+  "candidateBranch": "codex/ui-v4-windows-product-host-implementation-candidate-20260828",
+  "baseBranch": "codex/ui-v4-product-host-integration-review-20260828",
+  "baseCommit": "8879393ca121622b7b9290bc85ae65acbfad982e",
+  "baseTree": "dea1d8c29dcf771b2badad5c4c9d435f42ec5d25",
+  "feature": {
+    "name": "hepta_ui_windows_system_material_v4",
+    "isolatedHarnessDeclared": true,
+    "isolatedHarnessDefaultEnabled": false,
+    "productCargoFeatureDeclared": false,
+    "productModuleRegistered": false,
+    "productLifecycleWired": false,
+    "automaticBindingAllowed": false
+  },
+  "implementation": {
+    "source": "apps/hepta-native/src/shared/hepta_windows_product_host_implementation.rs",
+    "reviewReceiptRequired": true,
+    "implementationApprovalRequired": true,
+    "operatorAcceptanceRequired": true,
+    "physicalDeviceValidationRequired": true,
+    "rollbackDrillRequired": true,
+    "transparencyPreferenceRecheckRequired": true,
+    "highContrastRecheckRequired": true,
+    "explicitActivationOnly": true,
+    "verifiedRootMicaRequired": true,
+    "verifiedTransientAcrylicRequired": true,
+    "verifiedSolidRollbackRequired": true,
+    "suspendRollbackRequired": true,
+    "shutdownRollbackRequired": true,
+    "candidateCommitRequired": true,
+    "candidateTreeRequired": true,
+    "reviewBindingDigestRequired": true,
+    "unsafeAllowed": false
+  },
+  "receiptStatuses": [
+    "PASS_WINDOWS_PRODUCT_HOST_ACTIVATION",
+    "PASS_WINDOWS_PRODUCT_HOST_ROLLBACK",
+    "FAIL_WINDOWS_PRODUCT_HOST_ACTIVATION"
+  ],
+  "qualification": {
+    "sourceImplemented": true,
+    "hostedSource": false,
+    "defaultFeatureCompile": false,
+    "enabledFeatureCompile": false,
+    "enabledFeatureTests": false,
+    "reviewEnvelopePassed": false,
+    "operatorAccepted": false,
+    "physicalDeviceValidated": false,
+    "rollbackDrillValidated": false,
+    "productWired": false,
+    "productLifecycleWired": false,
+    "productBound": false,
+    "transientSystemMaterialBound": false,
+    "completeProfileBound": false,
+    "systemMaterialBound": false,
+    "nativeProductRuntime": false,
+    "deviceValidation": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "promotion": false,
+    "release": false,
+    "operatorAcceptance": false
+  }
+}

@@ -1,0 +1,134 @@
+name: hepta-ui-v4-windows-product-host-implementation-candidate
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-windows-product-host-implementation-candidate-*"
+  pull_request:
+    paths:
+      - "apps/hepta-native/src/shared/hepta_windows_product_host_implementation.rs"
+      - "apps/hepta-native/src/shared/hepta_windows_product_host_implementation/**"
+      - "tools/hepta-ui-windows-product-host-implementation/**"
+      - "scripts/hepta-ui-v4-windows-product-host-implementation-candidate-gate"
+      - "scripts/hepta-ui-v4-windows-product-host-implementation-candidate-gate.part*.rb"
+      - "docs/ui/HEPTA_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_CANDIDATE_V1.json"
+      - "docs/ui/schemas/hepta.ui.v4.windows-product-host-implementation-receipt.v1.schema.json"
+      - "docs/ui/HEPTA_UI_V4_TRANCHE_22_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_CANDIDATE_2026-08-28.md"
+      - ".github/workflows/hepta-ui-v4-windows-product-host-implementation-candidate.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v4-windows-product-host-implementation-candidate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  source-contract:
+    name: Product-host implementation candidate source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+      - name: Validate contracts and fail-closed source boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -c scripts/hepta-ui-v4-windows-product-host-implementation-candidate-gate
+          for part in scripts/hepta-ui-v4-windows-product-host-implementation-candidate-gate.part{1..2}.rb; do test -s "$part"; done
+          ruby -rjson -e 'ARGV.each { |path| JSON.parse(File.read(path)) }' \
+            docs/ui/HEPTA_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_CANDIDATE_V1.json \
+            docs/ui/schemas/hepta.ui.v4.windows-product-host-implementation-receipt.v1.schema.json
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-windows-product-host-implementation-candidate.yml")'
+          mkdir -p artifacts/product-host-implementation-source
+          ruby scripts/hepta-ui-v4-windows-product-host-implementation-candidate-gate \
+            | tee artifacts/product-host-implementation-source/source-gate.json
+          ruby -rjson -e '
+            receipt=JSON.parse(File.read("artifacts/product-host-implementation-source/source-gate.json"))
+            abort "unexpected source status" unless receipt.fetch("status") == "PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_CANDIDATE_SOURCE_ONLY" 
+            %w[
+              hosted_source_validated default_feature_compile_validated
+              enabled_feature_compile_validated enabled_feature_tests_validated
+              review_envelope_validated product_cargo_feature_declared
+              product_module_registered product_lifecycle_wired product_bound
+              transient_system_material_bound complete_profile_bound
+              system_material_bound native_product_runtime device_validation
+              production_authority effect_authority live_adapter_authority
+              promotion release
+            ].each { |key| abort "#{key} escaped" unless receipt.fetch(key) == false }
+           '
+          printf '%s\n' "$HEPTA_CANDIDATE_SHA" > artifacts/product-host-implementation-source/candidate-commit.txt
+          git rev-parse 'HEAD^{tree}' > artifacts/product-host-implementation-source/candidate-tree.txt
+      - name: Upload source-only receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-product-host-implementation-source-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: artifacts/product-host-implementation-source
+          if-no-files-found: error
+          retention-days: 14
+
+  isolated-contract:
+    name: Isolated product-host candidate (${{ matrix.os }})
+    needs: source-contract
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Format and test default-disabled feature
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt \
+            --manifest-path tools/hepta-ui-windows-product-host-implementation/Cargo.toml \
+            -- --check
+          cargo check \
+            --manifest-path tools/hepta-ui-windows-product-host-implementation/Cargo.toml \
+            --no-default-features
+          cargo test \
+            --manifest-path tools/hepta-ui-windows-product-host-implementation/Cargo.toml \
+            --no-default-features -- --nocapture
+      - name: Compile and test explicit feature
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check \
+            --manifest-path tools/hepta-ui-windows-product-host-implementation/Cargo.toml \
+            --no-default-features \
+            --features hepta_ui_windows_system_material_v4
+          cargo test \
+            --manifest-path tools/hepta-ui-windows-product-host-implementation/Cargo.toml \
+            --no-default-features \
+            --features hepta_ui_windows_system_material_v4 \
+            -- --nocapture

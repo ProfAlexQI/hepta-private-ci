@@ -1,0 +1,475 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.ai/schemas/ui/hepta.ui.v4.windows-product-host-implementation-receipt.v1.schema.json",
+  "title": "Hepta UI v4 Windows product-host implementation receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "candidate",
+    "feature",
+    "review",
+    "runtime",
+    "qualification",
+    "authority",
+    "failures"
+  ],
+  "properties": {
+    "schema": {
+      "const": "hepta.ui.v4.windows-product-host-implementation-receipt.v1"
+    },
+    "status": {
+      "enum": [
+        "PASS_WINDOWS_PRODUCT_HOST_ACTIVATION",
+        "PASS_WINDOWS_PRODUCT_HOST_ROLLBACK",
+        "FAIL_WINDOWS_PRODUCT_HOST_ACTIVATION"
+      ]
+    },
+    "candidate": {
+      "$ref": "#/$defs/candidate"
+    },
+    "feature": {
+      "$ref": "#/$defs/feature"
+    },
+    "review": {
+      "$ref": "#/$defs/review"
+    },
+    "runtime": {
+      "$ref": "#/$defs/runtime"
+    },
+    "qualification": {
+      "$ref": "#/$defs/qualification"
+    },
+    "authority": {
+      "$ref": "#/$defs/authority"
+    },
+    "failures": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      }
+    }
+  },
+  "$defs": {
+    "gitObject": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commit",
+        "tree"
+      ],
+      "properties": {
+        "commit": {
+          "$ref": "#/$defs/gitObject"
+        },
+        "tree": {
+          "$ref": "#/$defs/gitObject"
+        }
+      }
+    },
+    "feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "compiled",
+        "enabled",
+        "defaultEnabled",
+        "automaticBindingAllowed"
+      ],
+      "properties": {
+        "name": {
+          "const": "hepta_ui_windows_system_material_v4"
+        },
+        "compiled": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "defaultEnabled": {
+          "const": false
+        },
+        "automaticBindingAllowed": {
+          "const": false
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "envelopeStatus",
+        "bindingDigest",
+        "implementationApproved",
+        "operatorAccepted",
+        "physicalDeviceValidated",
+        "rollbackDrillValidated"
+      ],
+      "properties": {
+        "envelopeStatus": {
+          "const": "PASS_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_ENVELOPE"
+        },
+        "bindingDigest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "implementationApproved": {
+          "type": "boolean"
+        },
+        "operatorAccepted": {
+          "type": "boolean"
+        },
+        "physicalDeviceValidated": {
+          "type": "boolean"
+        },
+        "rollbackDrillValidated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootWindowIndex",
+        "rootWindowGeneration",
+        "rootHwnd",
+        "transientWindowIndex",
+        "transientWindowGeneration",
+        "transientHwnd"
+      ],
+      "properties": {
+        "rootWindowIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rootWindowGeneration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rootHwnd": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "transientWindowIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "transientWindowGeneration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "transientHwnd": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase",
+        "generation",
+        "identity",
+        "rootMicaExact",
+        "transientAcrylicExact",
+        "rootNoneExact",
+        "transientNoneExact"
+      ],
+      "properties": {
+        "phase": {
+          "enum": [
+            "Bound",
+            "SolidFallback",
+            "Rejected"
+          ]
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "identity": {
+          "$ref": "#/$defs/identity"
+        },
+        "rootMicaExact": {
+          "type": "boolean"
+        },
+        "transientAcrylicExact": {
+          "type": "boolean"
+        },
+        "rootNoneExact": {
+          "type": "boolean"
+        },
+        "transientNoneExact": {
+          "type": "boolean"
+        }
+      }
+    },
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "productHostMayBind",
+        "productBound",
+        "transientSystemMaterialBound",
+        "completeProfileBound",
+        "systemMaterialBound",
+        "nativeProductRuntime",
+        "deviceValidation"
+      ],
+      "properties": {
+        "productHostMayBind": {
+          "type": "boolean"
+        },
+        "productBound": {
+          "type": "boolean"
+        },
+        "transientSystemMaterialBound": {
+          "type": "boolean"
+        },
+        "completeProfileBound": {
+          "type": "boolean"
+        },
+        "systemMaterialBound": {
+          "type": "boolean"
+        },
+        "nativeProductRuntime": {
+          "type": "boolean"
+        },
+        "deviceValidation": {
+          "type": "boolean"
+        }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "network",
+        "mutation",
+        "effect",
+        "liveAdapter",
+        "production",
+        "operatorAcceptance",
+        "promotion",
+        "release"
+      ],
+      "properties": {
+        "network": {
+          "const": false
+        },
+        "mutation": {
+          "const": false
+        },
+        "effect": {
+          "const": false
+        },
+        "liveAdapter": {
+          "const": false
+        },
+        "production": {
+          "const": false
+        },
+        "promotion": {
+          "const": false
+        },
+        "release": {
+          "const": false
+        },
+        "operatorAcceptance": {
+          "const": false
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS_WINDOWS_PRODUCT_HOST_ACTIVATION"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "feature": {
+            "properties": {
+              "compiled": {
+                "const": true
+              },
+              "enabled": {
+                "const": true
+              }
+            }
+          },
+          "review": {
+            "properties": {
+              "implementationApproved": {
+                "const": true
+              },
+              "operatorAccepted": {
+                "const": true
+              },
+              "physicalDeviceValidated": {
+                "const": true
+              },
+              "rollbackDrillValidated": {
+                "const": true
+              }
+            }
+          },
+          "runtime": {
+            "properties": {
+              "phase": {
+                "const": "Bound"
+              },
+              "rootMicaExact": {
+                "const": true
+              },
+              "transientAcrylicExact": {
+                "const": true
+              },
+              "rootNoneExact": {
+                "const": false
+              },
+              "transientNoneExact": {
+                "const": false
+              }
+            }
+          },
+          "qualification": {
+            "properties": {
+              "productHostMayBind": {
+                "const": true
+              },
+              "productBound": {
+                "const": true
+              },
+              "transientSystemMaterialBound": {
+                "const": true
+              },
+              "completeProfileBound": {
+                "const": true
+              },
+              "systemMaterialBound": {
+                "const": true
+              },
+              "nativeProductRuntime": {
+                "const": true
+              },
+              "deviceValidation": {
+                "const": true
+              }
+            }
+          },
+          "failures": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS_WINDOWS_PRODUCT_HOST_ROLLBACK"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "phase": {
+                "const": "SolidFallback"
+              },
+              "rootNoneExact": {
+                "const": true
+              },
+              "transientNoneExact": {
+                "const": true
+              }
+            }
+          },
+          "qualification": {
+            "properties": {
+              "productHostMayBind": {
+                "const": false
+              },
+              "productBound": {
+                "const": false
+              },
+              "transientSystemMaterialBound": {
+                "const": false
+              },
+              "completeProfileBound": {
+                "const": false
+              },
+              "systemMaterialBound": {
+                "const": false
+              },
+              "nativeProductRuntime": {
+                "const": false
+              }
+            }
+          },
+          "failures": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "FAIL_WINDOWS_PRODUCT_HOST_ACTIVATION"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "qualification": {
+            "properties": {
+              "productHostMayBind": {
+                "const": false
+              },
+              "productBound": {
+                "const": false
+              },
+              "transientSystemMaterialBound": {
+                "const": false
+              },
+              "completeProfileBound": {
+                "const": false
+              },
+              "systemMaterialBound": {
+                "const": false
+              },
+              "nativeProductRuntime": {
+                "const": false
+              }
+            }
+          },
+          "failures": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ]
+}

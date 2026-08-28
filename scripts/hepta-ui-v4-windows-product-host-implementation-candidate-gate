@@ -1,0 +1,11 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "pathname"
+
+parts = (1..2).map do |index|
+  Pathname.new(__dir__).join("hepta-ui-v4-windows-product-host-implementation-candidate-gate.part#{index}.rb")
+end
+missing = parts.reject(&:file?)
+abort "product-host implementation gate parts missing: #{missing.join(', ')}" unless missing.empty?
+Kernel.eval(parts.map(&:read).join, TOPLEVEL_BINDING, __FILE__, 1)
