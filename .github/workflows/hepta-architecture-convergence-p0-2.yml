@@ -1,47 +1,14 @@
-name: Hepta architecture convergence P0.2
+name: Hepta architecture convergence P0
 
 on:
   workflow_call:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "ARCHITECTURE.md"
-      - "docs/architecture/**"
-      - "scripts/verify-hepta-architecture-convergence-p0-2.py"
-      - "scripts/verify-hepta-authority-callers-p0-1.py"
-      - "scripts/verify-hepta-memory-runtime-extraction-p0-1.py"
-      - "codex-rs/Cargo.toml"
-      - "codex-rs/Cargo.lock"
-      - "codex-rs/hepta-contracts/**"
-      - "codex-rs/hepta-memory/**"
-      - "codex-rs/hepta-memory-runtime/**"
-      - "codex-rs/hepta-agentd/**"
-      - ".github/workflows/hepta-architecture-convergence-p0-2.yml"
-      - ".github/workflows/blocking-ci.yml"
-  push:
-    branches:
-      - codex/hepta-architecture-convergence-p0-2-20260828
-      - integration/vnext-main-20260811
-    paths:
-      - "ARCHITECTURE.md"
-      - "docs/architecture/**"
-      - "scripts/verify-hepta-architecture-convergence-p0-2.py"
-      - "scripts/verify-hepta-authority-callers-p0-1.py"
-      - "scripts/verify-hepta-memory-runtime-extraction-p0-1.py"
-      - "codex-rs/Cargo.toml"
-      - "codex-rs/Cargo.lock"
-      - "codex-rs/hepta-contracts/**"
-      - "codex-rs/hepta-memory/**"
-      - "codex-rs/hepta-memory-runtime/**"
-      - "codex-rs/hepta-agentd/**"
-      - ".github/workflows/hepta-architecture-convergence-p0-2.yml"
-      - ".github/workflows/blocking-ci.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: hepta-architecture-convergence-p0-2-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: hepta-architecture-convergence-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -49,9 +16,9 @@ env:
 
 jobs:
   exact-source-head:
-    name: Exact source-head product graph
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    name: Exact source-head architecture closure
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
     steps:
       - name: Checkout exact source head
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -66,6 +33,8 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
           git rev-parse 'HEAD^{tree}'
+          git diff --exit-code
+          git diff --cached --exit-code
 
       - uses: ./.github/actions/setup-ci
 
@@ -73,60 +42,80 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Canonical source ratchets
+      - name: Canonical architecture and gap ratchets
         run: |
+          set -euo pipefail
           python3 scripts/verify-hepta-architecture-convergence-p0-2.py
           python3 scripts/verify-hepta-authority-callers-p0-1.py
           python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python3 scripts/verify-hepta-architecture-gap-ledger.py
 
       - name: Owned package rustfmt
         working-directory: codex-rs
         run: |
+          set -euo pipefail
           cargo fmt \
             -p codex-hepta-contracts \
             -p codex-hepta-memory \
             -p codex-hepta-memory-runtime \
+            -p codex-hepta-automation \
             -p codex-hepta-agentd \
+            -p codex-hepta-matrixd \
             -- --check
 
-      - name: Authority, operation, graph, and durability tests
+      - name: Authority, operation, graph, and cross-owner fault tests
         working-directory: codex-rs
         run: |
+          set -euo pipefail
           cargo test --locked -p codex-hepta-contracts authority::tests -- --nocapture
           cargo test --locked -p codex-hepta-contracts operation::tests -- --nocapture
           cargo test --locked -p codex-hepta-contracts product_graph::tests -- --nocapture
           cargo test --locked -p codex-hepta-contracts --test cross_owner_fault_matrix -- --nocapture
 
-      - name: Memory runtime and Agentd integration tests
+      - name: Product domain and runtime tests
         working-directory: codex-rs
         run: |
-          cargo test --locked -p codex-hepta-memory cognitive_runtime::authority_tests -- --nocapture
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-memory --lib -- --nocapture
           cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
-          cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
-          cargo test --locked -p codex-hepta-agentd app_runtime::tests -- --nocapture
-          cargo test --locked -p codex-hepta-agentd --features qualification-cognitive-write app_runtime::tests -- --nocapture
+          cargo test --locked -p codex-hepta-automation --lib -- --nocapture
+          cargo test --locked -p codex-hepta-agentd --lib -- --nocapture
+          cargo test --locked -p codex-hepta-agentd --features qualification-cognitive-write --lib -- --nocapture
+          cargo test --locked -p codex-hepta-matrixd --lib -- --nocapture
 
       - name: Product package graph compilation
         working-directory: codex-rs
         run: |
-          cargo check --locked \
+          set -euo pipefail
+          cargo check --locked --all-targets \
             -p codex-hepta-memory-runtime \
+            -p codex-hepta-automation \
             -p codex-hepta-agentd \
             -p codex-hepta-supervisor \
             -p codex-hepta-matrixd \
             -p codex-hepta-native-gateway
+          cargo check --locked --all-targets --no-default-features \
+            -p codex-hepta-agentd \
+            --features qualification-cognitive-write
 
       - name: Strict owned-package Clippy
         working-directory: codex-rs
         run: |
+          set -euo pipefail
           cargo clippy --locked --all-targets \
             -p codex-hepta-contracts \
             -p codex-hepta-memory \
             -p codex-hepta-memory-runtime \
+            -p codex-hepta-automation \
             -p codex-hepta-agentd \
+            -p codex-hepta-matrixd \
+            -- -D warnings
+          cargo clippy --locked --all-targets --no-default-features \
+            -p codex-hepta-agentd \
+            --features qualification-cognitive-write \
             -- -D warnings
 
-      - name: Write exact-head evidence
+      - name: Record exact-head evidence
         if: always()
         shell: bash
         run: |
@@ -134,12 +123,13 @@ jobs:
           evidence="$RUNNER_TEMP/hepta-architecture-source-head"
           mkdir -p "$evidence"
           {
-            echo "schema=hepta_architecture_source_head_evidence_v1"
+            echo "schema=hepta_architecture_source_head_evidence_v2"
             echo "identity=source_head"
             echo "repository=$GITHUB_REPOSITORY"
             echo "workflow=$GITHUB_WORKFLOW"
             echo "run_id=$GITHUB_RUN_ID"
             echo "run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "runner_id=${RUNNER_NAME}"
             echo "runner_name=$RUNNER_NAME"
             echo "runner_os=$RUNNER_OS"
             echo "runner_arch=$RUNNER_ARCH"
@@ -147,6 +137,7 @@ jobs:
             echo "actual_commit=$(git rev-parse HEAD)"
             echo "actual_tree=$(git rev-parse 'HEAD^{tree}')"
             echo "job_status=${{ job.status }}"
+            echo "source_mutation=false"
             echo "production_authority=false"
             echo "effect_authority=false"
             echo "model_invocation_authority=false"
@@ -164,10 +155,10 @@ jobs:
           if-no-files-found: error
 
   merge-candidate:
-    name: Merge-candidate product integration
+    name: Merge-candidate architecture integration
     if: ${{ github.event_name == 'pull_request' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
     steps:
       - name: Checkout merge candidate
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -184,6 +175,8 @@ jobs:
           git rev-parse HEAD^1
           git rev-parse HEAD^2
           git rev-parse 'HEAD^{tree}'
+          git diff --exit-code
+          git diff --cached --exit-code
 
       - uses: ./.github/actions/setup-ci
 
@@ -193,27 +186,33 @@ jobs:
 
       - name: Merge-candidate source ratchets
         run: |
+          set -euo pipefail
           python3 scripts/verify-hepta-architecture-convergence-p0-2.py
           python3 scripts/verify-hepta-authority-callers-p0-1.py
           python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python3 scripts/verify-hepta-architecture-gap-ledger.py
 
-      - name: Merge-candidate tests and compilation
+      - name: Merge-candidate product tests and compilation
         working-directory: codex-rs
         run: |
+          set -euo pipefail
           cargo test --locked -p codex-hepta-contracts authority::tests -- --nocapture
           cargo test --locked -p codex-hepta-contracts operation::tests -- --nocapture
           cargo test --locked -p codex-hepta-contracts product_graph::tests -- --nocapture
           cargo test --locked -p codex-hepta-contracts --test cross_owner_fault_matrix -- --nocapture
           cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
+          cargo test --locked -p codex-hepta-automation --lib -- --nocapture
           cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
+          cargo test --locked -p codex-hepta-matrixd --lib -- --nocapture
           cargo check --locked \
             -p codex-hepta-memory-runtime \
+            -p codex-hepta-automation \
             -p codex-hepta-agentd \
             -p codex-hepta-supervisor \
             -p codex-hepta-matrixd \
             -p codex-hepta-native-gateway
 
-      - name: Write merge-candidate evidence
+      - name: Record merge-candidate evidence
         if: always()
         shell: bash
         run: |
@@ -221,7 +220,7 @@ jobs:
           evidence="$RUNNER_TEMP/hepta-architecture-merge-candidate"
           mkdir -p "$evidence"
           {
-            echo "schema=hepta_architecture_merge_candidate_evidence_v1"
+            echo "schema=hepta_architecture_merge_candidate_evidence_v2"
             echo "identity=merge_candidate"
             echo "repository=$GITHUB_REPOSITORY"
             echo "workflow=$GITHUB_WORKFLOW"
@@ -236,6 +235,7 @@ jobs:
             echo "first_parent=$(git rev-parse HEAD^1)"
             echo "second_parent=$(git rev-parse HEAD^2)"
             echo "job_status=${{ job.status }}"
+            echo "source_mutation=false"
             echo "production_authority=false"
             echo "effect_authority=false"
             echo "model_invocation_authority=false"
@@ -258,7 +258,7 @@ jobs:
     needs:
       - exact-source-head
       - merge-candidate
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Require successful architecture identities
         env:
