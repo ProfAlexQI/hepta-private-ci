@@ -4,6 +4,7 @@ use codex_hepta_contracts::Sha256Digest;
 use sha2::Digest;
 use sha2::Sha256;
 
+#[allow(dead_code)]
 #[path = "cognitive/grounding_v3.rs"]
 pub(crate) mod grounding_v3;
 
