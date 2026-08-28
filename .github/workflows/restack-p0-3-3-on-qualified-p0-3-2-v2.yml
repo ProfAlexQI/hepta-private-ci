@@ -1,0 +1,185 @@
+name: restack-p0-3-3-on-qualified-p0-3-2-v2
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-p0-3-3-restack-hardening-v1-20260828"
+    paths:
+      - ".p0-3-3-restack/trigger.json"
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: restack-p0-3-3-on-qualified-p0-3-2-v2
+  cancel-in-progress: false
+
+jobs:
+  restack:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - name: Checkout exact hardening branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/hepta-intelligence-p0-3-3-restack-hardening-v1-20260828
+          fetch-depth: 0
+
+      - name: Parse fail-closed restack trigger
+        id: trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+
+          trigger = json.loads(
+              Path(".p0-3-3-restack/trigger.json").read_text(encoding="utf-8")
+          )
+          if trigger.get("enabled") is not True:
+              raise SystemExit("P0.3.3 restack trigger is not enabled")
+          head = trigger.get("qualified_p0_3_2_head")
+          run_id = trigger.get("qualification_run_id")
+          if not isinstance(head, str) or len(head) != 40 or any(
+              character not in "0123456789abcdef" for character in head
+          ):
+              raise SystemExit("qualified P0.3.2 head is not lowercase SHA-1")
+          if not isinstance(run_id, int) or run_id <= 0:
+              raise SystemExit("qualification run ID must be a positive integer")
+          print(f"qualified_head={head}")
+          print(f"qualification_run_id={run_id}")
+          PY
+
+      - name: Verify exact P0.3.2 receipt and remote head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALIFIED_HEAD: ${{ steps.trigger.outputs.qualified_head }}
+          QUALIFICATION_RUN_ID: ${{ steps.trigger.outputs.qualification_run_id }}
+          P032_BRANCH: codex/hepta-intelligence-shared-projection-planner-v5-20260828
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$P032_BRANCH:refs/remotes/origin/$P032_BRANCH"
+          test "$(git rev-parse refs/remotes/origin/$P032_BRANCH)" = "$QUALIFIED_HEAD"
+
+          rm -rf /tmp/p032-evidence
+          mkdir -p /tmp/p032-evidence
+          gh run download "$QUALIFICATION_RUN_ID" \
+            --repo ProfAlexQI/hepta-private-ci \
+            --name "hepta-intelligence-p0-3-2-$QUALIFIED_HEAD" \
+            --dir /tmp/p032-evidence
+
+          RECEIPT=$(find /tmp/p032-evidence -name qualification-receipt.json -type f -print -quit)
+          test -n "$RECEIPT"
+          python3 - "$RECEIPT" "$QUALIFIED_HEAD" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          receipt = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected = sys.argv[2]
+          assert receipt["head"] == expected
+          assert receipt["qualified"] is True
+          assert receipt["shared_projection_planner"] is True
+          assert receipt["current_projection_replanned"] is True
+          assert receipt["ledger_verified_in_snapshot"] is True
+          assert all(check["passed"] for check in receipt["checks"])
+          for key in (
+              "wired",
+              "tool_v3_registered",
+              "tool_v4_registered",
+              "default_projection_pointer_changed",
+              "default_recall_query_changed",
+              "production_projection_gate",
+              "production_authority",
+              "external_effects",
+              "operator_accepted",
+              "promoted",
+              "callers_ratchet",
+          ):
+              assert receipt[key] is False, key
+          PY
+
+      - name: Build and preflight the governed P0.3.3 restack
+        env:
+          QUALIFIED_HEAD: ${{ steps.trigger.outputs.qualified_head }}
+          QUALIFICATION_RUN_ID: ${{ steps.trigger.outputs.qualification_run_id }}
+          P033_BRANCH: codex/hepta-intelligence-evidence-resolver-v4-20260828
+        shell: bash
+        run: |
+          set -euo pipefail
+          HARDENING_HEAD=$(git rev-parse HEAD)
+          git fetch origin "$P033_BRANCH:refs/remotes/origin/$P033_BRANCH"
+          P033_OLD_HEAD=$(git rev-parse "refs/remotes/origin/$P033_BRANCH")
+          printf '%s\n' "$P033_OLD_HEAD" > /tmp/p033-old-head.txt
+
+          git switch --detach "$QUALIFIED_HEAD"
+          paths=(
+            .github/workflows/hepta-intelligence-evidence-resolver-v4.yml
+            codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs
+            codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/receipt.rs
+            codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/resolver.rs
+            codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/schema.rs
+            codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/support.rs
+            codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/tests.rs
+            codex-rs/ext/hepta-memory/src/framing.rs
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_DEVELOPMENT_PLAN_V3_2_2026-08-28.md
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_3_3_HOST_EVIDENCE_RESOLVER_2026-08-28.md
+            scripts/bind-hepta-intelligence-p0-3-3-restack-v1.py
+            scripts/run-hepta-intelligence-evidence-resolver-v5.py
+            scripts/verify-hepta-intelligence-evidence-resolver-v4.py
+          )
+          for path in "${paths[@]}"; do
+            git cat-file -e "$HARDENING_HEAD:$path"
+            git checkout "$HARDENING_HEAD" -- "$path"
+          done
+
+          python3 scripts/bind-hepta-intelligence-p0-3-3-restack-v1.py \
+            "$QUALIFIED_HEAD" "$QUALIFICATION_RUN_ID"
+          python3 -m py_compile \
+            scripts/bind-hepta-intelligence-p0-3-3-restack-v1.py \
+            scripts/run-hepta-intelligence-evidence-resolver-v5.py \
+            scripts/verify-hepta-intelligence-evidence-resolver-v4.py
+          python3 scripts/verify-hepta-intelligence-evidence-resolver-v4.py \
+            | tee /tmp/p033-source-gate.json
+
+          cd codex-rs
+          rustfmt --edition 2024 --check \
+            ext/hepta-memory/src/framing.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/receipt.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/resolver.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/schema.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/support.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/tests.rs
+          cargo check -p codex-hepta-memory-extension --all-targets
+          cargo check -p codex-hepta-memory --all-targets
+          cd ..
+
+          git add "${paths[@]}"
+          git diff --cached --check
+          git config user.name "Qian QI"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git commit -m "feat(memory): restack host-owned evidence resolver P0.3.3"
+          git rev-parse HEAD > /tmp/p033-new-head.txt
+
+      - name: Publish only the preflight-qualified restack
+        env:
+          GH_TOKEN: ${{ github.token }}
+          P032_BRANCH: codex/hepta-intelligence-shared-projection-planner-v5-20260828
+          P033_BRANCH: codex/hepta-intelligence-evidence-resolver-v4-20260828
+        shell: bash
+        run: |
+          set -euo pipefail
+          P033_OLD_HEAD=$(cat /tmp/p033-old-head.txt)
+          P033_NEW_HEAD=$(cat /tmp/p033-new-head.txt)
+          git push --force-with-lease="refs/heads/$P033_BRANCH:$P033_OLD_HEAD" \
+            origin "$P033_NEW_HEAD:refs/heads/$P033_BRANCH"
+          gh api --method PATCH repos/ProfAlexQI/hepta-private-ci/pulls/30 \
+            -f base="$P032_BRANCH" >/dev/null
+          printf 'P0.3.3 old head: %s\nP0.3.3 new head: %s\n' \
+            "$P033_OLD_HEAD" "$P033_NEW_HEAD"
