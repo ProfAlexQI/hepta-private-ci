@@ -1,0 +1,613 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.ai/schemas/ui/hepta.ui.v4.exact-head-qualification-index.v1.schema.json",
+  "title": "Hepta UI v4 exact-head qualification index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "candidate",
+    "sourceRun",
+    "evidence",
+    "qualification",
+    "authority",
+    "failures"
+  ],
+  "properties": {
+    "schema": {
+      "const": "hepta.ui.v4.exact-head-qualification-index.v1"
+    },
+    "status": {
+      "enum": [
+        "PASS_EXACT_HEAD_PRE_RUNTIME_QUALIFICATION",
+        "PASS_EXACT_HEAD_WINDOWS_RUNTIME_QUALIFICATION",
+        "FAIL_EXACT_HEAD_QUALIFICATION_INDEX"
+      ]
+    },
+    "candidate": {
+      "$ref": "#/$defs/candidate"
+    },
+    "sourceRun": {
+      "$ref": "#/$defs/sourceRun"
+    },
+    "evidence": {
+      "$ref": "#/$defs/evidence"
+    },
+    "qualification": {
+      "$ref": "#/$defs/qualification"
+    },
+    "authority": {
+      "$ref": "#/$defs/authority"
+    },
+    "failures": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      }
+    }
+  },
+  "$defs": {
+    "gitObject": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commit",
+        "tree"
+      ],
+      "properties": {
+        "commit": {
+          "$ref": "#/$defs/gitObject"
+        },
+        "tree": {
+          "$ref": "#/$defs/gitObject"
+        }
+      }
+    },
+    "sourceRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "runId",
+        "allowInProgressRun"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "runId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "allowInProgressRun": {
+          "type": "boolean"
+        }
+      }
+    },
+    "job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "jobId",
+        "runnerId",
+        "runnerName",
+        "stepCount",
+        "qualified"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "jobId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "runnerId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "runnerName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stepCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "qualified": {
+          "const": true
+        }
+      }
+    },
+    "sourceEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qualified",
+        "statuses",
+        "artifact",
+        "job"
+      ],
+      "properties": {
+        "qualified": {
+          "const": true
+        },
+        "statuses": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "const": "PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE_SOURCE_ONLY"
+            },
+            {
+              "const": "PASS_WINDOWS_MATERIAL_PROFILE_RUNTIME_SOURCE_ONLY"
+            },
+            {
+              "const": "PASS_EXACT_CANDIDATE_MATERIALIZATION_HARDENING_SOURCE_ONLY"
+            },
+            {
+              "const": "PASS_EXACT_HEAD_QUALIFICATION_CLOSURE_SOURCE_ONLY"
+            }
+          ],
+          "items": false,
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "artifact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "job": {
+          "$ref": "#/$defs/job"
+        }
+      }
+    },
+    "materializationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qualified",
+        "status",
+        "artifact",
+        "job"
+      ],
+      "properties": {
+        "qualified": {
+          "const": true
+        },
+        "status": {
+          "const": "PASS_PATCHED_CHECKOUT_MATERIALIZED_SOURCE_ONLY"
+        },
+        "artifact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "job": {
+          "$ref": "#/$defs/job"
+        }
+      }
+    },
+    "compileEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qualified",
+        "artifact",
+        "job"
+      ],
+      "properties": {
+        "qualified": {
+          "const": true
+        },
+        "artifact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "job": {
+          "$ref": "#/$defs/job"
+        }
+      }
+    },
+    "runtimeEvidence": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "requested",
+        "qualified"
+      ],
+      "properties": {
+        "requested": {
+          "type": "boolean"
+        },
+        "qualified": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE"
+          ]
+        },
+        "artifact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "job": {
+          "$ref": "#/$defs/job"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "materialization",
+        "compile",
+        "windowsRuntime"
+      ],
+      "properties": {
+        "source": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sourceEvidence"
+            },
+            {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "qualified"
+              ],
+              "properties": {
+                "qualified": {
+                  "const": false
+                }
+              }
+            }
+          ]
+        },
+        "materialization": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/materializationEvidence"
+            },
+            {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "qualified"
+              ],
+              "properties": {
+                "qualified": {
+                  "const": false
+                }
+              }
+            }
+          ]
+        },
+        "compile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ubuntu-latest",
+            "windows-latest",
+            "macos-latest"
+          ],
+          "properties": {
+            "ubuntu-latest": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/compileEvidence"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "qualified"
+                  ],
+                  "properties": {
+                    "qualified": {
+                      "const": false
+                    }
+                  }
+                }
+              ]
+            },
+            "windows-latest": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/compileEvidence"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "qualified"
+                  ],
+                  "properties": {
+                    "qualified": {
+                      "const": false
+                    }
+                  }
+                }
+              ]
+            },
+            "macos-latest": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/compileEvidence"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "qualified"
+                  ],
+                  "properties": {
+                    "qualified": {
+                      "const": false
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "windowsRuntime": {
+          "$ref": "#/$defs/runtimeEvidence"
+        }
+      }
+    },
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "materialization",
+        "compileUbuntu",
+        "compileWindows",
+        "compileMacos",
+        "preRuntime",
+        "windowsRuntime",
+        "eligibleForProductIntegrationReview",
+        "productBound",
+        "transientSystemMaterialBound",
+        "completeProfileBound",
+        "systemMaterialBound",
+        "nativeProductRuntime",
+        "deviceValidation"
+      ],
+      "properties": {
+        "source": {
+          "type": "boolean"
+        },
+        "materialization": {
+          "type": "boolean"
+        },
+        "compileUbuntu": {
+          "type": "boolean"
+        },
+        "compileWindows": {
+          "type": "boolean"
+        },
+        "compileMacos": {
+          "type": "boolean"
+        },
+        "preRuntime": {
+          "type": "boolean"
+        },
+        "windowsRuntime": {
+          "type": "boolean"
+        },
+        "eligibleForProductIntegrationReview": {
+          "type": "boolean"
+        },
+        "productBound": {
+          "const": false
+        },
+        "transientSystemMaterialBound": {
+          "const": false
+        },
+        "completeProfileBound": {
+          "const": false
+        },
+        "systemMaterialBound": {
+          "const": false
+        },
+        "nativeProductRuntime": {
+          "const": false
+        },
+        "deviceValidation": {
+          "const": false
+        }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "network",
+        "mutation",
+        "effect",
+        "liveAdapter",
+        "production",
+        "operatorAcceptance",
+        "promotion",
+        "release"
+      ],
+      "properties": {
+        "network": {
+          "const": false
+        },
+        "mutation": {
+          "const": false
+        },
+        "effect": {
+          "const": false
+        },
+        "liveAdapter": {
+          "const": false
+        },
+        "production": {
+          "const": false
+        },
+        "operatorAcceptance": {
+          "const": false
+        },
+        "promotion": {
+          "const": false
+        },
+        "release": {
+          "const": false
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS_EXACT_HEAD_PRE_RUNTIME_QUALIFICATION"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "qualification": {
+            "properties": {
+              "source": {
+                "const": true
+              },
+              "materialization": {
+                "const": true
+              },
+              "compileUbuntu": {
+                "const": true
+              },
+              "compileWindows": {
+                "const": true
+              },
+              "compileMacos": {
+                "const": true
+              },
+              "preRuntime": {
+                "const": true
+              },
+              "windowsRuntime": {
+                "const": false
+              },
+              "eligibleForProductIntegrationReview": {
+                "const": false
+              }
+            }
+          },
+          "failures": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS_EXACT_HEAD_WINDOWS_RUNTIME_QUALIFICATION"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "qualification": {
+            "properties": {
+              "source": {
+                "const": true
+              },
+              "materialization": {
+                "const": true
+              },
+              "compileUbuntu": {
+                "const": true
+              },
+              "compileWindows": {
+                "const": true
+              },
+              "compileMacos": {
+                "const": true
+              },
+              "preRuntime": {
+                "const": true
+              },
+              "windowsRuntime": {
+                "const": true
+              },
+              "eligibleForProductIntegrationReview": {
+                "const": true
+              }
+            }
+          },
+          "evidence": {
+            "properties": {
+              "windowsRuntime": {
+                "properties": {
+                  "requested": {
+                    "const": true
+                  },
+                  "qualified": {
+                    "const": true
+                  },
+                  "status": {
+                    "const": "PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE"
+                  }
+                },
+                "required": [
+                  "status",
+                  "artifact",
+                  "job"
+                ]
+              }
+            }
+          },
+          "failures": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "FAIL_EXACT_HEAD_QUALIFICATION_INDEX"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "qualification": {
+            "properties": {
+              "preRuntime": {
+                "const": false
+              },
+              "windowsRuntime": {
+                "const": false
+              },
+              "eligibleForProductIntegrationReview": {
+                "const": false
+              }
+            }
+          },
+          "failures": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ]
+}

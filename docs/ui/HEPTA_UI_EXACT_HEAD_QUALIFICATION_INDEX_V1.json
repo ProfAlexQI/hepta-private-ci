@@ -1,0 +1,83 @@
+{
+  "schema": "hepta.ui.exact-head-qualification-index.v1",
+  "status": "INDEX_SOURCE_READY_EXECUTION_REQUIRED",
+  "candidateBranch": "codex/ui-v4-exact-head-qualification-index-20260828",
+  "baseBranch": "codex/ui-v4-exact-head-qualification-closure-20260828",
+  "baseCommit": "92f12a13aed3dfbd2eb229b62e77760e3bdfaae4",
+  "baseTree": "796f9630b445791903a833b63ac06eb8442800f4",
+  "producer": {
+    "source": "scripts/hepta-ui-v4-exact-head-qualification-index",
+    "schema": "docs/ui/schemas/hepta.ui.v4.exact-head-qualification-index.v1.schema.json",
+    "atomicReceiptWrite": true,
+    "boundedFailures": 64,
+    "candidateCommitRequired": true,
+    "candidateTreeRequired": true,
+    "sameRunJobEvidenceRequired": true,
+    "nonzeroRunnerRequired": true,
+    "nonemptyStepsRequired": true,
+    "duplicateJobNamesRejected": true,
+    "duplicateSourceStatusesRejected": true,
+    "materializationCandidateBindingRequired": true,
+    "makepadRevision": "c4335cee10b22aca768510c9d072b0ca1bba15c8",
+    "compilePlatforms": [
+      "ubuntu-latest",
+      "windows-latest",
+      "macos-latest"
+    ],
+    "windowsRuntimeOptionalForPreRuntime": true,
+    "windowsRuntimeRequiredForIntegrationReview": true,
+    "selfTests": [
+      "pre-runtime-pass",
+      "windows-runtime-pass",
+      "compile-failure-fail-closed"
+    ],
+    "indexSourceGateIsSeparate": true,
+    "completedRunReplayRequired": true,
+    "sourceParts": [
+      "scripts/hepta-ui-v4-exact-head-qualification-index.part1.rb",
+      "scripts/hepta-ui-v4-exact-head-qualification-index.part2.rb",
+      "scripts/hepta-ui-v4-exact-head-qualification-index.part3.rb",
+      "scripts/hepta-ui-v4-exact-head-qualification-index.part4.rb"
+    ],
+    "sourcePartCount": 4
+  },
+  "sourceStatuses": [
+    "PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE_SOURCE_ONLY",
+    "PASS_WINDOWS_MATERIAL_PROFILE_RUNTIME_SOURCE_ONLY",
+    "PASS_EXACT_CANDIDATE_MATERIALIZATION_HARDENING_SOURCE_ONLY",
+    "PASS_EXACT_HEAD_QUALIFICATION_CLOSURE_SOURCE_ONLY"
+  ],
+  "outputStatuses": {
+    "preRuntime": "PASS_EXACT_HEAD_PRE_RUNTIME_QUALIFICATION",
+    "windowsRuntime": "PASS_EXACT_HEAD_WINDOWS_RUNTIME_QUALIFICATION",
+    "failure": "FAIL_EXACT_HEAD_QUALIFICATION_INDEX"
+  },
+  "qualification": {
+    "sourceImplemented": true,
+    "hostedExactHeadSource": false,
+    "hostedMaterialization": false,
+    "hostedUbuntuCompile": false,
+    "hostedWindowsCompile": false,
+    "hostedMacosCompile": false,
+    "preRuntimeQualified": false,
+    "governedWindowsRuntime": false,
+    "windowsRuntimeQualified": false,
+    "eligibleForProductIntegrationReview": false,
+    "productBound": false,
+    "transientSystemMaterialBound": false,
+    "completeProfileBound": false,
+    "systemMaterialBound": false,
+    "nativeProductRuntime": false,
+    "deviceValidation": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

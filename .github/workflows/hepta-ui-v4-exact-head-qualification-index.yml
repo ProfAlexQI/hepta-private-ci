@@ -1,0 +1,284 @@
+name: hepta-ui-v4-exact-head-qualification-index
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-exact-head-qualification-index-*"
+  pull_request:
+    paths:
+      - "scripts/hepta-ui-v4-exact-head-qualification-index"
+      - "scripts/hepta-ui-v4-exact-head-qualification-index.part1.rb"
+      - "scripts/hepta-ui-v4-exact-head-qualification-index.part2.rb"
+      - "scripts/hepta-ui-v4-exact-head-qualification-index.part3.rb"
+      - "scripts/hepta-ui-v4-exact-head-qualification-index.part4.rb"
+      - "scripts/hepta-ui-v4-exact-head-qualification-index-gate"
+      - "docs/ui/HEPTA_UI_EXACT_HEAD_QUALIFICATION_INDEX_V1.json"
+      - "docs/ui/schemas/hepta.ui.v4.exact-head-qualification-index.v1.schema.json"
+      - "docs/ui/HEPTA_UI_V4_TRANCHE_18_EXACT_HEAD_QUALIFICATION_INDEX_2026-08-28.md"
+      - ".github/workflows/hepta-ui-v4-exact-head-qualification-index.yml"
+  workflow_run:
+    workflows:
+      - "hepta-ui-v4-windows-material-profile-exact"
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Completed hepta-ui-v4-windows-material-profile-exact run ID"
+        required: true
+        type: string
+      require_windows_runtime:
+        description: "Require governed Windows runtime qualification rather than pre-runtime qualification"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: hepta-ui-v4-exact-head-index-${{ github.event.workflow_run.id || inputs.source_run_id || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-contract:
+    name: Exact-head qualification index source contract
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HEPTA_INDEX_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout exact index candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_INDEX_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact index checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_INDEX_CANDIDATE_SHA"
+      - name: Validate index source and self-tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -c scripts/hepta-ui-v4-exact-head-qualification-index
+          for part in scripts/hepta-ui-v4-exact-head-qualification-index.part{1..4}.rb; do test -s "$part"; done
+          ruby -c scripts/hepta-ui-v4-exact-head-qualification-index-gate
+          ruby -rjson -e 'ARGV.each { |path| JSON.parse(File.read(path)) }' \
+            docs/ui/HEPTA_UI_EXACT_HEAD_QUALIFICATION_INDEX_V1.json \
+            docs/ui/schemas/hepta.ui.v4.exact-head-qualification-index.v1.schema.json
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-exact-head-qualification-index.yml")'
+          mkdir -p artifacts/exact-head-index-source
+          ruby scripts/hepta-ui-v4-exact-head-qualification-index --self-test \
+            | tee artifacts/exact-head-index-source/self-test.json
+          ruby scripts/hepta-ui-v4-exact-head-qualification-index-gate \
+            | tee artifacts/exact-head-index-source/source-gate.json
+          ruby -rjson -e '
+            r=JSON.parse(File.read("artifacts/exact-head-index-source/source-gate.json"))
+            abort "unexpected source status" unless r.fetch("status") == "PASS_EXACT_HEAD_QUALIFICATION_INDEX_SOURCE_ONLY"
+            abort "source authority escaped" unless %w[
+              product_bound transient_system_material_binding complete_profile_binding
+              system_material_binding native_product_runtime device_validation
+              production_authority effect_authority live_adapter_authority
+              operator_acceptance promotion release
+            ].all? { |key| r.fetch(key) == false }
+          '
+      - name: Upload index source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-exact-head-index-source-${{ env.HEPTA_INDEX_CANDIDATE_SHA }}
+          path: artifacts/exact-head-index-source
+          if-no-files-found: error
+          retention-days: 14
+
+  qualification-index:
+    name: Replay completed exact-head qualification evidence
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Resolve and validate source run
+        id: source_run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          DISPATCH_RUN_ID: ${{ inputs.source_run_id }}
+          REQUIRE_WINDOWS_RUNTIME_INPUT: ${{ inputs.require_windows_runtime }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            SOURCE_RUN_ID="$WORKFLOW_RUN_ID"
+            REQUIRE_WINDOWS_RUNTIME=false
+          else
+            SOURCE_RUN_ID="$DISPATCH_RUN_ID"
+            REQUIRE_WINDOWS_RUNTIME="$REQUIRE_WINDOWS_RUNTIME_INPUT"
+          fi
+          [[ "$SOURCE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" \
+            > source-run.json
+          SOURCE_RUN_ID="$SOURCE_RUN_ID" REQUIRE_WINDOWS_RUNTIME="$REQUIRE_WINDOWS_RUNTIME" ruby -rjson -e '
+            run=JSON.parse(File.read("source-run.json"))
+            abort "wrong workflow" unless run.fetch("name") == "hepta-ui-v4-windows-material-profile-exact"
+            abort "source run is not completed" unless run.fetch("status") == "completed"
+            abort "repository drift" unless run.dig("repository","full_name") == ENV.fetch("GITHUB_REPOSITORY")
+            sha=run.fetch("head_sha")
+            abort "invalid source head" unless sha.match?(/\A[0-9a-f]{40}\z/)
+            puts "source_run_id=#{ENV.fetch("SOURCE_RUN_ID")}"
+            puts "source_head_sha=#{sha}"
+            puts "require_windows_runtime=#{ENV.fetch("REQUIRE_WINDOWS_RUNTIME") == "true"}"
+          ' >> "$GITHUB_OUTPUT"
+      - name: Checkout exact source-run candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source_run.outputs.source_head_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify source-run checkout and index source
+        shell: bash
+        env:
+          SOURCE_HEAD_SHA: ${{ steps.source_run.outputs.source_head_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD_SHA"
+          ruby -c scripts/hepta-ui-v4-exact-head-qualification-index
+          for part in scripts/hepta-ui-v4-exact-head-qualification-index.part{1..4}.rb; do test -s "$part"; done
+          ruby -c scripts/hepta-ui-v4-exact-head-qualification-index-gate
+          ruby scripts/hepta-ui-v4-exact-head-qualification-index --self-test > index-self-test.json
+          ruby scripts/hepta-ui-v4-exact-head-qualification-index-gate > index-source.json
+      - name: Fetch exact source-run jobs and artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ steps.source_run.outputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/index-input artifacts/index-output archives
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/jobs?per_page=100" \
+            > artifacts/index-output/jobs.json
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
+            > artifacts/index-output/artifacts.json
+          ruby -rjson -e '
+            payload=JSON.parse(File.read("artifacts/index-output/artifacts.json"))
+            artifacts=payload.fetch("artifacts")
+            selected=artifacts.select do |artifact|
+              name=artifact.fetch("name")
+              name.start_with?("hepta-ui-v4-exact-") && !artifact.fetch("expired")
+            end
+            abort "no exact artifacts" if selected.empty?
+            names=selected.map { |artifact| artifact.fetch("name") }
+            abort "duplicate artifact name" unless names.uniq.length == names.length
+            selected.each do |artifact|
+              name=artifact.fetch("name")
+              abort "unsafe artifact name" unless name.match?(/\A[A-Za-z0-9_.-]+\z/)
+              puts [name, artifact.fetch("archive_download_url")].join("\t")
+            end
+          ' > artifacts/index-output/downloads.tsv
+          while IFS=$'\t' read -r name url; do
+            mkdir -p "artifacts/index-input/$name"
+            curl --fail --location --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$url" > "archives/$name.zip"
+            unzip -q "archives/$name.zip" -d "artifacts/index-input/$name"
+          done < artifacts/index-output/downloads.tsv
+      - name: Produce exact-head qualification index
+        id: produce_index
+        continue-on-error: true
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ steps.source_run.outputs.source_run_id }}
+          SOURCE_HEAD_SHA: ${{ steps.source_run.outputs.source_head_sha }}
+          REQUIRE_WINDOWS_RUNTIME: ${{ steps.source_run.outputs.require_windows_runtime }}
+        run: |
+          set -euo pipefail
+          source_dir="artifacts/index-input/hepta-ui-v4-exact-source-$SOURCE_HEAD_SHA"
+          test -d "$source_dir"
+          candidate_tree="$(tr -d '\r\n' < "$source_dir/candidate-tree.txt")"
+          args=(
+            --jobs artifacts/index-output/jobs.json
+            --artifacts artifacts/index-input
+            --candidate-commit "$SOURCE_HEAD_SHA"
+            --candidate-tree "$candidate_tree"
+            --repository "$GITHUB_REPOSITORY"
+            --run-id "$SOURCE_RUN_ID"
+            --output artifacts/index-output/qualification-index.json
+          )
+          if [[ "$REQUIRE_WINDOWS_RUNTIME" == "true" ]]; then
+            args+=(--require-windows-runtime)
+          fi
+          ruby scripts/hepta-ui-v4-exact-head-qualification-index "${args[@]}"
+      - name: Validate bounded index receipt
+        if: always()
+        shell: bash
+        env:
+          INDEX_OUTCOME: ${{ steps.produce_index.outcome }}
+          SOURCE_HEAD_SHA: ${{ steps.source_run.outputs.source_head_sha }}
+          REQUIRE_WINDOWS_RUNTIME: ${{ steps.source_run.outputs.require_windows_runtime }}
+        run: |
+          set -euo pipefail
+          ruby -rjson -e '
+            r=JSON.parse(File.read("artifacts/index-output/qualification-index.json"))
+            abort "candidate drift" unless r.dig("candidate","commit") == ENV.fetch("SOURCE_HEAD_SHA")
+            abort "authority escaped" unless r.fetch("authority").values.all? { |value| value == false }
+            %w[productBound transientSystemMaterialBound completeProfileBound systemMaterialBound nativeProductRuntime deviceValidation].each do |key|
+              abort "#{key} escaped" unless r.dig("qualification",key) == false
+            end
+            outcome=ENV.fetch("INDEX_OUTCOME")
+            if outcome == "success"
+              allowed=%w[PASS_EXACT_HEAD_PRE_RUNTIME_QUALIFICATION PASS_EXACT_HEAD_WINDOWS_RUNTIME_QUALIFICATION]
+              abort "unexpected PASS status" unless allowed.include?(r.fetch("status"))
+              if ENV.fetch("REQUIRE_WINDOWS_RUNTIME") == "true"
+                abort "runtime qualification missing" unless r.fetch("status") == "PASS_EXACT_HEAD_WINDOWS_RUNTIME_QUALIFICATION"
+              end
+            else
+              abort "missing FAIL status" unless r.fetch("status") == "FAIL_EXACT_HEAD_QUALIFICATION_INDEX"
+              abort "failure list missing" unless r.fetch("failures").is_a?(Array) && !r.fetch("failures").empty?
+            end
+          '
+      - name: Upload exact-head qualification index
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-exact-head-qualification-index-${{ steps.source_run.outputs.source_head_sha }}
+          path: |
+            artifacts/index-output/qualification-index.json
+            artifacts/index-output/jobs.json
+            artifacts/index-output/artifacts.json
+            artifacts/index-output/downloads.tsv
+            index-self-test.json
+            index-source.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Enforce index result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(ruby -rjson -e 'puts JSON.parse(File.read("artifacts/index-output/qualification-index.json")).fetch("status")')"
+          case "$status" in
+            PASS_EXACT_HEAD_PRE_RUNTIME_QUALIFICATION|PASS_EXACT_HEAD_WINDOWS_RUNTIME_QUALIFICATION) ;;
+            *) exit 1 ;;
+          esac
