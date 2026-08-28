@@ -12,13 +12,13 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: hepta-pr1-queue-hygiene-v1
+  group: hepta-pr1-queue-hygiene-v2
   cancel-in-progress: true
 
 jobs:
   queue-hygiene:
     name: Cancel obsolete exact-branch queue entries
-    runs-on: ubuntu-24.04-arm
+    runs-on: macos-15
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
@@ -46,7 +46,7 @@ jobs:
           headers = {
               "Accept": "application/vnd.github+json",
               "Authorization": f"Bearer {token}",
-              "User-Agent": "hepta-pr1-queue-hygiene-v1",
+              "User-Agent": "hepta-pr1-queue-hygiene-v2",
               "X-GitHub-Api-Version": "2022-11-28",
           }
 
@@ -100,7 +100,6 @@ jobs:
                   request(f"{base}/actions/runs/{item['id']}/cancel", method="POST")
                   cancelled.append(item)
               except urllib.error.HTTPError as error:
-                  # 409 means GitHub changed the state between listing and cancel.
                   if error.code != 409:
                       failures.append({**item, "http_status": error.code})
               time.sleep(0.02)
@@ -118,7 +117,7 @@ jobs:
               "cancelled_count": len(cancelled),
               "current_head": current_head,
               "failures": failures,
-              "schema": "hepta.ci.branch_queue_hygiene.v1",
+              "schema": "hepta.ci.branch_queue_hygiene.v2",
               "selected_count": len(selected),
           }
           print(json.dumps(result, sort_keys=True))
