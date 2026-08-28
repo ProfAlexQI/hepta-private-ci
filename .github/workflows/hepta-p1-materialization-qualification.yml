@@ -1,0 +1,209 @@
+name: Hepta P1 materialization qualification
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-gap-closure-p1-20260829
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-p1-materialization-${{ github.sha }}
+  cancel-in-progress: true
+
+env:
+  SOURCE_HEAD: ${{ github.sha }}
+
+jobs:
+  linux-materialization:
+    name: Linux materialization and full qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify exact clean identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+          git diff --exit-code
+          git diff --cached --exit-code
+          git rev-parse 'HEAD^{tree}'
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Materialize deterministic P1 changes
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-memory-model-extraction-p1.py
+          python3 scripts/hepta-max-concurrent-turns-p1.py
+          python3 scripts/hepta-max-concurrent-turns-race-fix-p1.py
+          python3 scripts/hepta-max-tool-processes-p1.py
+          python3 scripts/hepta-memory-limit-p1.py
+
+      - name: Refresh lock graph and format
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo metadata --format-version 1 > /dev/null
+          cargo fmt \
+            -p codex-app-server \
+            -p codex-hepta-memory-model \
+            -p codex-hepta-memory \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-agentd
+
+      - name: Verify source and lock boundaries
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-memory-model-extraction-p1.py
+          python3 scripts/verify-hepta-max-concurrent-turns-p1.py
+          python3 scripts/verify-hepta-max-tool-processes-p1.py
+          python3 scripts/verify-hepta-memory-limit-p1.py
+
+      - name: Execute Memory tests
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-memory-model -- --nocapture
+          cargo test --locked -p codex-hepta-memory --lib -- --nocapture
+          cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
+
+      - name: Execute resource tests
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-app-server thread_status::tests -- --nocapture
+          cargo test --locked -p codex-app-server tool_process_budget::tests -- --nocapture
+          cargo test --locked -p codex-hepta-agentd app_runtime::tests -- --nocapture
+          cargo test --locked -p codex-hepta-agentd resource_budget::tests -- --nocapture
+
+      - name: Compile real product callers
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets \
+            -p codex-app-server \
+            -p codex-hepta-memory-model \
+            -p codex-hepta-memory \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-agentd \
+            -p codex-hepta-automation \
+            -p codex-hepta-matrixd \
+            -p codex-hepta-supervisor
+          cargo check --locked --all-targets --no-default-features \
+            -p codex-hepta-agentd \
+            --features qualification-cognitive-write
+
+      - name: Strict Clippy
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --all-targets \
+            -p codex-app-server \
+            -p codex-hepta-memory-model \
+            -p codex-hepta-memory \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-agentd \
+            -- -D warnings
+          cargo clippy --locked --all-targets --no-default-features \
+            -p codex-hepta-agentd \
+            --features qualification-cognitive-write \
+            -- -D warnings
+
+      - name: Enforce exact materialization allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib
+          import subprocess
+
+          allowed_exact = {
+              "codex-rs/Cargo.toml",
+              "codex-rs/Cargo.lock",
+              "codex-rs/app-server/src/command_exec.rs",
+              "codex-rs/app-server/src/lib.rs",
+              "codex-rs/app-server/src/message_processor.rs",
+              "codex-rs/app-server/src/request_processors/command_exec_processor.rs",
+              "codex-rs/app-server/src/request_processors/process_exec_processor.rs",
+              "codex-rs/app-server/src/request_processors/turn_processor.rs",
+              "codex-rs/app-server/src/thread_status.rs",
+              "codex-rs/hepta-agentd/Cargo.toml",
+              "codex-rs/hepta-agentd/src/app_runtime.rs",
+              "codex-rs/hepta-agentd/src/error.rs",
+              "codex-rs/hepta-agentd/src/lib.rs",
+              "codex-rs/hepta-agentd/src/runtime.rs",
+              "codex-rs/hepta-memory/Cargo.toml",
+              "codex-rs/hepta-memory/src/lib.rs",
+              "codex-rs/hepta-memory/src/cognitive_model.rs",
+          }
+          changed = set(
+              subprocess.check_output(
+                  ["git", "status", "--short"], text=True
+              ).splitlines()
+          )
+          paths = {line[3:] for line in changed if len(line) >= 4}
+          unexpected = sorted(
+              path
+              for path in paths
+              if path not in allowed_exact
+              and not path.startswith("codex-rs/hepta-memory-model/")
+          )
+          if unexpected:
+              raise SystemExit(f"P1 materialization escaped allowlist: {unexpected}")
+          if pathlib.Path("codex-rs/hepta-memory/src/cognitive_model.rs").exists():
+              raise SystemExit("legacy cognitive_model.rs was not physically removed")
+          if not pathlib.Path("codex-rs/hepta-memory-model/src/lib.rs").is_file():
+              raise SystemExit("physical model crate source is missing")
+          PY
+          git diff --check
+
+      - name: Build reviewable patch artifact
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/hepta-p1-materialization"
+          git add -N codex-rs/hepta-memory-model
+          git diff --binary > "$RUNNER_TEMP/hepta-p1-materialization/p1-materialization.patch"
+          git status --short > "$RUNNER_TEMP/hepta-p1-materialization/status.txt"
+          {
+            echo "schema=hepta_p1_materialization_evidence_v1"
+            echo "source_head=$SOURCE_HEAD"
+            echo "source_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "runner_name=$RUNNER_NAME"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "memory_model_extracted=true"
+            echo "max_concurrent_turns_enforced=true"
+            echo "max_tool_processes_enforced=true"
+            echo "hard_memory_limit_installed=true"
+            echo "rss_fence_enabled=true"
+            echo "production_authority=false"
+            echo "external_effect=false"
+            echo "promotion=false"
+          } > "$RUNNER_TEMP/hepta-p1-materialization/receipt.txt"
+          sha256sum "$RUNNER_TEMP/hepta-p1-materialization/p1-materialization.patch" \
+            > "$RUNNER_TEMP/hepta-p1-materialization/p1-materialization.patch.sha256"
+
+      - name: Upload qualified P1 patch
+        if: success()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-p1-materialization-${{ env.SOURCE_HEAD }}
+          path: ${{ runner.temp }}/hepta-p1-materialization
+          if-no-files-found: error
+          retention-days: 2
