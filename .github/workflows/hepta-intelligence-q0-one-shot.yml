@@ -16,7 +16,7 @@ concurrency:
 
 env:
   EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-  EXPECTED_PARENT: 2c7d448332fa0f09cc83d87b7d8daf6df208bcbb
+  EXPECTED_PARENT: 9afdba7aa0bb3f180aa196417fba1c0d6c49edfe
   ARTIFACT_ROOT: artifacts/hepta-intelligence-q0-one-shot
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
@@ -37,46 +37,43 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
 
-      - name: Prove source candidate identity
+      - name: Prove exact source candidate
         shell: bash
         run: |
           set -euo pipefail
-          test "${GITHUB_REF_NAME}" = "${EXPECTED_BRANCH}"
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          test "$(git rev-parse HEAD^)" = "${EXPECTED_PARENT}"
-          mkdir -p "${ARTIFACT_ROOT}/source"
+          test "$GITHUB_REF_NAME" = "$EXPECTED_BRANCH"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          mkdir -p "$ARTIFACT_ROOT/source"
           python3 - <<'PY'
-          import json
-          import os
-          import subprocess
+          import json, os, subprocess
           from pathlib import Path
-
-          def git(*args: str) -> str:
-              return subprocess.check_output(["git", *args], text=True).strip()
-
-          payload = {
+          git = lambda *a: subprocess.check_output(["git", *a], text=True).strip()
+          receipt = {
               "schema": "hepta_intelligence_q0_exact_head_identity_v1",
               "lane": "SOURCE_SQLITE_X64_SLIM",
               "branch": os.environ["GITHUB_REF_NAME"],
-              "expected_head": os.environ["GITHUB_SHA"],
-              "actual_head": git("rev-parse", "HEAD"),
-              "actual_tree": git("rev-parse", "HEAD^{tree}"),
-              "actual_parent": git("rev-parse", "HEAD^"),
-              "expected_parent": os.environ["EXPECTED_PARENT"],
+              "head": git("rev-parse", "HEAD"),
+              "tree": git("rev-parse", "HEAD^{tree}"),
+              "parent": git("rev-parse", "HEAD^"),
               "merge_candidate": False,
-              "current_authority_changed": False,
               "runtime_authority": False,
           }
           Path(os.environ["ARTIFACT_ROOT"], "source", "identity.json").write_text(
-              json.dumps(payload, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n"
           )
           PY
 
-      - name: Compile compatibility and source verifiers
+      - name: Run exact-head source and SQLite matrix
         shell: bash
         run: |
           set -euo pipefail
+          root="$ARTIFACT_ROOT/source"
+          status=plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json
+          cp "$status" "$root/canonical-status-v2.json"
+          restore_status() { cp "$root/canonical-status-v2.json" "$status"; }
+          trap restore_status EXIT
+
           python3 -m py_compile \
             scripts/hepta-intelligence-status-compat.py \
             scripts/verify-hepta-intelligence-grounding-ledger.py \
@@ -87,31 +84,13 @@ jobs:
             scripts/verify-hepta-intelligence-shadow-host.py \
             scripts/verify-hepta-intelligence-master-plan.py
 
-      - name: Run exact-head P0 source and SQLite matrix
-        shell: bash
-        run: |
-          set -euo pipefail
-          root="${ARTIFACT_ROOT}/source"
-          status_path=plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json
-          canonical_copy="${root}/canonical-status-v2.json"
-          cp "${status_path}" "${canonical_copy}"
-          restore_status() {
-            cp "${canonical_copy}" "${status_path}"
-          }
-          trap restore_status EXIT
-
-          plan_status=$(python3 scripts/verify-hepta-intelligence-master-plan.py)
-          test "${plan_status}" = "PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_SOURCE_ONLY"
-          PLAN_STATUS="${plan_status}" python3 - <<'PY'
-          import json
-          import os
+          test "$(python3 scripts/verify-hepta-intelligence-master-plan.py)" = \
+            "PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_SOURCE_ONLY"
+          python3 - <<'PY'
+          import json, os
           from pathlib import Path
-
-          payload = {
-              "schema": "hepta_intelligence_master_plan_source_receipt_v1",
+          value = {
               "status": "PASS_CANONICAL_MASTER_PLAN_SOURCE_ONLY",
-              "verifier_status": os.environ["PLAN_STATUS"],
-              "current_plan_authority_changed": False,
               "runtime_wired": False,
               "production_authority": False,
               "external_effects": False,
@@ -120,46 +99,27 @@ jobs:
               "callers_ratchet": False,
           }
           Path(os.environ["ARTIFACT_ROOT"], "source", "master-plan-source.json").write_text(
-              json.dumps(payload, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
+              json.dumps(value, indent=2, sort_keys=True) + "\n"
           )
           PY
 
-          python3 scripts/hepta-intelligence-status-compat.py P0.2 \
-            | tee "${root}/p0-2-snapshot.json"
-          python3 scripts/verify-hepta-intelligence-grounding-ledger.py \
-            | tee "${root}/p0-2-source.json"
-
-          python3 scripts/hepta-intelligence-status-compat.py P0.3 \
-            | tee "${root}/p0-3-snapshot.json"
-          python3 scripts/verify-hepta-intelligence-grounding-gate.py \
-            | tee "${root}/p0-3-source.json"
-
-          python3 scripts/hepta-intelligence-status-compat.py P0.4a \
-            | tee "${root}/p0-4a-snapshot.json"
-          python3 scripts/verify-hepta-intelligence-mutation-state.py \
-            | tee "${root}/p0-4a-source.json"
-
-          python3 scripts/hepta-intelligence-status-compat.py P0.4b \
-            | tee "${root}/p0-4b-snapshot.json"
-          python3 scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py \
-            | tee "${root}/p0-4b-sqlite.json"
-          python3 scripts/verify-hepta-intelligence-mutation-journal.py \
-            | tee "${root}/p0-4b-source.json"
-
-          python3 scripts/hepta-intelligence-status-compat.py P0.4c \
-            | tee "${root}/p0-4c-snapshot.json"
-          python3 scripts/verify-hepta-intelligence-shadow-host.py \
-            | tee "${root}/p0-4c-source.json"
+          python3 scripts/hepta-intelligence-status-compat.py P0.2 | tee "$root/p0-2-snapshot.json"
+          python3 scripts/verify-hepta-intelligence-grounding-ledger.py | tee "$root/p0-2-source.json"
+          python3 scripts/hepta-intelligence-status-compat.py P0.3 | tee "$root/p0-3-snapshot.json"
+          python3 scripts/verify-hepta-intelligence-grounding-gate.py | tee "$root/p0-3-source.json"
+          python3 scripts/hepta-intelligence-status-compat.py P0.4a | tee "$root/p0-4a-snapshot.json"
+          python3 scripts/verify-hepta-intelligence-mutation-state.py | tee "$root/p0-4a-source.json"
+          python3 scripts/hepta-intelligence-status-compat.py P0.4b | tee "$root/p0-4b-snapshot.json"
+          python3 scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py | tee "$root/p0-4b-sqlite.json"
+          python3 scripts/verify-hepta-intelligence-mutation-journal.py | tee "$root/p0-4b-source.json"
+          python3 scripts/hepta-intelligence-status-compat.py P0.4c | tee "$root/p0-4c-snapshot.json"
+          python3 scripts/verify-hepta-intelligence-shadow-host.py | tee "$root/p0-4c-source.json"
 
           restore_status
           trap - EXIT
-
           python3 - <<'PY'
-          import json
-          import os
+          import json, os
           from pathlib import Path
-
           root = Path(os.environ["ARTIFACT_ROOT"], "source")
           expected = {
               "master-plan-source.json": "PASS_CANONICAL_MASTER_PLAN_SOURCE_ONLY",
@@ -170,38 +130,24 @@ jobs:
               "p0-4b-source.json": "PASS_P0_4B_MUTATION_JOURNAL_SOURCE_ONLY",
               "p0-4c-source.json": "PASS_P0_4C_SHADOW_HOST_SOURCE_ONLY",
           }
-          receipts = {}
           for filename, wanted in expected.items():
-              value = json.loads((root / filename).read_text(encoding="utf-8"))
+              value = json.loads((root / filename).read_text())
               assert value.get("status") == wanted, (filename, value.get("status"), wanted)
               for key in (
-                  "runtime_wired",
-                  "default_open_wired",
-                  "app_runtime_attached",
-                  "tool_registered",
-                  "memory_write_authority",
-                  "projection_write_authority",
-                  "learning_write_authority",
-                  "outbox_dispatch_authority",
-                  "production_authority",
-                  "external_effects",
-                  "operator_acceptance",
-                  "promotion",
+                  "runtime_wired", "default_open_wired", "app_runtime_attached",
+                  "tool_registered", "memory_write_authority",
+                  "projection_write_authority", "learning_write_authority",
+                  "outbox_dispatch_authority", "production_authority",
+                  "external_effects", "operator_acceptance", "promotion",
                   "callers_ratchet",
               ):
                   if key in value:
                       assert value[key] is False, (filename, key)
-              receipts[filename] = wanted
-
-          identity = json.loads((root / "identity.json").read_text(encoding="utf-8"))
           aggregate = {
               "schema": "hepta_intelligence_q0_source_sqlite_receipt_v1",
               "evidence_class": "E2_INDEPENDENT_RUNNER_EXACT_HEAD_SOURCE_SQLITE",
               "status": "PASS_Q0_SOURCE_AND_SQLITE_EXACT_HEAD",
-              "identity": identity,
-              "receipts": receipts,
-              "legacy_status_materialized_only_in_ephemeral_worktree": True,
-              "current_plan_authority_changed": False,
+              "head": os.environ["GITHUB_SHA"],
               "runtime_wired": False,
               "production_authority": False,
               "external_effects": False,
@@ -213,8 +159,7 @@ jobs:
               "q0_satisfied": False,
           }
           (root / "source-sqlite-aggregate.json").write_text(
-              json.dumps(aggregate, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
+              json.dumps(aggregate, indent=2, sort_keys=True) + "\n"
           )
           PY
           git diff --exit-code
@@ -241,45 +186,18 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
 
-      - name: Prove Rust candidate identity
+      - name: Prove exact ARM64 Rust candidate
         shell: bash
         run: |
           set -euo pipefail
-          test "${GITHUB_REF_NAME}" = "${EXPECTED_BRANCH}"
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          test "$(git rev-parse HEAD^)" = "${EXPECTED_PARENT}"
-          mkdir -p "${ARTIFACT_ROOT}/rust-arm64"
-          python3 - <<'PY'
-          import json
-          import os
-          import platform
-          import subprocess
-          from pathlib import Path
-
-          def git(*args: str) -> str:
-              return subprocess.check_output(["git", *args], text=True).strip()
-
-          machine = platform.machine().lower()
-          assert machine in {"aarch64", "arm64"}, machine
-          payload = {
-              "schema": "hepta_intelligence_q0_exact_head_identity_v1",
-              "lane": "RUST_AGENTD_ARM64",
-              "branch": os.environ["GITHUB_REF_NAME"],
-              "expected_head": os.environ["GITHUB_SHA"],
-              "actual_head": git("rev-parse", "HEAD"),
-              "actual_tree": git("rev-parse", "HEAD^{tree}"),
-              "actual_parent": git("rev-parse", "HEAD^"),
-              "expected_parent": os.environ["EXPECTED_PARENT"],
-              "machine": machine,
-              "merge_candidate": False,
-              "current_authority_changed": False,
-              "runtime_authority": False,
-          }
-          Path(os.environ["ARTIFACT_ROOT"], "rust-arm64", "identity.json").write_text(
-              json.dumps(payload, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
-          PY
+          test "$GITHUB_REF_NAME" = "$EXPECTED_BRANCH"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(uname -m)" = "aarch64"
+          mkdir -p "$ARTIFACT_ROOT/rust-arm64"
+          printf '{"head":"%s","tree":"%s","parent":"%s","host":"aarch64-unknown-linux-gnu","runtime_authority":false}\n' \
+            "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" "$(git rev-parse HEAD^)" \
+            > "$ARTIFACT_ROOT/rust-arm64/identity.json"
 
       - name: Install repository Rust toolchain
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
@@ -287,26 +205,21 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt,clippy
 
-      - name: Verify compiler, host, repository pin and lock
+      - name: Verify toolchain, host and lock
         shell: bash
         working-directory: codex-rs
         run: |
           set -euo pipefail
           expected=$(python3 - <<'PY'
-          import pathlib
-          import tomllib
-          value = tomllib.loads(pathlib.Path("rust-toolchain.toml").read_text())
-          print(value["toolchain"]["channel"])
+          import pathlib, tomllib
+          print(tomllib.loads(pathlib.Path("rust-toolchain.toml").read_text())["toolchain"]["channel"])
           PY
           )
-          actual=$(rustc --version | awk '{print $2}')
-          host=$(rustc -vV | awk '/^host:/ {print $2}')
-          test "${actual}" = "${expected}"
-          test "${actual}" = "1.95.0"
-          test "${host}" = "aarch64-unknown-linux-gnu"
+          test "$(rustc --version | awk '{print $2}')" = "$expected"
+          test "$(rustc -vV | awk '/^host:/ {print $2}')" = "aarch64-unknown-linux-gnu"
           test -s Cargo.lock
           cargo metadata --locked --format-version 1 --no-deps \
-            > "../${ARTIFACT_ROOT}/rust-arm64/cargo-metadata.json"
+            > "../$ARTIFACT_ROOT/rust-arm64/cargo-metadata.json"
           git diff --exit-code -- Cargo.lock
 
       - name: Check owned-package formatting
@@ -323,72 +236,47 @@ jobs:
         working-directory: codex-rs
         run: |
           set -euo pipefail
-          cargo test --locked -p codex-hepta-memory durable_grounding -- --nocapture \
-            2>&1 | tee "../${ARTIFACT_ROOT}/rust-arm64/test-p0-2-durable-grounding.log"
-          cargo test --locked -p codex-hepta-memory fact_grounding -- --nocapture \
-            2>&1 | tee "../${ARTIFACT_ROOT}/rust-arm64/test-p0-1-grounding-regression.log"
-          cargo test --locked -p codex-hepta-memory shadow_ -- --nocapture \
-            2>&1 | tee "../${ARTIFACT_ROOT}/rust-arm64/test-p0-3-shadow.log"
-          cargo test --locked -p codex-hepta-memory intelligence_mutation_state -- --nocapture \
-            2>&1 | tee "../${ARTIFACT_ROOT}/rust-arm64/test-p0-4a-state.log"
-          cargo test --locked -p codex-hepta-memory intelligence_mutation_journal -- --nocapture \
-            2>&1 | tee "../${ARTIFACT_ROOT}/rust-arm64/test-p0-4b-journal.log"
-          cargo test --locked -p codex-hepta-memory shadow_intelligence_mutation_host -- --nocapture \
-            2>&1 | tee "../${ARTIFACT_ROOT}/rust-arm64/test-p0-4c-memory-host.log"
-          cargo test --locked -p codex-hepta-memory-extension grounding_v3 -- --nocapture \
-            2>&1 | tee "../${ARTIFACT_ROOT}/rust-arm64/test-p0-3-extension.log"
-          cargo test --locked -p codex-hepta-agentd \
-            --features qualification-intelligence-mutation-shadow \
-            shadow_intelligence_mutation_host -- --nocapture \
-            2>&1 | tee "../${ARTIFACT_ROOT}/rust-arm64/test-p0-4c-agentd-host.log"
+          cargo test --locked -p codex-hepta-memory durable_grounding -- --nocapture 2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/test-p0-2.log"
+          cargo test --locked -p codex-hepta-memory fact_grounding -- --nocapture 2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/test-p0-1-regression.log"
+          cargo test --locked -p codex-hepta-memory shadow_ -- --nocapture 2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/test-p0-3.log"
+          cargo test --locked -p codex-hepta-memory intelligence_mutation_state -- --nocapture 2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/test-p0-4a.log"
+          cargo test --locked -p codex-hepta-memory intelligence_mutation_journal -- --nocapture 2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/test-p0-4b.log"
+          cargo test --locked -p codex-hepta-memory shadow_intelligence_mutation_host -- --nocapture 2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/test-p0-4c-memory.log"
+          cargo test --locked -p codex-hepta-memory-extension grounding_v3 -- --nocapture 2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/test-p0-3-extension.log"
+          cargo test --locked -p codex-hepta-agentd --features qualification-intelligence-mutation-shadow shadow_intelligence_mutation_host -- --nocapture 2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/test-p0-4c-agentd.log"
 
       - name: Run full owned-crate and Agentd default-off tests
         shell: bash
         working-directory: codex-rs
         run: |
           set -euo pipefail
-          cargo test --locked -p codex-hepta-memory \
-            2>&1 | tee "../${ARTIFACT_ROOT}/rust-arm64/test-full-memory.log"
-          cargo test --locked -p codex-hepta-memory-extension \
-            2>&1 | tee "../${ARTIFACT_ROOT}/rust-arm64/test-full-memory-extension.log"
-          cargo test --locked -p codex-hepta-agentd --no-default-features \
-            2>&1 | tee "../${ARTIFACT_ROOT}/rust-arm64/test-agentd-default-off.log"
-          cargo test --locked -p codex-hepta-agentd \
-            --features qualification-intelligence-mutation-shadow \
-            2>&1 | tee "../${ARTIFACT_ROOT}/rust-arm64/test-agentd-shadow-feature.log"
+          cargo test --locked -p codex-hepta-memory 2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/test-full-memory.log"
+          cargo test --locked -p codex-hepta-memory-extension 2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/test-full-extension.log"
+          cargo test --locked -p codex-hepta-agentd --no-default-features 2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/test-agentd-default-off.log"
+          cargo test --locked -p codex-hepta-agentd --features qualification-intelligence-mutation-shadow 2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/test-agentd-shadow.log"
 
       - name: Run strict owned-crate Clippy
         shell: bash
         working-directory: codex-rs
         run: |
           set -euo pipefail
-          cargo clippy --locked -p codex-hepta-memory --all-targets -- -D warnings \
-            2>&1 | tee "../${ARTIFACT_ROOT}/rust-arm64/clippy-memory.log"
-          cargo clippy --locked -p codex-hepta-memory-extension --all-targets -- -D warnings \
-            2>&1 | tee "../${ARTIFACT_ROOT}/rust-arm64/clippy-memory-extension.log"
-          cargo clippy --locked -p codex-hepta-agentd --no-default-features --all-targets -- -D warnings \
-            2>&1 | tee "../${ARTIFACT_ROOT}/rust-arm64/clippy-agentd-default-off.log"
-          cargo clippy --locked -p codex-hepta-agentd \
-            --features qualification-intelligence-mutation-shadow \
-            --all-targets -- -D warnings \
-            2>&1 | tee "../${ARTIFACT_ROOT}/rust-arm64/clippy-agentd-shadow-feature.log"
+          cargo clippy --locked -p codex-hepta-memory --all-targets -- -D warnings 2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/clippy-memory.log"
+          cargo clippy --locked -p codex-hepta-memory-extension --all-targets -- -D warnings 2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/clippy-extension.log"
+          cargo clippy --locked -p codex-hepta-agentd --no-default-features --all-targets -- -D warnings 2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/clippy-agentd-default-off.log"
+          cargo clippy --locked -p codex-hepta-agentd --features qualification-intelligence-mutation-shadow --all-targets -- -D warnings 2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/clippy-agentd-shadow.log"
 
       - name: Emit exact-head ARM64 executable receipt
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json
-          import os
+          import json, os
           from pathlib import Path
-
-          root = Path(os.environ["ARTIFACT_ROOT"], "rust-arm64")
-          identity = json.loads((root / "identity.json").read_text(encoding="utf-8"))
           receipt = {
               "schema": "hepta_intelligence_q0_exact_head_executable_receipt_v1",
               "evidence_class": "E2_INDEPENDENT_RUNNER_EXACT_HEAD_ARM64_CANDIDATE",
               "status": "PASS_Q0_EXACT_HEAD_ARM64_EXECUTABLE_CANDIDATE",
-              "identity": identity,
+              "head": os.environ["GITHUB_SHA"],
               "rust_toolchain": "1.95.0",
               "target_host": "aarch64-unknown-linux-gnu",
               "owned_package_fmt": True,
@@ -412,18 +300,9 @@ jobs:
               "promotion": False,
               "callers_ratchet": False,
               "q0_satisfied": False,
-              "does_not_imply": [
-                  "x64 Rust qualification",
-                  "merge-candidate qualification",
-                  "runtime wiring",
-                  "learning efficacy",
-                  "operator acceptance",
-                  "promotion",
-              ],
           }
-          (root / "exact-head-arm64-executable-receipt.json").write_text(
-              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
+          Path(os.environ["ARTIFACT_ROOT"], "rust-arm64", "exact-head-arm64-executable-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n"
           )
           PY
           git diff --exit-code
