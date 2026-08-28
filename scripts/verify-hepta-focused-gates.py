@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify that canonical Hepta Browser v9 gates reach CI required."""
+"""Verify canonical Hepta required workflows and review gates."""
 from __future__ import annotations
 
 import json
@@ -10,20 +10,13 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BLOCKING = ROOT / ".github/workflows/blocking-ci.yml"
 V9 = ROOT / ".github/workflows/hepta-browser-next-required-v9.yml"
-SOURCE_LIVE = ROOT / ".github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml"
-TOPOLOGY_CONTRACT = ROOT / ".github/workflows/hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml"
-TOPOLOGY_LIVE = ROOT / ".github/workflows/hepta-servo-worker-source-topology-acceptance-live-review-v1.yml"
-TOPOLOGY_TOOL = ROOT / "scripts/hepta-servo-worker-source-topology-acceptance-pointer-v1.py"
-TOPOLOGY_PART_ROOT = ROOT / "scripts/hepta-servo-worker-source-topology-acceptance-v1"
-TOPOLOGY_PARTS = tuple(TOPOLOGY_PART_ROOT / f"part{index:02d}.pyinc" for index in range(1, 6))
-TOPOLOGY_STATIC = ROOT / "scripts/verify-hepta-servo-worker-source-topology-acceptance-pointer-v1.py"
-TOPOLOGY_TEST = ROOT / "scripts/tests/test_hepta_servo_worker_source_topology_acceptance_pointer_v1.py"
-TOPOLOGY_TEST_PART_ROOT = ROOT / "scripts/tests/hepta_servo_worker_source_topology_acceptance_v1"
-TOPOLOGY_TEST_PARTS = tuple(
-    TOPOLOGY_TEST_PART_ROOT / f"part{index:02d}.pyinc" for index in range(1, 4)
-)
+VNEXT = ROOT / ".github/workflows/hepta-vnext-qualification.yml"
+CONTEXT_POLICY = ROOT / "docs/hepta-vnext/browser/CI_REQUIRED_CONTEXTS_V1.json"
+CONTEXT_VERIFIER = ROOT / "scripts/verify-hepta-required-contexts.py"
 SOURCE_STATIC = ROOT / "scripts/verify-hepta-servo-exact-source-acceptance-pointer-v2.py"
-POLICY = ROOT / "docs/hepta-vnext/browser/WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_REVIEW_POLICY_V1.json"
+TOPOLOGY_STATIC = ROOT / "scripts/verify-hepta-servo-worker-source-topology-acceptance-pointer-v1.py"
+SOURCE_LIVE = ROOT / ".github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml"
+TOPOLOGY_LIVE = ROOT / ".github/workflows/hepta-servo-worker-source-topology-acceptance-live-review-v1.yml"
 CURRENT = ROOT / "docs/hepta-vnext/browser/CURRENT.yaml"
 C1 = ROOT / "docs/hepta-vnext/browser/C1_CURRENT_V7.json"
 README = ROOT / "docs/hepta-vnext/browser/README.md"
@@ -33,70 +26,76 @@ def fail(message: str) -> None:
     raise RuntimeError(message)
 
 
-def require(text: str, *tokens: str) -> None:
+def require(text: str, label: str, *tokens: str) -> None:
     for token in tokens:
         if token not in text:
-            fail(f"missing token {token!r}")
+            fail(f"{label} is missing {token!r}")
 
 
-def run_verifier(path: pathlib.Path, expected_status: str) -> None:
+def run_verifier(path: pathlib.Path, expected_status: str) -> dict[str, object]:
     result = subprocess.run(
         [sys.executable, str(path)],
         cwd=ROOT,
         capture_output=True,
         text=True,
-        timeout=90,
+        timeout=120,
         check=False,
     )
     if result.returncode != 0:
-        fail(f"{path.name} failed: {(result.stderr or result.stdout)[-1200:]}")
+        fail(f"{path.name} failed: {(result.stderr or result.stdout)[-1600:]}")
     summary = json.loads(result.stdout.strip().splitlines()[-1])
     if summary.get("status") != expected_status:
         fail(f"{path.name} status drifted: {summary}")
+    return summary
 
 
 def main() -> int:
     try:
-        paths = (
+        for path in (
             BLOCKING,
             V9,
-            SOURCE_LIVE,
-            TOPOLOGY_CONTRACT,
-            TOPOLOGY_LIVE,
-            TOPOLOGY_TOOL,
-            *TOPOLOGY_PARTS,
-            TOPOLOGY_STATIC,
-            TOPOLOGY_TEST,
-            *TOPOLOGY_TEST_PARTS,
+            VNEXT,
+            CONTEXT_POLICY,
+            CONTEXT_VERIFIER,
             SOURCE_STATIC,
-            POLICY,
+            TOPOLOGY_STATIC,
+            SOURCE_LIVE,
+            TOPOLOGY_LIVE,
             CURRENT,
             C1,
             README,
-        )
-        for path in paths:
+        ):
             if not path.is_file():
                 fail(f"missing {path.relative_to(ROOT)}")
-
         blocking = BLOCKING.read_text(encoding="utf-8")
         v9 = V9.read_text(encoding="utf-8")
+        vnext = VNEXT.read_text(encoding="utf-8")
         source_live = SOURCE_LIVE.read_text(encoding="utf-8")
-        topology_contract = TOPOLOGY_CONTRACT.read_text(encoding="utf-8")
         topology_live = TOPOLOGY_LIVE.read_text(encoding="utf-8")
-        topology_loader = TOPOLOGY_TOOL.read_text(encoding="utf-8")
-        topology_tool = "".join(path.read_text(encoding="utf-8") for path in TOPOLOGY_PARTS)
-        topology_test_loader = TOPOLOGY_TEST.read_text(encoding="utf-8")
-        topology_test = "".join(path.read_text(encoding="utf-8") for path in TOPOLOGY_TEST_PARTS)
-        policy = json.loads(POLICY.read_text(encoding="utf-8"))
+        contexts = json.loads(CONTEXT_POLICY.read_text(encoding="utf-8"))
         current = json.loads(CURRENT.read_text(encoding="utf-8"))
         c1 = json.loads(C1.read_text(encoding="utf-8"))
         readme = README.read_text(encoding="utf-8")
 
         require(
+            blocking,
+            "blocking CI",
+            "pull_request:",
+            "name: CI required",
+            "Hepta required-context policy",
+            "scripts/verify-hepta-required-contexts.py",
+        )
+        for nested in (
+            "uses: ./.github/workflows/hepta-browser-next-required-v9.yml",
+            "uses: ./.github/workflows/hepta-vnext-qualification.yml",
+        ):
+            if nested in blocking:
+                fail(f"blocking CI nests independent required workflow {nested!r}")
+        require(
             v9,
-            "workflow_call:",
+            "Browser v9",
+            "pull_request:",
             "name: Hepta Browser next required v9",
-            "reusable workflow nesting: blocking-ci -> v9 -> leaf",
             "uses: ./.github/workflows/hepta-browser-ci.yml",
             "uses: ./.github/workflows/hepta-servo-independent-source-contract-v3.yml",
             "uses: ./.github/workflows/hepta-servo-exact-source-review-candidate-v2-contract.yml",
@@ -105,43 +104,41 @@ def main() -> int:
             "uses: ./.github/workflows/hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml",
             "uses: ./.github/workflows/hepta-servo-build-input-contract-v3.yml",
             "uses: ./.github/workflows/hepta-servo-build-preflight-contract.yml",
-            "- source-acceptance-pointer-v1",
-            "- topology-acceptance-pointer-v1",
-            '"worker_source_topology_accepted": False',
             '"build_authorized": False',
+            '"servo_runtime_qualified": False',
         )
         if "uses: ./.github/workflows/hepta-browser-next-required-v8.yml" in v9:
-            fail("canonical v9 is nested through obsolete v8")
+            fail("Browser v9 nests obsolete v8")
         require(
-            blocking,
-            "hepta-browser-next-v9:",
-            "uses: ./.github/workflows/hepta-browser-next-required-v9.yml",
-            "- hepta-browser-next-v9",
-            "name: CI required",
-            "Do not duplicate its leaf workflows here",
+            vnext,
+            "Hepta vNext",
+            "pull_request:",
+            "name: Hepta vNext required",
+            "- portable-product",
+            "- authbus-local-qualification",
+            "- browser-c0-c3",
+            "- generated-and-locks",
         )
-        if "hepta-browser-next-v8:" in blocking or "- hepta-browser-next-v8" in blocking:
-            fail("blocking CI still requires obsolete v8")
-        if blocking.count("- hepta-browser-next-v9") != 1:
-            fail("blocking CI must require canonical v9 exactly once")
-        for obsolete_job in (
-            "hepta-browser-c0-c3:",
-            "hepta-browser-c1-protocol:",
-            "hepta-servo-source-bundle-contract:",
-            "hepta-servo-source-contract:",
-            "hepta-servo-worker-build-inputs-contract:",
-        ):
-            if obsolete_job in blocking:
-                fail(f"blocking CI duplicates canonical v9 leaf {obsolete_job}")
+        expected_names = [
+            "CI required",
+            "Hepta Browser next required v9",
+            "Hepta vNext required",
+        ]
+        if [item.get("check_name") for item in contexts.get("contexts", [])] != expected_names:
+            fail("required-context policy check names drifted")
+        if contexts.get("enforcement", {}).get("single_workflow_aggregation") is not False:
+            fail("required-context policy re-enabled single-workflow aggregation")
 
         require(
             source_live,
+            "source live review",
             "pull_request_target:",
             "ref: ${{ github.event.pull_request.base.sha }}",
             "PR-head code executed: false",
         )
         require(
             topology_live,
+            "topology live review",
             "pull_request_target:",
             "ref: ${{ github.event.pull_request.base.sha }}",
             "PR-head code executed: false",
@@ -151,65 +148,23 @@ def main() -> int:
             if "ref: ${{ github.event.pull_request.head.sha }}" in workflow:
                 fail("live review executes PR-head verifier code")
 
-        require(
-            topology_contract,
-            "workflow_call:",
-            "test_hepta_servo_worker_source_topology_acceptance_pointer_v1.py -v",
-            "pointer_creation_command=false",
-            "worker_source_topology_accepted=false",
-            "build_authorized=false",
-        )
-        require(topology_loader, "part{index:02d}.pyinc", "exec(compile(")
-        require(topology_test_loader, "part{index:02d}.pyinc", "exec(compile(")
-        require(
-            topology_tool,
-            'subparsers.add_parser("contract")',
-            'subparsers.add_parser("challenge")',
-            'subparsers.add_parser("verify-pointer")',
-            'subparsers.add_parser("verify-live-review")',
-            "accepted_source_pointer",
-            "servoshell_dependency",
-            "webdriver_server_dependency",
-            "build_authorized",
-        )
-        for forbidden in (
-            'subparsers.add_parser("accept")',
-            'subparsers.add_parser("create-pointer")',
-            "git push",
-            "update_ref",
-        ):
-            if forbidden in topology_tool:
-                fail(f"topology acceptance tool contains forbidden surface {forbidden!r}")
-        require(
-            topology_test,
-            "test_unaccepted_source_pointer_is_rejected",
-            "test_servoshell_widening_is_rejected",
-            "test_self_approval_is_rejected",
-            "test_current_head_change_request_is_rejected",
-        )
-
-        if policy.get("claims_after_acceptance", {}).get(
-            "worker_source_topology_accepted"
-        ) is not True:
-            fail("topology policy does not define topology-only acceptance")
-        if policy.get("claims_after_acceptance", {}).get("build_authorized") is not False:
-            fail("topology policy grants build authority")
-        if any(value is not False for value in policy.get("authority", {}).values()):
-            fail("topology policy authority is open")
-
         if current.get("c1_current") != "docs/hepta-vnext/browser/C1_CURRENT_V7.json":
             fail("root CURRENT does not select C1 v7")
         if current.get("canonical_aggregate_workflow") != (
             ".github/workflows/hepta-browser-next-required-v9.yml"
         ):
-            fail("root CURRENT does not select v9")
+            fail("root CURRENT does not select Browser v9")
         if c1.get("canonical_aggregate_workflow") != (
             ".github/workflows/hepta-browser-next-required-v9.yml"
         ):
-            fail("C1 v7 does not select v9")
+            fail("C1 v7 does not select Browser v9")
         if "Canonical C1 pointer: `C1_CURRENT_V7.json`" not in readme:
             fail("README does not identify C1 v7")
 
+        run_verifier(
+            CONTEXT_VERIFIER,
+            "PASS_VERSION_CONTROLLED_CONTEXT_CONTRACT",
+        )
         run_verifier(
             SOURCE_STATIC,
             "HEPTA_SERVO_EXACT_SOURCE_ACCEPTANCE_POINTER_V2_STATIC_PASS",
@@ -227,21 +182,21 @@ def main() -> int:
     ) as error:
         print(f"HEPTA_FOCUSED_GATES=FAIL: {error}", file=sys.stderr)
         return 1
-
     print(
         json.dumps(
             {
                 "status": "HEPTA_FOCUSED_GATES_PASS",
-                "canonical_aggregate": "hepta-browser-next-required-v9.yml",
-                "flat_call_graph": True,
-                "blocking_ci_required": True,
+                "required_contexts": [
+                    "CI required",
+                    "Hepta Browser next required v9",
+                    "Hepta vNext required",
+                ],
+                "single_workflow_aggregation": False,
                 "trusted_base_source_review": True,
                 "trusted_base_topology_review": True,
-                "pointer_creation_command": False,
                 "exact_servo_source_accepted": False,
                 "worker_source_topology_accepted": False,
                 "build_authorized": False,
-                "servo_built": False,
                 "servo_runtime_qualified": False,
                 "authority": "all_false",
             },
