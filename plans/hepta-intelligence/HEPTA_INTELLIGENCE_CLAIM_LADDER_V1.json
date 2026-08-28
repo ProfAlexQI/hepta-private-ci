@@ -1,0 +1,310 @@
+{
+  "schema": "hepta_intelligence_claim_ladder_v1",
+  "generated_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "plan_id": "HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28",
+  "authority": {
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "delivery_capability_ladder": [
+    {
+      "level": "implemented",
+      "meaning": "code_or_schema_exists",
+      "does_not_imply": [
+        "wired",
+        "qualified",
+        "efficacy_proven",
+        "operator_accepted",
+        "promoted"
+      ]
+    },
+    {
+      "level": "wired",
+      "meaning": "explicit_runtime_caller_exists",
+      "requires": [
+        "implemented"
+      ],
+      "does_not_imply": [
+        "qualified",
+        "efficacy_proven",
+        "operator_accepted",
+        "promoted"
+      ]
+    },
+    {
+      "level": "qualified",
+      "meaning": "exact_head_executable_evidence_passed",
+      "requires": [
+        "implemented",
+        "wired_or_explicit_qualification_host"
+      ],
+      "does_not_imply": [
+        "efficacy_proven",
+        "operator_accepted",
+        "promoted"
+      ]
+    },
+    {
+      "level": "efficacy_proven",
+      "meaning": "pre_registered_quality_and_statistical_gates_passed",
+      "requires": [
+        "qualified"
+      ],
+      "does_not_imply": [
+        "operator_accepted",
+        "promoted"
+      ]
+    },
+    {
+      "level": "operator_accepted",
+      "meaning": "independent_human_review_and_rollback_rehearsal_passed",
+      "requires": [
+        "efficacy_proven"
+      ],
+      "does_not_imply": [
+        "promoted"
+      ]
+    },
+    {
+      "level": "promoted",
+      "meaning": "explicit_CALLERS_or_release_authority_granted",
+      "requires": [
+        "operator_accepted"
+      ]
+    }
+  ],
+  "learning_claim_ladder": [
+    {
+      "level": "L0_STATIC_SHADOW",
+      "allowed_claims": [
+        "static shadow inference",
+        "typed policy signal",
+        "deterministic abstention"
+      ],
+      "required_evidence": [
+        "typed contracts",
+        "digest binding",
+        "negative authority flags"
+      ],
+      "forbidden_claims": [
+        "closed-loop learning",
+        "self-evolution",
+        "structural plasticity"
+      ]
+    },
+    {
+      "level": "L1_OBSERVATIONAL_CONTINUAL",
+      "allowed_claims": [
+        "observational continual learning",
+        "offline calibration or retrieval adaptation"
+      ],
+      "required_evidence": [
+        "durable observations",
+        "dataset lineage",
+        "retention and forgetting",
+        "next-snapshot reload and rollback"
+      ],
+      "forbidden_claims": [
+        "closed-loop causal policy learning",
+        "structural self-evolution"
+      ]
+    },
+    {
+      "level": "L2_CLOSED_LOOP_POLICY_LEARNING",
+      "allowed_claims": [
+        "governed closed-loop policy learning",
+        "cross-snapshot controlled self-improvement"
+      ],
+      "required_evidence": [
+        "authorized action",
+        "effect or postcondition",
+        "behavior propensity",
+        "support",
+        "outcome",
+        "causal credit",
+        "OPE",
+        "ESS",
+        "confidence interval",
+        "canary",
+        "rollback"
+      ],
+      "forbidden_claims": [
+        "autonomous goal change",
+        "autonomous authority change",
+        "human-like cognition"
+      ]
+    },
+    {
+      "level": "L3_GOVERNED_STRUCTURAL_PLASTICITY",
+      "allowed_claims": [
+        "governed proposal-only structural plasticity"
+      ],
+      "required_evidence": [
+        "TopologyProposal",
+        "GraphCompiler",
+        "ablation",
+        "lesion",
+        "shadow",
+        "canary",
+        "operator acceptance",
+        "rollback"
+      ],
+      "forbidden_claims": [
+        "runtime self-rewiring",
+        "autonomous topology authority"
+      ]
+    },
+    {
+      "level": "L4_AUTONOMOUS_GOAL_AUTHORITY_CHANGE",
+      "allowed_claims": [],
+      "status": "PROHIBITED",
+      "forbidden_claims": [
+        "autonomous goal mutation",
+        "autonomous trust-root mutation",
+        "autonomous CALLERS mutation",
+        "autonomous safety-invariant mutation"
+      ]
+    }
+  ],
+  "h5_bio_claim_ladder": [
+    {
+      "level": "N0_METAPHORICAL_TYPED_PROPOSAL",
+      "allowed_claims": [
+        "neuron-inspired typed proposal",
+        "bounded parameter proposal"
+      ],
+      "required_evidence": [
+        "pure deterministic proposal",
+        "shadow-only authority"
+      ],
+      "forbidden_claims": [
+        "biological neuron",
+        "neural dynamics",
+        "neuromorphic",
+        "spiking neuron"
+      ]
+    },
+    {
+      "level": "N1_ADAPTIVE_SIGNAL_UNIT",
+      "allowed_claims": [
+        "adaptive signal unit"
+      ],
+      "required_evidence": [
+        "stateful signal runtime",
+        "offline artifact update",
+        "calibration",
+        "cross-window efficacy"
+      ],
+      "forbidden_claims": [
+        "biological neuron replica",
+        "neuromorphic"
+      ]
+    },
+    {
+      "level": "N2_TEMPORAL_RECURRENT_SIGNAL_NETWORK",
+      "allowed_claims": [
+        "temporal recurrent bio-inspired signal network"
+      ],
+      "required_evidence": [
+        "temporal state",
+        "recurrent or competitive dynamics",
+        "ablation",
+        "stability evidence"
+      ],
+      "forbidden_claims": [
+        "biological neuron replica"
+      ]
+    },
+    {
+      "level": "N3_NEUROMORPHIC_RESEARCH",
+      "allowed_claims": [
+        "experimental spiking or neuromorphic research kernel"
+      ],
+      "required_evidence": [
+        "event or spike time",
+        "local plasticity",
+        "homeostasis",
+        "simulation or hardware evidence",
+        "research isolation"
+      ],
+      "forbidden_claims": [
+        "biological equivalence",
+        "production authority from research evidence"
+      ]
+    }
+  ],
+  "h6_intuition_claim_ladder": [
+    {
+      "level": "I0_DETERMINISTIC_SELECTIVE_POLICY",
+      "allowed_claims": [
+        "deterministic selector with abstention"
+      ],
+      "required_evidence": [
+        "hard filter",
+        "rank",
+        "tie-break",
+        "recomputable receipt"
+      ],
+      "forbidden_claims": [
+        "experience-shaped intuition",
+        "human-like intuition"
+      ]
+    },
+    {
+      "level": "I1_CALIBRATED_FAST_POLICY",
+      "allowed_claims": [
+        "calibrated fast policy"
+      ],
+      "required_evidence": [
+        "candidate probability distribution",
+        "calibration",
+        "OOD",
+        "selective risk"
+      ],
+      "forbidden_claims": [
+        "human-like intuition"
+      ]
+    },
+    {
+      "level": "I2_EXPERIENCE_SHAPED_FAST_POLICY",
+      "allowed_claims": [
+        "experience-shaped intuition-like fast policy"
+      ],
+      "required_evidence": [
+        "durable closed-loop episodes",
+        "cross-snapshot updates",
+        "retention",
+        "no-regression",
+        "rollback"
+      ],
+      "forbidden_claims": [
+        "human-like intuition replication"
+      ]
+    }
+  ],
+  "current_claims": {
+    "system_learning_level": "L0_STATIC_SHADOW_WITH_PARTIAL_L1_FOUNDATIONS",
+    "h5_level": "N0_METAPHORICAL_TYPED_PROPOSAL",
+    "h6_level": "I0_DETERMINISTIC_SELECTIVE_POLICY",
+    "self_evolution": false,
+    "longitudinal_learning_efficacy": false,
+    "closed_loop_learning": false,
+    "structural_plasticity": false,
+    "neuromorphic_mechanism": false,
+    "biological_mechanism_replication": false
+  },
+  "forbidden_marketing_terms_without_receipt": [
+    "self-evolving",
+    "autonomous evolution",
+    "lifelong learning",
+    "biomimetic neuron",
+    "human-like intuition",
+    "structural growth",
+    "neuromorphic",
+    "brain-like"
+  ]
+}

@@ -1,0 +1,42 @@
+name: Hepta Intelligence Plan v3 source contract
+
+on:
+  pull_request:
+    paths:
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28.md"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V3.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CLAIM_LADDER_V1.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PLAN_V3_REVIEW_RECEIPT_2026-08-28.json"
+      - "scripts/verify-hepta-intelligence-plan-v3.py"
+      - ".github/workflows/hepta-intelligence-plan-v3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-plan-v3-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: Plan v3 fail-closed source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact proposed head
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile verifier
+        run: python3 -m py_compile scripts/verify-hepta-intelligence-plan-v3.py
+
+      - name: Verify plan, status, claims, authority and receipt bindings
+        run: python3 scripts/verify-hepta-intelligence-plan-v3.py

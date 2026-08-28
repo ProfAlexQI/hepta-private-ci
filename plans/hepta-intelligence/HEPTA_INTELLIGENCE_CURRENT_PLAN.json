@@ -1,0 +1,56 @@
+{
+  "schema": "hepta_intelligence_current_plan_v1",
+  "generated_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "current": {
+    "plan_id": "HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28",
+    "plan_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28.md",
+    "plan_content_sha256": "55d3fac411c925cdfb57667b9ac044a5e1482444b96a3cfd262b27fdd1a2fd74",
+    "plan_blob_sha": "9ebf6b055c7682d72aaf4bc5409d0ccd23bf6aa2",
+    "plan_commit": null,
+    "status_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V3.json",
+    "claim_ladder_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CLAIM_LADDER_V1.json",
+    "review_receipt_file": null,
+    "branch": "codex/hepta-intelligence-plan-v3-20260828",
+    "status": "PLAN_CANDIDATE_UNRECEIPTED"
+  },
+  "supersedes": {
+    "plan_id": "HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V2_2026-08-28",
+    "file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V2_2026-08-28.md",
+    "rewrite_history": false
+  },
+  "exact_base": {
+    "pull_request": 23,
+    "branch": "codex/hepta-intelligence-shadow-host-adapter-v4c-20260828",
+    "head": "7691978b786dd00c69477d1a3355be13db2c4d67",
+    "tree": "bc2342443fe28d2b803cf1c8273c5d3cd4171ced",
+    "p0_4c_hardened_source_candidate": "7bb26ec016c2e2c83084756485ea324e79bcddbe"
+  },
+  "current_claims": {
+    "system_learning": "L0_STATIC_SHADOW_WITH_PARTIAL_L1_FOUNDATIONS",
+    "h5": "N0_METAPHORICAL_TYPED_PROPOSAL",
+    "h6": "I0_DETERMINISTIC_SELECTIVE_POLICY",
+    "self_evolution": false,
+    "longitudinal_learning_efficacy": false,
+    "closed_loop_learning": false,
+    "structural_plasticity": false,
+    "bio_mechanism": false
+  },
+  "authority": {
+    "runtime_wired": false,
+    "learning_write_authority": false,
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "activation": {
+    "next_phase": "Q0_QUALIFICATION_DEBT_CLOSURE",
+    "P1_1": "BLOCKED",
+    "H5_runtime": "BLOCKED",
+    "H6_runtime": "BLOCKED",
+    "H7_closed_loop": "BLOCKED",
+    "reason": "P0.1-P0.4c exact-head executable qualification is absent"
+  }
+}

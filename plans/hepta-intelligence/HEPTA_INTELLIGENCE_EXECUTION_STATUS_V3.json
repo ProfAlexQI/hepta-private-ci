@@ -1,0 +1,234 @@
+{
+  "schema": "hepta_intelligence_execution_status_v3",
+  "generated_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "default_branch": "integration/vnext-main-20260811",
+  "plan_branch": "codex/hepta-intelligence-plan-v3-20260828",
+  "plan_id": "HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28",
+  "plan_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28.md",
+  "plan_content_sha256": "55d3fac411c925cdfb57667b9ac044a5e1482444b96a3cfd262b27fdd1a2fd74",
+  "plan_blob_sha": "9ebf6b055c7682d72aaf4bc5409d0ccd23bf6aa2",
+  "plan_commit": null,
+  "exact_base": {
+    "pull_request": 23,
+    "branch": "codex/hepta-intelligence-shadow-host-adapter-v4c-20260828",
+    "head": "7691978b786dd00c69477d1a3355be13db2c4d67",
+    "tree": "bc2342443fe28d2b803cf1c8273c5d3cd4171ced",
+    "p0_4c_hardened_source_candidate": "7bb26ec016c2e2c83084756485ea324e79bcddbe",
+    "hosted_blocker_receipt_commit": "23361416536f23791979e4bbc83b17c3c09a3c09",
+    "workflow_run": 33144320922,
+    "runner_evidence": {
+      "source_job": {
+        "id": 98761923318,
+        "steps": [],
+        "runner_id": 0
+      },
+      "rust_job": {
+        "id": 98761923512,
+        "steps": [],
+        "runner_id": 0
+      },
+      "commands_executed": false,
+      "classification": "BLOCKED_RUNNER_NOT_ASSIGNED"
+    }
+  },
+  "authority": {
+    "runtime_wired": false,
+    "default_open_wired": false,
+    "app_runtime_attached": false,
+    "tool_registered": false,
+    "memory_write_authority": false,
+    "projection_write_authority": false,
+    "learning_write_authority": false,
+    "outbox_dispatch_authority": false,
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "current_tranche": {
+    "id": "PLAN-V3",
+    "name": "causal_learning_governed_adaptation_plan",
+    "status": "plan_refined_source_only_unreceipted",
+    "implemented": true,
+    "wired": false,
+    "qualified": false,
+    "efficacy_proven": false,
+    "operator_accepted": false,
+    "promoted": false,
+    "files": [
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28.md",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V3.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CLAIM_LADDER_V1.json",
+      "scripts/verify-hepta-intelligence-plan-v3.py",
+      ".github/workflows/hepta-intelligence-plan-v3.yml"
+    ],
+    "claims": {
+      "review_findings_integrated": true,
+      "canonical_current_plan_contract": true,
+      "unqualified_stack_budget_defined": true,
+      "learning_episode_contract_defined": true,
+      "four_axis_data_eligibility_defined": true,
+      "h5_claim_boundary_defined": true,
+      "h6_claim_boundary_defined": true,
+      "h7_durable_feedback_reconciliation_defined": true,
+      "ESS_CI_subgroup_retention_gates_defined": true,
+      "early_learning_crate_extraction_defined": true,
+      "self_evolution_implemented": false,
+      "longitudinal_learning_efficacy": false,
+      "bio_mechanism_implemented": false,
+      "runtime_wired": false,
+      "production_authority": false
+    },
+    "qualification": {
+      "plan_json_parse": "source_equivalent_passed",
+      "claim_ladder_parse": "source_equivalent_passed",
+      "current_pointer_parse": "source_equivalent_passed",
+      "verifier_syntax": "source_equivalent_passed",
+      "workflow_yaml_parse": "source_equivalent_passed",
+      "hosted_ci": "not_run",
+      "qualified": false
+    }
+  },
+  "inherited_capabilities": [
+    {
+      "id": "fact_grounding_contract",
+      "source_implemented": true,
+      "wired": false,
+      "qualified": false
+    },
+    {
+      "id": "durable_fact_grounding_ledger",
+      "source_implemented": true,
+      "wired": false,
+      "qualified": false
+    },
+    {
+      "id": "grounded_tool_protocol_v3",
+      "source_implemented": true,
+      "wired": false,
+      "qualified": false
+    },
+    {
+      "id": "grounded_projection_shadow_compare",
+      "source_implemented": true,
+      "wired": false,
+      "qualified": false
+    },
+    {
+      "id": "intelligence_mutation_state_machine",
+      "source_implemented": true,
+      "wired": false,
+      "qualified": false
+    },
+    {
+      "id": "intelligence_mutation_sqlite_journal",
+      "source_implemented": true,
+      "wired": false,
+      "qualified": false
+    },
+    {
+      "id": "shadow_host_orchestration_adapter",
+      "source_implemented": true,
+      "wired": false,
+      "qualified": false
+    },
+    {
+      "id": "hybrid_retrieval_v2",
+      "source_implemented": false,
+      "wired": false,
+      "qualified": false
+    },
+    {
+      "id": "learning_episode_v1",
+      "source_implemented": false,
+      "wired": false,
+      "qualified": false
+    },
+    {
+      "id": "durable_learning_ledger_v1",
+      "source_implemented": false,
+      "wired": false,
+      "qualified": false
+    },
+    {
+      "id": "h5_adaptive_signal_runtime",
+      "source_implemented": false,
+      "wired": false,
+      "qualified": false
+    },
+    {
+      "id": "h6_calibrated_fast_policy",
+      "source_implemented": false,
+      "wired": false,
+      "qualified": false
+    },
+    {
+      "id": "h7_closed_loop_learning",
+      "source_implemented": false,
+      "wired": false,
+      "qualified": false
+    },
+    {
+      "id": "statistical_promotion_gate_v2",
+      "source_implemented": false,
+      "wired": false,
+      "qualified": false
+    },
+    {
+      "id": "governed_structural_plasticity",
+      "source_implemented": false,
+      "wired": false,
+      "qualified": false
+    }
+  ],
+  "claim_levels": {
+    "system_learning": "L0_STATIC_SHADOW_WITH_PARTIAL_L1_FOUNDATIONS",
+    "h5": "N0_METAPHORICAL_TYPED_PROPOSAL",
+    "h6": "I0_DETERMINISTIC_SELECTIVE_POLICY",
+    "self_evolution": false,
+    "closed_loop_learning": false,
+    "structural_plasticity": false,
+    "neuromorphic_mechanism": false
+  },
+  "stack_budget": {
+    "maximum_unqualified_source_implementation_layers": 2,
+    "current_exception": "P0.1_THROUGH_P0.4C_ALREADY_EXCEED_BUDGET",
+    "runtime_source_freeze": true,
+    "allowed_while_blocked": [
+      "plan_only",
+      "schema_only",
+      "verifier_only",
+      "receipt_only",
+      "runner_infrastructure_only"
+    ],
+    "blocked_while_unqualified": [
+      "P1.1_runtime_source",
+      "new_migration",
+      "H5_runtime",
+      "H6_runtime",
+      "H7_runtime"
+    ]
+  },
+  "next_phase": {
+    "id": "Q0",
+    "name": "qualification_debt_closure",
+    "activation": "required_before_new_runtime_source",
+    "requirements": [
+      "freeze exact P0.1-P0.4c heads and trees",
+      "produce reproducible local exact-head executable evidence",
+      "produce independent runner exact-head evidence",
+      "execute source, fmt, focused tests, full tests, clippy, SQLite reopen/corruption/failpoints and Agentd default-off gates",
+      "keep all runtime and production authority false"
+    ]
+  },
+  "next_actions": [
+    "Review this plan-only Draft without changing PR #23 runtime posture.",
+    "Freeze the P0 stack and enforce the unqualified stack budget.",
+    "Produce E1 local executable and E2 independent runner evidence for P0.1-P0.4c.",
+    "Do not start P1.1 or H5/H6/H7 runtime source until Q0 closes.",
+    "After Q0, establish current capability/evidence registries, extract learning boundaries, and implement LearningEpisodeV1 before policy learning."
+  ]
+}
