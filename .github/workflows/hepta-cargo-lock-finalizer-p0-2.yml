@@ -21,7 +21,7 @@ jobs:
   pin-exact-head:
     name: Pin exact current branch head
     if: ${{ !contains(github.event.head_commit.message || '', '[hepta-lock-finalize]') }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     outputs:
       current: ${{ steps.pin.outputs.current }}
@@ -56,7 +56,7 @@ jobs:
     name: Materialize and verify the workspace lock graph
     needs: pin-exact-head
     if: ${{ needs.pin-exact-head.outputs.current == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
     steps:
       - name: Checkout exact source head with write credential
@@ -121,12 +121,16 @@ jobs:
               text=True,
           ).splitlines()
           changed = sorted(set(tracked + untracked))
-          unexpected = [path for path in changed if path != "codex-rs/Cargo.lock"]
+          allowed = {
+              "codex-rs/Cargo.lock",
+              ".github/workflows/hepta-cargo-lock-finalizer-p0-2.yml",
+          }
+          unexpected = [path for path in changed if path not in allowed]
           if unexpected:
               raise SystemExit(
-                  f"Cargo.lock finalizer escaped its one-file authority: {unexpected}"
+                  f"Cargo.lock finalizer escaped its bounded authority: {unexpected}"
               )
-          print(f"lock_changed={changed == ['codex-rs/Cargo.lock']}")
+          print(f"changed={changed}")
           PY
           git diff --check
 
@@ -163,18 +167,27 @@ jobs:
           path: ${{ runner.temp }}/hepta-cargo-lock-finalizer
           if-no-files-found: error
 
-      - name: Commit and fast-forward the verified lock graph
+      - name: Commit the verified lock graph and retire this write lane
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- codex-rs/Cargo.lock; then
-            echo "Cargo.lock is already consistent with the current manifests." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
+          git rm .github/workflows/hepta-cargo-lock-finalizer-p0-2.yml
           git add codex-rs/Cargo.lock
           git diff --cached --check
-          test "$(git diff --cached --name-only)" = "codex-rs/Cargo.lock"
+          python3 - <<'PY'
+          import subprocess
+          allowed = {
+              "codex-rs/Cargo.lock",
+              ".github/workflows/hepta-cargo-lock-finalizer-p0-2.yml",
+          }
+          changed = set(
+              subprocess.check_output(
+                  ["git", "diff", "--cached", "--name-only"], text=True
+              ).splitlines()
+          )
+          if not changed or not changed.issubset(allowed):
+              raise SystemExit(f"unexpected finalizer commit paths: {sorted(changed)}")
+          PY
 
           git fetch --no-tags origin \
             "refs/heads/$BRANCH_NAME:refs/remotes/origin/$BRANCH_NAME"
@@ -182,5 +195,5 @@ jobs:
 
           git config user.name "Hepta Cargo.lock finalizer"
           git config user.email "102159240+ProfHepta@users.noreply.github.com"
-          git commit -m "build(hepta): materialize workspace lock graph [hepta-lock-finalize]"
+          git commit -m "build(hepta): materialize lock graph and retire write lane [hepta-lock-finalize]"
           git push origin "HEAD:refs/heads/$BRANCH_NAME"
