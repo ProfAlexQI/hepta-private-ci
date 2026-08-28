@@ -52,10 +52,9 @@ jobs:
     uses: ./.github/workflows/hepta-browser-c1-artifact-gate.yml
     secrets: inherit
 
-  # This is the single canonical Hepta Browser dependency graph. It already
-  # covers C0-C3, the private protocol, source acquisition, source/topology
-  # review fences, build-input sealing and preflight. Do not duplicate its leaf
-  # workflows here: GitHub limits the reusable-workflow call graph per run.
+  # The canonical Browser graph expands its own reusable leaf workflows. The
+  # broader Hepta vNext matrix runs as a separate top-level PR workflow so this
+  # run does not expand the same Browser workflow through two call paths.
   hepta-browser-next-v9:
     name: Hepta Browser canonical next gate v9
     needs: runner-preflight
@@ -66,12 +65,6 @@ jobs:
     name: Hepta Servo artifact contract
     needs: runner-preflight
     uses: ./.github/workflows/hepta-servo-artifact-contract.yml
-    secrets: inherit
-
-  hepta-vnext:
-    name: Hepta vNext qualification
-    needs: runner-preflight
-    uses: ./.github/workflows/hepta-vnext-qualification.yml
     secrets: inherit
 
   repo-checks:
@@ -104,7 +97,6 @@ jobs:
       - hepta-browser-c1-artifact-gate
       - hepta-browser-next-v9
       - hepta-servo-artifact-contract
-      - hepta-vnext
       - repo-checks
       - rust-ci
       - sdk
