@@ -144,7 +144,7 @@ class BuildInputV2Tests(unittest.TestCase):
             "manifest_path": "worker/Cargo.toml",
             "package": "hepta-servo-worker",
             "artifact_path": "target/x86_64-unknown-linux-gnu/release/hepta-servo-worker",
-            "features": ["baked-in-resources", "background-hang-monitor"],
+            "features": ["background-hang-monitor", "baked-in-resources"],
             "default_features": False,
             "jobs": 4,
             "command_prefix": ["cargo", "build", "--locked", "--offline", "--frozen"],

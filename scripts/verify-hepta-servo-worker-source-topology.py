@@ -23,9 +23,10 @@ RECEIPT_SCHEMA = (
 ADR = ROOT / "docs/hepta-vnext/browser/ADR-0003-hepta-owned-servo-embedder.md"
 DOC = ROOT / "docs/hepta-vnext/browser/C1_WORKER_SOURCE_TOPOLOGY.md"
 STATUS = ROOT / "docs/hepta-vnext/browser/C1_WORKER_SOURCE_TOPOLOGY_STATUS.json"
-CURRENT = ROOT / "docs/hepta-vnext/browser/C1_CURRENT_V4.json"
+ROOT_CURRENT = ROOT / "docs/hepta-vnext/browser/CURRENT.yaml"
+C1_CURRENT = ROOT / "docs/hepta-vnext/browser/C1_CURRENT_V7.json"
 WORKFLOW = ROOT / ".github/workflows/hepta-servo-worker-source-topology-contract.yml"
-AGGREGATE = ROOT / ".github/workflows/hepta-browser-next-required-v6.yml"
+AGGREGATE = ROOT / ".github/workflows/hepta-browser-next-required-v9.yml"
 
 
 def fail(message: str) -> None:
@@ -44,11 +45,17 @@ def load_tool() -> ModuleType:
     return module
 
 
-def load_canonical(path: pathlib.Path, label: str) -> dict[str, object]:
+def load_object(path: pathlib.Path, label: str) -> dict[str, object]:
     raw = path.read_bytes()
     value = json.loads(raw)
     if not isinstance(value, dict):
         fail(f"{label} must be one JSON object")
+    return value
+
+
+def load_canonical(path: pathlib.Path, label: str) -> dict[str, object]:
+    raw = path.read_bytes()
+    value = load_object(path, label)
     canonical = json.dumps(
         value,
         ensure_ascii=False,
@@ -71,7 +78,8 @@ def main() -> int:
             ADR,
             DOC,
             STATUS,
-            CURRENT,
+            ROOT_CURRENT,
+            C1_CURRENT,
             WORKFLOW,
             AGGREGATE,
         ):
@@ -155,25 +163,39 @@ def main() -> int:
         if status.get("merge_authorized") is not False:
             fail("topology status authorized merge")
 
-        current = load_canonical(CURRENT, "C1 current v4")
-        if current.get("schema") != "hepta.browser.c1_current.v4":
-            fail("C1 current v4 schema drifted")
-        if current.get("canonical_worker_source_topology") != (
+        root_current = load_object(ROOT_CURRENT, "root Browser current")
+        c1_current = load_canonical(C1_CURRENT, "C1 current v7")
+        if root_current.get("c1_current") != (
+            "docs/hepta-vnext/browser/C1_CURRENT_V7.json"
+        ):
+            fail("root Browser current does not select C1 v7")
+        if root_current.get("servo_worker_source_topology") != (
             "docs/hepta-vnext/browser/SERVO_WORKER_SOURCE_TOPOLOGY_V1.json"
         ):
-            fail("C1 current v4 does not select the canonical topology")
-        if current.get("canonical_worker_source_topology_tool") != (
-            "scripts/hepta-servo-worker-source-topology.py"
+            fail("root Browser current does not select the canonical topology")
+        if root_current.get("canonical_aggregate_workflow") != (
+            ".github/workflows/hepta-browser-next-required-v9.yml"
         ):
-            fail("C1 current v4 does not select the canonical topology tool")
-        if current.get("canonical_aggregate_workflow") != (
-            ".github/workflows/hepta-browser-next-required-v6.yml"
+            fail("root Browser current does not select aggregate v9")
+        if c1_current.get("schema") != "hepta.browser.c1_current.v7":
+            fail("C1 current v7 schema drifted")
+        if c1_current.get("canonical_worker_source_topology") != (
+            "docs/hepta-vnext/browser/SERVO_WORKER_SOURCE_TOPOLOGY_V1.json"
         ):
-            fail("C1 current v4 does not select aggregate v6")
-        if current.get("claims", {}).get("worker_source_topology_accepted") is not False:
-            fail("C1 current v4 overclaims accepted source topology")
-        if any(value is not False for value in current.get("authority", {}).values()):
-            fail("C1 current v4 enables authority")
+            fail("C1 current v7 does not select the canonical topology")
+        if c1_current.get("canonical_aggregate_workflow") != (
+            ".github/workflows/hepta-browser-next-required-v9.yml"
+        ):
+            fail("C1 current v7 does not select aggregate v9")
+        for claim in (
+            "worker_source_topology_accepted",
+            "build_authorized",
+            "servo_runtime_qualified",
+        ):
+            if c1_current.get("claims", {}).get(claim) is not False:
+                fail(f"C1 current v7 overclaims {claim}")
+        if any(value is not False for value in c1_current.get("authority", {}).values()):
+            fail("C1 current v7 enables authority")
 
         adr = ADR.read_text(encoding="utf-8")
         for token in (
@@ -204,15 +226,19 @@ def main() -> int:
 
         aggregate = AGGREGATE.read_text(encoding="utf-8")
         for token in (
+            "name: Hepta Browser next required v9",
             "source-api-topology:",
             "hepta-servo-worker-source-topology-contract.yml",
             "- source-api-topology",
-            "source_api_topology",
-            "hepta_owned_embedder_v1",
-            "worker_source_topology_accepted",
+            '"source_api_topology": "hepta_owned_embedder_v1"',
+            '"worker_source_topology_accepted": False',
+            '"build_authorized": False',
+            '"servo_runtime_qualified": False',
         ):
             if token not in aggregate:
-                fail(f"aggregate v6 is missing {token}")
+                fail(f"aggregate v9 is missing {token}")
+        if "hepta-browser-next-required-v6.yml" in aggregate:
+            fail("canonical aggregate v9 refers to obsolete v6")
     except (OSError, UnicodeError, json.JSONDecodeError, RuntimeError) as error:
         print(
             f"HEPTA_SERVO_WORKER_SOURCE_TOPOLOGY_CONTRACT=FAIL: {error}",
@@ -225,6 +251,8 @@ def main() -> int:
             {
                 "schema": "hepta.servo.worker_source_topology_contract_verification.v1",
                 "status": "PASS_CONTRACT_AND_LOCAL_FIXTURES_ONLY",
+                "canonical_current": "C1_CURRENT_V7",
+                "canonical_aggregate": "hepta-browser-next-required-v9",
                 "embedder_strategy": (
                     "out_of_tree_hepta_worker_using_public_servo_embedding_api"
                 ),

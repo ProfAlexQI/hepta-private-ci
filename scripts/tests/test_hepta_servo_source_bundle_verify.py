@@ -13,7 +13,7 @@ from pathlib import Path
 from types import ModuleType
 
 SCRIPTS = Path(__file__).resolve().parents[1]
-PIPELINE_PATH = SCRIPTS / "hepta-servo-independent-source.py"
+PIPELINE_ENTRYPOINT_PATH = SCRIPTS / "hepta-servo-independent-source-v2.py"
 VERIFY_PATH = SCRIPTS / "hepta-servo-source-bundle-verify.py"
 
 
@@ -39,7 +39,11 @@ def git(cwd: Path, *arguments: str) -> str:
 
 class SourceBundleVerificationTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.pipeline = load(PIPELINE_PATH, "hepta_servo_pipeline_for_verify")
+        entrypoint = load(
+            PIPELINE_ENTRYPOINT_PATH,
+            "hepta_servo_pipeline_v2_entrypoint_for_verify",
+        )
+        self.pipeline = entrypoint.load_base()
         self.verify = load(VERIFY_PATH, "hepta_servo_bundle_verify")
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name).resolve()
@@ -129,9 +133,6 @@ class SourceBundleVerificationTests(unittest.TestCase):
             keep_checkouts=False,
             allow_local_test_origin=True,
         )
-        # Reclassify only the fixture acquisition metadata so the offline
-        # verifier exercises the canonical receipt path. Source/archive bytes
-        # remain untouched.
         for slot in ("a", "b"):
             path = self.bundle_dir / f"fetch-{slot}.receipt.json"
             receipt = json.loads(path.read_text(encoding="utf-8"))

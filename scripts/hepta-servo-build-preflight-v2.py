@@ -46,9 +46,13 @@ def load_base() -> ModuleType:
     module = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(module)
     original = module.toolchain_projection
+    base_error = getattr(module, "BuildPreflightError", RuntimeError)
 
     def toolchain_projection(value: dict[str, Any]) -> dict[str, str]:
-        projection = original(value)
+        try:
+            projection = original(value)
+        except base_error as error:
+            raise BuildPreflightV2Error(str(error)) from error
         linker = value.get("linker")
         capture = value.get("capture")
         rustc = value.get("rustc")
@@ -87,7 +91,10 @@ def load_base() -> ModuleType:
 
 def main() -> int:
     base = load_base()
-    result = base.main()
+    try:
+        result = base.main()
+    except getattr(base, "BuildPreflightError", RuntimeError) as error:
+        raise BuildPreflightV2Error(str(error)) from error
     if not isinstance(result, int):
         raise BuildPreflightV2Error("build-preflight core returned a non-integer status")
     return result

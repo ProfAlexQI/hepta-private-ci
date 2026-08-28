@@ -193,7 +193,9 @@ def verify_plan_and_workflow() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     for marker in (
         "verify-hepta-browser-c1-protocol.py",
-        "cargo fmt --locked",
+        "cargo fmt",
+        "--manifest-path tools/hepta-browser-c1-protocol/Cargo.toml",
+        "-- --check",
         "cargo test --locked",
         "cargo clippy --locked",
         "qualification_only=true",
@@ -204,6 +206,8 @@ def verify_plan_and_workflow() -> None:
     ):
         if marker not in workflow:
             fail(f"C1 qualification workflow marker is missing: {marker}")
+    if "cargo fmt --locked" in workflow:
+        fail("C1 workflow uses unsupported cargo fmt --locked syntax")
 
 
 def main() -> int:
