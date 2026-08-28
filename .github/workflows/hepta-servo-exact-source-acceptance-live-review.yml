@@ -1,15 +1,21 @@
-name: hepta Servo exact source acceptance live review legacy wrapper
+name: hepta Servo exact source acceptance live review legacy retired
 
 on:
-  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
-  pull-requests: read
 
 jobs:
-  trusted-base-v2:
-    name: Delegate to trusted-base source acceptance live review v2
-    uses: ./.github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml
-    secrets: inherit
+  retired:
+    name: Legacy source acceptance live review is retired
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Fail closed and point to the base-owned status check
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'This legacy workflow is retired.' >&2
+          echo 'Use the base-owned Source-only accepted pointer live review status from hepta-servo-exact-source-acceptance-live-review-v2.yml.' >&2
+          exit 1
