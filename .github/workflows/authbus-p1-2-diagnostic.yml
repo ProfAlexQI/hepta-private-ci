@@ -1,0 +1,81 @@
+name: AuthBus P1.2 exact nonce TTL diagnostic
+
+on:
+  push:
+    branches:
+      - integration/vnext-main-full-ci-authbus-p1-2-20260828
+    paths:
+      - .github/workflows/authbus-p1-2-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    name: Print the exact bounded nonce replay fixture
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact diagnostic candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify exact parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "integration/vnext-main-full-ci-authbus-p1-2-20260828"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git rev-parse HEAD^)" = "af1c53cbe2de4071e661322bef5c534553190a92"
+
+      - name: Materialize the reviewed source archive without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import io
+          import shutil
+          import tarfile
+          from pathlib import Path, PurePosixPath
+
+          chunks = [
+              Path(f"scripts/authbus-p1-2-source-seed.part-{index:02d}.b64")
+              for index in range(8)
+          ]
+          encoded = "".join(
+              "".join(path.read_text(encoding="ascii").split()) for path in chunks
+          )
+          archive = base64.b64decode(encoded, validate=True)
+          expected_digest = "1a5570e79a842c389b9af929926030f5ce9d98b3f46e2f35d7f639d8a1aaa8fc"
+          if hashlib.sha256(archive).hexdigest() != expected_digest:
+              raise SystemExit("archive digest mismatch")
+          with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as bundle:
+              for member in bundle.getmembers():
+                  path = PurePosixPath(member.name)
+                  if path.is_absolute() or ".." in path.parts or not member.isfile():
+                      raise SystemExit(f"unsafe member: {member.name}")
+                  source = bundle.extractfile(member)
+                  if source is None:
+                      raise SystemExit(f"missing member: {member.name}")
+                  destination = Path(member.name)
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  with destination.open("wb") as output:
+                      shutil.copyfileobj(source, output)
+          PY
+
+      - name: Print only the exact failing fixture and its helpers
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '--- tests/p1_2.rs lines 1-220 ---'
+          nl -ba codex-rs/hepta-authbus-p1-2-qualification/tests/p1_2.rs \
+            | sed -n '1,220p'
+          echo '--- TTL and identity policy references ---'
+          grep -R -n -C 3 \
+            -E 'identity_max_ttl|TtlExceeded|expires_at_unix_seconds|nonce_replay_survives' \
+            codex-rs/hepta-authbus-p1-2-qualification/src \
+            codex-rs/hepta-authbus-p1-2-qualification/tests
