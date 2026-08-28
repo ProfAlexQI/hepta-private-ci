@@ -25,6 +25,10 @@ permissions:
   contents: read
   pull-requests: read
 
+concurrency:
+  group: ${{ github.workflow }}::${{ github.event.pull_request.number > 0 && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
+
 # This workflow is a top-level required context. Its leaves expose workflow_call
 # only, so a PR update runs each qualification gate exactly once.
 jobs:

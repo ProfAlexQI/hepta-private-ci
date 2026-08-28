@@ -84,6 +84,7 @@ def main() -> int:
             "branch_ruleset_configured": False,
             "reason": "repository rules remain externally administered; this file is the version-controlled required-context contract",
             "single_workflow_aggregation": False,
+            "superseded_run_cancellation": True,
         }:
             fail("required-context enforcement posture drifted")
         authority = policy.get("authority")
@@ -106,6 +107,17 @@ def main() -> int:
         blocking = BLOCKING.read_text(encoding="utf-8")
         browser = BROWSER.read_text(encoding="utf-8")
         vnext = VNEXT.read_text(encoding="utf-8")
+        concurrency_tokens = (
+            "concurrency:",
+            "group: ${{ github.workflow }}::${{ github.event.pull_request.number > 0 && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}",
+            "cancel-in-progress: ${{ github.ref_name != 'main' }}",
+        )
+        for label, workflow in (
+            ("blocking CI", blocking),
+            ("Browser v9", browser),
+            ("Hepta vNext", vnext),
+        ):
+            require(workflow, label, *concurrency_tokens)
         require(
             blocking,
             "blocking CI",
@@ -147,6 +159,7 @@ def main() -> int:
                 "required_contexts": [item["check_name"] for item in EXPECTED],
                 "single_workflow_aggregation": False,
                 "branch_ruleset_configured": False,
+                "superseded_run_cancellation": True,
                 "legacy_workflow_retirement_bound": True,
                 "authority": "all_false",
             },
