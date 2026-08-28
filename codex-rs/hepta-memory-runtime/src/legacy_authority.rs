@@ -1,344 +1,255 @@
-use std::fmt;
+//! Compatibility adapter from the legacy production lease to typed authority.
+//!
+//! This module does not trust a local qualification profile and does not mint
+//! authority from evidence booleans. It binds the exact legacy lease fields to
+//! `AuthorityLeaseBinding`, invokes the mandatory external
+//! `ProductionAuthorityVerifier`, and only then returns
+//! `Authorized<CognitiveWriteCapability>`.
+
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use codex_hepta_contracts::AgentId;
-use codex_hepta_contracts::AuthorityError;
-use codex_hepta_contracts::AuthorityGrant;
+use codex_hepta_contracts::AuthorityAction;
+use codex_hepta_contracts::AuthorityLeaseBinding;
 use codex_hepta_contracts::Authorized;
+use codex_hepta_contracts::CapabilityVerificationRequest;
+use codex_hepta_contracts::CapabilityVerifier;
 use codex_hepta_contracts::CognitiveWriteCapability;
-use codex_hepta_contracts::Sha256Digest;
+use codex_hepta_contracts::authorize_verified_capability;
+use codex_hepta_memory::ProductionAuthorityLease;
+use codex_hepta_memory::ProductionAuthorityVerifier;
+use codex_hepta_memory::ProductionWriterError;
 
-const MAX_CAPABILITY_ID_BYTES: usize = 256;
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct LegacyProductionLeaseEvidence {
-    capability_id: String,
-    owner_agent_id: AgentId,
-    authority_epoch: u64,
-    owner_epoch: u64,
-    generation: u64,
-    expires_at_unix_seconds: u64,
-    lease_head_sha256: Sha256Digest,
-    verifier_receipt_sha256: Sha256Digest,
+#[derive(Clone, Debug)]
+pub struct ProductionCognitiveWriteAuthorization {
+    lease: ProductionAuthorityLease,
+    capability: Authorized<CognitiveWriteCapability>,
 }
 
-impl LegacyProductionLeaseEvidence {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        capability_id: impl Into<String>,
-        owner_agent_id: AgentId,
-        authority_epoch: u64,
-        owner_epoch: u64,
-        generation: u64,
-        expires_at_unix_seconds: u64,
-        lease_head_sha256: Sha256Digest,
-        verifier_receipt_sha256: Sha256Digest,
-    ) -> Result<Self, LegacyAuthorityBridgeError> {
-        let capability_id = capability_id.into();
-        if capability_id.trim().is_empty()
-            || capability_id.len() > MAX_CAPABILITY_ID_BYTES
-            || capability_id.as_bytes().contains(&0)
-        {
-            return Err(LegacyAuthorityBridgeError::InvalidCapabilityId);
-        }
-        if authority_epoch == 0 || owner_epoch == 0 || generation == 0 {
-            return Err(LegacyAuthorityBridgeError::ZeroFence);
-        }
-        Ok(Self {
-            capability_id,
-            owner_agent_id,
-            authority_epoch,
-            owner_epoch,
-            generation,
-            expires_at_unix_seconds,
-            lease_head_sha256,
-            verifier_receipt_sha256,
-        })
-    }
-
-    pub fn capability_id(&self) -> &str {
-        &self.capability_id
-    }
-
-    pub fn owner_agent_id(&self) -> &AgentId {
-        &self.owner_agent_id
-    }
-
-    pub fn authority_epoch(&self) -> u64 {
-        self.authority_epoch
-    }
-
-    pub fn owner_epoch(&self) -> u64 {
-        self.owner_epoch
-    }
-
-    pub fn generation(&self) -> u64 {
-        self.generation
-    }
-
-    pub fn expires_at_unix_seconds(&self) -> u64 {
-        self.expires_at_unix_seconds
-    }
-
-    pub fn lease_head_sha256(&self) -> &Sha256Digest {
-        &self.lease_head_sha256
-    }
-
-    pub fn verifier_receipt_sha256(&self) -> &Sha256Digest {
-        &self.verifier_receipt_sha256
-    }
-
-    pub fn digest(&self) -> Sha256Digest {
-        let mut bytes = Vec::new();
-        frame(&mut bytes, b"hepta:legacy-production-lease-evidence:v1");
-        frame(&mut bytes, self.capability_id.as_bytes());
-        frame(&mut bytes, self.owner_agent_id.as_str().as_bytes());
-        frame(&mut bytes, &self.authority_epoch.to_be_bytes());
-        frame(&mut bytes, &self.owner_epoch.to_be_bytes());
-        frame(&mut bytes, &self.generation.to_be_bytes());
-        frame(&mut bytes, &self.expires_at_unix_seconds.to_be_bytes());
-        frame(&mut bytes, self.lease_head_sha256.as_str().as_bytes());
-        frame(
-            &mut bytes,
-            self.verifier_receipt_sha256.as_str().as_bytes(),
-        );
-        Sha256Digest::for_bytes(&bytes)
-    }
-}
-
-pub trait LegacyProductionAuthorityVerifier: Send + Sync {
-    fn verifier_id(&self) -> &str;
-
-    fn verify(
-        &self,
-        evidence: &LegacyProductionLeaseEvidence,
-        observed_at_unix_seconds: u64,
-    ) -> Result<(), LegacyAuthorityBridgeError>;
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct VerifiedProductionCognitiveWrite {
-    authorized: Authorized<CognitiveWriteCapability>,
-    evidence_sha256: Sha256Digest,
-    verifier_id_sha256: Sha256Digest,
-}
-
-impl VerifiedProductionCognitiveWrite {
-    pub fn authorized(&self) -> &Authorized<CognitiveWriteCapability> {
-        &self.authorized
-    }
-
-    pub fn evidence_sha256(&self) -> &Sha256Digest {
-        &self.evidence_sha256
-    }
-
-    pub fn verifier_id_sha256(&self) -> &Sha256Digest {
-        &self.verifier_id_sha256
-    }
-}
-
-pub fn adopt_verified_legacy_cognitive_write<V>(
-    authority: &AuthorityGrant,
-    evidence: &LegacyProductionLeaseEvidence,
-    verifier: &V,
-    observed_at_unix_seconds: u64,
-) -> Result<VerifiedProductionCognitiveWrite, LegacyAuthorityBridgeError>
-where
-    V: LegacyProductionAuthorityVerifier,
-{
-    authority
-        .validate_binding(evidence.owner_agent_id(), evidence.generation())
-        .map_err(LegacyAuthorityBridgeError::Authority)?;
-    if observed_at_unix_seconds >= evidence.expires_at_unix_seconds() {
-        return Err(LegacyAuthorityBridgeError::Expired);
-    }
-    let verifier_id = verifier.verifier_id();
-    if verifier_id.trim().is_empty()
-        || verifier_id.len() > MAX_CAPABILITY_ID_BYTES
-        || verifier_id.as_bytes().contains(&0)
+impl ProductionCognitiveWriteAuthorization {
+    pub fn verify<V>(
+        lease: ProductionAuthorityLease,
+        verifier: &V,
+        expected_agent: &AgentId,
+        lease_generation: u64,
+    ) -> Result<Self, ProductionWriterError>
+    where
+        V: ProductionAuthorityVerifier + ?Sized,
     {
-        return Err(LegacyAuthorityBridgeError::InvalidVerifierId);
+        let binding = AuthorityLeaseBinding::new(
+            lease.agent_id.clone(),
+            lease.grant_digest.clone(),
+            lease.authority_epoch,
+            lease.owner_epoch,
+            lease_generation,
+            lease.fencing_token_digest()?,
+            lease.lease_expires_at_unix_seconds,
+        )
+        .map_err(|error| {
+            ProductionWriterError::AuthorityRejected(format!(
+                "typed cognitive-write binding rejected: {error}"
+            ))
+        })?;
+        let adapter = LegacyProductionCapabilityVerifier {
+            lease: &lease,
+            verifier,
+        };
+        let capability = authorize_verified_capability::<CognitiveWriteCapability, _>(
+            binding,
+            expected_agent,
+            lease_generation,
+            now_unix_seconds()?,
+            &adapter,
+        )
+        .map_err(|error| {
+            ProductionWriterError::AuthorityRejected(format!(
+                "typed cognitive-write authorization rejected: {error}"
+            ))
+        })?;
+        Ok(Self { lease, capability })
     }
-    verifier.verify(evidence, observed_at_unix_seconds)?;
-    let authorized = authority
-        .authorize::<CognitiveWriteCapability>()
-        .map_err(LegacyAuthorityBridgeError::Authority)?;
-    Ok(VerifiedProductionCognitiveWrite {
-        authorized,
-        evidence_sha256: evidence.digest(),
-        verifier_id_sha256: Sha256Digest::for_bytes(verifier_id.as_bytes()),
-    })
+
+    pub fn lease(&self) -> &ProductionAuthorityLease {
+        &self.lease
+    }
+
+    pub fn capability(&self) -> &Authorized<CognitiveWriteCapability> {
+        &self.capability
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        ProductionAuthorityLease,
+        Authorized<CognitiveWriteCapability>,
+    ) {
+        (self.lease, self.capability)
+    }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum LegacyAuthorityBridgeError {
-    Authority(AuthorityError),
-    InvalidCapabilityId,
-    InvalidVerifierId,
-    ZeroFence,
-    Expired,
-    VerificationRejected,
+struct LegacyProductionCapabilityVerifier<'a, V>
+where
+    V: ProductionAuthorityVerifier + ?Sized,
+{
+    lease: &'a ProductionAuthorityLease,
+    verifier: &'a V,
 }
 
-impl fmt::Display for LegacyAuthorityBridgeError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Authority(error) => write!(formatter, "typed authority rejected: {error}"),
-            Self::InvalidCapabilityId => formatter.write_str(
-                "legacy capability id must contain 1..=256 non-NUL bytes",
-            ),
-            Self::InvalidVerifierId => formatter
-                .write_str("legacy verifier id must contain 1..=256 non-NUL bytes"),
-            Self::ZeroFence => formatter.write_str(
-                "legacy authority epoch, owner epoch, and generation must be non-zero",
-            ),
-            Self::Expired => formatter.write_str("legacy production lease evidence expired"),
-            Self::VerificationRejected => {
-                formatter.write_str("legacy production authority verifier rejected evidence")
-            }
+impl<V> CapabilityVerifier for LegacyProductionCapabilityVerifier<'_, V>
+where
+    V: ProductionAuthorityVerifier + ?Sized,
+{
+    fn verify(&self, request: &CapabilityVerificationRequest<'_>) -> Result<(), String> {
+        if request.action() != AuthorityAction::WriteCognitiveState {
+            return Err(
+                "legacy production lease may only mint cognitive-write authority".to_string(),
+            );
         }
+        let binding = request.binding();
+        let fencing_token_sha256 = self
+            .lease
+            .fencing_token_digest()
+            .map_err(|error| error.to_string())?;
+        if binding.subject_agent_id() != &self.lease.agent_id
+            || binding.grant_sha256() != &self.lease.grant_digest
+            || binding.authority_epoch() != self.lease.authority_epoch
+            || binding.owner_epoch() != self.lease.owner_epoch
+            || binding.generation() != request.expected_generation()
+            || binding.expires_at_unix_seconds()
+                != self.lease.lease_expires_at_unix_seconds
+            || binding.fencing_token_sha256() != &fencing_token_sha256
+        {
+            return Err("legacy production lease drifted from typed binding".to_string());
+        }
+        self.verifier
+            .verify(self.lease, request.expected_agent_id())
     }
 }
 
-impl std::error::Error for LegacyAuthorityBridgeError {}
-
-fn frame(target: &mut Vec<u8>, part: &[u8]) {
-    target.extend_from_slice(&(part.len() as u64).to_be_bytes());
-    target.extend_from_slice(part);
+fn now_unix_seconds() -> Result<u64, ProductionWriterError> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .map_err(|error| ProductionWriterError::Invalid(format!("system clock failed: {error}")))
 }
 
 #[cfg(test)]
 mod tests {
     use codex_hepta_contracts::AgentId;
     use codex_hepta_contracts::AuthorityAction;
-    use codex_hepta_contracts::AuthorityGrant;
     use codex_hepta_contracts::Sha256Digest;
+    use codex_hepta_memory::ProductionAuthorityLease;
+    use codex_hepta_memory::ProductionAuthorityToken;
+    use codex_hepta_memory::ProductionAuthorityVerifier;
+    use codex_hepta_memory::ProductionWriterError;
 
-    use super::LegacyAuthorityBridgeError;
-    use super::LegacyProductionAuthorityVerifier;
-    use super::LegacyProductionLeaseEvidence;
-    use super::adopt_verified_legacy_cognitive_write;
+    use super::ProductionCognitiveWriteAuthorization;
+    use super::now_unix_seconds;
 
-    const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
+    const OWNER_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
+    const OTHER_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c13";
 
-    struct Verifier {
-        expected_evidence_sha256: Sha256Digest,
-        accept: bool,
-    }
-
-    impl LegacyProductionAuthorityVerifier for Verifier {
-        fn verifier_id(&self) -> &str {
-            "test-legacy-production-verifier"
-        }
-
-        fn verify(
-            &self,
-            evidence: &LegacyProductionLeaseEvidence,
-            _observed_at_unix_seconds: u64,
-        ) -> Result<(), LegacyAuthorityBridgeError> {
-            if self.accept && evidence.digest() == self.expected_evidence_sha256 {
-                Ok(())
-            } else {
-                Err(LegacyAuthorityBridgeError::VerificationRejected)
-            }
-        }
-    }
-
-    fn agent_id() -> AgentId {
-        AgentId::parse(AGENT_ID)
+    fn agent_id(value: &str) -> AgentId {
+        AgentId::parse(value)
             .unwrap_or_else(|error| panic!("test AgentId must parse: {error}"))
     }
 
-    fn evidence(generation: u64, expiry: u64) -> LegacyProductionLeaseEvidence {
-        LegacyProductionLeaseEvidence::new(
-            "hepta-agentd:production-cognitive-writer:v1",
-            agent_id(),
-            7,
-            11,
-            generation,
-            expiry,
-            Sha256Digest::for_bytes(b"lease-head"),
-            Sha256Digest::for_bytes(b"verifier-receipt"),
+    fn lease() -> ProductionAuthorityLease {
+        let token = ProductionAuthorityToken::from_verified_bytes(
+            b"externally-verified-supervisor-token".to_vec(),
         )
-        .unwrap_or_else(|error| panic!("legacy evidence must be valid: {error}"))
+        .unwrap_or_else(|error| panic!("test token must be valid: {error}"));
+        ProductionAuthorityLease::from_verified_parts(
+            agent_id(OWNER_ID),
+            Sha256Digest::for_bytes(b"signed-production-grant"),
+            5,
+            8,
+            now_unix_seconds().unwrap_or_else(|error| panic!("clock must work: {error}")) + 3_600,
+            token,
+        )
+        .unwrap_or_else(|error| panic!("test lease must be valid: {error}"))
+    }
+
+    struct AllowVerifier;
+
+    impl ProductionAuthorityVerifier for AllowVerifier {
+        fn verify(
+            &self,
+            authority: &ProductionAuthorityLease,
+            expected_agent: &AgentId,
+        ) -> Result<(), String> {
+            if &authority.agent_id != expected_agent {
+                return Err("signed grant Agent mismatch".to_string());
+            }
+            Ok(())
+        }
+    }
+
+    struct DenyVerifier;
+
+    impl ProductionAuthorityVerifier for DenyVerifier {
+        fn verify(
+            &self,
+            _authority: &ProductionAuthorityLease,
+            _expected_agent: &AgentId,
+        ) -> Result<(), String> {
+            Err("independent verifier denied grant scope".to_string())
+        }
     }
 
     #[test]
-    fn verified_legacy_evidence_becomes_only_cognitive_write() {
-        let authority = AuthorityGrant::qualification_cognitive_write(agent_id(), 3)
-            .unwrap_or_else(|error| panic!("authority must be valid: {error}"));
-        let evidence = evidence(3, 100);
-        let verifier = Verifier {
-            expected_evidence_sha256: evidence.digest(),
-            accept: true,
-        };
-        let witness = adopt_verified_legacy_cognitive_write(
-            &authority,
-            &evidence,
-            &verifier,
-            50,
+    fn verified_legacy_lease_mints_external_cognitive_write_only() {
+        let authorization = ProductionCognitiveWriteAuthorization::verify(
+            lease(),
+            &AllowVerifier,
+            &agent_id(OWNER_ID),
+            3,
         )
-        .unwrap_or_else(|error| panic!("verified evidence must be adopted: {error}"));
+        .unwrap_or_else(|error| panic!("legacy lease must adapt: {error}"));
         assert_eq!(
-            witness.authorized().action(),
+            authorization.capability().action(),
             AuthorityAction::WriteCognitiveState
         );
-        assert!(!authority.allows(AuthorityAction::ExternalEffect));
-        assert!(!authority.allows(AuthorityAction::InvokeModel));
-        assert!(!authority.allows(AuthorityAction::PromoteRelease));
+        assert!(authorization.capability().is_external());
+        assert_eq!(authorization.capability().generation(), 3);
+        assert_eq!(
+            authorization.capability().grant_sha256(),
+            &authorization.lease().grant_digest
+        );
     }
 
     #[test]
-    fn stale_generation_and_expiry_fail_closed() {
-        let authority = AuthorityGrant::qualification_cognitive_write(agent_id(), 3)
-            .unwrap_or_else(|error| panic!("authority must be valid: {error}"));
-        let stale = evidence(2, 100);
-        let stale_verifier = Verifier {
-            expected_evidence_sha256: stale.digest(),
-            accept: true,
-        };
+    fn verifier_denial_and_agent_or_generation_mismatch_fail_closed() {
         assert!(matches!(
-            adopt_verified_legacy_cognitive_write(
-                &authority,
-                &stale,
-                &stale_verifier,
-                50
+            ProductionCognitiveWriteAuthorization::verify(
+                lease(),
+                &DenyVerifier,
+                &agent_id(OWNER_ID),
+                3,
             ),
-            Err(LegacyAuthorityBridgeError::Authority(_))
+            Err(ProductionWriterError::AuthorityRejected(reason))
+                if reason.contains("independent verifier denied grant scope")
         ));
-
-        let expired = evidence(3, 50);
-        let expired_verifier = Verifier {
-            expected_evidence_sha256: expired.digest(),
-            accept: true,
-        };
         assert!(matches!(
-            adopt_verified_legacy_cognitive_write(
-                &authority,
-                &expired,
-                &expired_verifier,
-                50
+            ProductionCognitiveWriteAuthorization::verify(
+                lease(),
+                &AllowVerifier,
+                &agent_id(OTHER_ID),
+                3,
             ),
-            Err(LegacyAuthorityBridgeError::Expired)
+            Err(ProductionWriterError::AuthorityRejected(reason))
+                if reason.contains("subject does not match")
         ));
-    }
-
-    #[test]
-    fn verifier_rejection_never_yields_typed_authority() {
-        let authority = AuthorityGrant::qualification_cognitive_write(agent_id(), 3)
-            .unwrap_or_else(|error| panic!("authority must be valid: {error}"));
-        let evidence = evidence(3, 100);
-        let verifier = Verifier {
-            expected_evidence_sha256: evidence.digest(),
-            accept: false,
-        };
         assert!(matches!(
-            adopt_verified_legacy_cognitive_write(
-                &authority,
-                &evidence,
-                &verifier,
-                50
+            ProductionCognitiveWriteAuthorization::verify(
+                lease(),
+                &AllowVerifier,
+                &agent_id(OWNER_ID),
+                0,
             ),
-            Err(LegacyAuthorityBridgeError::VerificationRejected)
+            Err(ProductionWriterError::AuthorityRejected(reason))
+                if reason.contains("generation must be non-zero")
         ));
     }
 }
