@@ -5,6 +5,11 @@ The v1 implementation contains the source acquisition and receipt logic. This
 entrypoint removes inherited Git configuration and installs exactly one process-
 scoped Git configuration item: `tar.umask=0022`. That makes `git archive` file
 modes independent of the runner process umask.
+
+Git 2.55 emits the archive prefix itself as a directory entry without a trailing
+slash. The v1 validator expected every entry to start with the slash-terminated
+prefix. The canonical v2 wrapper accepts only that exact root directory entry;
+all other entries still pass through the original fail-closed validator.
 """
 
 from __future__ import annotations
@@ -12,6 +17,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import sys
+import tarfile
 from pathlib import Path
 from types import ModuleType
 
@@ -39,6 +45,24 @@ def install_deterministic_archive_environment() -> None:
     )
 
 
+def install_archive_root_compatibility(module: ModuleType) -> None:
+    original = getattr(module, "safe_archive_member", None)
+    if not callable(original):
+        raise DeterministicArchiveEnvironmentError(
+            "source-pipeline core has no archive-member validator"
+        )
+
+    def safe_archive_member(prefix: str, member: tarfile.TarInfo) -> None:
+        root_name = prefix.rstrip("/")
+        if member.name == root_name:
+            if not member.isdir():
+                module.fail("source archive root entry must be a directory")
+            return
+        original(prefix, member)
+
+    module.safe_archive_member = safe_archive_member
+
+
 def load_base() -> ModuleType:
     install_deterministic_archive_environment()
     specification = importlib.util.spec_from_file_location(
@@ -49,6 +73,7 @@ def load_base() -> ModuleType:
         raise DeterministicArchiveEnvironmentError("cannot load source-pipeline core")
     module = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(module)
+    install_archive_root_compatibility(module)
     return module
 
 
