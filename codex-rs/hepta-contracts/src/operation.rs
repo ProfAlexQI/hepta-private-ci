@@ -4,9 +4,10 @@ use serde::Serialize;
 
 use crate::AgentId;
 use crate::AuthorityAction;
+use crate::ProductComponentId;
 use crate::Sha256Digest;
 
-pub const OPERATION_CONTRACT_SCHEMA_VERSION: u32 = 1;
+pub const OPERATION_CONTRACT_SCHEMA_VERSION: u32 = 2;
 const MAX_IDENTIFIER_BYTES: usize = 256;
 const MAX_COMMAND_BYTES: u64 = 1024 * 1024;
 
@@ -35,6 +36,33 @@ impl IdempotencyKey {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+/// Durable operation owner identity.
+///
+/// An Agent may host several independently owned product contexts. Binding
+/// only an `AgentId` made Automation → App Server impossible to represent,
+/// because both contexts belong to the same Agent. The component identity is
+/// therefore part of the digest and single-writer boundary.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct OperationOwner {
+    pub agent_id: AgentId,
+    pub component: ProductComponentId,
+}
+
+impl OperationOwner {
+    pub fn new(agent_id: AgentId, component: ProductComponentId) -> Self {
+        Self {
+            agent_id,
+            component,
+        }
+    }
+
+    fn frame_into(&self, target: &mut Vec<u8>) {
+        frame(target, self.agent_id.as_str().as_bytes());
+        frame(target, self.component.as_str().as_bytes());
     }
 }
 
@@ -101,8 +129,8 @@ pub struct OperationBinding {
     pub schema_version: u32,
     pub operation_id: OperationId,
     pub idempotency_key: IdempotencyKey,
-    pub source_owner_agent_id: AgentId,
-    pub destination_owner_agent_id: AgentId,
+    pub source_owner: OperationOwner,
+    pub destination_owner: OperationOwner,
     pub action: AuthorityAction,
     pub authority_epoch: u64,
     pub owner_epoch: u64,
@@ -117,8 +145,8 @@ impl OperationBinding {
     pub fn new(
         operation_id: OperationId,
         idempotency_key: IdempotencyKey,
-        source_owner_agent_id: AgentId,
-        destination_owner_agent_id: AgentId,
+        source_owner: OperationOwner,
+        destination_owner: OperationOwner,
         action: AuthorityAction,
         authority_epoch: u64,
         owner_epoch: u64,
@@ -127,7 +155,7 @@ impl OperationBinding {
         command_sha256: Sha256Digest,
         command_bytes: u64,
     ) -> Result<Self, OperationContractError> {
-        if source_owner_agent_id == destination_owner_agent_id {
+        if source_owner == destination_owner {
             return Err(OperationContractError::SameOwner);
         }
         if authority_epoch == 0 || owner_epoch == 0 || generation == 0 {
@@ -140,8 +168,8 @@ impl OperationBinding {
             schema_version: OPERATION_CONTRACT_SCHEMA_VERSION,
             operation_id,
             idempotency_key,
-            source_owner_agent_id,
-            destination_owner_agent_id,
+            source_owner,
+            destination_owner,
             action,
             authority_epoch,
             owner_epoch,
@@ -154,18 +182,12 @@ impl OperationBinding {
 
     pub fn digest(&self) -> Sha256Digest {
         let mut bytes = Vec::new();
-        frame(&mut bytes, b"hepta:cross-owner-operation:v1");
+        frame(&mut bytes, b"hepta:cross-owner-operation:v2");
         frame(&mut bytes, &self.schema_version.to_be_bytes());
         frame(&mut bytes, self.operation_id.as_str().as_bytes());
         frame(&mut bytes, self.idempotency_key.as_str().as_bytes());
-        frame(
-            &mut bytes,
-            self.source_owner_agent_id.as_str().as_bytes(),
-        );
-        frame(
-            &mut bytes,
-            self.destination_owner_agent_id.as_str().as_bytes(),
-        );
+        self.source_owner.frame_into(&mut bytes);
+        self.destination_owner.frame_into(&mut bytes);
         frame(&mut bytes, self.action.as_str().as_bytes());
         frame(&mut bytes, &self.authority_epoch.to_be_bytes());
         frame(&mut bytes, &self.owner_epoch.to_be_bytes());
@@ -231,6 +253,21 @@ pub struct DestinationAcknowledgement {
 }
 
 impl DestinationAcknowledgement {
+    pub fn committed(
+        envelope: &OutboxEnvelope,
+        destination_receipt_sha256: Sha256Digest,
+    ) -> Result<Self, OperationContractError> {
+        envelope.validate()?;
+        Ok(Self {
+            operation_id: envelope.binding.operation_id.clone(),
+            idempotency_key: envelope.binding.idempotency_key.clone(),
+            binding_sha256: envelope.binding_sha256.clone(),
+            destination_receipt_sha256,
+            sequence: envelope.sequence,
+            phase: OperationPhase::DestinationCommitted,
+        })
+    }
+
     pub fn validate_against(
         &self,
         envelope: &OutboxEnvelope,
@@ -307,7 +344,7 @@ impl fmt::Display for OperationContractError {
                 "{label} must contain 1..={MAX_IDENTIFIER_BYTES} non-NUL bytes"
             ),
             Self::SameOwner => formatter.write_str(
-                "cross-owner operation source and destination owners must differ",
+                "cross-owner operation source and destination component owners must differ",
             ),
             Self::ZeroFence => formatter.write_str(
                 "authority epoch, owner epoch, and generation must be non-zero",
@@ -366,11 +403,10 @@ fn frame(target: &mut Vec<u8>, part: &[u8]) {
 mod tests {
     use super::*;
 
-    const SOURCE_AGENT: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
-    const DESTINATION_AGENT: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c13";
+    const AGENT: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 
-    fn agent(value: &str) -> AgentId {
-        match AgentId::parse(value) {
+    fn agent() -> AgentId {
+        match AgentId::parse(AGENT) {
             Ok(agent_id) => agent_id,
             Err(error) => panic!("test AgentId must parse: {error}"),
         }
@@ -378,14 +414,12 @@ mod tests {
 
     fn binding() -> OperationBinding {
         match OperationBinding::new(
-            OperationId::parse("operation:test").unwrap_or_else(|error| {
-                panic!("operation id must parse: {error}")
-            }),
-            IdempotencyKey::parse("idempotency:test").unwrap_or_else(|error| {
-                panic!("idempotency key must parse: {error}")
-            }),
-            agent(SOURCE_AGENT),
-            agent(DESTINATION_AGENT),
+            OperationId::parse("operation:test")
+                .unwrap_or_else(|error| panic!("operation id must parse: {error}")),
+            IdempotencyKey::parse("idempotency:test")
+                .unwrap_or_else(|error| panic!("idempotency key must parse: {error}")),
+            OperationOwner::new(agent(), ProductComponentId::AutomationRuntime),
+            OperationOwner::new(agent(), ProductComponentId::AppServer),
             AuthorityAction::MutateAutomation,
             1,
             7,
@@ -400,10 +434,41 @@ mod tests {
     }
 
     #[test]
-    fn binding_digest_covers_fence_and_payload() {
+    fn same_agent_distinct_components_are_cross_owner() {
+        let value = binding();
+        assert_eq!(value.source_owner.agent_id, value.destination_owner.agent_id);
+        assert_ne!(value.source_owner.component, value.destination_owner.component);
+    }
+
+    #[test]
+    fn identical_component_owner_is_rejected() {
+        let owner = OperationOwner::new(agent(), ProductComponentId::AutomationRuntime);
+        let result = OperationBinding::new(
+            OperationId::parse("operation:same-owner")
+                .unwrap_or_else(|error| panic!("operation id must parse: {error}")),
+            IdempotencyKey::parse("idempotency:same-owner")
+                .unwrap_or_else(|error| panic!("idempotency key must parse: {error}")),
+            owner.clone(),
+            owner,
+            AuthorityAction::MutateAutomation,
+            1,
+            1,
+            1,
+            Sha256Digest::for_bytes(b"fence"),
+            Sha256Digest::for_bytes(b"command"),
+            7,
+        );
+        assert!(matches!(result, Err(OperationContractError::SameOwner)));
+    }
+
+    #[test]
+    fn binding_digest_covers_owner_component_fence_and_payload() {
         let first = binding();
         let mut changed = first.clone();
         changed.generation += 1;
+        assert_ne!(first.digest(), changed.digest());
+        changed = first.clone();
+        changed.destination_owner.component = ProductComponentId::MatrixIngress;
         assert_ne!(first.digest(), changed.digest());
         changed = first.clone();
         changed.command_sha256 = Sha256Digest::for_bytes(b"changed-command");
@@ -414,14 +479,11 @@ mod tests {
     fn acknowledgement_requires_exact_outbox_identity() {
         let envelope = OutboxEnvelope::pending(binding(), 1)
             .unwrap_or_else(|error| panic!("outbox must be valid: {error}"));
-        let acknowledgement = DestinationAcknowledgement {
-            operation_id: envelope.binding.operation_id.clone(),
-            idempotency_key: envelope.binding.idempotency_key.clone(),
-            binding_sha256: envelope.binding_sha256.clone(),
-            destination_receipt_sha256: Sha256Digest::for_bytes(b"receipt"),
-            sequence: envelope.sequence,
-            phase: OperationPhase::DestinationCommitted,
-        };
+        let acknowledgement = DestinationAcknowledgement::committed(
+            &envelope,
+            Sha256Digest::for_bytes(b"receipt"),
+        )
+        .unwrap_or_else(|error| panic!("acknowledgement must be valid: {error}"));
         assert!(acknowledgement.validate_against(&envelope).is_ok());
         let mut changed = acknowledgement;
         changed.sequence += 1;
