@@ -2,18 +2,18 @@
 """Materialize immutable tranche status snapshots for frozen qualification gates.
 
 The legacy P0 source verifiers predate the canonical master plan and all read the
-same mutable EXECUTION_STATUS_V2 path.  A stacked branch cannot make that one
-path describe P0.2, P0.3, P0.4a, P0.4b, and P0.4c simultaneously.  This helper
-validates a registered immutable snapshot and copies it into the legacy path in
-the ephemeral CI worktree.  It never edits Git history and never grants current
-plan or runtime authority to the snapshot.
+same mutable EXECUTION_STATUS_V2 path. A stacked branch cannot make that one
+path describe P0.2, P0.3, P0.4a, P0.4b, and P0.4c simultaneously. This helper
+validates a registered immutable snapshot and writes a compatibility projection
+into the legacy path in the ephemeral CI worktree. It never edits Git history
+and never grants current plan or runtime authority to the snapshot.
 """
 
 from __future__ import annotations
 
 import argparse
+import copy
 import json
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +32,14 @@ SNAPSHOTS = {
     "P0.4c": PLAN_DIR
     / "status-snapshots/HEPTA_INTELLIGENCE_P0_4C_STATUS_SNAPSHOT_V1.json",
 }
+LEGACY_CURRENT_IDS = {
+    "P0.2": "P0.2",
+    "P0.3": "P0.3",
+    # The original P0.4a source verifier used the pre-suffix identifier P0.4.
+    "P0.4a": "P0.4",
+    "P0.4b": "P0.4b",
+    "P0.4c": "P0.4c",
+}
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -46,10 +54,15 @@ def validate(tranche: str, snapshot: dict[str, Any]) -> None:
         raise SystemExit(f"unsupported snapshot schema for {tranche}")
     if snapshot.get("snapshot_id") != tranche:
         raise SystemExit(f"snapshot identity mismatch for {tranche}")
-    if snapshot.get("classification") != "IMMUTABLE_QUALIFICATION_COMPATIBILITY_SNAPSHOT":
+    if (
+        snapshot.get("classification")
+        != "IMMUTABLE_QUALIFICATION_COMPATIBILITY_SNAPSHOT"
+    ):
         raise SystemExit(f"snapshot classification mismatch for {tranche}")
     if snapshot.get("current_authority") is not False:
-        raise SystemExit(f"snapshot unexpectedly gained current authority for {tranche}")
+        raise SystemExit(
+            f"snapshot unexpectedly gained current authority for {tranche}"
+        )
     current = snapshot.get("current_tranche")
     if not isinstance(current, dict) or current.get("id") != tranche:
         raise SystemExit(f"snapshot current_tranche mismatch for {tranche}")
@@ -68,6 +81,25 @@ def validate(tranche: str, snapshot: dict[str, Any]) -> None:
         raise SystemExit(f"snapshot source blob is invalid for {tranche}")
 
 
+def compatibility_projection(
+    tranche: str, snapshot: dict[str, Any]
+) -> dict[str, Any]:
+    projected = copy.deepcopy(snapshot)
+    projected["schema"] = "hepta_intelligence_execution_status_v2"
+    projected["compatibility_projection"] = {
+        "source_schema": "hepta_intelligence_tranche_status_snapshot_v1",
+        "snapshot_id": tranche,
+        "legacy_current_tranche_id": LEGACY_CURRENT_IDS[tranche],
+        "current_authority": False,
+        "runtime_authority": False,
+    }
+    current = projected.get("current_tranche")
+    if not isinstance(current, dict):
+        raise SystemExit(f"snapshot current_tranche missing for {tranche}")
+    current["id"] = LEGACY_CURRENT_IDS[tranche]
+    return projected
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("tranche", choices=sorted(SNAPSHOTS))
@@ -83,13 +115,18 @@ def main() -> int:
         raise SystemExit(f"missing snapshot: {path.relative_to(ROOT)}")
     snapshot = load(path)
     validate(args.tranche, snapshot)
+    projected = compatibility_projection(args.tranche, snapshot)
     if not args.check_only:
-        shutil.copyfile(path, LEGACY_STATUS)
+        LEGACY_STATUS.write_text(
+            json.dumps(projected, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     print(
         json.dumps(
             {
                 "status": "PASS_TRANCHE_STATUS_SNAPSHOT",
                 "tranche": args.tranche,
+                "legacy_current_tranche_id": LEGACY_CURRENT_IDS[args.tranche],
                 "snapshot": str(path.relative_to(ROOT)),
                 "materialized": not args.check_only,
                 "current_authority": False,
