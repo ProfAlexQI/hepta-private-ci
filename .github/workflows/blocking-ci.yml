@@ -1,8 +1,5 @@
 name: blocking-ci
 
-# This is the single entrypoint for checks that block a PR merge. It also runs
-# after pushes to the active main branches so the same check family stays grouped
-# in the Actions UI.
 on:
   pull_request: {}
   push:
@@ -67,10 +64,10 @@ jobs:
     uses: ./.github/workflows/hepta-browser-c1-protocol.yml
     secrets: inherit
 
-  hepta-browser-next-v8:
-    name: Hepta Browser canonical next gate v8
+  hepta-browser-next-v9:
+    name: Hepta Browser canonical next gate v9
     needs: runner-preflight
-    uses: ./.github/workflows/hepta-browser-next-required-v8.yml
+    uses: ./.github/workflows/hepta-browser-next-required-v9.yml
     secrets: inherit
 
   hepta-servo-artifact-contract:
@@ -133,7 +130,7 @@ jobs:
       - hepta-browser-c0-c3
       - hepta-browser-c1-artifact-gate
       - hepta-browser-c1-protocol
-      - hepta-browser-next-v8
+      - hepta-browser-next-v9
       - hepta-servo-artifact-contract
       - hepta-servo-source-bundle-contract
       - hepta-servo-source-contract
