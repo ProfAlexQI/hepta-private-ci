@@ -18,9 +18,11 @@ Supervisor / Fleet Registry
        Agentd composition root
        /        |          \
  App Server  Memory      Automation
-     ^        Runtime       Runtime
-     |                         |
-     +------ typed queue ------+
+  Service     Service       Service
+     ^           |             |
+     |       Memory Runtime    +---- typed queue ----+
+     |                                           |
+     +-------------------------------------------+
      ^
      |
  Matrix / UI / future ingress adapters
@@ -40,33 +42,66 @@ The invariant is one owner per state class:
 
 ## Unified authority kernel
 
-`codex-hepta-contracts::AuthorityGrant` is the only positive runtime authority input introduced by
-Architecture Convergence P0. The current constructors are closed-world profiles:
+`codex-hepta-contracts` owns the only typed runtime authority kernel.
 
-- `snapshot_read_only`;
-- `agent_local`;
-- `qualification_cognitive_write`.
+Local startup profiles remain closed-world:
 
-No current profile grants model invocation, provider dispatch, external effect, fleet mutation,
-operator acceptance, or release promotion. Typed `Authorized<C>` values can only be minted after an
-`AuthorityGrant` admits the corresponding action.
+- `AuthorityGrant::snapshot_read_only`;
+- `AuthorityGrant::agent_local`;
+- `AuthorityGrant::qualification_cognitive_write`.
 
-Compile-time feature selection may choose between the Agent-local and qualification cognitive-write
-profiles, but runtime configuration and request overrides cannot widen the selected grant.
+No local profile grants model invocation, provider dispatch, external effect, fleet mutation,
+operator acceptance, or release promotion. Runtime configuration and request overrides cannot widen
+the selected local grant.
+
+Architecture Convergence P0.2 adds the second, separately fenced path:
+
+```text
+externally supplied lease material
+  -> AuthorityLeaseBinding shape/subject/generation/expiry checks
+  -> CapabilityVerifier
+  -> Authorized<C>
+```
+
+`Authorized<C>` cannot be deserialized or constructed directly. A local profile may mint only an
+action it contains. An external lease may mint only the exact capability requested after an
+independent verifier accepts the bound action, Agent, generation, grant digest, authority epoch,
+owner epoch, fencing-token digest, and expiry.
+
+The existing `ProductionAuthorityLease` protocol is retained for compatibility. Agentd now adapts it
+to `Authorized<CognitiveWriteCapability>` **before** opening the Cognitive store, then the durable
+writer repeats the legacy verifier check before lease mutation. This is intentionally a two-check
+migration period. The adapter cannot mint `ExternalEffectCapability`, provider dispatch, model
+invocation, fleet mutation, operator acceptance, or promotion.
+
+## Agentd service boundary
+
+The task-supervision loop now owns process cancellation and task joining only. Product construction
+and execution are delegated to explicit services:
+
+- `AgentMemoryService` owns Memory authorization, Agent-private store open, federation discovery,
+  attachment, and the optional qualification cognitive-write witness.
+- `AgentAutomationService` owns Automation authorization, Agent-private store open, attachment, and
+  scheduler execution.
+- `AgentAppServerService` owns session-serving authorization and the embedded App Server launch.
+- `AgentRuntimeComposition` validates the ProductGraph and constructs those services.
+
+The supervision loop no longer opens `CognitiveStore`, opens `AutomationStore`, discovers federation,
+or calls the Automation scheduler directly.
 
 ## Memory boundary
 
-Architecture Convergence P0 begins the Memory split at the runtime boundary without moving schema or
+Architecture Convergence begins the Memory split at the runtime boundary without moving schema or
 writer ownership prematurely:
 
-- Agentd no longer opens `CognitiveStore` or discovers federation directly.
-- `CognitiveRuntime::open_agent_owned` owns the store-open boundary.
+- `CognitiveRuntime::open_agent_owned` owns the store-open facade.
 - `CognitiveRuntime::with_discovered_federation` owns read-only federation discovery.
-- Agentd retains composition and generation fencing.
-- The existing Cognitive SQLite transaction domain remains unchanged until this facade is qualified.
+- `AgentMemoryService` owns lifecycle fencing and attachment around those operations.
+- The existing Cognitive SQLite transaction domain remains unchanged until P0/P0.2 qualification is
+  executable and green.
 
-Physical crate extraction follows after the facade and product graph qualification are green; this
-avoids a simultaneous schema, package, and authority migration.
+Physical crate or table extraction before that qualification remains forbidden. This prevents a
+simultaneous schema, package, authority, and recovery migration.
 
 ## Canonical supporting documents
 
@@ -74,10 +109,12 @@ avoids a simultaneous schema, package, and authority migration.
 - Data authority map: `docs/architecture/HEPTA_DATA_AUTHORITY_MAP_V1.md`
 - Recovery order: `docs/architecture/HEPTA_RECOVERY_ORDER_V1.md`
 - P0 implementation status: `docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_P0_2026-08-28.md`
+- P0.2 implementation status: `docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_P0_2_2026-08-28.md`
 
 ## Current claim boundary
 
-Architecture Convergence P0 is a development/internal-test implementation slice. It does not grant:
+Architecture Convergence P0.2 is a development/internal-test implementation slice. It does not
+grant or activate:
 
 ```text
 production_caller
@@ -90,5 +127,6 @@ operator_acceptance
 promotion
 ```
 
-The exact-head GitHub workflow must pass source verification, real Agent-private SQLite composition,
-package tests, check, and strict Clippy before the slice can be called qualified.
+The exact-head GitHub workflow must pass source verification, typed lease-adapter tests, real
+Agent-private SQLite service composition, default and qualification profiles, all-target check, and
+strict Clippy before the slice can be called qualified.
