@@ -10,8 +10,8 @@
   },
   "development_branch": "codex/hepta-inference-runtime-v2-20260828",
   "plan_git_blob_sha1": "4381207acce1bf6371c248dc3280fff1f2ae59ce",
-  "source_candidate_commit": "cf8191c90e146ac8f3dec011cb5a22bd81179144",
-  "source_candidate_tree": "8039b16acb4ae17c9ef69a178e9c0cccbd0c6c3a",
+  "source_candidate_commit": "9c8a896246a59c81ae632f041a430e7ea325ba0b",
+  "source_candidate_tree": "f17fe9ebf6e56356c751d22a4725b986c61536be",
   "source_candidate_components": {
     "inf0a_source_rebind": true,
     "inf0b_reference_contracts": true,
@@ -37,14 +37,18 @@
     "inf0c_explicit_fragment_rustfmt_gate": true,
     "inf0c_blank_pull_frame_gate_disambiguated": true,
     "inf0c_pull_request_jobs_checkout_exact_head": true,
-    "inf0c_rustfmt_artifact_diagnostics": true,
-    "inf1_daemon": false
+    "inf0c_rustfmt_artifact_diagnostics": false,
+    "inf1_daemon": false,
+    "inf0c_rustfmt_repair_applied": true,
+    "inf0c_strict_rustfmt_gate_restored": true,
+    "inf0c_one_shot_bootstrap_removed": true,
+    "inf0c_formatter_export_removed": true
   },
   "validation": {
-    "local_python_syntax": "PASS_FOR_PREVIOUS_CANDIDATE",
+    "local_python_syntax": "PASS",
     "local_receipt_json_parse": "PASS",
-    "exact_candidate_source_gate": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
-    "rust_fmt": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
+    "exact_candidate_source_gate": "PASS_ON_IDENTICAL_SOURCE_TREE_MACOS_RUST_1_95",
+    "rust_fmt": "PASS_RUST_1_95_MACOS_IDENTICAL_TREE",
     "rust_test": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
     "rust_clippy": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
     "real_model_e2e": "NOT_RUN",
@@ -99,14 +103,45 @@
       "compatibility_test": "NOT_RUN_AFTER_FORMAT_FAILURE",
       "compatibility_clippy": "NOT_RUN_AFTER_FORMAT_FAILURE",
       "classification": "EXECUTED_FAILED_FORMATTING"
+    },
+    {
+      "run_id": 33169076202,
+      "head": "1037dd030a6e23ceaf665ee24ca50cafff6de73e",
+      "runner_assigned": true,
+      "runner_os": "macOS",
+      "reference_format_apply": "PASS",
+      "compatibility_fragment_format_apply": "PASS",
+      "bounded_delta_check": "FAIL_STAGED_SELF_DELETION_NOT_INCLUDED",
+      "source_commit_created": false,
+      "branch_pushed": false,
+      "classification": "EXECUTED_BOOTSTRAP_BOUNDARY_SELF_CHECK_FAILURE"
+    },
+    {
+      "run_id": 33169418412,
+      "head": "64371f6852ea34092076f33d42f43473b8f547e4",
+      "runner_assigned": true,
+      "runner_os": "macOS",
+      "exact_parent": "1037dd030a6e23ceaf665ee24ca50cafff6de73e",
+      "reference_format": "PASS_AFTER_RUST_1_95_APPLY",
+      "compatibility_fragment_format": "PASS_AFTER_RUST_1_95_APPLY",
+      "strict_workflow_restored": true,
+      "bootstrap_files_deleted_in_source_commit": true,
+      "classification": "EXECUTED_RUSTFMT_REPAIR_VALIDATED_PUSH_REJECTED",
+      "formatted_source_commit": "f303800ea328bb0f68c5f7a48ace74e2dd78367b",
+      "formatted_source_tree": "f17fe9ebf6e56356c751d22a4725b986c61536be",
+      "receipt_commit": "551e0240a1fae372fcd81094ec9e0d9e31ea2dd9",
+      "receipt_tree": "e9e04d1b6cb5fb5e5aa9cba9aba017c1b915a6bb",
+      "final_source_gate": "PASS_HEPTA_INFERENCE_INF0C_SOURCE_ONLY",
+      "branch_push": "REJECTED_GITHUB_APP_MISSING_WORKFLOWS_PERMISSION",
+      "remote_ref_updated": false
     }
   ],
   "current_ci": {
     "status": "NOT_RUN_FOR_RECEIPT_HEAD",
     "runner_assigned": false,
-    "source_gate": "NOT_RUN",
-    "reference_contract": "NOT_RUN",
-    "compatibility_readiness": "NOT_RUN",
+    "source_gate": "NOT_RUN_ON_HOSTED_RUNNER_FOR_RECEIPT_HEAD",
+    "reference_contract": "NOT_RUN_ON_HOSTED_RUNNER_FOR_RECEIPT_HEAD",
+    "compatibility_readiness": "NOT_RUN_ON_HOSTED_RUNNER_FOR_RECEIPT_HEAD",
     "real_software_e2e": "NOT_RUN"
   },
   "claim": "SOURCE_PRESENT_NOT_RUN",
@@ -129,11 +164,24 @@
     "release": false
   },
   "known_gaps": [
-    "the new exact receipt head has not executed the source gate or Rust matrix",
-    "the Rust 1.95 runner must emit and apply exact rustfmt repair artifacts before tests and strict Clippy can execute",
+    "the new exact receipt head must execute the restored strict source, formatting, test, check and Clippy matrix on its hosted qualification workflow",
     "the real-software E2E harness has not executed against fixed pre-installed Ollama and LM Studio tuples",
     "semantic, tool-call, disconnect, backend cancellation acknowledgement and controlled-restart evidence remain in stacked qualification lanes",
     "hepta-inferd, the UDS protocol, native workers and hardware performance receipts are absent",
     "INF-1 remains inactive and all production, effect, model-NPU, remote-inference and promotion authority remains closed"
-  ]
+  ],
+  "source_candidate_provenance": {
+    "materialized_by_run_id": 33169418412,
+    "validated_source_commit": "f303800ea328bb0f68c5f7a48ace74e2dd78367b",
+    "validated_source_tree": "f17fe9ebf6e56356c751d22a4725b986c61536be",
+    "remote_source_commit": "9c8a896246a59c81ae632f041a430e7ea325ba0b",
+    "remote_source_tree": "f17fe9ebf6e56356c751d22a4725b986c61536be",
+    "tree_identity_preserved": true,
+    "reconstructed_with_repository_git_objects": true,
+    "workflow_files_removed": [
+      ".github/workflows/hepta-inference-inf0-rustfmt-bootstrap.yml",
+      ".github/workflows/hepta-inference-inf0-rustfmt-bootstrap-v2.yml",
+      ".github/workflows/hepta-inference-inf0-rustfmt-export.yml"
+    ]
+  }
 }
