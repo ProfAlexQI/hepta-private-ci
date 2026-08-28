@@ -67,6 +67,8 @@
     "real_agent_private_sqlite_open_required": true,
     "legacy_production_verifier_required": true,
     "typed_cognitive_write_witness_required": true,
+    "typed_external_effect_witness_required_at_target_attach": true,
+    "typed_external_effect_witness_revalidated_at_dispatch": true,
     "merge_candidate_gate_separate": true,
     "physical_memory_schema_extraction_allowed": false
   },
