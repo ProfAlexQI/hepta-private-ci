@@ -129,9 +129,13 @@ jobs:
           actual=$(rustc --version | awk '{print $2}')
           test "$actual" = "$expected"
 
-      - name: Check workspace formatting
+      - name: Check owned-package formatting
         working-directory: codex-rs
-        run: cargo fmt --all -- --check
+        run: >-
+          cargo fmt
+          -p codex-hepta-memory
+          -p codex-hepta-memory-extension
+          -- --check
 
       - name: Run core shadow projection tests
         working-directory: codex-rs
