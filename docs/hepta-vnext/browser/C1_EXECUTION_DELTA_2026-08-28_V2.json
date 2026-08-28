@@ -1,12 +1,15 @@
 {
   "schema": "hepta.browser.c1_execution_delta.v2",
   "schema_version": 1,
-  "updated_at_utc": "2026-08-28T00:00:00Z",
+  "updated_at_utc": "2026-08-28T15:08:00Z",
   "plan_id": "HEPTA-BROWSER-WEB-D",
   "stage": "WEB_C1",
   "phase": "DEVELOPMENT",
-  "canonical_current": "docs/hepta-vnext/browser/C1_CURRENT_V3.json",
-  "canonical_aggregate": ".github/workflows/hepta-browser-next-required-v5.yml",
+  "canonical_current": "docs/hepta-vnext/browser/C1_CURRENT_V7.json",
+  "canonical_aggregate": ".github/workflows/hepta-browser-next-required-v9.yml",
+  "canonical_runner_qualification_policy": "docs/hepta-vnext/browser/RUNNER_QUALIFICATION_POLICY_V2.json",
+  "canonical_runner_recovery_contract": "docs/hepta-vnext/browser/RUNNER_RECOVERY_CONTRACT_V1.json",
+  "canonical_runner_recovery_runbook": "docs/hepta-vnext/browser/RUNNER_RECOVERY_RUNBOOK.md",
   "completed_tooling": [
     {
       "id": "C1-004A-1",
@@ -37,6 +40,11 @@
       "id": "C1-004B-2-PREFLIGHT",
       "status": "IMPLEMENTED_FIXTURES_ONLY_NO_REAL_PREFLIGHT",
       "result": "Linux source/archive/recipe/toolchain/manifest/binary/root cross-binding before Cargo"
+    },
+    {
+      "id": "C1-RUNNER-EVIDENCE-V2",
+      "status": "IMPLEMENTED_22_LOCAL_REGRESSIONS_HOSTED_RESULT_ABSENT",
+      "result": "modular exact-head repository/run/step/trigger-bound evidence, create-only mode-0600 receipt and canonical SHA-256 self-binding"
     }
   ],
   "correctness_repairs": [
@@ -55,9 +63,62 @@
     {
       "issue": "preflight trusted toolchain capture fields too broadly",
       "repair": "canonical preflight v2 freezes commands, capture environment, linker kinds and path-free version facts"
+    },
+    {
+      "issue": "runner evidence v1 trusted required-job top-level success without verifying every step or repository/run URL",
+      "repair": "runner evidence v2 requires terminal non-failure steps with at least one success, exact jobs total_count, positive run attempt and repository/run-bound jobs_url"
+    },
+    {
+      "issue": "execution delta still named superseded C1_CURRENT_V3 and required-v5 as canonical",
+      "repair": "canonical pointers now bind C1_CURRENT_V7 and hepta-browser next required v9"
+    },
+    {
+      "issue": "runner evidence-only changes could bypass Browser or vNext required graphs through incomplete pull_request path filters",
+      "repair": "canonical required workflows explicitly trigger on the runner verifier and Browser regression test paths, and the plan verifier locks those trigger fragments"
+    },
+    {
+      "issue": "the runner evidence verifier had grown into one monolithic script that coupled contracts, classification and CLI I/O",
+      "repair": "the stable wrapper now delegates to a package split into common models, version-controlled contracts, classifier and create-only CLI modules while preserving the public command and regression surface"
     }
   ],
+  "runner_blocker": {
+    "classification": "ACTIONS_ALLOCATION_LAYER_ZERO_STEPS",
+    "closure_disposition": "PASS_CI_EXECUTION_ONLY",
+    "current_head_evidence_required": true,
+    "exact_head_qualification_available": false,
+    "historical_observation": {
+      "observed_at_utc": "2026-08-28T14:43:42Z",
+      "observed_parent_head": "730037bd7ea475c30a2f6aaae673e54b93be3948",
+      "observation_is_current_head_authority": false,
+      "required_runs": [
+        {
+          "jobs_count": 1,
+          "required_job_present": false,
+          "run_id": 33177596920,
+          "status": "queued",
+          "workflow_name": "blocking-ci"
+        },
+        {
+          "jobs_count": 0,
+          "required_job_present": false,
+          "run_id": 33177596922,
+          "status": "pending",
+          "workflow_name": "hepta-browser next required v9"
+        },
+        {
+          "jobs_count": 0,
+          "required_job_present": false,
+          "run_id": 33177596979,
+          "status": "pending",
+          "workflow_name": "hepta-vnext qualification"
+        }
+      ]
+    },
+    "interpretation": "runner allocation, billing, policy or Actions service blocker; neither a code PASS nor an executed code-test failure",
+    "required_action": "complete the version-controlled recovery contract, then capture a V2 receipt for the exact new PR head before dispatching exact-source qualification v3"
+  },
   "evidence_still_required": [
+    "exact-head required workflow evidence v2 with PASS_CI_EXECUTION_ONLY",
     "successful exact-source qualification v3 run",
     "reviewed accepted source pointer",
     "minimal Servo worker source/API topology",
@@ -71,6 +132,7 @@
     "real one-WebView runtime receipt"
   ],
   "claims": {
+    "exact_head_ci_qualified": false,
     "exact_servo_source_accepted": false,
     "toolchain_accepted": false,
     "build_recipe_accepted": false,
@@ -95,5 +157,6 @@
     "operator_acceptance": false,
     "promotion": false,
     "release_qualified": false
-  }
+  },
+  "canonical_next_work_queue": "docs/hepta-vnext/browser/NEXT_WORK_QUEUE_C1_V2.json"
 }
