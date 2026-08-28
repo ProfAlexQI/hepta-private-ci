@@ -1,0 +1,173 @@
+name: Hepta Intelligence Q0 strict Clippy repair v6
+
+on:
+  push:
+    branches: [codex/hepta-intelligence-plan-v3-20260828]
+    paths:
+      - .github/scripts/hepta-intelligence-q0-manual-clippy-repair.py
+      - .github/scripts/hepta-intelligence-q0-reconstruct-v6.py
+      - .github/workflows/hepta-intelligence-q0-clippy-fix-v6.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-q0-clippy-fix-v6-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
+  EXPECTED_PARENT: 0510e6b09b9fe4ebed676053aad4164fa762f676
+  ARTIFACT_ROOT: artifacts/hepta-intelligence-q0-clippy-fix-v6
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_BUILD_JOBS: 4
+  RUST_BACKTRACE: 1
+
+jobs:
+  prove:
+    name: Prove Rust 1.95 repair on ${{ matrix.host }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            host: x86_64-unknown-linux-gnu
+            uname: x86_64
+            cache: x64
+          - runner: ubuntu-24.04-arm
+            host: aarch64-unknown-linux-gnu
+            uname: aarch64
+            cache: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact v6 candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Prove exact identity and fail-closed authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$EXPECTED_BRANCH"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(uname -m)" = "${{ matrix.uname }}"
+          test -f .github/patches/hepta-intelligence-q0-compile-fix-v1.patch
+          test -f .github/scripts/hepta-intelligence-q0-manual-clippy-repair.py
+          test -f .github/scripts/hepta-intelligence-q0-reconstruct-v6.py
+          mkdir -p "$ARTIFACT_ROOT/${{ matrix.cache }}"
+          printf '{"head":"%s","tree":"%s","parent":"%s","host":"${{ matrix.host }}","runtime_authority":false,"source_writeback":false}\n' \
+            "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" "$(git rev-parse HEAD^)" \
+            > "$ARTIFACT_ROOT/${{ matrix.cache }}/identity.json"
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Restore compiler cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            codex-rs/target/debug/.fingerprint
+            codex-rs/target/debug/build
+            codex-rs/target/debug/deps
+          key: hepta-q0-rust195-${{ matrix.cache }}-v6-${{ hashFiles('codex-rs/Cargo.lock') }}-${{ hashFiles('.github/scripts/hepta-intelligence-q0-manual-clippy-repair.py') }}
+          restore-keys: hepta-q0-rust195-${{ matrix.cache }}-
+
+      - name: Reconstruct deterministic source repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/hepta-intelligence-q0-reconstruct-v6.py
+          mapfile -t files < <(git diff --name-only -- '*.rs')
+          test "${#files[@]}" -gt 0
+          rustfmt --edition 2024 --config skip_children=true "${files[@]}"
+          git diff --check
+
+      - name: Apply machine-applicable Clippy fixes
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set +e
+          cargo clippy --fix --locked -p codex-hepta-memory --all-targets \
+            --allow-dirty --allow-staged -- -D warnings \
+            2>&1 | tee "../$ARTIFACT_ROOT/${{ matrix.cache }}/clippy-fix.log"
+          printf '%s\n' "${PIPESTATUS[0]}" > "../$ARTIFACT_ROOT/${{ matrix.cache }}/clippy-fix.exit"
+          exit 0
+
+      - name: Format and verify repair surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(git diff --name-only -- '*.rs')
+          rustfmt --edition 2024 --config skip_children=true "${files[@]}"
+          rustfmt --edition 2024 --check --config skip_children=true "${files[@]}"
+          git diff --check
+
+      - name: Re-run frozen source and SQLite contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json
+          canonical=$(mktemp)
+          cp "$status" "$canonical"
+          restore_status() { cp "$canonical" "$status"; rm -f "$canonical"; }
+          trap restore_status EXIT
+          test "$(python3 scripts/verify-hepta-intelligence-master-plan.py)" = "PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_SOURCE_ONLY"
+          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
+            python3 scripts/hepta-intelligence-status-compat.py "$tranche" >/dev/null
+          done
+          python3 scripts/verify-hepta-intelligence-grounding-ledger.py >/dev/null
+          python3 scripts/verify-hepta-intelligence-grounding-gate.py >/dev/null
+          python3 scripts/verify-hepta-intelligence-mutation-state.py >/dev/null
+          python3 scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py >/dev/null
+          python3 scripts/verify-hepta-intelligence-mutation-journal.py >/dev/null
+          python3 scripts/verify-hepta-intelligence-shadow-host.py >/dev/null
+          restore_status
+          trap - EXIT
+          git diff --check
+
+      - name: Run strict memory Clippy
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo clippy --locked -p codex-hepta-memory --all-targets -- -D warnings \
+            2>&1 | tee "../$ARTIFACT_ROOT/${{ matrix.cache }}/clippy-strict.log"
+
+      - name: Run full memory tests
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-memory \
+            2>&1 | tee "../$ARTIFACT_ROOT/${{ matrix.cache }}/test-full-memory.log"
+
+      - name: Capture exact repair surface
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --name-only | sort > "$ARTIFACT_ROOT/${{ matrix.cache }}/changed-files.txt"
+          git diff --stat > "$ARTIFACT_ROOT/${{ matrix.cache }}/repair-stat.txt"
+          git diff --binary > "$ARTIFACT_ROOT/${{ matrix.cache }}/repair.patch"
+
+      - name: Upload v6 evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-q0-clippy-fix-v6-${{ matrix.cache }}-${{ github.sha }}
+          path: artifacts/hepta-intelligence-q0-clippy-fix-v6/${{ matrix.cache }}/**
+          if-no-files-found: error
+          retention-days: 30
