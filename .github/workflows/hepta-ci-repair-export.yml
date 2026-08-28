@@ -35,7 +35,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
+          fetch-depth: 1
 
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
@@ -45,6 +45,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-ci-repair"
+          mkdir -p "$evidence_dir"
+          exec > >(tee "$evidence_dir/generation.log") 2>&1
+          git rev-parse HEAD > "$evidence_dir/source-head.txt"
+
           python3 - <<'PY'
           from pathlib import Path
 
@@ -105,12 +110,9 @@ jobs:
             cargo +1.95.0 metadata --locked --no-deps --format-version 1 >/dev/null
           )
 
-          evidence_dir="$RUNNER_TEMP/hepta-ci-repair"
-          mkdir -p "$evidence_dir"
           git diff --binary --full-index --no-ext-diff > "$evidence_dir/repair.patch"
           git diff --name-only > "$evidence_dir/changed-files.txt"
           git status --short > "$evidence_dir/status.txt"
-          git rev-parse HEAD > "$evidence_dir/source-head.txt"
           test -s "$evidence_dir/repair.patch"
 
           python3 - "$evidence_dir" <<'PY'
