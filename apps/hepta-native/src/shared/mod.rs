@@ -20,6 +20,7 @@ pub mod hepta_v4_controls;
 pub mod hepta_v4_layout;
 pub mod hepta_window_visual_ack;
 pub mod hepta_windows_material_adapter;
+pub mod hepta_windows_window_ack_producer;
 pub mod html_or_plaintext;
 pub mod icon_button;
 pub mod image_viewer;
@@ -51,8 +52,9 @@ pub fn script_mod(vm: &mut ScriptVm) {
     // The lifecycle module rebinds the canonical Window prototype before the
     // App root is evaluated. Full-profile OS material remains explicitly
     // unbound; its Makepad WindowVisuals controller can only queue a partial
-    // persistent-chrome request for an exact framework WindowId. The separate
-    // acknowledgement contract is pure Rust and requires no script registration.
+    // persistent-chrome request for an exact framework WindowId. The pure-Rust
+    // acknowledgement verifier and the unbound Windows readback producer need
+    // no script registration.
     hepta_material_app_lifecycle::script_mod(vm);
     helpers::script_mod(vm);
     icon_button::script_mod(vm);

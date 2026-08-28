@@ -1,7 +1,7 @@
 {
   "schema": "hepta.ui.platform-material-adapter-matrix.v1",
-  "status": "EXACT_WINDOW_ACK_CONTRACT_SOURCE_WIRED_PRODUCER_AND_RUNTIME_EVIDENCE_REQUIRED",
-  "candidateBranch": "codex/ui-v4-window-ack-matrix-20260828",
+  "status": "WINDOWS_DWM_BACKDROP_READBACK_PRODUCER_SOURCE_WIRED_HOST_BINDING_AND_RUNTIME_REQUIRED",
+  "candidateBranch": "codex/ui-v4-windows-dwm-ack-producer-20260828",
   "authority": {
     "network": false,
     "mutation": false,
@@ -25,7 +25,10 @@
     "ackIdentityBindsRequestSequence": true,
     "ackIdentityBindsWindowGeneration": true,
     "ackVerifierRejectsBackendMismatch": true,
-    "ackVerifierRejectsReadbackMismatch": true,
+    "ackReadbackIsExplicitlyScoped": true,
+    "windowsDwmReadbackScope": "BackdropOnly",
+    "windowsDwmReadbackDoesNotProveTransparencyOrIntensity": true,
+    "windowsSolidFallbackUsesDwmsbtNoneNotAuto": true,
     "persistentChromeAcknowledgementMayBePartial": true,
     "transientSystemMaterialBound": false,
     "completeProfileBound": false,
@@ -37,6 +40,7 @@
     "integrationSource": "apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs",
     "frameworkWindowSource": "apps/hepta-native/src/shared/hepta_makepad_window_material.rs",
     "ackContractSource": "apps/hepta-native/src/shared/hepta_window_visual_ack.rs",
+    "windowsAckProducerSource": "apps/hepta-native/src/shared/hepta_windows_window_ack_producer.rs",
     "phases": [
       "SolidFallback",
       "SemanticIntentOnly",
@@ -53,6 +57,7 @@
     "frameworkWindowVisualsRequestSource": true,
     "persistentChromeRequestSource": true,
     "nativeWindowHandleBound": false,
+    "windowsAckProducerHostBound": false,
     "transientSystemMaterialBound": false,
     "completeProfileBound": false,
     "systemMaterialBindingClaim": false,
@@ -67,7 +72,7 @@
       "Background",
       "Shutdown"
     ],
-    "sourceStatus": "FRAMEWORK_REQUEST_AND_ACK_CONTRACT_SOURCE_WIRED_FULL_PROFILE_UNBOUND",
+    "sourceStatus": "FRAMEWORK_REQUEST_ACK_CONTRACT_AND_WINDOWS_BACKDROP_READBACK_SOURCE_WIRED_HOST_UNBOUND",
     "compileStatus": "REQUIRED_NOT_RUN",
     "runtimeStatus": "REQUIRED_NOT_RUN"
   },
@@ -81,17 +86,41 @@
       "requestedVisuals",
       "persistentChromeRequested"
     ],
+    "readbackScopes": [
+      "None",
+      "BackdropOnly",
+      "FullVisuals"
+    ],
     "supportedBackends": [
       "WindowsDwm",
       "MacosAppKit"
     ],
     "producerBound": false,
     "runtimeValidated": false,
-    "readbackValidated": false,
+    "backdropReadbackValidated": false,
+    "fullVisualReadbackValidated": false,
     "transientSystemMaterialBound": false,
     "completeProfileBound": false,
     "systemMaterialBindingClaim": false,
-    "sourceStatus": "EXACT_REQUEST_VERIFIER_IMPLEMENTED_PRODUCER_REQUIRED",
+    "sourceStatus": "SCOPED_READBACK_VERIFIER_IMPLEMENTED_PLATFORM_RUNTIME_REQUIRED",
+    "runtimeStatus": "REQUIRED_NOT_RUN"
+  },
+  "windowsDwmAcknowledgementProducer": {
+    "source": "apps/hepta-native/src/shared/hepta_windows_window_ack_producer.rs",
+    "dwmApiSource": "apps/hepta-native/src/shared/hepta_windows_material_adapter.rs",
+    "explicitHwndRequired": true,
+    "frameworkWindowIndexRequired": true,
+    "frameworkWindowGenerationRequired": true,
+    "hostBindingAvailable": false,
+    "setOperationPerformedByProducer": false,
+    "readbackAttribute": "DWMWA_SYSTEMBACKDROP_TYPE",
+    "readbackScope": "BackdropOnly",
+    "noneValue": "DWMSBT_NONE",
+    "autoValue": "DWMSBT_AUTO",
+    "noneAndAutoDistinct": true,
+    "fullVisualReadback": false,
+    "runtimeValidated": false,
+    "sourceStatus": "SOURCE_IMPLEMENTED_EXPLICIT_HOST_BINDING_REQUIRED",
     "runtimeStatus": "REQUIRED_NOT_RUN"
   },
   "platforms": [
@@ -103,9 +132,11 @@
       "preferenceProbe": "SystemParametersInfoW plus EnableTransparency registry value",
       "persistentChromePath": "Makepad WindowVisuals Mica request for exact WindowId",
       "ackBackend": "WindowsDwm",
-      "ackProducer": "required and not bound",
-      "fullAdapterSource": "HeptaWindowsDwmBackdropApi requires governed persistent and transient hosts",
-      "sourceStatus": "REQUEST_AND_ACK_VERIFIER_SOURCE_WIRED_PRODUCER_TRANSIENT_AND_READBACK_REQUIRED",
+      "ackProducer": "source implemented, explicit HWND host binding not wired",
+      "ackReadbackScope": "BackdropOnly",
+      "solidFallbackDwmValue": "DWMSBT_NONE",
+      "fullAdapterSource": "HeptaWindowsDwmBackdropApi still requires governed persistent and separate transient hosts",
+      "sourceStatus": "REQUEST_VERIFIER_AND_BACKDROP_READBACK_PRODUCER_SOURCE_WIRED_HOST_TRANSIENT_AND_RUNTIME_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -118,7 +149,7 @@
       "ackBackend": "MacosAppKit",
       "ackProducer": "required and not bound",
       "fullAdapterSource": "AppKit chrome and popover material adapter required",
-      "sourceStatus": "REQUEST_AND_ACK_VERIFIER_SOURCE_WIRED_PREFERENCE_PRODUCER_AND_READBACK_REQUIRED",
+      "sourceStatus": "REQUEST_AND_SCOPED_ACK_VERIFIER_SOURCE_WIRED_PREFERENCE_PRODUCER_AND_READBACK_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -173,6 +204,7 @@
     "apps/hepta-native/src/shared/hepta_platform_material_host.rs",
     "apps/hepta-native/src/shared/hepta_makepad_window_material.rs",
     "apps/hepta-native/src/shared/hepta_window_visual_ack.rs",
+    "apps/hepta-native/src/shared/hepta_windows_window_ack_producer.rs",
     "apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs",
     "apps/hepta-native/src/shared/hepta_system_preferences.rs",
     "apps/hepta-native/src/shared/hepta_windows_material_adapter.rs"

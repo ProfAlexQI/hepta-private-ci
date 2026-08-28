@@ -1,0 +1,176 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  shared: root.join("apps/hepta-native/src/shared/mod.rs"),
+  ack: root.join("apps/hepta-native/src/shared/hepta_window_visual_ack.rs"),
+  adapter: root.join("apps/hepta-native/src/shared/hepta_windows_material_adapter.rs"),
+  producer: root.join("apps/hepta-native/src/shared/hepta_windows_window_ack_producer.rs"),
+  material_matrix: root.join("docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"),
+  producer_contract: root.join("docs/ui/HEPTA_WINDOWS_DWM_ACK_PRODUCER_V1.json"),
+  status: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_10_WINDOWS_DWM_ACK_PRODUCER_2026-08-28.md"),
+  inherited_gate: root.join("scripts/hepta-ui-v4-window-ack-matrix-gate"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml")
+}.freeze
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+
+def emit(checks, status)
+  failures = checks.reject { |_name, passed| passed }.keys
+  puts JSON.pretty_generate(
+    schema: "hepta.ui.v4.windows-dwm-ack-producer-source-gate.v1",
+    status: status,
+    source_implemented: failures.empty?,
+    dwm_none_mapping_corrected: failures.empty?,
+    scoped_readback_contract_source: failures.empty?,
+    windows_dwm_readback_producer_source: failures.empty?,
+    native_compile_validation: false,
+    windows_compile_validation: false,
+    explicit_hwnd_host_binding: false,
+    backend_ack_runtime_validation: false,
+    backdrop_readback_validation: false,
+    full_visual_readback_validation: false,
+    transient_system_material_binding: false,
+    complete_profile_binding: false,
+    system_material_binding: false,
+    device_validation: false,
+    production_authority: false,
+    effect_authority: false,
+    live_adapter_authority: false,
+    operator_acceptance: false,
+    promotion: false,
+    release: false,
+    checks: checks,
+    failures: failures
+  )
+  exit(failures.empty? ? 0 : 1)
+end
+
+emit(checks, "FAIL_MISSING_INPUT") unless checks.values.all?
+
+shared = files.fetch(:shared).read
+ack = files.fetch(:ack).read
+adapter = files.fetch(:adapter).read
+producer = files.fetch(:producer).read
+material_matrix = JSON.parse(files.fetch(:material_matrix).read)
+producer_contract = JSON.parse(files.fetch(:producer_contract).read)
+workflow = files.fetch(:workflow).read
+
+checks["shared.producer_declared"] =
+  shared.include?("pub mod hepta_windows_window_ack_producer;")
+checks["ack.scoped_readback_not_fake_full"] =
+  ack.include?("HeptaWindowVisualReadbackScope") &&
+  ack.include?("BackdropOnly") && ack.include?("FullVisuals") &&
+  ack.include?("full_visuals_exact") &&
+  ack.include?("HEPTA_WINDOW_VISUAL_ACK_FULL_VISUAL_READBACK_VALIDATED: bool = false")
+checks["ack.backdrop_only_test"] =
+  ack.include?("backdrop_only_readback_is_partial_not_full_visual_readback") &&
+  ack.include?("!receipt.full_visuals_exact")
+
+checks["adapter.none_maps_to_dwmsbt_none"] =
+  adapter.include?("const DWMSBT_AUTO: i32 = 0") &&
+  adapter.include?("const DWMSBT_NONE: i32 = 1") &&
+  adapter.include?("Self::None => DWMSBT_NONE") &&
+  !adapter.include?("HeptaWindowsBackdropKind::None => DWMSBT_AUTO")
+checks["adapter.get_and_set_attributes"] =
+  adapter.include?("DwmSetWindowAttribute") &&
+  adapter.include?("DwmGetWindowAttribute") &&
+  adapter.include?("DWMWA_SYSTEMBACKDROP_TYPE")
+checks["adapter.readback_trait_and_unknown_value"] =
+  adapter.include?("trait HeptaWindowsBackdropReadbackApi") &&
+  adapter.include?("UnknownBackdropValue") &&
+  adapter.include?("from_dwm_value")
+checks["adapter.full_profile_still_separate"] =
+  adapter.include?("profile.transient != HeptaMaterialRenderer::WindowsAcrylic") &&
+  adapter.include?("stable_content_backdrop_layers != 0") &&
+  adapter.include?("max_visible_backdrop_layers > 2")
+checks["adapter.mapping_test"] =
+  adapter.include?("dwm_none_is_not_auto_and_all_known_values_round_trip")
+
+checks["producer.explicit_binding_no_discovery"] =
+  producer.include?("HeptaWindowsDwmWindowBinding") &&
+  producer.include?("hwnd == 0") &&
+  producer.include?("window_index") && producer.include?("window_generation") &&
+  %w[FindWindow EnumWindows GetForegroundWindow with_win32_app all_windows].none? do |term|
+    producer.include?(term)
+  end
+checks["producer.reads_only_after_framework_request"] =
+  producer.include?("read_backdrop(self.binding.hwnd)") &&
+  !producer.include?("set_backdrop(") &&
+  producer.include?("producerPerformsSet") == false
+checks["producer.backdrop_only_observation"] =
+  producer.include?("HeptaWindowVisualReadback::Backdrop") &&
+  !producer.include?("HeptaWindowVisualReadback::Full(")
+checks["producer.request_profile_bounded"] =
+  producer.include?("(true, WindowBackdrop::Mica)") &&
+  producer.include?("(false, WindowBackdrop::None)") &&
+  producer.include?("UnsupportedRequestedBackdrop")
+checks["producer.host_and_runtime_unbound"] = %w[
+  HEPTA_WINDOWS_DWM_ACK_HOST_BINDING_AVAILABLE
+  HEPTA_WINDOWS_DWM_ACK_RUNTIME_VALIDATED
+  HEPTA_WINDOWS_DWM_ACK_BACKDROP_READBACK_VALIDATED
+  HEPTA_WINDOWS_DWM_ACK_FULL_VISUAL_READBACK_VALIDATED
+  HEPTA_WINDOWS_DWM_ACK_TRANSIENT_SYSTEM_MATERIAL_BOUND
+  HEPTA_WINDOWS_DWM_ACK_COMPLETE_PROFILE_BOUND
+  HEPTA_WINDOWS_DWM_ACK_SYSTEM_MATERIAL_BOUND
+  HEPTA_WINDOWS_DWM_ACK_PRODUCTION_AUTHORITY
+  HEPTA_WINDOWS_DWM_ACK_EFFECT_AUTHORITY
+  HEPTA_WINDOWS_DWM_ACK_LIVE_ADAPTER_AUTHORITY
+  HEPTA_WINDOWS_DWM_ACK_OPERATOR_ACCEPTANCE
+  HEPTA_WINDOWS_DWM_ACK_PROMOTION
+  HEPTA_WINDOWS_DWM_ACK_RELEASE
+].all? { |name| producer.include?("#{name}: bool = false") }
+checks["producer.focused_tests"] = %w[
+  producer_requires_explicit_nonzero_hwnd_and_exact_window_identity
+  mica_readback_produces_backdrop_only_partial_acknowledgement
+  dwmsbt_none_proves_solid_fallback_not_auto
+  auto_or_acrylic_readback_does_not_validate_a_mica_request
+  readback_errors_and_unsupported_values_fail_closed
+].all? { |term| producer.include?(term) }
+checks["producer.unsafe_and_ffi_confined_to_adapter"] =
+  !producer.match?(/\bunsafe\b/) && !producer.match?(/extern\s+"(?:C|system)"/)
+
+checks["contract.identity_and_scope"] =
+  producer_contract["schema"] == "hepta.ui.windows-dwm-ack-producer.v1" &&
+  producer_contract.dig("hostBinding", "explicitHwndRequired") == true &&
+  producer_contract.dig("hostBinding", "hwndDiscoveryAllowed") == false &&
+  producer_contract.dig("dwm", "readbackScope") == "BackdropOnly" &&
+  producer_contract.dig("dwm", "fullVisualReadback") == false &&
+  producer_contract.dig("dwm", "values", "none") == 1 &&
+  producer_contract.dig("dwm", "values", "auto") == 0
+checks["contract.runtime_and_authority_false"] =
+  producer_contract.fetch("qualification").reject { |key, _| key == "sourceImplemented" }.values.none? &&
+  producer_contract.fetch("authority").values.none?
+
+checks["matrix.windows_scoped_source_only"] =
+  material_matrix.dig("invariants", "windowsDwmReadbackScope") == "BackdropOnly" &&
+  material_matrix.dig("invariants", "windowsSolidFallbackUsesDwmsbtNoneNotAuto") == true &&
+  material_matrix.dig("windowsDwmAcknowledgementProducer", "hostBindingAvailable") == false &&
+  material_matrix.dig("windowsDwmAcknowledgementProducer", "runtimeValidated") == false &&
+  material_matrix.dig("windowsDwmAcknowledgementProducer", "fullVisualReadback") == false
+checks["matrix.authority_and_runtime_unclaimed"] =
+  material_matrix.fetch("authority").values.none? &&
+  material_matrix.fetch("platforms").all? { |platform| platform.fetch("runtimeStatus") != "PASS" }
+
+checks["workflow.inherited_and_new_gates"] =
+  workflow.include?("ruby scripts/hepta-ui-v4-window-ack-matrix-gate") &&
+  workflow.include?("ruby scripts/hepta-ui-v4-windows-dwm-ack-producer-gate")
+checks["workflow.three_platform_compile_and_tests"] =
+  %w[ubuntu-latest windows-latest macos-latest].all? { |os| workflow.include?(os) } &&
+  workflow.include?("shared::hepta_window_visual_ack::tests") &&
+  workflow.include?("shared::hepta_windows_material_adapter::tests") &&
+  workflow.include?("shared::hepta_windows_window_ack_producer::tests")
+checks["workflow.read_only_no_release"] =
+  workflow.include?("permissions:") && workflow.include?("contents: read") &&
+  !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+
+failed = checks.reject { |_name, passed| passed }
+emit(
+  checks,
+  failed.empty? ? "PASS_WINDOWS_DWM_ACK_PRODUCER_SOURCE_ONLY" : "FAIL_WINDOWS_DWM_ACK_PRODUCER_SOURCE"
+)

@@ -1,21 +1,25 @@
 //! Exact backend acknowledgement contract for Hepta UI v4 root-window visuals.
 //!
 //! Makepad's public `SetWindowVisuals` request proves only that framework state
-//! changed and that a platform operation was queued. This module defines the
-//! next evidence boundary: a backend observation must bind the exact request
-//! sequence, platform, `WindowId` index and generation, and normalized visuals.
-//! Even a verified persistent-chrome acknowledgement remains partial: transient
-//! material, complete platform profile, product runtime, effect and production
-//! authority stay false.
+//! changed and that a platform operation was queued. A backend observation must
+//! bind the exact request sequence, platform, `WindowId` index and generation.
+//!
+//! Readback is explicitly scoped. Windows DWM can read back the system backdrop
+//! type, but that does not prove Makepad transparency or intensity state. Even a
+//! verified full-visual acknowledgement remains partial: transient material,
+//! complete platform profile, product runtime, effect and production authority
+//! stay false.
 
-use makepad_widgets::WindowVisuals;
+use makepad_widgets::{WindowBackdrop, WindowVisuals};
 
 use super::hepta_makepad_window_material::HeptaMakepadWindowMaterialReceipt;
 use super::hepta_platform_material::HeptaPlatform;
 
 pub const HEPTA_WINDOW_VISUAL_ACK_CONTRACT_SOURCE_WIRED: bool = true;
+pub const HEPTA_WINDOW_VISUAL_ACK_SCOPED_READBACK_SOURCE_WIRED: bool = true;
 pub const HEPTA_WINDOW_VISUAL_ACK_PRODUCER_BOUND: bool = false;
 pub const HEPTA_WINDOW_VISUAL_ACK_RUNTIME_VALIDATED: bool = false;
+pub const HEPTA_WINDOW_VISUAL_ACK_FULL_VISUAL_READBACK_VALIDATED: bool = false;
 pub const HEPTA_WINDOW_VISUAL_ACK_TRANSIENT_SYSTEM_MATERIAL_BOUND: bool = false;
 pub const HEPTA_WINDOW_VISUAL_ACK_COMPLETE_PROFILE_BOUND: bool = false;
 pub const HEPTA_WINDOW_VISUAL_ACK_SYSTEM_MATERIAL_BOUND: bool = false;
@@ -34,33 +38,81 @@ pub enum HeptaWindowVisualBackend {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HeptaWindowVisualReadbackScope {
+    None,
+    BackdropOnly,
+    FullVisuals,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum HeptaWindowVisualReadback {
+    None,
+    Backdrop(WindowBackdrop),
+    Full(WindowVisuals),
+}
+
+impl HeptaWindowVisualReadback {
+    pub const fn scope(self) -> HeptaWindowVisualReadbackScope {
+        match self {
+            Self::None => HeptaWindowVisualReadbackScope::None,
+            Self::Backdrop(_) => HeptaWindowVisualReadbackScope::BackdropOnly,
+            Self::Full(_) => HeptaWindowVisualReadbackScope::FullVisuals,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HeptaWindowVisualAckStatus {
-    VerifiedPersistentChromeWithReadback,
     VerifiedPersistentChromeWithoutReadback,
-    VerifiedSolidFallbackWithReadback,
+    VerifiedPersistentChromeWithBackdropReadback,
+    VerifiedPersistentChromeWithFullReadback,
     VerifiedSolidFallbackWithoutReadback,
+    VerifiedSolidFallbackWithBackdropReadback,
+    VerifiedSolidFallbackWithFullReadback,
     RejectedNoQueuedRequest,
     RejectedRequestSequence,
     RejectedPlatform,
     RejectedWindowIdentity,
     RejectedBackend,
     RejectedBackendFailure,
-    RejectedReadbackMissing,
-    RejectedUnexpectedReadback,
     RejectedReadbackMismatch,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HeptaWindowVisualRequestIdentity {
-    pub request_sequence: u64,
-    pub platform: HeptaPlatform,
-    pub window_index: usize,
-    pub window_generation: u64,
-    pub requested_visuals: WindowVisuals,
-    pub persistent_chrome_requested: bool,
+    request_sequence: u64,
+    platform: HeptaPlatform,
+    window_index: usize,
+    window_generation: u64,
+    requested_visuals: WindowVisuals,
+    persistent_chrome_requested: bool,
 }
 
 impl HeptaWindowVisualRequestIdentity {
+    pub const fn request_sequence(self) -> u64 {
+        self.request_sequence
+    }
+
+    pub const fn platform(self) -> HeptaPlatform {
+        self.platform
+    }
+
+    pub const fn window_index(self) -> usize {
+        self.window_index
+    }
+
+    pub const fn window_generation(self) -> u64 {
+        self.window_generation
+    }
+
+    pub const fn requested_visuals(self) -> WindowVisuals {
+        self.requested_visuals
+    }
+
+    pub const fn persistent_chrome_requested(self) -> bool {
+        self.persistent_chrome_requested
+    }
+
     /// Creates an acknowledgement identity only for an exact framework request
     /// that was actually queued. A deduplicated/no-op request cannot manufacture
     /// backend evidence.
@@ -95,8 +147,7 @@ pub struct HeptaWindowVisualBackendObservation {
     pub backend: HeptaWindowVisualBackend,
     pub attempted: bool,
     pub applied: bool,
-    pub readback_supported: bool,
-    pub observed_visuals: Option<WindowVisuals>,
+    pub readback: HeptaWindowVisualReadback,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -109,8 +160,11 @@ pub struct HeptaWindowVisualAckReceipt {
     pub window_generation: u64,
     pub backend: HeptaWindowVisualBackend,
     pub requested_visuals: WindowVisuals,
+    pub readback_scope: HeptaWindowVisualReadbackScope,
+    pub observed_backdrop: Option<WindowBackdrop>,
     pub observed_visuals: Option<WindowVisuals>,
-    pub exact_readback: bool,
+    pub backdrop_exact: bool,
+    pub full_visuals_exact: bool,
     pub persistent_chrome_acknowledged: bool,
     pub solid_fallback_acknowledged: bool,
     pub transient_system_material_bound: bool,
@@ -157,36 +211,56 @@ pub fn verify_window_visual_acknowledgement(
         Some(HeptaWindowVisualAckStatus::RejectedBackend)
     } else if !observation.attempted || !observation.applied {
         Some(HeptaWindowVisualAckStatus::RejectedBackendFailure)
-    } else if observation.readback_supported && observation.observed_visuals.is_none() {
-        Some(HeptaWindowVisualAckStatus::RejectedReadbackMissing)
-    } else if !observation.readback_supported && observation.observed_visuals.is_some() {
-        Some(HeptaWindowVisualAckStatus::RejectedUnexpectedReadback)
-    } else if observation
-        .observed_visuals
-        .map(WindowVisuals::normalized)
-        .is_some_and(|visuals| visuals != request.requested_visuals.normalized())
-    {
+    } else if readback_mismatches(request.requested_visuals, observation.readback) {
         Some(HeptaWindowVisualAckStatus::RejectedReadbackMismatch)
     } else {
         None
     };
 
     if let Some(status) = rejection {
-        return receipt(request, observation, status, false, false);
+        return receipt(request, observation, status, false);
     }
 
-    let exact_readback = observation.readback_supported
-        && observation
-            .observed_visuals
-            .map(WindowVisuals::normalized)
-            == Some(request.requested_visuals.normalized());
-    let status = match (request.persistent_chrome_requested, exact_readback) {
-        (true, true) => HeptaWindowVisualAckStatus::VerifiedPersistentChromeWithReadback,
-        (true, false) => HeptaWindowVisualAckStatus::VerifiedPersistentChromeWithoutReadback,
-        (false, true) => HeptaWindowVisualAckStatus::VerifiedSolidFallbackWithReadback,
-        (false, false) => HeptaWindowVisualAckStatus::VerifiedSolidFallbackWithoutReadback,
+    let status = match (
+        request.persistent_chrome_requested,
+        observation.readback.scope(),
+    ) {
+        (true, HeptaWindowVisualReadbackScope::None) => {
+            HeptaWindowVisualAckStatus::VerifiedPersistentChromeWithoutReadback
+        }
+        (true, HeptaWindowVisualReadbackScope::BackdropOnly) => {
+            HeptaWindowVisualAckStatus::VerifiedPersistentChromeWithBackdropReadback
+        }
+        (true, HeptaWindowVisualReadbackScope::FullVisuals) => {
+            HeptaWindowVisualAckStatus::VerifiedPersistentChromeWithFullReadback
+        }
+        (false, HeptaWindowVisualReadbackScope::None) => {
+            HeptaWindowVisualAckStatus::VerifiedSolidFallbackWithoutReadback
+        }
+        (false, HeptaWindowVisualReadbackScope::BackdropOnly) => {
+            HeptaWindowVisualAckStatus::VerifiedSolidFallbackWithBackdropReadback
+        }
+        (false, HeptaWindowVisualReadbackScope::FullVisuals) => {
+            HeptaWindowVisualAckStatus::VerifiedSolidFallbackWithFullReadback
+        }
     };
-    receipt(request, observation, status, true, exact_readback)
+    receipt(request, observation, status, true)
+}
+
+fn readback_mismatches(
+    requested_visuals: WindowVisuals,
+    readback: HeptaWindowVisualReadback,
+) -> bool {
+    let requested_visuals = requested_visuals.normalized();
+    match readback {
+        HeptaWindowVisualReadback::None => false,
+        HeptaWindowVisualReadback::Backdrop(backdrop) => {
+            backdrop != requested_visuals.backdrop
+        }
+        HeptaWindowVisualReadback::Full(visuals) => {
+            visuals.normalized() != requested_visuals
+        }
+    }
 }
 
 const fn backend_matches_platform(
@@ -205,8 +279,28 @@ fn receipt(
     observation: HeptaWindowVisualBackendObservation,
     status: HeptaWindowVisualAckStatus,
     accepted: bool,
-    exact_readback: bool,
 ) -> HeptaWindowVisualAckReceipt {
+    let requested_visuals = request.requested_visuals.normalized();
+    let (observed_backdrop, observed_visuals, backdrop_exact, full_visuals_exact) =
+        match observation.readback {
+            HeptaWindowVisualReadback::None => (None, None, false, false),
+            HeptaWindowVisualReadback::Backdrop(backdrop) => (
+                Some(backdrop),
+                None,
+                backdrop == requested_visuals.backdrop,
+                false,
+            ),
+            HeptaWindowVisualReadback::Full(visuals) => {
+                let visuals = visuals.normalized();
+                (
+                    Some(visuals.backdrop),
+                    Some(visuals),
+                    visuals.backdrop == requested_visuals.backdrop,
+                    visuals == requested_visuals,
+                )
+            }
+        };
+
     HeptaWindowVisualAckReceipt {
         status,
         accepted,
@@ -215,9 +309,12 @@ fn receipt(
         window_index: request.window_index,
         window_generation: request.window_generation,
         backend: observation.backend,
-        requested_visuals: request.requested_visuals.normalized(),
-        observed_visuals: observation.observed_visuals.map(WindowVisuals::normalized),
-        exact_readback,
+        requested_visuals,
+        readback_scope: observation.readback.scope(),
+        observed_backdrop,
+        observed_visuals,
+        backdrop_exact,
+        full_visuals_exact,
         persistent_chrome_acknowledged: accepted && request.persistent_chrome_requested,
         solid_fallback_acknowledged: accepted && !request.persistent_chrome_requested,
         transient_system_material_bound: false,
@@ -280,7 +377,7 @@ mod tests {
 
     fn observation(
         request: HeptaWindowVisualRequestIdentity,
-        readback_supported: bool,
+        readback: HeptaWindowVisualReadback,
     ) -> HeptaWindowVisualBackendObservation {
         HeptaWindowVisualBackendObservation {
             request_sequence: request.request_sequence,
@@ -290,8 +387,7 @@ mod tests {
             backend: HeptaWindowVisualBackend::WindowsDwm,
             attempted: true,
             applied: true,
-            readback_supported,
-            observed_visuals: readback_supported.then_some(request.requested_visuals),
+            readback,
         }
     }
 
@@ -304,9 +400,9 @@ mod tests {
         let request =
             HeptaWindowVisualRequestIdentity::from_makepad_receipt(makepad_receipt(true, true))
                 .unwrap();
-        assert_eq!(request.request_sequence, 7);
-        assert_eq!(request.window_index, 2);
-        assert_eq!(request.window_generation, 11);
+        assert_eq!(request.request_sequence(), 7);
+        assert_eq!(request.window_index(), 2);
+        assert_eq!(request.window_generation(), 11);
     }
 
     #[test]
@@ -314,13 +410,19 @@ mod tests {
         let request =
             HeptaWindowVisualRequestIdentity::from_makepad_receipt(makepad_receipt(true, true))
                 .unwrap();
-        let mut stale = observation(request, true);
+        let mut stale = observation(
+            request,
+            HeptaWindowVisualReadback::Backdrop(WindowBackdrop::Mica),
+        );
         stale.request_sequence += 1;
         assert_eq!(
             verify_window_visual_acknowledgement(request, stale).status,
             HeptaWindowVisualAckStatus::RejectedRequestSequence
         );
-        let mut stale_window = observation(request, true);
+        let mut stale_window = observation(
+            request,
+            HeptaWindowVisualReadback::Backdrop(WindowBackdrop::Mica),
+        );
         stale_window.window_generation += 1;
         assert_eq!(
             verify_window_visual_acknowledgement(request, stale_window).status,
@@ -333,22 +435,27 @@ mod tests {
         let request =
             HeptaWindowVisualRequestIdentity::from_makepad_receipt(makepad_receipt(true, true))
                 .unwrap();
-        let mut wrong_backend = observation(request, true);
+        let mut wrong_backend = observation(
+            request,
+            HeptaWindowVisualReadback::Backdrop(WindowBackdrop::Mica),
+        );
         wrong_backend.backend = HeptaWindowVisualBackend::MacosAppKit;
         assert_eq!(
             verify_window_visual_acknowledgement(request, wrong_backend).status,
             HeptaWindowVisualAckStatus::RejectedBackend
         );
 
-        let mut missing = observation(request, true);
-        missing.observed_visuals = None;
+        let mut failed = observation(request, HeptaWindowVisualReadback::None);
+        failed.applied = false;
         assert_eq!(
-            verify_window_visual_acknowledgement(request, missing).status,
-            HeptaWindowVisualAckStatus::RejectedReadbackMissing
+            verify_window_visual_acknowledgement(request, failed).status,
+            HeptaWindowVisualAckStatus::RejectedBackendFailure
         );
 
-        let mut mismatch = observation(request, true);
-        mismatch.observed_visuals = Some(WindowVisuals::default());
+        let mismatch = observation(
+            request,
+            HeptaWindowVisualReadback::Backdrop(WindowBackdrop::None),
+        );
         assert_eq!(
             verify_window_visual_acknowledgement(request, mismatch).status,
             HeptaWindowVisualAckStatus::RejectedReadbackMismatch
@@ -356,41 +463,97 @@ mod tests {
     }
 
     #[test]
-    fn verified_persistent_chrome_remains_partial_and_authority_free() {
+    fn backdrop_only_readback_is_partial_not_full_visual_readback() {
         let request =
             HeptaWindowVisualRequestIdentity::from_makepad_receipt(makepad_receipt(true, true))
                 .unwrap();
-        let with_readback = verify_window_visual_acknowledgement(request, observation(request, true));
-        assert_eq!(
-            with_readback.status,
-            HeptaWindowVisualAckStatus::VerifiedPersistentChromeWithReadback
+        let receipt = verify_window_visual_acknowledgement(
+            request,
+            observation(
+                request,
+                HeptaWindowVisualReadback::Backdrop(WindowBackdrop::Mica),
+            ),
         );
-        assert!(with_readback.accepted);
-        assert!(with_readback.exact_readback);
-        assert!(with_readback.persistent_chrome_acknowledged);
-        assert!(with_readback.remains_partial());
-        assert!(with_readback.grants_no_authority());
-
-        let without_readback =
-            verify_window_visual_acknowledgement(request, observation(request, false));
         assert_eq!(
-            without_readback.status,
-            HeptaWindowVisualAckStatus::VerifiedPersistentChromeWithoutReadback
+            receipt.status,
+            HeptaWindowVisualAckStatus::VerifiedPersistentChromeWithBackdropReadback
         );
-        assert!(without_readback.accepted);
-        assert!(!without_readback.exact_readback);
-        assert!(without_readback.remains_partial());
+        assert_eq!(
+            receipt.readback_scope,
+            HeptaWindowVisualReadbackScope::BackdropOnly
+        );
+        assert!(receipt.backdrop_exact);
+        assert!(!receipt.full_visuals_exact);
+        assert!(receipt.observed_visuals.is_none());
+        assert!(receipt.remains_partial());
+        assert!(receipt.grants_no_authority());
     }
 
     #[test]
-    fn solid_fallback_acknowledgement_is_not_a_material_binding_claim() {
+    fn full_readback_requires_every_visual_field_to_match() {
+        let request =
+            HeptaWindowVisualRequestIdentity::from_makepad_receipt(makepad_receipt(true, true))
+                .unwrap();
+        let exact = verify_window_visual_acknowledgement(
+            request,
+            observation(request, HeptaWindowVisualReadback::Full(request.requested_visuals())),
+        );
+        assert_eq!(
+            exact.status,
+            HeptaWindowVisualAckStatus::VerifiedPersistentChromeWithFullReadback
+        );
+        assert!(exact.full_visuals_exact);
+
+        let mismatch = WindowVisuals {
+            backdrop_intensity: 0.5,
+            ..request.requested_visuals()
+        };
+        assert_eq!(
+            verify_window_visual_acknowledgement(
+                request,
+                observation(request, HeptaWindowVisualReadback::Full(mismatch)),
+            )
+            .status,
+            HeptaWindowVisualAckStatus::RejectedReadbackMismatch
+        );
+    }
+
+    #[test]
+    fn verified_persistent_chrome_without_readback_remains_partial() {
+        let request =
+            HeptaWindowVisualRequestIdentity::from_makepad_receipt(makepad_receipt(true, true))
+                .unwrap();
+        let receipt = verify_window_visual_acknowledgement(
+            request,
+            observation(request, HeptaWindowVisualReadback::None),
+        );
+        assert_eq!(
+            receipt.status,
+            HeptaWindowVisualAckStatus::VerifiedPersistentChromeWithoutReadback
+        );
+        assert!(receipt.accepted);
+        assert!(!receipt.backdrop_exact);
+        assert!(!receipt.full_visuals_exact);
+        assert!(receipt.persistent_chrome_acknowledged);
+        assert!(receipt.remains_partial());
+        assert!(receipt.grants_no_authority());
+    }
+
+    #[test]
+    fn solid_fallback_backdrop_acknowledgement_is_not_a_material_binding_claim() {
         let request =
             HeptaWindowVisualRequestIdentity::from_makepad_receipt(makepad_receipt(true, false))
                 .unwrap();
-        let receipt = verify_window_visual_acknowledgement(request, observation(request, true));
+        let receipt = verify_window_visual_acknowledgement(
+            request,
+            observation(
+                request,
+                HeptaWindowVisualReadback::Backdrop(WindowBackdrop::None),
+            ),
+        );
         assert_eq!(
             receipt.status,
-            HeptaWindowVisualAckStatus::VerifiedSolidFallbackWithReadback
+            HeptaWindowVisualAckStatus::VerifiedSolidFallbackWithBackdropReadback
         );
         assert!(receipt.solid_fallback_acknowledged);
         assert!(receipt.remains_partial());
@@ -400,8 +563,10 @@ mod tests {
     #[test]
     fn acknowledgement_authority_constants_remain_false() {
         assert!(HEPTA_WINDOW_VISUAL_ACK_CONTRACT_SOURCE_WIRED);
+        assert!(HEPTA_WINDOW_VISUAL_ACK_SCOPED_READBACK_SOURCE_WIRED);
         assert!(!HEPTA_WINDOW_VISUAL_ACK_PRODUCER_BOUND);
         assert!(!HEPTA_WINDOW_VISUAL_ACK_RUNTIME_VALIDATED);
+        assert!(!HEPTA_WINDOW_VISUAL_ACK_FULL_VISUAL_READBACK_VALIDATED);
         assert!(!HEPTA_WINDOW_VISUAL_ACK_TRANSIENT_SYSTEM_MATERIAL_BOUND);
         assert!(!HEPTA_WINDOW_VISUAL_ACK_COMPLETE_PROFILE_BOUND);
         assert!(!HEPTA_WINDOW_VISUAL_ACK_SYSTEM_MATERIAL_BOUND);

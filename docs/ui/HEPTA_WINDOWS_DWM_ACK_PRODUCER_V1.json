@@ -1,0 +1,75 @@
+{
+  "schema": "hepta.ui.windows-dwm-ack-producer.v1",
+  "status": "SOURCE_READY_EXPLICIT_HOST_BINDING_AND_RUNTIME_REQUIRED",
+  "candidateBranch": "codex/ui-v4-windows-dwm-ack-producer-20260828",
+  "source": {
+    "ackContract": "apps/hepta-native/src/shared/hepta_window_visual_ack.rs",
+    "dwmApi": "apps/hepta-native/src/shared/hepta_windows_material_adapter.rs",
+    "producer": "apps/hepta-native/src/shared/hepta_windows_window_ack_producer.rs"
+  },
+  "requestIdentity": [
+    "requestSequence",
+    "platform",
+    "windowIndex",
+    "windowGeneration",
+    "requestedVisuals",
+    "persistentChromeRequested"
+  ],
+  "hostBinding": {
+    "explicitHwndRequired": true,
+    "hwndDiscoveryAllowed": false,
+    "windowIndexRequired": true,
+    "windowGenerationRequired": true,
+    "available": false,
+    "runtimeStatus": "REQUIRED_NOT_RUN"
+  },
+  "dwm": {
+    "attribute": "DWMWA_SYSTEMBACKDROP_TYPE",
+    "minimumSupportedClient": "Windows 11 build 22621",
+    "values": {
+      "auto": 0,
+      "none": 1,
+      "mainWindowMica": 2,
+      "transientWindowAcrylic": 3,
+      "tabbedWindowMicaAlt": 4
+    },
+    "noneMapsToAuto": false,
+    "readbackScope": "BackdropOnly",
+    "fullVisualReadback": false,
+    "producerPerformsSet": false,
+    "producerPerformsGet": true
+  },
+  "supportedRequests": [
+    {
+      "persistentChromeRequested": true,
+      "requestedBackdrop": "Mica"
+    },
+    {
+      "persistentChromeRequested": false,
+      "requestedBackdrop": "None"
+    }
+  ],
+  "qualification": {
+    "sourceImplemented": true,
+    "nativeCompile": false,
+    "windowsCompile": false,
+    "hostBinding": false,
+    "runtimeReadback": false,
+    "backdropReadback": false,
+    "fullVisualReadback": false,
+    "transientSystemMaterial": false,
+    "completeProfile": false,
+    "systemMaterialBinding": false,
+    "deviceEvidence": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
