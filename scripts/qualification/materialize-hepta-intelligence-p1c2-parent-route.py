@@ -78,7 +78,9 @@ def patch_parent_workflow() -> None:
           )
           current_cargo = Path(cargo_path).read_text(encoding="utf-8")
           workspace_cargo = source_cargo.rstrip("\n") + "\n\n[workspace]\n"
-          if current_cargo not in {source_cargo, workspace_cargo}:
+          cargo_manifest_allowed = current_cargo in {source_cargo, workspace_cargo}
+          cargo_workspace_marker_present = current_cargo == workspace_cargo
+          if not cargo_manifest_allowed:
               raise SystemExit("P1.1c Cargo manifest drift exceeds the workspace-isolation marker")
 
           changed = subprocess.check_output(
@@ -109,7 +111,9 @@ def patch_parent_workflow() -> None:
               ).strip(),
               "frozen_semantic_paths": frozen_paths,
               "frozen_semantics_unchanged": True,
-              "cargo_workspace_isolation_only": current_cargo == workspace_cargo,
+              "cargo_manifest_allowed": cargo_manifest_allowed,
+              "cargo_workspace_isolation_only": cargo_manifest_allowed,
+              "cargo_workspace_marker_present": cargo_workspace_marker_present,
               "descendant_paths": descendant_paths,
               "child_qualification_present": child_qualification_present,
               "qualified": False,
