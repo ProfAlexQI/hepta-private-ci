@@ -1,4 +1,4 @@
-name: p0-3-2-a038-linux-diagnostic
+name: p0-3-2-a038-linux-diagnostic-retired
 
 on:
   push:
@@ -6,7 +6,6 @@ on:
       - "codex/hepta-intelligence-p032-a038-linux-diagnostic-20260828"
     paths:
       - ".github/workflows/p0-3-2-a038-linux-diagnostic.yml"
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,111 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  source-preflight:
-    name: P0.3.2 exact-candidate slim source preflight
+  retired:
+    if: ${{ false }}
     runs-on: ubuntu-slim
-    timeout-minutes: 15
     steps:
-      - name: Checkout exact canonical candidate
-        uses: actions/checkout@v4
-        with:
-          ref: a03863c8c6124a2024d959063da7ea412386de97
-          fetch-depth: 1
-
-      - name: Install repository Rust formatter
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.95.0
-          components: rustfmt
-
-      - name: Run source and format preflight
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m py_compile \
-            scripts/verify-hepta-intelligence-shared-projection-planner-v5.py \
-            scripts/check-hepta-intelligence-p0-3-2-clippy.py \
-            scripts/run-hepta-intelligence-shared-projection-planner-v7.py
-          python3 scripts/verify-hepta-intelligence-shared-projection-planner-v5.py
-          python3 - <<'PY'
-          from pathlib import Path
-          helper = Path("codex-rs/hepta-memory/src/cognitive_test_support.rs").read_text(encoding="utf-8")
-          store = Path("codex-rs/hepta-memory/src/cognitive_store.rs").read_text(encoding="utf-8")
-          assert ".canonicalize()" in helper
-          assert "canonicalize fleet root for platform-stable tests" in helper
-          assert "per-agent cognitive root must be canonical and must not traverse a symlink" in store
-          PY
-          cd codex-rs
-          rustfmt --edition 2024 --check \
-            hepta-memory/src/cognitive_store.rs \
-            hepta-memory/src/cognitive_kg_store.rs \
-            hepta-memory/src/cognitive_projection_planner.rs \
-            hepta-memory/src/cognitive_test_support.rs \
-            hepta-memory/src/fact_grounding.rs \
-            hepta-memory/src/fact_grounding/durable.rs \
-            hepta-memory/src/fact_grounding/durable/grounding.rs \
-            hepta-memory/src/fact_grounding/durable/grounding/prepare.rs \
-            hepta-memory/src/fact_grounding/durable/grounding/ledger.rs \
-            hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs \
-            hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs \
-            hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs \
-            hepta-memory/src/fact_grounding/durable/schema.rs \
-            hepta-memory/src/fact_grounding/durable/tests.rs \
-            hepta-memory/src/fact_grounding/shadow_projection_gate.rs \
-            hepta-memory/src/framing.rs
-
-  executable-diagnostic:
-    name: P0.3.2 exact-candidate executable diagnostic (${{ matrix.runner }})
-    strategy:
-      fail-fast: false
-      matrix:
-        runner:
-          - ubuntu-22.04
-          - ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 180
-    steps:
-      - name: Checkout exact canonical candidate
-        uses: actions/checkout@v4
-        with:
-          ref: a03863c8c6124a2024d959063da7ea412386de97
-          fetch-depth: 1
-
-      - name: Install repository Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.95.0
-          components: rustfmt,clippy
-
-      - name: Run exact v7 diagnostic gates
-        run: python3 scripts/run-hepta-intelligence-shared-projection-planner-v7.py
-
-      - name: Upload diagnostic evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: p032-a038-linux-${{ matrix.runner }}-${{ github.sha }}
-          path: artifacts/hepta-intelligence-shared-projection-planner-v7
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Enforce diagnostic result without granting qualification
-        if: always()
-        env:
-          RUNNER_LABEL: ${{ matrix.runner }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          path = Path(
-              "artifacts/hepta-intelligence-shared-projection-planner-v7/"
-              "qualification-receipt.json"
-          )
-          receipt = json.loads(path.read_text(encoding="utf-8"))
-          assert receipt["head"] == "a03863c8c6124a2024d959063da7ea412386de97"
-          if not receipt["qualified"]:
-              failed = [check["id"] for check in receipt["checks"] if not check["passed"]]
-              raise SystemExit(f"{os.environ['RUNNER_LABEL']} diagnostic failed: {failed}")
-          print(f"{os.environ['RUNNER_LABEL']} diagnostic passed; ubuntu-24.04 x64 admission is still required")
-          PY
+      - run: echo "retired"
