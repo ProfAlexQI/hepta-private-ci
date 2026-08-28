@@ -1,4 +1,4 @@
-name: Hepta Memory model extraction P1 finalizer
+name: Hepta P1 architecture gap finalizer
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-memory-model-extraction-p1-finalizer
+  group: hepta-p1-architecture-gap-finalizer
   cancel-in-progress: true
 
 env:
@@ -18,11 +18,11 @@ env:
   SOURCE_HEAD: ${{ github.sha }}
 
 jobs:
-  extract-and-qualify:
-    name: Extract and qualify physical Memory model crate
-    if: ${{ !contains(github.event.head_commit.message || '', '[hepta-memory-model-extracted]') }}
+  materialize-and-qualify:
+    name: Materialize P1 Memory and resource boundaries
+    if: ${{ !contains(github.event.head_commit.message || '', '[hepta-p1-gap-closure]') }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 240
     steps:
       - name: Checkout exact triggering head
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -49,22 +49,30 @@ jobs:
       - name: Extract stable Memory model source
         run: python3 scripts/hepta-memory-model-extraction-p1.py
 
+      - name: Wire process-wide concurrent-turn enforcement
+        run: python3 scripts/hepta-max-concurrent-turns-p1.py
+
       - name: Refresh workspace lock graph
         working-directory: codex-rs
         run: cargo metadata --format-version 1 > /dev/null
 
-      - name: Format extracted boundary
+      - name: Format bounded P1 changes
         working-directory: codex-rs
         run: |
           cargo fmt \
+            -p codex-app-server \
             -p codex-hepta-memory-model \
             -p codex-hepta-memory \
-            -p codex-hepta-memory-runtime
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-agentd
 
-      - name: Verify physical extraction source and lock binding
-        run: python3 scripts/verify-hepta-memory-model-extraction-p1.py
+      - name: Verify source and lock boundaries
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-memory-model-extraction-p1.py
+          python3 scripts/verify-hepta-max-concurrent-turns-p1.py
 
-      - name: Execute model and compatibility tests
+      - name: Execute Memory model and compatibility tests
         working-directory: codex-rs
         run: |
           set -euo pipefail
@@ -72,11 +80,19 @@ jobs:
           cargo test --locked -p codex-hepta-memory --lib -- --nocapture
           cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
 
+      - name: Execute concurrent-turn admission tests
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-app-server thread_status::tests -- --nocapture
+          cargo test --locked -p codex-hepta-agentd app_runtime::tests -- --nocapture
+
       - name: Compile real product callers
         working-directory: codex-rs
         run: |
           set -euo pipefail
           cargo check --locked --all-targets \
+            -p codex-app-server \
             -p codex-hepta-memory-model \
             -p codex-hepta-memory \
             -p codex-hepta-memory-runtime \
@@ -89,6 +105,7 @@ jobs:
         working-directory: codex-rs
         run: |
           cargo clippy --locked --all-targets \
+            -p codex-app-server \
             -p codex-hepta-memory-model \
             -p codex-hepta-memory \
             -p codex-hepta-memory-runtime \
@@ -106,6 +123,11 @@ jobs:
           allowed_exact = {
               "codex-rs/Cargo.toml",
               "codex-rs/Cargo.lock",
+              "codex-rs/app-server/src/lib.rs",
+              "codex-rs/app-server/src/message_processor.rs",
+              "codex-rs/app-server/src/request_processors/turn_processor.rs",
+              "codex-rs/app-server/src/thread_status.rs",
+              "codex-rs/hepta-agentd/src/app_runtime.rs",
               "codex-rs/hepta-memory/Cargo.toml",
               "codex-rs/hepta-memory/src/lib.rs",
               "codex-rs/hepta-memory/src/cognitive_model.rs",
@@ -123,7 +145,7 @@ jobs:
               and not path.startswith("codex-rs/hepta-memory-model/")
           )
           if unexpected:
-              raise SystemExit(f"Memory model extraction escaped allowlist: {unexpected}")
+              raise SystemExit(f"P1 materialization escaped allowlist: {unexpected}")
           if "codex-rs/hepta-memory/src/cognitive_model.rs" not in changed:
               raise SystemExit("legacy cognitive_model.rs was not physically removed")
           if not pathlib.Path("codex-rs/hepta-memory-model/src/lib.rs").is_file():
@@ -131,7 +153,7 @@ jobs:
           PY
           git diff --check
 
-      - name: Commit exact qualified extraction
+      - name: Commit exact qualified P1 materialization
         shell: bash
         run: |
           set -euo pipefail
@@ -142,10 +164,15 @@ jobs:
           git add -A \
             codex-rs/Cargo.toml \
             codex-rs/Cargo.lock \
+            codex-rs/app-server/src/lib.rs \
+            codex-rs/app-server/src/message_processor.rs \
+            codex-rs/app-server/src/request_processors/turn_processor.rs \
+            codex-rs/app-server/src/thread_status.rs \
+            codex-rs/hepta-agentd/src/app_runtime.rs \
             codex-rs/hepta-memory/Cargo.toml \
             codex-rs/hepta-memory/src/lib.rs \
             codex-rs/hepta-memory/src/cognitive_model.rs \
             codex-rs/hepta-memory-model
           git diff --cached --check
-          git commit -m "refactor(hepta): physically extract Memory model [hepta-memory-model-extracted]"
+          git commit -m "refactor(hepta): close P1 model and turn-budget gaps [hepta-p1-gap-closure]"
           git push origin "HEAD:refs/heads/$BRANCH_NAME"
