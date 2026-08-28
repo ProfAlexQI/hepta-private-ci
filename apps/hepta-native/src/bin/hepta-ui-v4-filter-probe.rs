@@ -11,7 +11,7 @@ use std::{
 };
 
 use hepta_native::makepad_widgets::*;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 const RECEIPT_SCHEMA: &str = "hepta.ui.v4.native-component-metrics.v1";
@@ -79,12 +79,15 @@ impl FilterProbeApp {
         let input_rect = input.area().rect(cx);
         let clear_rect = clear.area().rect(cx);
         let window = self.ui.window(cx, ids!(probe_window));
-        let viewport = window.get_inner_size(cx);
-        let dpi_factor = window
+        let window_id = window
             .window_id()
-            .filter(|window_id| cx.windows.is_valid(*window_id))
-            .map(|window_id| cx.windows[window_id].effective_dpi_factor())
-            .unwrap_or(1.0);
+            .filter(|window_id| cx.windows.is_valid(*window_id));
+        let (viewport, dpi_factor) = window_id
+            .map(|window_id| {
+                let window = &cx.windows[window_id];
+                (window.get_inner_size(), window.effective_dpi_factor())
+            })
+            .unwrap_or((Vec2d::default(), 1.0));
 
         let candidate_commit = std::env::var("HEPTA_CANDIDATE_COMMIT")
             .unwrap_or_else(|_| "UNBOUND".to_string());
@@ -166,13 +169,12 @@ impl FilterProbeApp {
     }
 
     fn finish(&mut self, cx: &mut Cx) {
-        let mut receipt = self
-            .pending_receipt
-            .take()
-            .unwrap_or_else(|| json!({
+        let mut receipt = self.pending_receipt.take().unwrap_or_else(|| {
+            json!({
                 "schema": RECEIPT_SCHEMA,
                 "status": "FAIL_METRICS_NOT_CAPTURED"
-            }));
+            })
+        });
 
         let screenshot = std::env::var_os("HEPTA_NATIVE_CAPTURE_FRAME_PATH")
             .map(PathBuf::from)
@@ -185,7 +187,8 @@ impl FilterProbeApp {
 
         let metrics_pass = receipt["qualification"]["componentMetrics"] == Value::Bool(true);
         let screenshot_requested = receipt["screenshot"]["requested"] == Value::Bool(true);
-        let screenshot_pass = receipt["qualification"]["componentScreenshot"] == Value::Bool(true);
+        let screenshot_pass =
+            receipt["qualification"]["componentScreenshot"] == Value::Bool(true);
         receipt["status"] = Value::String(
             if metrics_pass && (!screenshot_requested || screenshot_pass) {
                 "PASS_NATIVE_FILTER_COMPONENT_METRICS"
