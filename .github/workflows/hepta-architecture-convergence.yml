@@ -1,0 +1,172 @@
+name: hepta architecture convergence
+
+on:
+  pull_request:
+    paths:
+      - "ARCHITECTURE.md"
+      - "docs/architecture/**"
+      - "scripts/verify-hepta-architecture-convergence.py"
+      - "codex-rs/hepta-contracts/**"
+      - "codex-rs/hepta-memory/**"
+      - "codex-rs/hepta-agentd/**"
+      - ".github/workflows/hepta-architecture-convergence.yml"
+  push:
+    branches:
+      - "codex/hepta-architecture-convergence-*"
+    paths:
+      - "ARCHITECTURE.md"
+      - "docs/architecture/**"
+      - "scripts/verify-hepta-architecture-convergence.py"
+      - "codex-rs/hepta-contracts/**"
+      - "codex-rs/hepta-memory/**"
+      - "codex-rs/hepta-agentd/**"
+      - ".github/workflows/hepta-architecture-convergence.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-architecture-convergence-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  product-graph:
+    name: Real product graph (exact head, no authority)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      EVIDENCE_DIR: ${{ runner.temp }}/hepta-architecture-convergence
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Bind exact source and initialize evidence
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          mkdir -p "$EVIDENCE_DIR"
+          {
+            echo "schema=hepta.architecture_convergence.receipt.v1"
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "runner_name=${RUNNER_NAME}"
+            echo "runner_os=${RUNNER_OS}"
+            echo "qualification_only=true"
+            echo "runtime_authority=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "model_invocation=false"
+            echo "provider_dispatch=false"
+            echo "external_effect=false"
+            echo "fleet_mutation=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "qualified=false"
+          } > "$EVIDENCE_DIR/receipt.txt"
+
+      - name: Verify canonical architecture and single-writer graph
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-architecture-convergence.py \
+            | tee "$EVIDENCE_DIR/source-verifier.json"
+          echo "source_verifier=passed" >> "$EVIDENCE_DIR/receipt.txt"
+
+      - name: Package-scoped format gate
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt \
+            --package codex-hepta-contracts \
+            --package codex-hepta-memory \
+            --package codex-hepta-agentd \
+            -- --check
+          echo "format=passed" >> "$EVIDENCE_DIR/receipt.txt"
+
+      - name: Default real product graph tests
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo test --locked \
+            -p codex-hepta-contracts \
+            -p codex-hepta-memory \
+            -p codex-hepta-agentd \
+            --lib -- --nocapture 2>&1 | tee "$EVIDENCE_DIR/default-tests.log"
+          echo "default_product_graph_tests=passed" >> "$EVIDENCE_DIR/receipt.txt"
+
+      - name: Qualification cognitive-write profile tests
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo test --locked --no-default-features \
+            -p codex-hepta-agentd \
+            --features qualification-cognitive-write \
+            --lib -- --nocapture 2>&1 | tee "$EVIDENCE_DIR/qualification-tests.log"
+          echo "qualification_profile_tests=passed" >> "$EVIDENCE_DIR/receipt.txt"
+
+      - name: All-target product compilation
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-memory \
+            -p codex-hepta-agentd 2>&1 | tee "$EVIDENCE_DIR/check.log"
+          cargo check --locked --all-targets --no-default-features \
+            -p codex-hepta-agentd \
+            --features qualification-cognitive-write 2>&1 \
+            | tee "$EVIDENCE_DIR/qualification-check.log"
+          echo "all_target_check=passed" >> "$EVIDENCE_DIR/receipt.txt"
+
+      - name: Strict Clippy
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-memory \
+            -p codex-hepta-agentd \
+            -- -D warnings 2>&1 | tee "$EVIDENCE_DIR/clippy.log"
+          cargo clippy --locked --all-targets --no-default-features \
+            -p codex-hepta-agentd \
+            --features qualification-cognitive-write \
+            -- -D warnings 2>&1 | tee "$EVIDENCE_DIR/qualification-clippy.log"
+          echo "clippy=passed" >> "$EVIDENCE_DIR/receipt.txt"
+
+      - name: Seal exact-head qualification result
+        run: |
+          set -euo pipefail
+          sed -i 's/^qualified=false$/qualified=true/' "$EVIDENCE_DIR/receipt.txt"
+          echo "result=PASS_ARCHITECTURE_CONVERGENCE_P0" >> "$EVIDENCE_DIR/receipt.txt"
+          cat "$EVIDENCE_DIR/receipt.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record failed or cancelled status
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_DIR"
+          echo "job_status=${{ job.status }}" >> "$EVIDENCE_DIR/receipt.txt"
+          find "$EVIDENCE_DIR" -maxdepth 1 -type f ! -name SHA256SUMS -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > "$EVIDENCE_DIR/SHA256SUMS"
+
+      - name: Upload exact-head evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-architecture-convergence-${{ env.CANDIDATE_SHA }}
+          path: ${{ env.EVIDENCE_DIR }}
+          if-no-files-found: error
