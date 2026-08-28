@@ -6,6 +6,8 @@ use sha2::Sha256;
 
 #[path = "fact_grounding/durable.rs"]
 mod durable_fact_grounding;
+#[path = "fact_grounding/shadow_projection_gate.rs"]
+mod shadow_projection_gate;
 
 pub(crate) fn frame_part(hasher: &mut Sha256, part: &[u8]) {
     hasher.update((part.len() as u64).to_be_bytes());
