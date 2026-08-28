@@ -1,0 +1,273 @@
+name: hepta-intelligence-p1-1b-hardening-exact-qualification
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-intelligence-p1-1b-hardening-1dad243-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-p1-1b-hardening-exact-1dad243
+  cancel-in-progress: true
+
+env:
+  P1_1B_SOURCE_SHA: 1dad243884c67b3cba50b073102269f06142aa1c
+  P1_1B_WRAPPER_PATH: .github/workflows/hepta-intelligence-p1-1b-hardening-exact-qualification.yml
+  P1_1B_MANIFEST_PATH: codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml
+  P1_1B_ARTIFACT_DIR: artifacts/hepta-intelligence-p1-1b-hardening-exact
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  exact-source-qualification:
+    name: P1.1b hardening exact-source executable qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout qualification wrapper
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify exact source binding and wrapper-only diff
+        id: source_binding
+        run: |
+          set -euo pipefail
+          mkdir -p "$P1_1B_ARTIFACT_DIR"
+
+          test "$(git rev-parse HEAD^)" = "$P1_1B_SOURCE_SHA"
+          test "$(git rev-list --count "$P1_1B_SOURCE_SHA"..HEAD)" = "1"
+          git merge-base --is-ancestor "$P1_1B_SOURCE_SHA" HEAD
+
+          mapfile -t changed_paths < <(git diff --name-only "$P1_1B_SOURCE_SHA"..HEAD)
+          printf '%s\n' "${changed_paths[@]}" \
+            | tee "$P1_1B_ARTIFACT_DIR/wrapper-changed-paths.txt"
+          test "${#changed_paths[@]}" = "1"
+          test "${changed_paths[0]}" = "$P1_1B_WRAPPER_PATH"
+
+          SOURCE_TREE="$(git rev-parse "$P1_1B_SOURCE_SHA^{tree}")" \
+          WRAPPER_COMMIT="$(git rev-parse HEAD)" \
+          WRAPPER_TREE="$(git rev-parse 'HEAD^{tree}')" \
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.hardening_source_binding.v1",
+              "source_commit": os.environ["P1_1B_SOURCE_SHA"],
+              "source_tree": os.environ["SOURCE_TREE"],
+              "wrapper_commit": os.environ["WRAPPER_COMMIT"],
+              "wrapper_tree": os.environ["WRAPPER_TREE"],
+              "allowed_wrapper_path": os.environ["P1_1B_WRAPPER_PATH"],
+              "wrapper_only_diff": True,
+              "source_mutation": False,
+              "runtime_wired": False,
+              "production_authority": False,
+          }
+          artifact_dir = Path(os.environ["P1_1B_ARTIFACT_DIR"])
+          (artifact_dir / "source-binding.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Verify Rust toolchain pin
+        id: toolchain
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          {
+            rustc --version
+            cargo --version
+            rustfmt --version
+            cargo clippy --version
+            test "$(rustc --version | awk '{print $2}')" = "1.95.0"
+          } 2>&1 | tee "$P1_1B_ARTIFACT_DIR/toolchain.log"
+
+      - name: Run P1.1b base source gate
+        id: base_source
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python3 scripts/verify-hepta-intelligence-local-embedding-index.py \
+            2>&1 | tee "$P1_1B_ARTIFACT_DIR/base-source-gate.log"
+
+      - name: Run P1.1b hardening source gate
+        id: hardening_source
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python3 scripts/verify-hepta-intelligence-p1-1b-hardening.py \
+            2>&1 | tee "$P1_1B_ARTIFACT_DIR/hardening-source-gate.log"
+
+      - name: Check exact rustfmt state
+        id: fmt
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo fmt \
+            --manifest-path "$P1_1B_MANIFEST_PATH" \
+            --all -- --check \
+            2>&1 | tee "$P1_1B_ARTIFACT_DIR/rustfmt.log"
+
+      - name: Run all unit and integration tests
+        id: tests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo test \
+            --manifest-path "$P1_1B_MANIFEST_PATH" \
+            --all-targets -- --nocapture \
+            2>&1 | tee "$P1_1B_ARTIFACT_DIR/tests.log"
+
+      - name: Check all isolated targets
+        id: check
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo check \
+            --manifest-path "$P1_1B_MANIFEST_PATH" \
+            --all-targets \
+            2>&1 | tee "$P1_1B_ARTIFACT_DIR/check.log"
+
+      - name: Run strict isolated Clippy
+        id: clippy
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo clippy \
+            --manifest-path "$P1_1B_MANIFEST_PATH" \
+            --all-targets -- -D warnings \
+            2>&1 | tee "$P1_1B_ARTIFACT_DIR/clippy.log"
+
+      - name: Prove qualification commands did not mutate tracked source
+        id: clean_tree
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          git diff --exit-code -- \
+            codex-rs/hepta-memory-p1-1b-qualification \
+            scripts/verify-hepta-intelligence-local-embedding-index.py \
+            scripts/verify-hepta-intelligence-p1-1b-hardening.py \
+            plans/hepta-intelligence \
+            2>&1 | tee "$P1_1B_ARTIFACT_DIR/clean-tree.log"
+
+      - name: Write exact-source qualification receipt
+        if: always()
+        env:
+          TOOLCHAIN_OUTCOME: ${{ steps.toolchain.outcome }}
+          BASE_SOURCE_OUTCOME: ${{ steps.base_source.outcome }}
+          HARDENING_SOURCE_OUTCOME: ${{ steps.hardening_source.outcome }}
+          FMT_OUTCOME: ${{ steps.fmt.outcome }}
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+          CLIPPY_OUTCOME: ${{ steps.clippy.outcome }}
+          CLEAN_TREE_OUTCOME: ${{ steps.clean_tree.outcome }}
+          RUNNER_NAME: ${{ runner.name }}
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          gates = {
+              "toolchain": os.environ.get("TOOLCHAIN_OUTCOME", "missing"),
+              "base_source": os.environ.get("BASE_SOURCE_OUTCOME", "missing"),
+              "hardening_source": os.environ.get("HARDENING_SOURCE_OUTCOME", "missing"),
+              "rustfmt": os.environ.get("FMT_OUTCOME", "missing"),
+              "tests": os.environ.get("TESTS_OUTCOME", "missing"),
+              "check": os.environ.get("CHECK_OUTCOME", "missing"),
+              "clippy": os.environ.get("CLIPPY_OUTCOME", "missing"),
+              "clean_tree": os.environ.get("CLEAN_TREE_OUTCOME", "missing"),
+          }
+          all_pass = all(value == "success" for value in gates.values())
+          source_tree = subprocess.check_output(
+              ["git", "rev-parse", f"{os.environ['P1_1B_SOURCE_SHA']}^{{tree}}"],
+              text=True,
+          ).strip()
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.hardening_exact_qualification.v1",
+              "status": (
+                  "PASS_P1_1B_HARDENING_EXACT_SOURCE_EXECUTABLE_GATES"
+                  if all_pass
+                  else "FAIL_P1_1B_HARDENING_EXACT_SOURCE_EXECUTABLE_GATES"
+              ),
+              "source_commit": os.environ["P1_1B_SOURCE_SHA"],
+              "source_tree": source_tree,
+              "wrapper_commit": subprocess.check_output(
+                  ["git", "rev-parse", "HEAD"], text=True
+              ).strip(),
+              "wrapper_path": os.environ["P1_1B_WRAPPER_PATH"],
+              "wrapper_only_diff": True,
+              "cargo_offline": os.environ.get("CARGO_NET_OFFLINE") == "true",
+              "runner": {
+                  "name": os.environ.get("RUNNER_NAME"),
+                  "os": os.environ.get("RUNNER_OS"),
+                  "arch": os.environ.get("RUNNER_ARCH"),
+              },
+              "workflow": {
+                  "run_id": int(os.environ["RUN_ID"]),
+                  "run_attempt": int(os.environ["RUN_ATTEMPT"]),
+              },
+              "gates": gates,
+              "executable_gates_passed": all_pass,
+              "qualified": False,
+              "qualification_blockers": [
+                  "P0.1-P1.1a executable qualification",
+                  "review and acceptance of the P1.1b hardening evidence",
+              ],
+              "runtime_wired": False,
+              "default_recall_changed": False,
+              "federation_recall_changed": False,
+              "context_attachment": False,
+              "physical_send": False,
+              "external_effects": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "callers_ratchet": False,
+          }
+          artifact_dir = Path(os.environ["P1_1B_ARTIFACT_DIR"])
+          (artifact_dir / "qualification-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload exact-source qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1b-hardening-exact-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1b-hardening-exact
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Enforce executable gate result
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["P1_1B_ARTIFACT_DIR"]) / "qualification-receipt.json"
+          receipt = json.loads(path.read_text(encoding="utf-8"))
+          if not receipt["executable_gates_passed"]:
+              raise SystemExit(json.dumps(receipt["gates"], sort_keys=True))
+          PY
