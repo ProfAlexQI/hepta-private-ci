@@ -2,14 +2,17 @@
 name = "codex-hepta-authbus-qualification"
 version = "0.0.0"
 edition = "2024"
+rust-version = "1.95"
 license = "Apache-2.0"
 publish = false
 
 # P0.2 is intentionally isolated from the parent default workspace until P0.1
 # receives executable exact-head qualification evidence. This nested workspace
-# can be built only through its explicit manifest path.
+# can be built only through its explicit manifest path. Resolver 3 binds
+# dependency selection to the package MSRV instead of silently selecting crates
+# that require a newer compiler.
 [workspace]
-resolver = "2"
+resolver = "3"
 
 [features]
 default = []
