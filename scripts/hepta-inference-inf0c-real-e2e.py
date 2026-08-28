@@ -2,8 +2,9 @@
 """Qualification-only real-software smoke for fixed local inference services.
 
 This harness never downloads models, never contacts a non-loopback host, and
-never writes raw prompts or model outputs to its receipt. It proves only model
-discovery plus one bounded Responses request for each pre-provisioned service.
+never writes raw prompts or model outputs to its receipt. It proves exact model
+presence plus one bounded Responses request whose digest-only semantic output
+equals the fixed qualification marker for each pre-provisioned service.
 Cancellation and controlled restart remain separate required evidence.
 """
 
@@ -11,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import os
 import pathlib
@@ -25,9 +27,11 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
-PROMPT = "Return exactly HEPTA_INF0C_OK."
+EXPECTED_OUTPUT = "HEPTA_INF0C_OK"
+PROMPT = f"Return exactly {EXPECTED_OUTPUT}."
 MAX_HTTP_BODY = 4 * 1024 * 1024
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
+ALLOWED_BASE_PATHS = {"", "/v1"}
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -59,6 +63,7 @@ class HttpResult:
     status: int
     body: bytes
     elapsed_ms: int
+    media_type: str
 
 
 def parse_args() -> argparse.Namespace:
@@ -78,33 +83,81 @@ def require(condition: bool, message: str) -> None:
         raise QualificationError(message)
 
 
-def normalize_loopback_base(value: str) -> str:
-    parsed = urllib.parse.urlsplit(value)
-    require(parsed.scheme == "http", "only loopback HTTP endpoints are allowed")
-    require(parsed.hostname in ALLOWED_HOSTS, "endpoint host is not loopback")
-    require(parsed.username is None and parsed.password is None, "endpoint credentials are forbidden")
-    require(not parsed.query and not parsed.fragment, "endpoint query/fragment is forbidden")
-    require(parsed.port is not None, "endpoint must include an explicit port")
+def _pin_loopback_literal(hostname: str, port: int) -> str:
     try:
-        addresses = socket.getaddrinfo(parsed.hostname, parsed.port, type=socket.SOCK_STREAM)
+        addresses = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
     except OSError as error:
         raise QualificationError(f"failed to resolve loopback endpoint: {error}") from error
+    require(bool(addresses), "endpoint resolved to no addresses")
+
+    literals: list[str] = []
     for address in addresses:
-        host = address[4][0]
-        require(host.startswith("127.") or host == "::1", "endpoint resolved outside loopback")
+        literal = address[4][0].split("%", 1)[0]
+        try:
+            parsed = ipaddress.ip_address(literal)
+        except ValueError as error:
+            raise QualificationError("endpoint resolved to an invalid IP address") from error
+        require(parsed.is_loopback, "endpoint resolved outside loopback")
+        canonical = parsed.compressed
+        if canonical not in literals:
+            literals.append(canonical)
+
+    # Prefer IPv4 when both families are available so common local services
+    # bound only to 127.0.0.1 remain reachable. The chosen literal is persisted
+    # only as part of the request URL in memory, never in the receipt.
+    return next((value for value in literals if ":" not in value), literals[0])
+
+
+def normalize_loopback_base(value: str) -> str:
+    require(value == value.strip(), "endpoint has surrounding whitespace")
+    require(
+        not any(ord(character) < 32 or ord(character) == 127 for character in value),
+        "endpoint contains control characters",
+    )
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        port = parsed.port
+    except ValueError as error:
+        raise QualificationError("endpoint URL or port is invalid") from error
+    require(parsed.scheme == "http", "only loopback HTTP endpoints are allowed")
+    require(parsed.hostname in ALLOWED_HOSTS, "endpoint host is not loopback")
+    require(
+        parsed.username is None and parsed.password is None,
+        "endpoint credentials are forbidden",
+    )
+    require(not parsed.query and not parsed.fragment, "endpoint query/fragment is forbidden")
+    require(port is not None and port != 0, "endpoint must include a non-zero port")
     path = parsed.path.rstrip("/")
-    host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
-    return f"http://{host}:{parsed.port}{path}"
+    require(
+        path in ALLOWED_BASE_PATHS,
+        "only host root or /v1 endpoint paths are allowed",
+    )
+    literal = _pin_loopback_literal(parsed.hostname, port)
+    rendered_host = f"[{literal}]" if ":" in literal else literal
+    return f"http://{rendered_host}:{port}{path}"
 
 
 def validate_model_id(model: str) -> None:
     require(model == model.strip(), "model identifier has surrounding whitespace")
     require(0 < len(model) <= 512, "model identifier length is invalid")
-    require(not any(character.isspace() and character not in "-_./:" for character in model), "model identifier contains whitespace")
-    require(not any(ord(character) < 32 or ord(character) == 127 for character in model), "model identifier contains control characters")
+    require(not any(character.isspace() for character in model), "model identifier contains whitespace")
+    require(
+        not any(ord(character) < 32 or ord(character) == 127 for character in model),
+        "model identifier contains control characters",
+    )
 
 
-def request_json(method: str, url: str, timeout: float, payload: dict[str, Any] | None = None) -> HttpResult:
+def _media_type(headers: Any) -> str:
+    raw = headers.get("Content-Type", "")
+    return raw.split(";", 1)[0].strip().lower()
+
+
+def request_json(
+    method: str,
+    url: str,
+    timeout: float,
+    payload: dict[str, Any] | None = None,
+) -> HttpResult:
     headers = {"Accept": "application/json"}
     data = None
     if payload is not None:
@@ -116,14 +169,25 @@ def request_json(method: str, url: str, timeout: float, payload: dict[str, Any] 
         with LOOPBACK_OPENER.open(request, timeout=timeout) as response:
             body = response.read(MAX_HTTP_BODY + 1)
             status = response.status
+            media_type = _media_type(response.headers)
     except urllib.error.HTTPError as error:
-        raise QualificationError(f"HTTP status {error.code} from {urllib.parse.urlsplit(url).path}") from error
+        raise QualificationError(
+            f"HTTP status {error.code} from {urllib.parse.urlsplit(url).path}"
+        ) from error
     except (urllib.error.URLError, TimeoutError, OSError) as error:
-        raise QualificationError(f"request failed for {urllib.parse.urlsplit(url).path}: {error}") from error
+        raise QualificationError(
+            f"request failed for {urllib.parse.urlsplit(url).path}: {error}"
+        ) from error
     elapsed_ms = max(0, (time.monotonic_ns() - started) // 1_000_000)
     require(len(body) <= MAX_HTTP_BODY, "HTTP response exceeded bounded body limit")
     require(200 <= status < 300, f"unexpected HTTP status {status}")
-    return HttpResult(status=status, body=body, elapsed_ms=elapsed_ms)
+    require(media_type == "application/json", f"unexpected response media type {media_type or '<missing>'}")
+    return HttpResult(
+        status=status,
+        body=body,
+        elapsed_ms=elapsed_ms,
+        media_type=media_type,
+    )
 
 
 def parse_object(result: HttpResult, label: str) -> dict[str, Any]:
@@ -135,9 +199,50 @@ def parse_object(result: HttpResult, label: str) -> dict[str, Any]:
     return value
 
 
+def extract_response_text(payload: dict[str, Any], label: str) -> str:
+    top_level = payload.get("output_text")
+    if isinstance(top_level, str):
+        require(top_level.strip(), f"{label} output_text is empty")
+        return top_level
+
+    output = payload.get("output")
+    require(isinstance(output, list), f"{label} output array is missing")
+    pieces: list[str] = []
+    for item in output:
+        if not isinstance(item, dict):
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") not in {"output_text", "text"}:
+                continue
+            text = part.get("text")
+            if isinstance(text, str):
+                pieces.append(text)
+    combined = "".join(pieces)
+    require(combined.strip(), f"{label} contains no output text")
+    return combined
+
+
+def semantic_output_receipt(payload: dict[str, Any], label: str) -> dict[str, Any]:
+    output = extract_response_text(payload, label).strip()
+    require(output == EXPECTED_OUTPUT, f"{label} semantic output mismatch")
+    encoded = output.encode("utf-8")
+    return {
+        "verified": True,
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+        "byte_length": len(encoded),
+        "raw_persisted": False,
+    }
+
+
 def body_receipt(result: HttpResult) -> dict[str, Any]:
     return {
         "status": result.status,
+        "media_type": result.media_type,
         "byte_length": len(result.body),
         "sha256": hashlib.sha256(result.body).hexdigest(),
         "elapsed_ms": result.elapsed_ms,
@@ -167,10 +272,12 @@ def qualify_ollama(base: str, model: str, timeout: float) -> dict[str, Any]:
             "stream": False,
         },
     )
-    parse_object(response_result, "Ollama Responses")
+    response_payload = parse_object(response_result, "Ollama Responses")
+    semantic = semantic_output_receipt(response_payload, "Ollama Responses")
     return {
         "version": version,
         "model_present": True,
+        "semantic_output": semantic,
         "version_response": body_receipt(version_result),
         "models_response": body_receipt(models_result),
         "inference_response": body_receipt(response_result),
@@ -196,9 +303,11 @@ def qualify_lmstudio(base: str, model: str, timeout: float) -> dict[str, Any]:
             "stream": False,
         },
     )
-    parse_object(response_result, "LM Studio Responses")
+    response_payload = parse_object(response_result, "LM Studio Responses")
+    semantic = semantic_output_receipt(response_payload, "LM Studio Responses")
     return {
         "model_present": True,
+        "semantic_output": semantic,
         "models_response": body_receipt(models_result),
         "inference_response": body_receipt(response_result),
     }
@@ -228,7 +337,10 @@ def write_receipt(path: pathlib.Path, receipt: dict[str, Any]) -> None:
         path.unlink(missing_ok=True)
         raise
     if os.name != "nt":
-        require(stat.S_IMODE(path.stat().st_mode) == 0o600, "receipt permissions are not owner-only")
+        require(
+            stat.S_IMODE(path.stat().st_mode) == 0o600,
+            "receipt permissions are not owner-only",
+        )
 
 
 def main() -> int:
@@ -244,12 +356,17 @@ def main() -> int:
     lmstudio = qualify_lmstudio(lmstudio_base, args.lmstudio_model, args.timeout_seconds)
     prompt_bytes = PROMPT.encode("utf-8")
     receipt = {
-        "schema": "hepta.inference.inf0c.real_software_e2e.v1",
+        "schema": "hepta.inference.inf0c.real_software_e2e.v2",
         "source": {
             "commit": git_value("rev-parse", "HEAD"),
             "tree": git_value("rev-parse", "HEAD^{tree}"),
         },
         "scope": "QUALIFICATION_ONLY_MINIMAL_REAL_SOFTWARE_E2E",
+        "expected_output": {
+            "sha256": hashlib.sha256(EXPECTED_OUTPUT.encode("utf-8")).hexdigest(),
+            "byte_length": len(EXPECTED_OUTPUT.encode("utf-8")),
+            "raw_persisted": False,
+        },
         "prompt": {
             "sha256": hashlib.sha256(prompt_bytes).hexdigest(),
             "byte_length": len(prompt_bytes),
