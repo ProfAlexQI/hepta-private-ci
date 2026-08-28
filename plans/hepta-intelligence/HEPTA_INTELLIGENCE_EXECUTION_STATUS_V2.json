@@ -4,8 +4,8 @@
   "repository": "ProfAlexQI/hepta-private-ci",
   "default_branch": "integration/vnext-main-20260811",
   "document_snapshot_head": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
-  "canonical_code_parent": "a85612afb43af722c61b54efe73570b25e9e4031",
-  "development_branch": "codex/hepta-intelligence-grounding-v2-20260828",
+  "p0_1_base_branch": "codex/hepta-intelligence-grounding-v2-20260828",
+  "development_branch": "codex/hepta-intelligence-grounding-ledger-v2-20260828",
   "authority": {
     "production_authority": false,
     "external_effects": false,
@@ -13,54 +13,55 @@
     "promotion": false,
     "callers_ratchet": false
   },
-  "current_tranche": {
+  "dependency": {
     "id": "P0.1",
-    "name": "qualification_source_span_fact_grounding",
+    "head": "10f89cd913b12dcb347a3bae5f290a455f985eb4",
     "status": "source_contract_pass_blocked_runner_not_assigned",
+    "qualified": false
+  },
+  "current_tranche": {
+    "id": "P0.2",
+    "name": "durable_fact_grounding_ledger",
+    "status": "source_gate_pass_pending_rust_and_hosted_ci",
+    "qualified": false,
     "files": [
-      "codex-rs/hepta-memory/src/fact_grounding.rs",
-      "codex-rs/hepta-memory/src/lib.rs",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V2_2026-08-28.md",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
-      "scripts/verify-hepta-intelligence-fact-grounding.py",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_1_SOURCE_RECEIPT_2026-08-28.json"
+      "codex-rs/hepta-memory/grounding-migrations/0011_fact_grounding.sql",
+      "codex-rs/hepta-memory/src/fact_grounding/durable.rs",
+      "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
+      "codex-rs/hepta-memory/src/fact_grounding/durable/grounding.rs",
+      "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs",
+      "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
+      "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
+      "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs",
+      "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs",
+      "codex-rs/hepta-memory/src/fact_grounding/durable/tests.rs",
+      "codex-rs/hepta-memory/src/framing.rs",
+      "codex-rs/hepta-memory/BUILD.bazel",
+      "scripts/verify-hepta-intelligence-grounding-ledger.py",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_2_IMPLEMENTATION_2026-08-28.md",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json"
     ],
     "claims": {
-      "source_span_validation": true,
-      "per_fact_evidence_required": true,
-      "receipt_digest_binding": true,
-      "validation_before_store_mutation": true,
-      "durable_persistence": false,
+      "component_migration_0011": true,
+      "main_sqlx_migration_lineage_promoted": false,
+      "append_only_receipt_table": true,
+      "append_only_span_table": true,
+      "atomic_durable_writer": true,
+      "reopen_verifier": true,
+      "schema_oracle": true,
+      "legacy_status_inventory": true,
+      "default_open_wired": false,
       "production_projection_gate": false,
       "production_authority": false
     },
     "qualification": {
-      "source_contract_gate": "PASS_FACT_GROUNDING_SOURCE_CONTRACT_ONLY",
-      "source_gate_execution": "local_source_equivalent_reproduction_passed",
-      "format": "not_run_runner_blocked",
-      "focused_tests": "not_run_runner_blocked",
-      "crate_tests": "not_run_runner_blocked",
-      "clippy": "not_run_runner_blocked",
-      "workflow_ci": "blocked_runner_not_assigned",
-      "workflow_runs": [
-        {
-          "id": 33110477298,
-          "name": "blocking-ci",
-          "conclusion": "failure",
-          "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
-          "job_count": 29,
-          "commands_executed": false
-        },
-        {
-          "id": 33110475903,
-          "name": "v8-canary",
-          "conclusion": "failure",
-          "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
-          "commands_executed": false
-        }
-      ],
-      "qualified": false,
-      "exact_candidate_source_gate": "not_run_runner_blocked"
+      "source_gate": "PASS_P0_2_DURABLE_GROUNDING_SOURCE_ONLY",
+      "format": "not_run",
+      "focused_tests": "not_run",
+      "crate_tests": "not_run",
+      "clippy": "not_run",
+      "hosted_ci": "not_run",
+      "qualified": false
     }
   },
   "capabilities": [
@@ -71,18 +72,17 @@
       "qualified": false,
       "efficacy_proven": false,
       "operator_accepted": false,
-      "promoted": false,
-      "notes": "Qualification-only strict source-span contract; receipt is not durable."
+      "promoted": false
     },
     {
       "id": "durable_fact_grounding_ledger",
-      "implemented": false,
+      "implemented": true,
       "wired": false,
       "qualified": false,
       "efficacy_proven": false,
       "operator_accepted": false,
       "promoted": false,
-      "next_workstream": "P0.2"
+      "notes": "Qualification-only component migration 0011 and opt-in verified open path."
     },
     {
       "id": "grounded_projection_gate",
@@ -91,8 +91,7 @@
       "qualified": false,
       "efficacy_proven": false,
       "operator_accepted": false,
-      "promoted": false,
-      "next_workstream": "P0.3"
+      "promoted": false
     },
     {
       "id": "intelligence_mutation_state_machine",
@@ -101,8 +100,7 @@
       "qualified": false,
       "efficacy_proven": false,
       "operator_accepted": false,
-      "promoted": false,
-      "next_workstream": "P0.4"
+      "promoted": false
     },
     {
       "id": "hybrid_retrieval_v2",
@@ -111,38 +109,7 @@
       "qualified": false,
       "efficacy_proven": false,
       "operator_accepted": false,
-      "promoted": false,
-      "next_workstream": "P1.1"
-    },
-    {
-      "id": "privacy_safe_intelligence_telemetry",
-      "implemented": false,
-      "wired": false,
-      "qualified": false,
-      "efficacy_proven": false,
-      "operator_accepted": false,
-      "promoted": false,
-      "next_workstream": "P1.2"
-    },
-    {
-      "id": "bounded_concurrent_federated_recall",
-      "implemented": false,
-      "wired": false,
-      "qualified": false,
-      "efficacy_proven": false,
-      "operator_accepted": false,
-      "promoted": false,
-      "next_workstream": "P1.3"
-    },
-    {
-      "id": "memory_semantic_security",
-      "implemented": false,
-      "wired": false,
-      "qualified": false,
-      "efficacy_proven": false,
-      "operator_accepted": false,
-      "promoted": false,
-      "next_workstream": "P1.4"
+      "promoted": false
     },
     {
       "id": "h5_h6_h7_minimal_closed_loop",
@@ -151,24 +118,24 @@
       "qualified": false,
       "efficacy_proven": false,
       "operator_accepted": false,
-      "promoted": false,
-      "next_workstream": "P2.1"
-    },
-    {
-      "id": "statistical_promotion_gate",
-      "implemented": false,
-      "wired": false,
-      "qualified": false,
-      "efficacy_proven": false,
-      "operator_accepted": false,
-      "promoted": false,
-      "next_workstream": "P2.2"
+      "promoted": false
     }
   ],
+  "next_tranche": {
+    "id": "P0.3",
+    "name": "tool_protocol_and_shadow_projection_grounding_gate",
+    "activation": "blocked",
+    "requirements": [
+      "P0.1 executable exact-head qualification",
+      "P0.2 source, Rust, migration, reopen, corruption, and hosted qualification",
+      "candidate freeze and readable CI artifacts",
+      "production authority remains false during shadow compare"
+    ]
+  },
   "next_actions": [
-    "Restore GitHub Actions runner assignment and execute format, focused tests, crate tests, and clippy.",
-    "Keep the PR draft and capability qualified=false until executable Rust evidence binds one exact head.",
-    "Implement P0.2 migration 0011 and exact reopen verification only after P0.1 executable qualification.",
-    "Wire tool protocol and projection gate only after durable receipts are qualified."
+    "Preserve the P0.2 source-gate PASS on the exact Git candidate.",
+    "Run cargo fmt, focused tests, full codex-hepta-memory tests, and clippy on an assigned runner.",
+    "Keep component migration 0011 opt-in until exact-head qualification succeeds.",
+    "Do not activate P0.3 or change the default projection query before P0.1 and P0.2 are qualified."
   ]
 }

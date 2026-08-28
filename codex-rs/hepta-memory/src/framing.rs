@@ -4,6 +4,9 @@ use codex_hepta_contracts::Sha256Digest;
 use sha2::Digest;
 use sha2::Sha256;
 
+#[path = "fact_grounding/durable.rs"]
+mod durable_fact_grounding;
+
 pub(crate) fn frame_part(hasher: &mut Sha256, part: &[u8]) {
     hasher.update((part.len() as u64).to_be_bytes());
     hasher.update(part);
