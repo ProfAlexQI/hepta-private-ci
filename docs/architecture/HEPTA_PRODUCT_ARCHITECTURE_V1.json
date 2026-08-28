@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "hepta.product_architecture.v1",
+  "schema_version": 1,
+  "canonical_human_entry": "ARCHITECTURE.md",
+  "source_base_commit": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+  "implementation_branch": "codex/hepta-architecture-convergence-p0-20260828",
+  "status": "SOURCE_PRESENT_QUALIFICATION_PENDING",
+  "profile": "agent_local",
+  "authority_kernel": {
+    "owner": "codex-hepta-contracts::AuthorityGrant",
+    "allowed_profiles": [
+      "snapshot_read_only",
+      "agent_local",
+      "qualification_cognitive_write"
+    ],
+    "forbidden_actions": [
+      "invoke_model",
+      "dispatch_provider",
+      "external_effect",
+      "mutate_fleet",
+      "accept_operator",
+      "promote_release"
+    ]
+  },
+  "components": [
+    "supervisor",
+    "agentd",
+    "app_server",
+    "memory_runtime",
+    "automation_runtime",
+    "matrix_ingress"
+  ],
+  "edges": [
+    {"from": "agentd", "to": "supervisor", "kind": "depends_on"},
+    {"from": "agentd", "to": "memory_runtime", "kind": "composes"},
+    {"from": "agentd", "to": "automation_runtime", "kind": "composes"},
+    {"from": "agentd", "to": "app_server", "kind": "hosts"},
+    {"from": "app_server", "to": "memory_runtime", "kind": "reads_from"},
+    {"from": "automation_runtime", "to": "app_server", "kind": "submits_to"},
+    {"from": "matrix_ingress", "to": "agentd", "kind": "submits_to"}
+  ],
+  "data_authorities": [
+    {"domain": "fleet_registry", "writer": "supervisor", "store": "json_registry"},
+    {"domain": "agent_lifecycle", "writer": "supervisor", "store": "json_registry"},
+    {"domain": "thread_session", "writer": "app_server", "store": "agent_private_sqlite"},
+    {"domain": "memory_ledger", "writer": "memory_runtime", "store": "agent_private_sqlite"},
+    {"domain": "knowledge_projection", "writer": "memory_runtime", "store": "agent_private_sqlite"},
+    {"domain": "automation_schedule", "writer": "automation_runtime", "store": "agent_private_sqlite"},
+    {"domain": "ingress_projection", "writer": "matrix_ingress", "store": "agent_private_sqlite"},
+    {"domain": "runtime_health", "writer": "agentd", "store": "process_memory"}
+  ],
+  "qualification": {
+    "uses_real_product_modules": true,
+    "qualification_is_product_component": false,
+    "exact_head_required": true,
+    "real_agent_private_sqlite_open_required": true,
+    "merge_candidate_gate_separate": true
+  },
+  "negative_authority": {
+    "production_caller": false,
+    "production_writer": false,
+    "model_invocation": false,
+    "provider_dispatch": false,
+    "external_effect": false,
+    "fleet_mutation": false,
+    "operator_acceptance": false,
+    "promotion": false
+  }
+}
