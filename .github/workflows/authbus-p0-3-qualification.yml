@@ -1,0 +1,207 @@
+name: AuthBus P0.3 reservation and old-fence qualification
+
+on:
+  push:
+    branches:
+      - integration/vnext-main-full-ci-authbus-p0-3-20260828
+    paths:
+      - codex-rs/hepta-authbus-p0-3-qualification/**
+      - codex-rs/hepta-authbus-qualification/**
+      - codex-rs/hepta-contracts/**
+      - scripts/verify-authbus-p0-2.py
+      - scripts/verify-authbus-p0-3.py
+      - docs/hepta-vnext/authbus/AUTHBUS_P0_3_DEVELOPMENT_PLAN_2026-08-28.md
+      - .github/workflows/authbus-p0-3-qualification.yml
+  pull_request:
+    paths:
+      - codex-rs/hepta-authbus-p0-3-qualification/**
+      - codex-rs/hepta-authbus-qualification/**
+      - codex-rs/hepta-contracts/**
+      - scripts/verify-authbus-p0-2.py
+      - scripts/verify-authbus-p0-3.py
+      - docs/hepta-vnext/authbus/AUTHBUS_P0_3_DEVELOPMENT_PLAN_2026-08-28.md
+      - .github/workflows/authbus-p0-3-qualification.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: authbus-p0-3-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  P02_MANIFEST: codex-rs/hepta-authbus-qualification/Cargo.toml
+  P03_MANIFEST: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
+
+jobs:
+  source-contract:
+    name: AuthBus P0.2/P0.3 source and authority contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Bind exact commit and tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse HEAD^{tree})"
+          } | tee exact-head.txt
+
+      - name: Verify corrected P0.2 source base
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-authbus-p0-2.py | tee authbus-p0-2-source-receipt.json
+          grep -q 'PASS_AUTHBUS_P0_2_SOURCE_ONLY' authbus-p0-2-source-receipt.json
+
+      - name: Verify P0.3 source and negative authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-authbus-p0-3.py | tee authbus-p0-3-source-receipt.json
+          grep -q 'PASS_AUTHBUS_P0_3_SOURCE_ONLY' authbus-p0-3-source-receipt.json
+
+      - name: Upload source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: authbus-p0-3-source-${{ github.sha }}
+          path: |
+            exact-head.txt
+            authbus-p0-2-source-receipt.json
+            authbus-p0-3-source-receipt.json
+          if-no-files-found: error
+          retention-days: 14
+
+  p0-2-regression:
+    name: Inherited P0.2 SQLite WAL regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Verify exact compiler and head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(rustc -V | awk '{print $2}')" = "1.95.0"
+          rustc --version | tee p0-2-rustc-version.txt
+
+      - name: Run inherited P0.2 tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path "${P02_MANIFEST}" --no-default-features --lib -- --nocapture
+          cargo test --manifest-path "${P02_MANIFEST}" --features sqlite-qualification --tests -- --nocapture
+          cargo check --manifest-path "${P02_MANIFEST}" --features sqlite-qualification --all-targets
+          cargo clippy --manifest-path "${P02_MANIFEST}" --features sqlite-qualification --all-targets -- -D warnings
+
+  p0-3-rust:
+    name: AuthBus B4 P0.3 Rust qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Verify exact compiler and head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(rustc -V | awk '{print $2}')" = "1.95.0"
+          {
+            rustc --version
+            cargo --version
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse HEAD^{tree})"
+            sha256sum "${P03_MANIFEST}"
+          } | tee exact-p0-3-head.txt
+
+      - name: Check formatting
+        shell: bash
+        run: cargo fmt --manifest-path "${P03_MANIFEST}" --all -- --check
+
+      - name: Check default-off authority posture
+        shell: bash
+        run: cargo test --manifest-path "${P03_MANIFEST}" --no-default-features --lib -- --nocapture
+
+      - name: Run P0.3 reservation and reconcile matrix
+        shell: bash
+        run: cargo test --manifest-path "${P03_MANIFEST}" --features p0-3-qualification --tests -- --nocapture
+
+      - name: Check all targets
+        shell: bash
+        run: cargo check --manifest-path "${P03_MANIFEST}" --features p0-3-qualification --all-targets
+
+      - name: Run strict Clippy
+        shell: bash
+        run: cargo clippy --manifest-path "${P03_MANIFEST}" --features p0-3-qualification --all-targets -- -D warnings
+
+      - name: Record executable receipt
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > authbus-p0-3-rust-receipt.json <<EOF
+          {
+            "schema":"hepta.authbus.b4.p0.3.rust-qualification.v1",
+            "commit":"$(git rev-parse HEAD)",
+            "tree":"$(git rev-parse HEAD^{tree})",
+            "canonical_idempotency_replay":true,
+            "changed_payload_conflict":true,
+            "changed_binding_conflict":true,
+            "old_fence_consumed":true,
+            "old_fence_no_effect":true,
+            "old_fence_unknown_hold":true,
+            "post_dispatch_expiry_hold":true,
+            "six_dimensional_quota":true,
+            "qualification_only":true,
+            "authority":false,
+            "effect_authority":false,
+            "production_caller":false,
+            "production_writer":false,
+            "operator_acceptance":false,
+            "promotion":false,
+            "g5_allowed":false,
+            "execute_allowed":false
+          }
+          EOF
+
+      - name: Upload executable evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: authbus-p0-3-rust-${{ github.sha }}
+          path: |
+            exact-p0-3-head.txt
+            authbus-p0-3-rust-receipt.json
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,0 +1,27 @@
+[package]
+name = "codex-hepta-authbus-p0-3-qualification"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[workspace]
+resolver = "2"
+
+[features]
+default = []
+p0-3-qualification = ["dep:codex-hepta-contracts"]
+
+[dependencies]
+codex-hepta-contracts = { path = "../hepta-contracts", features = ["authbus-local-qualification"], optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
