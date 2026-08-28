@@ -14,8 +14,9 @@ on:
       - "docs/hepta-vnext/browser/hepta.servo.accepted_source_pointer.v1.schema.json"
       - "docs/hepta-vnext/browser/source-acceptance/**"
       - ".github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml"
-      - ".github/workflows/hepta-servo-exact-source-acceptance-live-review.yml"
+      - ".github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml"
       - ".github/workflows/hepta-browser-next-required-v8.yml"
+      - ".github/workflows/hepta-browser-next-required-v9.yml"
       - ".github/workflows/blocking-ci.yml"
   push:
     branches:
@@ -26,13 +27,11 @@ on:
       - "scripts/verify-hepta-servo-exact-source-acceptance-pointer-v2.py"
       - "scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v2.py"
       - "docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json"
-      - "docs/hepta-vnext/browser/C1_EXACT_SOURCE_ACCEPTANCE_POINTER_V1*"
-      - "docs/hepta-vnext/browser/hepta.servo.source_acceptance_review_*"
-      - "docs/hepta-vnext/browser/hepta.servo.accepted_source_pointer.v1.schema.json"
       - "docs/hepta-vnext/browser/source-acceptance/**"
       - ".github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml"
-      - ".github/workflows/hepta-servo-exact-source-acceptance-live-review.yml"
+      - ".github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml"
       - ".github/workflows/hepta-browser-next-required-v8.yml"
+      - ".github/workflows/hepta-browser-next-required-v9.yml"
       - ".github/workflows/blocking-ci.yml"
 
 permissions:
@@ -40,7 +39,7 @@ permissions:
 
 jobs:
   acceptance-pointer-contract:
-    name: Source-only pointer and live-review contract (fixtures only)
+    name: Source-only pointer and trusted-base live-review contract (fixtures only)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -59,15 +58,14 @@ jobs:
             echo "commit=$(git rev-parse HEAD)"
             echo "tree=$(git rev-parse 'HEAD^{tree}')"
             echo "fixture_only=true"
-            echo "real_exact_source_candidate=false"
+            echo "trusted_base_live_review=true"
+            echo "pr_head_verifier_executed=false"
             echo "accepted_source_pointer=false"
             echo "pointer_creation_command=false"
-            echo "separate_current_head_review_required=true"
             echo "exact_servo_source_accepted=false"
             echo "worker_source_topology_accepted=false"
             echo "build_authorized=false"
             echo "servo_built=false"
-            echo "worker_artifact_created=false"
             echo "servo_runtime_qualified=false"
             echo "machine_authority=false"
             echo "runtime_authority=false"
@@ -103,14 +101,6 @@ jobs:
             2>&1 | tee "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/contract.log"
           python3 scripts/verify-hepta-servo-exact-source-acceptance-pointer-v2.py \
             2>&1 | tee "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/static-verifier.log"
-          for file in \
-            docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json \
-            docs/hepta-vnext/browser/C1_EXACT_SOURCE_ACCEPTANCE_POINTER_V1_STATUS.json \
-            docs/hepta-vnext/browser/hepta.servo.source_acceptance_review_policy.v1.schema.json \
-            docs/hepta-vnext/browser/hepta.servo.source_acceptance_review_challenge.v1.schema.json \
-            docs/hepta-vnext/browser/hepta.servo.accepted_source_pointer.v1.schema.json; do
-            python3 -m json.tool "$file" >/dev/null
-          done
 
       - name: Run fail-closed source acceptance fixtures
         shell: bash
@@ -125,14 +115,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "job_status=${{ job.status }}" >> "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/posture.txt"
-          {
-            echo "### Hepta exact-source acceptance pointer v1"
-            echo
-            echo "This job validates tooling and synthetic review fixtures only."
-            echo "It creates no accepted pointer and grants no build or runtime authority."
-            echo
-            sed 's/^/- /' "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/posture.txt"
-          } >> "$GITHUB_STEP_SUMMARY"
+          sed 's/^/- /' "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/posture.txt" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload fixture-only evidence
         if: always()
