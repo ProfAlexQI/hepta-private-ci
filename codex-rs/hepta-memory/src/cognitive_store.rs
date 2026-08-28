@@ -734,6 +734,37 @@ async fn verify_migration_ledger(pool: &SqlitePool) -> Result<(), CognitiveStore
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct StoredProjectionNode {
+    node_id: String,
+    canonical_entity_id: String,
+    entity_type: String,
+    label: String,
+    valid_from: i64,
+    valid_to: Option<i64>,
+    memory_id: String,
+    memory_revision: i64,
+    source_id: String,
+    source_revision: i64,
+}
+
+impl From<&ProjectionNode> for StoredProjectionNode {
+    fn from(node: &ProjectionNode) -> Self {
+        Self {
+            node_id: node.node_id.clone(),
+            canonical_entity_id: node.canonical_entity_id.clone(),
+            entity_type: node.entity_type.clone(),
+            label: node.label.clone(),
+            valid_from: node.valid_from,
+            valid_to: node.valid_to,
+            memory_id: node.memory_id.clone(),
+            memory_revision: node.memory_revision,
+            source_id: node.source_id.clone(),
+            source_revision: node.source_revision,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct StoredProjectionEdge {
     edge_id: String,
     from_node_id: String,
@@ -795,7 +826,8 @@ async fn verify_current_projection_contents(
 
         let head_rows = sqlx::query(
             "SELECT r.memory_id, r.revision, r.content_sha256,
-                    r.verification, r.lifecycle, s.fact_set_sha256
+                    r.verification, r.lifecycle, s.fact_set_sha256,
+                    s.entity_count, s.relation_count
              FROM memory_heads h
              JOIN memory_revisions r
                ON r.memory_id = h.memory_id AND r.revision = h.revision
@@ -827,6 +859,9 @@ async fn verify_current_projection_contents(
                     verification: row.try_get("verification").map_err(unavailable)?,
                     lifecycle: row.try_get("lifecycle").map_err(unavailable)?,
                     fact_set_sha256: row.try_get("fact_set_sha256").map_err(unavailable)?,
+                    entity_count: row.try_get("entity_count").map_err(unavailable)?,
+                    relation_count: row.try_get("relation_count").map_err(unavailable)?,
+                    grounding_receipt_sha256: None,
                 })
             })
             .collect::<Result<Vec<_>, CognitiveStoreError>>()?;
@@ -873,6 +908,7 @@ async fn verify_current_projection_contents(
             expected_nodes.push(ProjectionNode {
                 node_id: occurrence_node_id(&memory_id, memory_revision, &entity_key),
                 canonical_entity_id: row.try_get("canonical_entity_id").map_err(unavailable)?,
+                entity_key,
                 entity_type: row.try_get("entity_type").map_err(unavailable)?,
                 label: row.try_get("label").map_err(unavailable)?,
                 valid_from: row
@@ -923,6 +959,9 @@ async fn verify_current_projection_contents(
             expected_edges.push(ProjectionEdge {
                 edge_id: occurrence_edge_id(&memory_id, memory_revision, &relation_key),
                 canonical_relation_id: row.try_get("canonical_relation_id").map_err(unavailable)?,
+                relation_key,
+                from_entity_key: from_entity_key.clone(),
+                to_entity_key: to_entity_key.clone(),
                 from_node_id: occurrence_node_id(&memory_id, memory_revision, &from_entity_key),
                 to_node_id: occurrence_node_id(&memory_id, memory_revision, &to_entity_key),
                 relation: row.try_get("relation").map_err(unavailable)?,
@@ -962,7 +1001,7 @@ async fn verify_current_projection_contents(
         let mut stored_nodes = stored_node_rows
             .into_iter()
             .map(|row| {
-                Ok(ProjectionNode {
+                Ok(StoredProjectionNode {
                     node_id: row.try_get("node_id").map_err(unavailable)?,
                     canonical_entity_id: row.try_get("canonical_entity_id").map_err(unavailable)?,
                     entity_type: row.try_get("entity_type").map_err(unavailable)?,
@@ -978,10 +1017,13 @@ async fn verify_current_projection_contents(
                 })
             })
             .collect::<Result<Vec<_>, CognitiveStoreError>>()?;
-        let mut expected_nodes_by_id = expected_nodes.clone();
-        expected_nodes_by_id.sort_by(|left, right| left.node_id.cmp(&right.node_id));
-        stored_nodes.sort_by(|left, right| left.node_id.cmp(&right.node_id));
-        if stored_nodes != expected_nodes_by_id {
+        let mut expected_stored_nodes = expected_nodes
+            .iter()
+            .map(StoredProjectionNode::from)
+            .collect::<Vec<_>>();
+        stored_nodes.sort();
+        expected_stored_nodes.sort();
+        if stored_nodes != expected_stored_nodes {
             return Err(CognitiveStoreError::Corrupt(format!(
                 "KG current projection `{projection_scope}` nodes do not match current immutable fact supports"
             )));

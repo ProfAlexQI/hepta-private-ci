@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) async fn insert_tx(
+pub(in super::super::super) async fn insert_tx(
     transaction: &mut Transaction<'_, Sqlite>,
     memory: &MemoryRevisionRecord,
     source: &SourceRevisionId,

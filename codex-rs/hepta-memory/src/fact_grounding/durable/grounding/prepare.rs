@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn validate_source_binding(
+pub(in super::super) fn validate_source_binding(
     source: &SourceDraft,
     scope: &crate::CognitiveScope,
     expected_content: &str,
@@ -18,7 +18,7 @@ pub(super) fn validate_source_binding(
     Ok(())
 }
 
-pub(super) fn require_groundable_revision(
+pub(in super::super) fn require_groundable_revision(
     revision: &MemoryRevisionDraft,
     grounded: &GroundedKgFactSetDraft,
 ) -> Result<(), CognitiveStoreError> {
@@ -37,7 +37,7 @@ pub(super) fn require_groundable_revision(
     Ok(())
 }
 
-pub(super) fn bind_exact_citation(
+pub(in super::super) fn bind_exact_citation(
     revision: &mut MemoryRevisionDraft,
     citation: &SourceRevisionId,
 ) -> Result<(), CognitiveStoreError> {
@@ -50,7 +50,7 @@ pub(super) fn bind_exact_citation(
     Ok(())
 }
 
-pub(super) fn prepare(
+pub(in super::super) fn prepare(
     source: &SourceDraft,
     grounded: &GroundedKgFactSetDraft,
 ) -> Result<PreparedGrounding, CognitiveStoreError> {
@@ -77,11 +77,7 @@ pub(super) fn prepare(
     for evidence in &grounded.evidence {
         let identity = FactIdentity {
             kind: evidence.fact_kind,
-            key: canonical_token(
-                &evidence.fact_key,
-                MAX_FACT_KEY_BYTES,
-                "evidence fact key",
-            )?,
+            key: canonical_token(&evidence.fact_key, MAX_FACT_KEY_BYTES, "evidence fact key")?,
         };
         if !supports.contains_key(&identity) {
             return Err(CognitiveStoreError::Invalid(format!(
@@ -158,7 +154,10 @@ pub(super) fn prepare(
             )));
         }
         if !support_is_sufficient(
-            support_text.get(identity).map(String::as_str).unwrap_or_default(),
+            support_text
+                .get(identity)
+                .map(String::as_str)
+                .unwrap_or_default(),
             support,
         ) {
             return Err(CognitiveStoreError::Invalid(format!(
@@ -269,7 +268,7 @@ fn fact_supports(
     Ok(supports)
 }
 
-pub(super) fn validate_canonical_identity_binding(
+pub(in super::super) fn validate_canonical_identity_binding(
     prepared: &PreparedGrounding,
     canonical: &CanonicalFactSet,
 ) -> Result<(), CognitiveStoreError> {

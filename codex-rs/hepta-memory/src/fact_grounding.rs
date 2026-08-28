@@ -192,14 +192,17 @@ impl FactGroundingReceipt {
                         "first receipt evidence ordinal must be zero".to_string(),
                     ));
                 }
-                Some(previous) if identity == previous => {
-                    if span.evidence_ordinal != expected_ordinal {
-                        return Err(FactGroundingError::Receipt(
-                            "receipt evidence ordinals are not contiguous".to_string(),
-                        ));
-                    }
+                Some(previous)
+                    if identity == previous && span.evidence_ordinal != expected_ordinal =>
+                {
+                    return Err(FactGroundingError::Receipt(
+                        "receipt evidence ordinals are not contiguous".to_string(),
+                    ));
                 }
-                Some(previous) if identity < previous || span.evidence_ordinal != 0 => {
+                Some(previous)
+                    if identity != previous
+                        && (identity < previous || span.evidence_ordinal != 0) =>
+                {
                     return Err(FactGroundingError::Receipt(
                         "receipt evidence ordering is invalid".to_string(),
                     ));
@@ -262,20 +265,11 @@ pub enum FactGroundingError {
     #[error("grounded facts require a verified active memory revision")]
     IneligibleRevision,
     #[error("grounding evidence references unknown {kind:?} fact `{key}`")]
-    UnknownFact {
-        kind: GroundedFactKind,
-        key: String,
-    },
+    UnknownFact { kind: GroundedFactKind, key: String },
     #[error("{kind:?} fact `{key}` has no grounding evidence")]
-    MissingEvidence {
-        kind: GroundedFactKind,
-        key: String,
-    },
+    MissingEvidence { kind: GroundedFactKind, key: String },
     #[error("duplicate evidence span for {kind:?} fact `{key}`")]
-    DuplicateEvidence {
-        kind: GroundedFactKind,
-        key: String,
-    },
+    DuplicateEvidence { kind: GroundedFactKind, key: String },
     #[error("{kind:?} fact `{key}` exceeds {max} evidence spans")]
     TooManyEvidenceForFact {
         kind: GroundedFactKind,
@@ -287,15 +281,9 @@ pub enum FactGroundingError {
     #[error("invalid fact evidence span: {0}")]
     InvalidSpan(String),
     #[error("evidence digest does not match source bytes for {kind:?} fact `{key}`")]
-    EvidenceDigestMismatch {
-        kind: GroundedFactKind,
-        key: String,
-    },
+    EvidenceDigestMismatch { kind: GroundedFactKind, key: String },
     #[error("evidence spans do not textually support {kind:?} fact `{key}`")]
-    UnsupportedFact {
-        kind: GroundedFactKind,
-        key: String,
-    },
+    UnsupportedFact { kind: GroundedFactKind, key: String },
     #[error("fact grounding input is invalid: {0}")]
     Invalid(String),
     #[error("fact grounding receipt is invalid: {0}")]

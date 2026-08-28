@@ -15,6 +15,7 @@ use sha2::Digest;
 use sha2::Sha256;
 use sqlx::Row;
 use sqlx::Sqlite;
+use sqlx::SqliteConnection;
 use sqlx::SqlitePool;
 use sqlx::Transaction;
 
@@ -35,10 +36,13 @@ use crate::StableMemoryId;
 use crate::cognitive_intelligence_writer::CanonicalFactSet;
 use crate::cognitive_store::unavailable;
 
+#[path = "durable/grounding.rs"]
 mod grounding;
+#[path = "durable/schema.rs"]
 mod schema;
 
 #[cfg(test)]
+#[path = "durable/tests.rs"]
 mod tests;
 
 const COMPONENT_MIGRATION_VERSION: i64 = 11;
@@ -115,19 +119,29 @@ impl CognitiveStore {
 
     /// Applies the append-only P0.2 component migration exactly once and
     /// verifies its dedicated migration ledger and schema oracle.
-    pub async fn ensure_durable_fact_grounding_schema(
-        &self,
-    ) -> Result<(), CognitiveStoreError> {
+    pub async fn ensure_durable_fact_grounding_schema(&self) -> Result<(), CognitiveStoreError> {
         schema::ensure(&self.pool).await
     }
 
     /// Recomputes the component schema and every durable fact-grounding
-    /// receipt from source bytes and immutable KG facts.
-    pub async fn verify_durable_fact_grounding_ledger(
+    /// receipt from source bytes and immutable KG facts inside one read
+    /// transaction.
+    pub async fn verify_durable_fact_grounding_ledger(&self) -> Result<(), CognitiveStoreError> {
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        self.verify_durable_fact_grounding_ledger_tx(&mut transaction)
+            .await?;
+        transaction.rollback().await.map_err(unavailable)
+    }
+
+    /// Verifies the component schema and every durable grounding receipt using
+    /// the caller's exact SQLite snapshot. Shadow readers call this before any
+    /// projection/head/span read on the same transaction.
+    pub(crate) async fn verify_durable_fact_grounding_ledger_tx(
         &self,
+        transaction: &mut Transaction<'_, Sqlite>,
     ) -> Result<(), CognitiveStoreError> {
-        schema::verify(&self.pool).await?;
-        grounding::verify_receipts(&self.pool, self.owner_agent_id.as_str()).await
+        schema::verify_tx(transaction).await?;
+        grounding::verify_receipts(transaction, self.owner_agent_id.as_str()).await
     }
 
     /// Atomically appends source, memory, KG facts, durable grounding evidence,
@@ -140,11 +154,7 @@ impl CognitiveStore {
         grounded: &GroundedKgFactSetDraft,
     ) -> Result<CognitiveWriteReceipt, CognitiveStoreError> {
         self.ensure_durable_fact_grounding_schema().await?;
-        grounding::validate_source_binding(
-            source,
-            &draft.revision.scope,
-            &draft.revision.content,
-        )?;
+        grounding::validate_source_binding(source, &draft.revision.scope, &draft.revision.content)?;
         grounding::require_groundable_revision(&draft.revision, grounded)?;
         let prepared = grounding::prepare(source, grounded)?;
 
@@ -170,14 +180,7 @@ impl CognitiveStore {
         grounding::validate_canonical_identity_binding(&prepared, &canonical)?;
         self.insert_revision_facts_tx(&mut transaction, &memory, &citation, &canonical)
             .await?;
-        grounding::insert_tx(
-            &mut transaction,
-            &memory,
-            &citation,
-            &canonical,
-            &prepared,
-        )
-        .await?;
+        grounding::insert_tx(&mut transaction, &memory, &citation, &canonical, &prepared).await?;
         let projection = self
             .refresh_scope_projection_tx(
                 &mut transaction,
@@ -239,14 +242,7 @@ impl CognitiveStore {
         grounding::validate_canonical_identity_binding(&prepared, &canonical)?;
         self.insert_revision_facts_tx(&mut transaction, &memory, &citation, &canonical)
             .await?;
-        grounding::insert_tx(
-            &mut transaction,
-            &memory,
-            &citation,
-            &canonical,
-            &prepared,
-        )
-        .await?;
+        grounding::insert_tx(&mut transaction, &memory, &citation, &canonical, &prepared).await?;
         let projection = self
             .refresh_scope_projection_tx(
                 &mut transaction,

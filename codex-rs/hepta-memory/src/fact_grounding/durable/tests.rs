@@ -157,10 +157,7 @@ async fn legacy_and_zero_fact_statuses_are_explicit() {
         .expect("legacy write");
     assert_eq!(
         store
-            .durable_fact_grounding_status(
-                &legacy.memory.id.memory_id,
-                legacy.memory.id.revision,
-            )
+            .durable_fact_grounding_status(&legacy.memory.id.memory_id, legacy.memory.id.revision,)
             .await
             .expect("legacy status"),
         "legacy_unreviewed"
@@ -178,10 +175,7 @@ async fn legacy_and_zero_fact_statuses_are_explicit() {
         .expect("zero write");
     assert_eq!(
         store
-            .durable_fact_grounding_status(
-                &zero.memory.id.memory_id,
-                zero.memory.id.revision,
-            )
+            .durable_fact_grounding_status(&zero.memory.id.memory_id, zero.memory.id.revision,)
             .await
             .expect("zero status"),
         "zero_fact"
@@ -211,17 +205,15 @@ async fn invalid_grounding_rolls_back_without_rows() {
         .fetch_one(&store.pool)
         .await
         .expect("source count");
-    let memories: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM memory_revisions")
+    let memories: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM memory_revisions")
+        .fetch_one(&store.pool)
+        .await
+        .expect("memory count");
+    let grounding: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM kg_revision_fact_grounding_receipts")
             .fetch_one(&store.pool)
             .await
-            .expect("memory count");
-    let grounding: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM kg_revision_fact_grounding_receipts",
-    )
-    .fetch_one(&store.pool)
-    .await
-    .expect("grounding count");
+            .expect("grounding count");
     assert_eq!((sources, memories, grounding), (0, 0, 0));
 }
 
@@ -266,10 +258,7 @@ async fn correction_persists_a_second_grounded_revision() {
     assert_eq!(second.memory.id.revision, 2);
     assert_eq!(
         store
-            .durable_fact_grounding_status(
-                &second.memory.id.memory_id,
-                second.memory.id.revision,
-            )
+            .durable_fact_grounding_status(&second.memory.id.memory_id, second.memory.id.revision,)
             .await
             .expect("status"),
         "grounded_v1"
@@ -295,8 +284,9 @@ async fn tampered_evidence_digest_is_rejected_on_reopen() {
         .await
         .expect("write");
 
+    let mut tamper = store.pool.begin().await.expect("begin evidence tamper");
     sqlx::query("DROP TRIGGER kg_revision_fact_grounding_spans_no_update")
-        .execute(&store.pool)
+        .execute(&mut *tamper)
         .await
         .expect("drop guard");
     sqlx::query(
@@ -307,7 +297,7 @@ async fn tampered_evidence_digest_is_rejected_on_reopen() {
              SELECT rowid FROM kg_revision_fact_grounding_spans LIMIT 1
          )",
     )
-    .execute(&store.pool)
+    .execute(&mut *tamper)
     .await
     .expect("tamper");
     sqlx::query(
@@ -316,9 +306,10 @@ async fn tampered_evidence_digest_is_rejected_on_reopen() {
              SELECT RAISE(ABORT, 'fact-grounding spans are immutable');
          END",
     )
-    .execute(&store.pool)
+    .execute(&mut *tamper)
     .await
     .expect("restore guard");
+    tamper.commit().await.expect("commit evidence tamper");
     drop(store);
 
     let error = match CognitiveStore::open_with_durable_fact_grounding(&agent_layout).await {
