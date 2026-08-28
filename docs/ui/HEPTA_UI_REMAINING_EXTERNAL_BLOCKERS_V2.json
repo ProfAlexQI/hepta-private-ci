@@ -1,0 +1,69 @@
+{
+  "schema": "hepta.ui.remaining-blockers.v2",
+  "status": "ALL_REPOSITORY_SOURCE_GAPS_CLOSED_EXTERNAL_EVIDENCE_ONLY",
+  "canonical": true,
+  "supersedes": "docs/ui/HEPTA_UI_REMAINING_EXTERNAL_BLOCKERS_V1.json",
+  "windowsSourceControllableGapsClosed": true,
+  "globalSourceControllableGapsClosed": true,
+  "sourceImplementationGaps": [],
+  "sourceClosures": [
+    {"id": "macos-appkit-material-adapter", "source": "apps/hepta-native/src/shared/hepta_macos_appkit_material_adapter.rs", "closed": true},
+    {"id": "ios-uikit-material-adapter", "source": "apps/hepta-native/src/shared/hepta_ios_uikit_material_adapter.rs", "closed": true},
+    {"id": "android-material3-activity-bridge", "source": "apps/hepta-native/src/shared/hepta_android_material3_activity_bridge.rs", "closed": true},
+    {"id": "product-explicit-activation-caller", "source": "apps/hepta-native/src/shared/hepta_ui_explicit_activation_caller.rs", "closed": true}
+  ],
+  "externalEvidenceBlockers": [
+    {
+      "id": "github-hosted-runner-capacity",
+      "class": "CI_INFRASTRUCTURE",
+      "requiredEvidence": "nonzero runner identity, nonempty steps, exact-head receipts for every required lane",
+      "canBeSatisfiedByRepositorySourceAlone": false
+    },
+    {
+      "id": "windows-physical-dwm-device",
+      "class": "PHYSICAL_DEVICE",
+      "requiredEvidence": "Mica, Acrylic, explicit None rollback, high-contrast, transparency-disabled, suspend, shutdown, final Unbound",
+      "canBeSatisfiedByRepositorySourceAlone": false
+    },
+    {
+      "id": "operator-acceptance",
+      "class": "HUMAN_GOVERNANCE",
+      "requiredEvidence": "candidate-bound operator acceptance digest",
+      "canBeSatisfiedByRepositorySourceAlone": false
+    },
+    {
+      "id": "macos-appkit-device",
+      "class": "PHYSICAL_DEVICE",
+      "requiredEvidence": "AppKit material bind/observation, Reduce Transparency, Increase Contrast, active/inactive window",
+      "canBeSatisfiedByRepositorySourceAlone": false
+    },
+    {
+      "id": "ios-uikit-device",
+      "class": "PHYSICAL_DEVICE",
+      "requiredEvidence": "system navigation/sheet material, Dynamic Type, safe area, keyboard, Reduce Transparency",
+      "canBeSatisfiedByRepositorySourceAlone": false
+    },
+    {
+      "id": "android-material3-device",
+      "class": "PHYSICAL_DEVICE",
+      "requiredEvidence": "dynamic tonal surfaces, unavailable fallback, animator scale, IME and navigation inset",
+      "canBeSatisfiedByRepositorySourceAlone": false
+    },
+    {
+      "id": "cross-browser-visual-acceptance",
+      "class": "VISUAL_REVIEW",
+      "requiredEvidence": "Chrome, Edge, Safari, Firefox exact-candidate screenshots and accessibility review",
+      "canBeSatisfiedByRepositorySourceAlone": false
+    }
+  ],
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
