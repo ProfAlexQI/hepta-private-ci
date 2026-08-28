@@ -8,12 +8,13 @@ on:
     paths:
       - .github/workflows/authbus-p1-3-materialize.yml
       - scripts/authbus-p1-3-finalize.py
+      - scripts/authbus-p1-3-semantic-completion.py
 
 permissions:
   contents: write
 
 env:
-  EXPECTED_PARENT: 9ee0e87e5b5518b5be65d1764f89ff909613a26b
+  EXPECTED_PARENT: 0f211cf355640bd30d6dd6d2c80a7f15096431ed
   P02_MANIFEST: codex-rs/hepta-authbus-qualification/Cargo.toml
   P03_MANIFEST: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
   P13_MANIFEST: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
@@ -49,7 +50,7 @@ jobs:
             echo "seed=false" >> "${GITHUB_OUTPUT}"
           fi
 
-      - name: Verify exact seed and finalizer
+      - name: Verify exact seed and finalizers
         if: steps.mode.outputs.seed == 'true'
         shell: bash
         run: |
@@ -58,6 +59,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
           test "$(git rev-parse HEAD^)" = "${EXPECTED_PARENT}"
           python3 -m py_compile scripts/authbus-p1-3-finalize.py
+          python3 -m py_compile scripts/authbus-p1-3-semantic-completion.py
 
       - name: Materialize canonical registry and adapters
         if: steps.mode.outputs.seed == 'true'
@@ -68,12 +70,25 @@ jobs:
           grep -q 'applied_authbus_p1_3_registry_files=9' /tmp/authbus-p1-3-finalize.txt
           grep -q 'applied_authbus_p1_3_existing_file_patches=5' /tmp/authbus-p1-3-finalize.txt
           grep -q 'removed_p0_3_canonical_type_copies=2' /tmp/authbus-p1-3-finalize.txt
+
           scheduler=codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
           test "$(grep -F -c 'request_sha256.to_string()' "${scheduler}")" = "1"
           sed -i 's/request_sha256\.to_string()/request_sha256.as_str().to_owned()/' "${scheduler}"
           ! grep -Fq 'request_sha256.to_string()' "${scheduler}"
           grep -Fq 'request_sha256.as_str().to_owned()' "${scheduler}"
           echo 'applied_sha256_digest_text_repairs=1' | tee /tmp/authbus-p1-3-remediation.txt
+
+          python3 scripts/authbus-p1-3-semantic-completion.py \
+            | tee /tmp/authbus-p1-3-semantic-completion.txt
+          grep -q 'applied_authbus_p1_3_semantic_completion=1' \
+            /tmp/authbus-p1-3-semantic-completion.txt
+          grep -q 'closed_b2_four_dimension_wire_gap=1' \
+            /tmp/authbus-p1-3-semantic-completion.txt
+          grep -q 'closed_absent_unknown_rounding_binding_gap=1' \
+            /tmp/authbus-p1-3-semantic-completion.txt
+          grep -q 'closed_source_registry_projection_binding_gap=1' \
+            /tmp/authbus-p1-3-semantic-completion.txt
+
           python3 scripts/verify-authbus-p1-3.py | tee /tmp/authbus-p1-3-source.json
           grep -q 'PASS_AUTHBUS_P1_3_SOURCE_ONLY' /tmp/authbus-p1-3-source.json
           git diff --check
@@ -159,11 +174,13 @@ jobs:
           set -euo pipefail
           rm -rf scripts/__pycache__
           rm scripts/authbus-p1-3-finalize.py
+          rm scripts/authbus-p1-3-semantic-completion.py
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           final_paths=(
+            codex-rs/hepta-contracts/src/authbus_b2.rs
             codex-rs/hepta-contracts/src/authbus_b4.rs
             codex-rs/hepta-contracts/src/lib.rs
             codex-rs/hepta-contracts/src/quota_registry.rs
@@ -181,7 +198,9 @@ jobs:
             scripts/verify-authbus-p1-3.py
           )
           git add -- "${final_paths[@]}"
-          git add -u -- scripts/authbus-p1-3-finalize.py
+          git add -u -- \
+            scripts/authbus-p1-3-finalize.py \
+            scripts/authbus-p1-3-semantic-completion.py
 
           cat > /tmp/authbus-p1-3-expected-paths.txt <<'EOF'
           codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
@@ -192,6 +211,7 @@ jobs:
           codex-rs/hepta-authbus-p1-3-qualification/src/lib.rs
           codex-rs/hepta-authbus-p1-3-qualification/tests/p1_3.rs
           codex-rs/hepta-authbus-qualification/src/model.rs
+          codex-rs/hepta-contracts/src/authbus_b2.rs
           codex-rs/hepta-contracts/src/authbus_b4.rs
           codex-rs/hepta-contracts/src/lib.rs
           codex-rs/hepta-contracts/src/quota_registry.rs
@@ -199,6 +219,7 @@ jobs:
           docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.json
           docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.md
           scripts/authbus-p1-3-finalize.py
+          scripts/authbus-p1-3-semantic-completion.py
           scripts/verify-authbus-p1-3.py
           EOF
           sed -i 's/^          //' /tmp/authbus-p1-3-expected-paths.txt
