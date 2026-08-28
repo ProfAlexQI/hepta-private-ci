@@ -7,6 +7,7 @@ use tokio::time::timeout;
 
 use crate::AutomationAdmission;
 use crate::AutomationError;
+use crate::AutomationOperationContext;
 use crate::AutomationQueueReceipt;
 use crate::AutomationStore;
 use crate::AutomationTick;
@@ -33,6 +34,7 @@ pub struct AutomationScheduler<Q> {
     store: AutomationStore,
     queue: Arc<Q>,
     generation: u64,
+    operation_context: AutomationOperationContext,
     lease_duration_ms: u64,
     dispatch_timeout: Duration,
 }
@@ -45,12 +47,14 @@ where
         store: AutomationStore,
         queue: Arc<Q>,
         generation: u64,
+        operation_context: AutomationOperationContext,
         lease_duration: Duration,
         dispatch_timeout: Duration,
     ) -> Result<Self, AutomationError> {
         let lease_duration_ms =
             u64::try_from(lease_duration.as_millis()).map_err(|_| AutomationError::Invalid)?;
         if generation == 0
+            || operation_context.generation != generation
             || lease_duration_ms == 0
             || dispatch_timeout.is_zero()
             || dispatch_timeout >= lease_duration
@@ -61,6 +65,7 @@ where
             store,
             queue,
             generation,
+            operation_context,
             lease_duration_ms,
             dispatch_timeout,
         })
@@ -80,14 +85,18 @@ where
         else {
             return Ok(AutomationTick::Idle);
         };
-        // Persist the dispatch intent before crossing the App Server seam.
-        // If this process dies after admission (or while the request is still
-        // in flight) the successor must observe a durable unknown outcome and
-        // refuse a blind duplicate.  Known pre-admission failures explicitly
-        // clear this marker below, preserving the bounded retry path.
-        self.store.record_dispatch_uncertain(&lease, now_ms).await?;
-        let admission = lease.admission();
-        let result = timeout(self.dispatch_timeout, self.queue.enqueue(admission)).await;
+        let admission = lease.admission(&self.operation_context)?;
+        // Persist the exact immutable operation identity before crossing the
+        // App Server seam. A crash after this point requires lookup-only
+        // reconciliation; it must never become a blind duplicate.
+        self.store
+            .record_dispatch_uncertain(&lease, &admission.operation, now_ms)
+            .await?;
+        let result = timeout(
+            self.dispatch_timeout,
+            self.queue.enqueue(admission.clone()),
+        )
+        .await;
         let receipt = match result {
             Ok(Ok(receipt)) => receipt,
             // Owner/generation fencing is not a transient dispatch failure.
@@ -98,7 +107,9 @@ where
                 return Err(AutomationError::AccessDenied);
             }
             Ok(Err(AutomationError::DispatchUnknown)) | Err(_) => {
-                self.store.record_dispatch_uncertain(&lease, now_ms).await?;
+                self.store
+                    .record_dispatch_uncertain(&lease, &admission.operation, now_ms)
+                    .await?;
                 return Ok(AutomationTick::DispatchUncertain {
                     task_id: lease.task.task_id,
                     occurrence: lease.occurrence,
@@ -118,14 +129,22 @@ where
         };
         if receipt.client_user_message_id != lease.client_user_message_id
             || receipt.queued_submission_id.is_empty()
+            || receipt
+                .acknowledgement
+                .validate_against(&admission.operation)
+                .is_err()
         {
-            self.store.record_dispatch_uncertain(&lease, now_ms).await?;
+            self.store
+                .record_dispatch_uncertain(&lease, &admission.operation, now_ms)
+                .await?;
             return Ok(AutomationTick::DispatchUncertain {
                 task_id: lease.task.task_id,
                 occurrence: lease.occurrence,
             });
         }
-        self.store.mark_submitted(&lease, &receipt, now_ms).await?;
+        self.store
+            .mark_submitted(&lease, &admission.operation, &receipt, now_ms)
+            .await?;
         Ok(AutomationTick::Submitted {
             task_id: lease.task.task_id,
             occurrence: lease.occurrence,
