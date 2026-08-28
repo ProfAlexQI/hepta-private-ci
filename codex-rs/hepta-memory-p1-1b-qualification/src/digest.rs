@@ -46,7 +46,10 @@ impl Digest32 {
 
 impl fmt::Debug for Digest32 {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.debug_tuple("Digest32").field(&self.to_hex()).finish()
+        formatter
+            .debug_tuple("Digest32")
+            .field(&self.to_hex())
+            .finish()
     }
 }
 
