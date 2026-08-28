@@ -30,6 +30,11 @@ jobs:
     uses: ./.github/workflows/codespell.yml
     secrets: inherit
 
+  hepta-architecture:
+    name: Hepta architecture merge candidate
+    uses: ./.github/workflows/hepta-architecture-merge-candidate.yml
+    secrets: inherit
+
   repo-checks:
     name: repo-checks
     uses: ./.github/workflows/repo-checks.yml
@@ -55,6 +60,7 @@ jobs:
       - blob-size-policy
       - cargo-deny
       - codespell
+      - hepta-architecture
       - repo-checks
       - rust-ci
       - sdk
