@@ -23,7 +23,7 @@ env:
 jobs:
   exact-source-head:
     name: Exact source-head architecture closure
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
     steps:
       - name: Checkout exact source head
@@ -169,7 +169,7 @@ jobs:
   merge-candidate:
     name: Merge-candidate architecture integration
     if: ${{ github.event_name == 'pull_request' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
     steps:
       - name: Checkout merge candidate
@@ -275,7 +275,7 @@ jobs:
     needs:
       - exact-source-head
       - merge-candidate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Require successful architecture identities
         env:
