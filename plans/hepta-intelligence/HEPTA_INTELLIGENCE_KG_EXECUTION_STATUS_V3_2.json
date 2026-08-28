@@ -1,0 +1,91 @@
+{
+  "authority": {
+    "callers_ratchet": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "production_authority": false,
+    "promotion": false
+  },
+  "candidate": {
+    "implementation_root": "7c9b5a29e24237e90201fbe0cf1a7b1fbd2a8415",
+    "restacked_from_head": "82ee16ac63d091569337eb06b5023e2791daea5c",
+    "unsigned_commits": true
+  },
+  "current_tranche": {
+    "complete_tool_input_digest_bound": true,
+    "different_facts_may_share_source_span": true,
+    "efficacy_proven": false,
+    "external_effects": false,
+    "files": [
+      "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs",
+      "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/receipt.rs",
+      "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/resolver.rs",
+      "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/schema.rs",
+      "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/support.rs",
+      "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/tests.rs",
+      "codex-rs/ext/hepta-memory/src/framing.rs",
+      "scripts/verify-hepta-intelligence-evidence-resolver-v4.py",
+      "scripts/check-hepta-intelligence-p0-3-3-clippy.py",
+      "scripts/run-hepta-intelligence-evidence-resolver-v5.py",
+      ".github/workflows/hepta-intelligence-evidence-resolver-v4.yml",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_DEVELOPMENT_PLAN_V3_2_2026-08-28.md",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_3_3_HOST_EVIDENCE_RESOLVER_2026-08-28.md"
+    ],
+    "host_computes_digests": true,
+    "host_resolves_offsets": true,
+    "id": "P0.3.3",
+    "implemented": true,
+    "model_supplies_digests": false,
+    "model_supplies_offsets": false,
+    "name": "host_owned_evidence_resolution",
+    "operator_accepted": false,
+    "overlapping_quote_occurrences_deterministic": true,
+    "production_authority": false,
+    "production_projection_gate": false,
+    "promoted": false,
+    "qualification": {
+      "contract": "hepta_intelligence_p0_3_3_exact_head_qualification_v5",
+      "qualified": false,
+      "source_gate": "dependency_state_aware",
+      "status": "pending_exact_head_execution"
+    },
+    "qualified": false,
+    "quote_selector": true,
+    "receipt_structure_revalidated": true,
+    "same_fact_duplicate_or_overlapping_spans_rejected": true,
+    "segment_catalog_digest_bound": true,
+    "segment_selector": true,
+    "source_body_returned_by_receipt": false,
+    "status": "restacked_dependency_qualified_exact_head_pending",
+    "tool_v4_registered": false,
+    "wired": false
+  },
+  "default_branch": "integration/vnext-main-20260811",
+  "dependency": {
+    "activation_blocking": false,
+    "exact_head_qualification_artifact": 9693847531,
+    "exact_head_qualification_run": 33190943793,
+    "id": "P0.3.2",
+    "implemented_in_repository": true,
+    "ledger_verified_in_snapshot": true,
+    "name": "shared_semantic_projection_planner",
+    "qualified": true,
+    "repository_branch": "codex/hepta-intelligence-shared-projection-planner-v5-20260828"
+  },
+  "development_branch": "codex/hepta-intelligence-evidence-resolver-v4-20260828",
+  "generated_at": "2026-08-29",
+  "next_actions": [
+    "Execute the P0.3.3 exact-head v5 source, format, all-target compile, focused/full test, and scoped Clippy matrix.",
+    "Keep v4 unregistered and all production authority false until that exact-head receipt is all-green.",
+    "Start P0.3.4 legacy inventory/backfill/quarantine only after P0.3.3 exact-head qualification."
+  ],
+  "pull_request": 30,
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "schema": "hepta_intelligence_kg_execution_status_v3_2",
+  "stack_base": {
+    "branch": "codex/hepta-intelligence-shared-projection-planner-v5-20260828",
+    "head": "fa59bb090043ba8d6fbf0991b167779d2385888c",
+    "pull_request": 40
+  }
+}
