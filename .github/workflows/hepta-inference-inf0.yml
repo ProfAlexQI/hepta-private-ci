@@ -134,6 +134,15 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Format included inference source fragments
+        shell: bash
+        run: |
+          rustfmt --edition 2024 --check \
+            ollama/src/client.rs \
+            ollama/src/client_*.inc.rs \
+            lmstudio/src/client.rs \
+            lmstudio/src/client_*.inc.rs
+
       - name: Workspace formatting
         shell: bash
         run: cargo fmt --all -- --check
