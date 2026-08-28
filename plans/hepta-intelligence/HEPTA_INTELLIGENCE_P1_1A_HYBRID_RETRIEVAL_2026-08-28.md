@@ -40,7 +40,7 @@ promotion=false
 callers_ratchet=false
 ```
 
-P0.1–P0.4c remain `qualified=false` because their exact hosted jobs have not received executable runners. This tranche is therefore a separate stacked Draft and cannot activate P1.1 in runtime.
+P0.1–P0.4c remain `qualified=false`. This tranche is therefore a separate stacked Draft and cannot activate P1.1 in runtime.
 
 ## 2. Existing baseline retained
 
@@ -280,7 +280,22 @@ batch revalidation snapshots
 
 It does not write a retrieval ledger or telemetry table in this tranche.
 
-## 8. Source and Rust qualification
+## 8. Dependency hardening exposed by executable qualification
+
+The first assigned runner reached Rust formatting and exposed pre-existing P0.2 child-module path declarations that did not match the committed file tree. This branch repairs only the module path attributes:
+
+```text
+fact_grounding/durable.rs
+  → durable/grounding.rs
+  → durable/grounding/ledger.rs
+  → durable/grounding/ledger/{insert,support,verify}.rs
+```
+
+These changes do not alter the grounding schema, writer order, evidence semantics, default open path, runtime wiring, or production authority. They are tracked separately from P1.1a retrieval claims.
+
+The first repository-wide formatting attempt also exposed unrelated formatting drift outside `codex-hepta-memory`. P1.1a therefore uses a crate-scoped formatting gate for the exact crate under qualification. Repository-wide formatting remains a separate integration concern and is not silently treated as a P1.1a PASS.
+
+## 9. Source and Rust qualification
 
 Source gate:
 
@@ -292,7 +307,7 @@ Required Rust qualification:
 
 ```bash
 cd codex-rs
-cargo fmt --all -- --check
+cargo fmt -p codex-hepta-memory -- --check
 cargo test -p codex-hepta-memory hybrid_retrieval_v2 -- --nocapture
 cargo test -p codex-hepta-memory cognitive_retrieval -- --nocapture
 cargo test -p codex-hepta-memory
@@ -301,12 +316,12 @@ cargo clippy -p codex-hepta-memory --all-targets -- -D warnings
 
 The dedicated workflow uses repository Rust `1.95.0` and uploads an exact-head source receipt. It contains no deploy, release, model download, index build, external network, or production activation job.
 
-## 9. Exit gate
+## 10. Exit gate
 
 P1.1a can become `qualified=true` only after one frozen exact head has:
 
 - source gate PASS;
-- formatting PASS;
+- `codex-hepta-memory` formatting PASS;
 - focused planner/fusion tests PASS;
 - existing retrieval regressions PASS;
 - full hepta-memory tests PASS;
@@ -317,7 +332,7 @@ P1.1a can become `qualified=true` only after one frozen exact head has:
 
 Even then, P1.1a is only a planner/fusion contract. Product activation requires the remaining P1.1 tranches and a separate CALLERS decision.
 
-## 10. Next guarded tranche — P1.1b
+## 11. Next guarded tranche — P1.1b
 
 P1.1b is:
 
