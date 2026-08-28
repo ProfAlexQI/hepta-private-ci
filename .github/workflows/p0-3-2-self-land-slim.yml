@@ -13,11 +13,21 @@ permissions:
 
 concurrency:
   group: p0-3-2-self-land-slim
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   land:
-    runs-on: ubuntu-slim
+    name: land (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-slim
+          - ubuntu-24.04-arm
+          - ubuntu-22.04-arm
+          - macos-15-intel
+          - macos-26
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
       - name: Checkout exact slim lander
@@ -32,7 +42,6 @@ jobs:
           python3 - <<'PY'
           import base64
           import hashlib
-          import json
           import shutil
           import subprocess
           import tarfile
