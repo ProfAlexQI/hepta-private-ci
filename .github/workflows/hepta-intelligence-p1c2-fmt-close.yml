@@ -16,6 +16,8 @@ concurrency:
 env:
   CARGO_NET_OFFLINE: "true"
   QUALIFICATION_DRIVER_SHA: de95f9e6d39c6e57d132fc8ad8368ad89cf54fb4
+  SOURCE_SHA: c3c42f60e5ca11fd49fe5d4d2013c5b21e183619
+  SOURCE_BRANCH: codex/hepta-p1c2-eval-20260828
 
 jobs:
   qualify:
@@ -49,6 +51,9 @@ jobs:
           RUNNER_OS: ${{ runner.os }}
           RUNNER_ARCH: ${{ runner.arch }}
         run: |
+          git fetch --no-tags origin \
+            "+refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
+          test "$(git rev-parse "refs/remotes/origin/$SOURCE_BRANCH")" = "$SOURCE_SHA"
           git checkout --detach "$QUALIFICATION_DRIVER_SHA"
           mkdir -p "$RUNNER_TEMP/hepta-bin"
           cat > "$RUNNER_TEMP/hepta-bin/python3" <<'SH'
