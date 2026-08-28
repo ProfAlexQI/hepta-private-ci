@@ -1,0 +1,20 @@
+[package]
+name = "hepta-memory-p1-1c-qualification"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "p1_1c_receipt"
+path = "src/bin/p1_1c_receipt.rs"
+
+[dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "deny"
