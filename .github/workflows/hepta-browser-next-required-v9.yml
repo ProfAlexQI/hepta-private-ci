@@ -20,10 +20,33 @@ permissions:
   contents: read
   pull-requests: read
 
+# Keep this workflow flat. blocking-ci -> v9 -> leaf reusable workflow is the
+# maximum intended nesting. Calling v8/v7 here would exceed GitHub's reusable
+# workflow nesting limit once blocking-ci is the top-level caller.
 jobs:
-  canonical-v8:
-    name: Canonical source acceptance and pre-build tooling
-    uses: ./.github/workflows/hepta-browser-next-required-v8.yml
+  browser-protocol:
+    name: Browser contracts, Actor and private worker protocol
+    uses: ./.github/workflows/hepta-browser-ci.yml
+    secrets: inherit
+
+  independent-source-v3:
+    name: Git-order-correct source and archive tooling
+    uses: ./.github/workflows/hepta-servo-independent-source-contract-v3.yml
+    secrets: inherit
+
+  exact-source-review-candidate-v2:
+    name: Exact-source workflow evidence compiler and separate-review fence
+    uses: ./.github/workflows/hepta-servo-exact-source-review-candidate-v2-contract.yml
+    secrets: inherit
+
+  source-api-topology:
+    name: Hepta-owned minimal Servo source and API topology
+    uses: ./.github/workflows/hepta-servo-worker-source-topology-contract.yml
+    secrets: inherit
+
+  source-acceptance-pointer-v1:
+    name: Exact-source accepted pointer and review contract
+    uses: ./.github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml
     secrets: inherit
 
   topology-acceptance-pointer-v1:
@@ -31,16 +54,32 @@ jobs:
     uses: ./.github/workflows/hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml
     secrets: inherit
 
+  build-input-v3:
+    name: Toolchain-bound build-input tooling with real version text
+    uses: ./.github/workflows/hepta-servo-build-input-contract-v3.yml
+    secrets: inherit
+
+  build-preflight:
+    name: Linux build preflight cross-binding and stop conditions
+    uses: ./.github/workflows/hepta-servo-build-preflight-contract.yml
+    secrets: inherit
+
   required:
     name: Hepta Browser next required v9
     if: ${{ always() }}
     needs:
-      - canonical-v8
+      - browser-protocol
+      - independent-source-v3
+      - exact-source-review-candidate-v2
+      - source-api-topology
+      - source-acceptance-pointer-v1
       - topology-acceptance-pointer-v1
+      - build-input-v3
+      - build-preflight
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require canonical tooling and topology acceptance fence
+      - name: Require canonical flat tooling and acceptance gates
         shell: bash
         env:
           NEEDS: ${{ toJSON(needs) }}
@@ -65,13 +104,17 @@ jobs:
                   {
                       "status": "PASS_TOOLING_AND_FIXTURES_ONLY",
                       "dependencies": sorted(needs),
-                      "canonical_previous_gate": "v8",
+                      "reusable_workflow_topology": "blocking_to_v9_to_leaf",
+                      "source_generator": "v2_deterministic_umask",
+                      "source_verifier": "v2_git_base_name_compare",
+                      "source_review_candidate": "v2_separate_review",
+                      "source_acceptance_pointer": "v2_verify_only_no_creation_command",
                       "source_live_review": "v2_trusted_base_standalone_required_status",
-                      "topology_acceptance_review_policy": "v1_self_bound",
-                      "topology_acceptance_review_challenge": "v1_create_only",
+                      "source_api_topology": "hepta_owned_embedder_v1",
                       "topology_acceptance_pointer": "v1_verify_only_no_creation_command",
-                      "topology_live_current_head_review": "trusted_base_standalone_required_status",
-                      "required_status_check": "Worker source/API topology accepted pointer live review",
+                      "topology_live_review": "v1_trusted_base_standalone_required_status",
+                      "build_input_sealer": "v3_toolchain_bound",
+                      "build_preflight": "v2_strict_capture_facts",
                       "exact_servo_source_accepted": False,
                       "source_review_candidate_accepted": False,
                       "worker_source_topology_accepted": False,
@@ -100,15 +143,9 @@ jobs:
           {
             echo "### Hepta Browser canonical next-stage aggregate v9"
             echo
-            echo "All dependencies cover tooling and fixtures only."
-            echo
-            echo "- canonical v8 source/pre-build tooling: required"
-            echo "- source acceptance trusted-base live review v2: standalone required status"
-            echo "- accepted-source prerequisite for topology review: required"
-            echo "- self-bound Worker topology acceptance policy: required"
-            echo "- create-only topology review challenge: required"
-            echo "- topology pointer verifier with no creation command: required"
-            echo "- trusted-base current-head topology review: standalone required status"
+            echo "- reusable workflow nesting: blocking-ci -> v9 -> leaf"
+            echo "- source acceptance trusted-base review: standalone required status"
+            echo "- Worker topology trusted-base review: standalone required status"
             echo "- exact Servo source accepted: false"
             echo "- Worker source topology accepted: false"
             echo "- build authorized: false"
