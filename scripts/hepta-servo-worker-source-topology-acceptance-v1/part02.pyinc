@@ -1,0 +1,165 @@
+def validate_source_pointer(
+    pointer: dict[str, Any],
+    pointer_raw: bytes,
+    candidate: dict[str, Any],
+    candidate_raw: bytes,
+    source_policy: dict[str, Any],
+    source_policy_raw: bytes,
+    source_challenge: dict[str, Any],
+    source_challenge_raw: bytes,
+) -> None:
+    source_module = load_module(
+        SOURCE_ACCEPTANCE_SCRIPT,
+        "hepta_servo_source_acceptance_for_topology_acceptance",
+    )
+    try:
+        source_module.validate_pointer(
+            pointer,
+            candidate,
+            candidate_raw,
+            source_policy,
+            source_policy_raw,
+            source_challenge,
+            source_challenge_raw,
+        )
+    except Exception as error:
+        fail(f"accepted source pointer verification failed: {error}")
+    if pointer.get("schema") != SOURCE_POINTER_SCHEMA or pointer.get("schema_version") != 1:
+        fail("accepted source pointer schema/version drifted")
+    verify_self_binding(
+        pointer,
+        id_key="pointer_id",
+        prefix="hepta-servo-accepted-source-pointer:v1:",
+        domain=SOURCE_POINTER_DOMAIN,
+        label="accepted source pointer",
+    )
+    if pointer.get("claims") != ACCEPTED_SOURCE_CLAIMS:
+        fail("accepted source pointer claims drifted")
+    if pointer.get("authority") != AUTHORITY:
+        fail("accepted source pointer authority posture is open")
+    if pointer.get("decision") != (
+        "EXACT_SOURCE_ACCEPTED_TOPOLOGY_REVIEW_REQUIRED_BUILD_NOT_AUTHORIZED"
+    ):
+        fail("accepted source pointer decision overclaims")
+    if sha256_bytes(pointer_raw) != sha256_bytes(canonical(pointer)):
+        fail("accepted source pointer bytes are not canonical")
+
+
+def validate_topology_contract(topology: dict[str, Any], topology_raw: bytes) -> None:
+    topology_module = load_module(
+        TOPOLOGY_SCRIPT,
+        "hepta_servo_worker_source_topology_for_acceptance",
+    )
+    try:
+        topology_module.validate_topology(topology)
+    except Exception as error:
+        fail(f"Worker topology contract verification failed: {error}")
+    if topology.get("schema") != TOPOLOGY_SCHEMA or topology.get("schema_version") != 1:
+        fail("Worker topology schema/version drifted")
+    verify_self_binding(
+        topology,
+        id_key="topology_id",
+        prefix="hepta-servo-worker-source-topology:v1:",
+        domain=TOPOLOGY_DOMAIN,
+        label="Worker topology",
+    )
+    if topology.get("authority") != AUTHORITY:
+        fail("Worker topology authority posture is open")
+    if topology_raw != canonical(topology):
+        fail("Worker topology bytes are not canonical")
+
+
+def accepted_source_evidence_digest(
+    source_pointer: dict[str, Any],
+    filename: str,
+) -> str:
+    evidence = source_pointer.get("evidence")
+    files = evidence.get("source_files") if isinstance(evidence, dict) else None
+    entry = files.get(filename) if isinstance(files, dict) else None
+    if not isinstance(entry, dict) or set(entry) != {"sha256", "bytes"}:
+        fail(f"accepted source pointer lacks evidence for {filename}")
+    require_positive_int(entry.get("bytes"), f"accepted source evidence bytes for {filename}")
+    return require_sha64(entry.get("sha256"), f"accepted source evidence digest for {filename}")
+
+
+def validate_topology_receipt(
+    receipt: dict[str, Any],
+    receipt_raw: bytes,
+    source_pointer: dict[str, Any],
+    topology: dict[str, Any],
+    topology_raw: bytes,
+) -> None:
+    expected_keys = {
+        "schema",
+        "schema_version",
+        "phase",
+        "claim_level",
+        "captured_at_utc",
+        "source",
+        "bindings",
+        "selection",
+        "verification",
+        "authority",
+        "decision",
+        "receipt_id",
+    }
+    if set(receipt) != expected_keys:
+        fail("topology receipt field set is incomplete or unknown")
+    if receipt.get("schema") != TOPOLOGY_RECEIPT_SCHEMA or receipt.get("schema_version") != 1:
+        fail("topology receipt schema/version drifted")
+    if receipt.get("phase") != "DEVELOPMENT" or receipt.get("claim_level") != (
+        "SOURCE_API_TOPOLOGY_VERIFIED_BUILD_NOT_AUTHORIZED"
+    ):
+        fail("topology receipt phase/claim drifted")
+    parse_timestamp(receipt.get("captured_at_utc"), "topology receipt timestamp")
+    verify_self_binding(
+        receipt,
+        id_key="receipt_id",
+        prefix="hepta-servo-worker-source-topology-verification:v1:",
+        domain=TOPOLOGY_RECEIPT_DOMAIN,
+        label="topology receipt",
+    )
+    if receipt_raw != canonical(receipt):
+        fail("topology receipt bytes are not canonical")
+    source = source_pointer.get("servo")
+    if receipt.get("source") != source:
+        fail("topology receipt source differs from accepted source pointer")
+
+    bindings = receipt.get("bindings")
+    if not isinstance(bindings, dict) or set(bindings) != {
+        "topology_id",
+        "topology_sha256",
+        "source_bundle_receipt_sha256",
+        "compressed_archive_sha256",
+    }:
+        fail("topology receipt bindings are malformed")
+    if bindings.get("topology_id") != topology.get("topology_id"):
+        fail("topology receipt ID differs from the frozen topology")
+    if bindings.get("topology_sha256") != sha256_bytes(topology_raw):
+        fail("topology receipt bytes differ from the frozen topology")
+    if bindings.get("source_bundle_receipt_sha256") != accepted_source_evidence_digest(
+        source_pointer, "independent-source-bundle.receipt.json"
+    ):
+        fail("topology receipt source bundle differs from accepted source evidence")
+    if bindings.get("compressed_archive_sha256") != accepted_source_evidence_digest(
+        source_pointer, "servo-source-a.tar.gz"
+    ):
+        fail("topology receipt archive differs from accepted source evidence")
+
+    selection = receipt.get("selection")
+    if not isinstance(selection, dict):
+        fail("topology receipt selection is missing")
+    projection = dict(selection)
+    file_projection = projection.pop("file_projection_sha256", None)
+    require_sha64(file_projection, "topology file projection")
+    if projection != EXPECTED_SELECTION:
+        fail("topology receipt selection drifted or widened")
+    if receipt.get("verification") != EXPECTED_TOPOLOGY_VERIFICATION:
+        fail("topology receipt verification facts drifted")
+    if receipt.get("authority") != AUTHORITY:
+        fail("topology receipt authority posture is open")
+    if receipt.get("decision") != (
+        "HEPTA_OWNED_EMBEDDER_TOPOLOGY_VERIFIED_BUILD_NOT_AUTHORIZED"
+    ):
+        fail("topology receipt decision overclaims")
+
