@@ -17,11 +17,11 @@ concurrency:
 jobs:
   repair:
     name: P0.3.3 exact formatter and scoped Clippy repair
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
       BRANCH: codex/hepta-intelligence-evidence-resolver-v4-20260828
-      EXPECTED_PARENT: b06a81bdd8dcbf328c94eac821458b8a884db383
+      EXPECTED_PARENT: 9fc697284284c7ed227e2c31f1f534eac7f1b96a
     steps:
       - name: Checkout exact staging head
         uses: actions/checkout@v4
