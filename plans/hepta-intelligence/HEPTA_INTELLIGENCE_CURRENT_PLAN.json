@@ -38,8 +38,8 @@
     "efficacy_proven": false,
     "operator_accepted": false,
     "promoted": false,
-    "runner_commands_executed": false,
-    "runner_classification": "BLOCKED_RUNNER_NOT_ASSIGNED"
+    "p0_qualification_commands_executed": false,
+    "p0_runner_classification": "BLOCKED_RUNNER_NOT_ASSIGNED"
   },
   "authority": {
     "runtime_wired": false,
@@ -146,5 +146,25 @@
     "restore an independent runner and obtain non-empty exact-head evidence",
     "run the full Q0 qualification matrix",
     "fix only the failing frozen tranche before any new runtime source"
-  ]
+  ],
+  "plan_source_gate": {
+    "receipt_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN_V4_HOSTED_SOURCE_RECEIPT_2026-08-28.json",
+    "head": "1099821cdf02595d716fa877fe2639cca92a6d8b",
+    "workflow_run": 33152382416,
+    "job_id": 98787148022,
+    "runner_id": 1000025882,
+    "runner_name": "GitHub Actions 1000025882",
+    "steps_non_empty": true,
+    "result": "PASS_CANONICAL_MASTER_PLAN_SOURCE_ONLY",
+    "satisfies_Q0": false,
+    "does_not_imply": [
+      "Rust qualification",
+      "SQLite qualification",
+      "Agentd qualification",
+      "runtime wiring",
+      "efficacy",
+      "operator acceptance",
+      "promotion"
+    ]
+  }
 }
