@@ -1,127 +1,19 @@
-name: hepta-browser next required v6
+name: hepta-browser superseded aggregate (manual only)
 
 on:
-  pull_request:
-    paths:
-      - "codex-rs/hepta-shadow-qualification/**"
-      - "scripts/hepta-servo-*.py"
-      - "scripts/verify-hepta-servo-*.py"
-      - "scripts/tests/test_hepta_servo_*.py"
-      - "docs/hepta-vnext/browser/**"
-      - "third_party/servo-patches/**"
-      - ".github/workflows/hepta-browser-ci.yml"
-      - ".github/workflows/hepta-servo-*.yml"
-      - ".github/workflows/hepta-browser-next-required-v6.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  browser-protocol:
-    name: Browser contracts, Actor and private worker protocol
-    uses: ./.github/workflows/hepta-browser-ci.yml
-    secrets: inherit
-
-  independent-source-v3:
-    name: Git-order-correct source and archive tooling
-    uses: ./.github/workflows/hepta-servo-independent-source-contract-v3.yml
-    secrets: inherit
-
-  source-api-topology:
-    name: Hepta-owned minimal Servo source and API topology
-    uses: ./.github/workflows/hepta-servo-worker-source-topology-contract.yml
-    secrets: inherit
-
-  build-input-v3:
-    name: Toolchain-bound build-input tooling with real version text
-    uses: ./.github/workflows/hepta-servo-build-input-contract-v3.yml
-    secrets: inherit
-
-  build-preflight:
-    name: Linux build preflight cross-binding and stop conditions
-    uses: ./.github/workflows/hepta-servo-build-preflight-contract.yml
-    secrets: inherit
-
-  required:
-    name: Hepta Browser next required v6
-    if: ${{ always() }}
-    needs:
-      - browser-protocol
-      - independent-source-v3
-      - source-api-topology
-      - build-input-v3
-      - build-preflight
+  superseded:
+    name: Superseded by Hepta Browser next required v9
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require all canonical tooling and fixture gates
-        shell: bash
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import os
-          import sys
-
-          needs = json.loads(os.environ["NEEDS"])
-          failures = {
-              name: value.get("result")
-              for name, value in needs.items()
-              if value.get("result") != "success"
-          }
-          if failures:
-              print(json.dumps({"status": "FAIL", "dependencies": failures}, sort_keys=True))
-              sys.exit(1)
-          print(
-              json.dumps(
-                  {
-                      "status": "PASS_TOOLING_AND_FIXTURES_ONLY",
-                      "dependencies": sorted(needs),
-                      "source_generator": "v2_deterministic_umask",
-                      "source_verifier": "v2_git_base_name_compare",
-                      "source_api_topology": "hepta_owned_embedder_v1",
-                      "build_input_sealer": "v3_toolchain_bound_real_version_text",
-                      "build_preflight": "v2_strict_capture_facts",
-                      "exact_servo_source_receipt": False,
-                      "worker_source_topology_accepted": False,
-                      "accepted_toolchain_receipt": False,
-                      "accepted_build_recipe": False,
-                      "sealed_real_build_inputs": False,
-                      "real_build_preflight": False,
-                      "servo_build_run": False,
-                      "servo_artifact": False,
-                      "sbom": False,
-                      "servo_runtime_qualified": False,
-                      "operator_acceptance": False,
-                      "promotion": False,
-                  },
-                  sort_keys=True,
-              )
-          )
-          PY
-
-      - name: Record negative authority
+      - name: Record provenance-only status
         shell: bash
         run: |
           set -euo pipefail
-          {
-            echo "### Hepta Browser canonical next-stage aggregate v6"
-            echo
-            echo "All dependencies cover tooling and local fixtures only."
-            echo
-            echo "- protocol/Actor fixture: required"
-            echo "- deterministic source and Git tree reconstruction: required"
-            echo "- Hepta-owned source/API topology: required"
-            echo "- direct servoshell and WebDriver linkage: rejected"
-            echo "- independently captured toolchain binding: required"
-            echo "- build-input and preflight cross-binding: required"
-            echo "- exact Servo source acceptance: false"
-            echo "- worker source topology accepted: false"
-            echo "- real preflight/build/artifact/SBOM: false"
-            echo "- Servo runtime qualified: false"
-            echo "- production/effect authority: false"
-            echo "- operator acceptance/promotion/release: false"
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo '{"status":"SUPERSEDED_MANUAL_ONLY","canonical_workflow":".github/workflows/hepta-browser-next-required-v9.yml","exact_servo_source_accepted":false,"worker_source_topology_accepted":false,"build_authorized":false,"servo_runtime_qualified":false,"authority":"all_false"}'
