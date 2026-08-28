@@ -53,6 +53,7 @@ jobs:
           set -euo pipefail
           cat scripts/hepta-automation-operation-repair-once.py.part-* \
             > scripts/hepta-automation-operation-repair-once.py
+          sed -i 's/occurrrence/occurrence/g' scripts/hepta-automation-model-v4.rs
           python3 scripts/hepta-automation-operation-repair-once.py
 
       - name: Format owned Rust packages
