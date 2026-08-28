@@ -77,11 +77,7 @@ pub(super) fn prepare(
     for evidence in &grounded.evidence {
         let identity = FactIdentity {
             kind: evidence.fact_kind,
-            key: canonical_token(
-                &evidence.fact_key,
-                MAX_FACT_KEY_BYTES,
-                "evidence fact key",
-            )?,
+            key: canonical_token(&evidence.fact_key, MAX_FACT_KEY_BYTES, "evidence fact key")?,
         };
         if !supports.contains_key(&identity) {
             return Err(CognitiveStoreError::Invalid(format!(
@@ -158,7 +154,10 @@ pub(super) fn prepare(
             )));
         }
         if !support_is_sufficient(
-            support_text.get(identity).map(String::as_str).unwrap_or_default(),
+            support_text
+                .get(identity)
+                .map(String::as_str)
+                .unwrap_or_default(),
             support,
         ) {
             return Err(CognitiveStoreError::Invalid(format!(

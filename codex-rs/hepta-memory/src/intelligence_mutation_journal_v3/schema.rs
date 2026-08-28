@@ -20,19 +20,52 @@ use super::COMPONENT_MIGRATION_VERSION;
 
 const REQUIRED_MUTATION_JOURNAL_SCHEMA_OBJECTS: &[(&str, &str)] = &[
     ("cognitive_intelligence_mutation_migrations", "table"),
-    ("cognitive_intelligence_mutation_migrations_no_update", "trigger"),
-    ("cognitive_intelligence_mutation_migrations_no_delete", "trigger"),
+    (
+        "cognitive_intelligence_mutation_migrations_no_update",
+        "trigger",
+    ),
+    (
+        "cognitive_intelligence_mutation_migrations_no_delete",
+        "trigger",
+    ),
     ("cognitive_intelligence_mutation_operations", "table"),
-    ("cognitive_intelligence_mutation_operations_no_update", "trigger"),
-    ("cognitive_intelligence_mutation_operations_no_delete", "trigger"),
-    ("cognitive_intelligence_mutation_operations_owner_lookup", "index"),
-    ("cognitive_intelligence_mutation_operations_binding_lookup", "index"),
+    (
+        "cognitive_intelligence_mutation_operations_no_update",
+        "trigger",
+    ),
+    (
+        "cognitive_intelligence_mutation_operations_no_delete",
+        "trigger",
+    ),
+    (
+        "cognitive_intelligence_mutation_operations_owner_lookup",
+        "index",
+    ),
+    (
+        "cognitive_intelligence_mutation_operations_binding_lookup",
+        "index",
+    ),
     ("cognitive_intelligence_mutation_transitions", "table"),
-    ("cognitive_intelligence_mutation_transitions_no_update", "trigger"),
-    ("cognitive_intelligence_mutation_transitions_no_delete", "trigger"),
-    ("cognitive_intelligence_mutation_transitions_chain_guard", "trigger"),
-    ("cognitive_intelligence_mutation_transitions_digest_lookup", "index"),
-    ("cognitive_intelligence_mutation_transitions_phase_lookup", "index"),
+    (
+        "cognitive_intelligence_mutation_transitions_no_update",
+        "trigger",
+    ),
+    (
+        "cognitive_intelligence_mutation_transitions_no_delete",
+        "trigger",
+    ),
+    (
+        "cognitive_intelligence_mutation_transitions_chain_guard",
+        "trigger",
+    ),
+    (
+        "cognitive_intelligence_mutation_transitions_digest_lookup",
+        "index",
+    ),
+    (
+        "cognitive_intelligence_mutation_transitions_phase_lookup",
+        "index",
+    ),
 ];
 
 pub(super) async fn ensure(pool: &SqlitePool) -> Result<(), CognitiveStoreError> {
@@ -125,9 +158,7 @@ fn verify_migration_rows(
     }
     let version: i64 = rows[0].try_get("version").map_err(unavailable)?;
     let description: String = rows[0].try_get("description").map_err(unavailable)?;
-    let checksum: String = rows[0]
-        .try_get("checksum_sha256")
-        .map_err(unavailable)?;
+    let checksum: String = rows[0].try_get("checksum_sha256").map_err(unavailable)?;
     if version != COMPONENT_MIGRATION_VERSION
         || description != COMPONENT_MIGRATION_DESCRIPTION
         || checksum != expected_checksum

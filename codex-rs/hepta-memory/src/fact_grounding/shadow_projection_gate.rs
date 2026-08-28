@@ -166,10 +166,8 @@ impl CognitiveStore {
             let revision = positive_u64(revision_i64, "memory revision")?;
             let verification: String = row.try_get("verification").map_err(unavailable)?;
             let lifecycle: String = row.try_get("lifecycle").map_err(unavailable)?;
-            let fact_set_sha256: String =
-                row.try_get("fact_set_sha256").map_err(unavailable)?;
-            Sha256Digest::parse(fact_set_sha256.clone())
-                .map_err(CognitiveStoreError::Corrupt)?;
+            let fact_set_sha256: String = row.try_get("fact_set_sha256").map_err(unavailable)?;
+            Sha256Digest::parse(fact_set_sha256.clone()).map_err(CognitiveStoreError::Corrupt)?;
             let entity_count = nonnegative_u64(
                 row.try_get("entity_count").map_err(unavailable)?,
                 "entity count",
@@ -211,14 +209,13 @@ impl CognitiveStore {
                 });
                 continue;
             };
-            Sha256Digest::parse(receipt_sha256.clone())
-                .map_err(CognitiveStoreError::Corrupt)?;
-            candidate_nodes = candidate_nodes
-                .checked_add(entity_count)
-                .ok_or_else(|| CognitiveStoreError::Corrupt("candidate node overflow".to_string()))?;
-            candidate_edges = candidate_edges
-                .checked_add(relation_count)
-                .ok_or_else(|| CognitiveStoreError::Corrupt("candidate edge overflow".to_string()))?;
+            Sha256Digest::parse(receipt_sha256.clone()).map_err(CognitiveStoreError::Corrupt)?;
+            candidate_nodes = candidate_nodes.checked_add(entity_count).ok_or_else(|| {
+                CognitiveStoreError::Corrupt("candidate node overflow".to_string())
+            })?;
+            candidate_edges = candidate_edges.checked_add(relation_count).ok_or_else(|| {
+                CognitiveStoreError::Corrupt("candidate edge overflow".to_string())
+            })?;
             included.push(ShadowProjectionHead {
                 memory_id,
                 revision,
@@ -268,9 +265,8 @@ impl CognitiveStore {
     ) -> Result<String, CognitiveStoreError> {
         self.ensure_durable_fact_grounding_schema().await?;
         self.verify_durable_fact_grounding_ledger().await?;
-        let revision_i64 = i64::try_from(revision).map_err(|_| {
-            CognitiveStoreError::Invalid("memory revision exceeds i64".to_string())
-        })?;
+        let revision_i64 = i64::try_from(revision)
+            .map_err(|_| CognitiveStoreError::Invalid("memory revision exceeds i64".to_string()))?;
         let row = sqlx::query(
             "SELECT m.scope_kind, m.workspace_sha256, m.content_sha256,
                     m.verification, m.lifecycle, f.fact_set_sha256,
@@ -288,7 +284,9 @@ impl CognitiveStore {
         .fetch_optional(&self.pool)
         .await
         .map_err(unavailable)?
-        .ok_or_else(|| CognitiveStoreError::Invalid("memory revision does not exist".to_string()))?;
+        .ok_or_else(|| {
+            CognitiveStoreError::Invalid("memory revision does not exist".to_string())
+        })?;
         let scope = CognitiveScope::parse(
             row.try_get("scope_kind").map_err(unavailable)?,
             row.try_get("workspace_sha256").map_err(unavailable)?,
@@ -302,8 +300,7 @@ impl CognitiveStore {
             row.try_get("relation_count").map_err(unavailable)?,
             "relation count",
         )?;
-        let receipt_sha256: Option<String> =
-            row.try_get("receipt_sha256").map_err(unavailable)?;
+        let receipt_sha256: Option<String> = row.try_get("receipt_sha256").map_err(unavailable)?;
         let status = if entity_count + relation_count == 0 {
             "zero_fact"
         } else if receipt_sha256.is_some() {
@@ -350,9 +347,7 @@ impl CognitiveStore {
                     .map_err(|_| {
                         CognitiveStoreError::Corrupt("negative grounding end byte".to_string())
                     })?,
-                    evidence_sha256: span
-                        .try_get("evidence_sha256")
-                        .map_err(unavailable)?,
+                    evidence_sha256: span.try_get("evidence_sha256").map_err(unavailable)?,
                 })
             })
             .collect::<Result<Vec<_>, CognitiveStoreError>>()?;
@@ -366,9 +361,7 @@ impl CognitiveStore {
             verification: row.try_get("verification").map_err(unavailable)?,
             lifecycle: row.try_get("lifecycle").map_err(unavailable)?,
             fact_set_sha256: row.try_get("fact_set_sha256").map_err(unavailable)?,
-            fact_identity_sha256: row
-                .try_get("fact_identity_sha256")
-                .map_err(unavailable)?,
+            fact_identity_sha256: row.try_get("fact_identity_sha256").map_err(unavailable)?,
             grounding_receipt_sha256: receipt_sha256,
             grounding_status: status,
             entity_count,
@@ -455,18 +448,13 @@ fn grounded_candidate_digest(
     super::frame_part(&mut hasher, projection_scope.as_bytes());
     super::frame_part(
         &mut hasher,
-        &u64::try_from(heads.len())
-            .unwrap_or(u64::MAX)
-            .to_be_bytes(),
+        &u64::try_from(heads.len()).unwrap_or(u64::MAX).to_be_bytes(),
     );
     for head in heads {
         super::frame_part(&mut hasher, head.memory_id.as_bytes());
         super::frame_part(&mut hasher, &head.revision.to_be_bytes());
         super::frame_part(&mut hasher, head.fact_set_sha256.as_bytes());
-        super::frame_part(
-            &mut hasher,
-            head.grounding_receipt_sha256.as_bytes(),
-        );
+        super::frame_part(&mut hasher, head.grounding_receipt_sha256.as_bytes());
         super::frame_part(&mut hasher, &head.entity_count.to_be_bytes());
         super::frame_part(&mut hasher, &head.relation_count.to_be_bytes());
     }
@@ -483,8 +471,7 @@ fn positive_u64(value: i64, label: &str) -> Result<u64, CognitiveStoreError> {
 }
 
 fn nonnegative_u64(value: i64, label: &str) -> Result<u64, CognitiveStoreError> {
-    u64::try_from(value)
-        .map_err(|_| CognitiveStoreError::Corrupt(format!("negative {label}")))
+    u64::try_from(value).map_err(|_| CognitiveStoreError::Corrupt(format!("negative {label}")))
 }
 
 fn signed_delta(candidate: u64, current: u64) -> Result<i64, CognitiveStoreError> {
@@ -563,14 +550,16 @@ mod tests {
         let end = start + label.len();
         GroundedKgFactSetDraft {
             facts: facts(label),
-            evidence: vec![FactEvidenceSpanDraft::from_source_text(
-                GroundedFactKind::Entity,
-                label.to_ascii_lowercase(),
-                text,
-                start,
-                end,
-            )
-            .expect("evidence")],
+            evidence: vec![
+                FactEvidenceSpanDraft::from_source_text(
+                    GroundedFactKind::Entity,
+                    label.to_ascii_lowercase(),
+                    text,
+                    start,
+                    end,
+                )
+                .expect("evidence"),
+            ],
         }
     }
 
@@ -645,10 +634,7 @@ mod tests {
             .await
             .expect("write");
         let receipt = store
-            .shadow_grounding_explain(
-                &write.memory.id.memory_id,
-                write.memory.id.revision,
-            )
+            .shadow_grounding_explain(&write.memory.id.memory_id, write.memory.id.revision)
             .await
             .expect("explain");
         let value: serde_json::Value = serde_json::from_str(&receipt).expect("json");

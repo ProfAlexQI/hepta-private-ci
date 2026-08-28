@@ -115,11 +115,9 @@ impl ShadowHostObservation {
 
     fn to_action(&self) -> Result<IntelligenceMutationAction, CognitiveStoreError> {
         Ok(match self {
-            Self::SourceWitnessed { source_sha256 } => {
-                IntelligenceMutationAction::WitnessSource {
-                    source_sha256: parse_digest(source_sha256, "source digest")?,
-                }
-            }
+            Self::SourceWitnessed { source_sha256 } => IntelligenceMutationAction::WitnessSource {
+                source_sha256: parse_digest(source_sha256, "source digest")?,
+            },
             Self::GroundingValidated {
                 grounding_receipt_sha256,
             } => IntelligenceMutationAction::ValidateGrounding {
@@ -136,10 +134,7 @@ impl ShadowHostObservation {
             Self::MemoryFactsCommitted {
                 write_receipt_sha256,
             } => IntelligenceMutationAction::CommitMemoryFacts {
-                write_receipt_sha256: parse_digest(
-                    write_receipt_sha256,
-                    "write receipt digest",
-                )?,
+                write_receipt_sha256: parse_digest(write_receipt_sha256, "write receipt digest")?,
             },
             Self::ProjectionPublished {
                 expected_previous_generation,
@@ -153,11 +148,9 @@ impl ShadowHostObservation {
                     "projection receipt digest",
                 )?,
             },
-            Self::OutboxSettled { outcome_sha256 } => {
-                IntelligenceMutationAction::SettleOutbox {
-                    outcome_sha256: parse_digest(outcome_sha256, "outcome digest")?,
-                }
-            }
+            Self::OutboxSettled { outcome_sha256 } => IntelligenceMutationAction::SettleOutbox {
+                outcome_sha256: parse_digest(outcome_sha256, "outcome digest")?,
+            },
             Self::Terminalized => IntelligenceMutationAction::Terminalize,
             Self::Indeterminate { reason_sha256 } => {
                 IntelligenceMutationAction::MarkIndeterminate {
@@ -174,11 +167,9 @@ impl ShadowHostObservation {
                     outcome_sha256: parse_digest(outcome_sha256, "outcome digest")?,
                 }
             }
-            Self::Quarantined { reason_sha256 } => {
-                IntelligenceMutationAction::Quarantine {
-                    reason_sha256: parse_digest(reason_sha256, "reason digest")?,
-                }
-            }
+            Self::Quarantined { reason_sha256 } => IntelligenceMutationAction::Quarantine {
+                reason_sha256: parse_digest(reason_sha256, "reason digest")?,
+            },
         })
     }
 }
@@ -349,9 +340,7 @@ impl CognitiveStore {
             sequence: state.next_sequence(),
             causal_parent_sha256,
             observation,
-            prepared_sha256: Sha256Digest::for_bytes(b"uncomputed")
-                .as_str()
-                .to_string(),
+            prepared_sha256: Sha256Digest::for_bytes(b"uncomputed").as_str().to_string(),
             runtime_wired: false,
             default_open_wired: false,
             memory_write_authority: false,
@@ -597,10 +586,7 @@ fn prepared_digest(
 fn shadow_binding_digest(binding: &IntelligenceMutationBinding) -> Sha256Digest {
     let draft = binding_to_draft(binding);
     let mut hasher = Sha256::new();
-    frame_part(
-        &mut hasher,
-        b"hepta:intelligence:shadow-host-binding:v1",
-    );
+    frame_part(&mut hasher, b"hepta:intelligence:shadow-host-binding:v1");
     frame_binding(&mut hasher, &draft);
     Sha256Digest::from_sha256_output(hasher.finalize())
 }
@@ -636,9 +622,8 @@ where
             "{label} must contain 1..={MAX_JSON_BYTES} non-NUL bytes"
         )));
     }
-    serde_json::from_str(value).map_err(|error| {
-        CognitiveStoreError::Invalid(format!("invalid {label} JSON: {error}"))
-    })
+    serde_json::from_str(value)
+        .map_err(|error| CognitiveStoreError::Invalid(format!("invalid {label} JSON: {error}")))
 }
 
 fn parse_digest(value: &str, label: &str) -> Result<Sha256Digest, CognitiveStoreError> {
@@ -721,9 +706,10 @@ mod tests {
     async fn shadow_host_records_full_path_without_product_effects() {
         let temp = TempDir::new().expect("temp");
         let owner = agent_id(241);
-        let store = CognitiveStore::open_with_shadow_intelligence_mutation_host(&layout(&temp, &owner))
-            .await
-            .expect("store");
+        let store =
+            CognitiveStore::open_with_shadow_intelligence_mutation_host(&layout(&temp, &owner))
+                .await
+                .expect("store");
         let begin = store
             .begin_shadow_intelligence_mutation(&binding())
             .await
@@ -782,17 +768,22 @@ mod tests {
             }),
         )
         .await;
-        let terminal = observe(
-            &store,
-            serde_json::json!({"observation": "terminalized"}),
-        )
-        .await;
+        let terminal = observe(&store, serde_json::json!({"observation": "terminalized"})).await;
         assert_eq!(terminal["append"]["to_phase"], "terminal");
         assert_eq!(terminal["append"]["observed_memory_write_count"], 1);
         assert_eq!(terminal["append"]["observed_projection_publish_count"], 1);
-        assert_eq!(terminal["append"]["memory_write_performed_by_adapter"], false);
-        assert_eq!(terminal["append"]["projection_write_performed_by_adapter"], false);
-        assert_eq!(terminal["append"]["outbox_dispatch_performed_by_adapter"], false);
+        assert_eq!(
+            terminal["append"]["memory_write_performed_by_adapter"],
+            false
+        );
+        assert_eq!(
+            terminal["append"]["projection_write_performed_by_adapter"],
+            false
+        );
+        assert_eq!(
+            terminal["append"]["outbox_dispatch_performed_by_adapter"],
+            false
+        );
 
         let source_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM source_ledger")
             .fetch_one(&store.pool)
@@ -806,12 +797,11 @@ mod tests {
             .fetch_one(&store.pool)
             .await
             .expect("projection count");
-        let transition_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM cognitive_intelligence_mutation_transitions",
-        )
-        .fetch_one(&store.pool)
-        .await
-        .expect("transition count");
+        let transition_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_intelligence_mutation_transitions")
+                .fetch_one(&store.pool)
+                .await
+                .expect("transition count");
         assert_eq!(source_count, 0);
         assert_eq!(memory_count, 0);
         assert_eq!(projection_count, 0);
@@ -830,9 +820,10 @@ mod tests {
     async fn prepared_request_supports_exact_retry_and_rejects_tamper() {
         let temp = TempDir::new().expect("temp");
         let owner = agent_id(242);
-        let store = CognitiveStore::open_with_shadow_intelligence_mutation_host(&layout(&temp, &owner))
-            .await
-            .expect("store");
+        let store =
+            CognitiveStore::open_with_shadow_intelligence_mutation_host(&layout(&temp, &owner))
+                .await
+                .expect("store");
         store
             .begin_shadow_intelligence_mutation(&binding())
             .await
@@ -876,9 +867,10 @@ mod tests {
     async fn postcommit_ack_loss_is_adopted_by_exact_retry() {
         let temp = TempDir::new().expect("temp");
         let owner = agent_id(243);
-        let store = CognitiveStore::open_with_shadow_intelligence_mutation_host(&layout(&temp, &owner))
-            .await
-            .expect("store");
+        let store =
+            CognitiveStore::open_with_shadow_intelligence_mutation_host(&layout(&temp, &owner))
+                .await
+                .expect("store");
         store
             .begin_shadow_intelligence_mutation(&binding())
             .await
@@ -909,12 +901,11 @@ mod tests {
             .expect("replay");
         let replay: Value = serde_json::from_str(&replay).expect("replay json");
         assert_eq!(replay["journal_disposition"], "replay");
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM cognitive_intelligence_mutation_transitions",
-        )
-        .fetch_one(&store.pool)
-        .await
-        .expect("count");
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_intelligence_mutation_transitions")
+                .fetch_one(&store.pool)
+                .await
+                .expect("count");
         assert_eq!(count, 1);
     }
 }

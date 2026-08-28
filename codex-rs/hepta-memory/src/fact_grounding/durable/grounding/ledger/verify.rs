@@ -39,12 +39,9 @@ pub(super) async fn verify_receipts(
 
     for row in rows {
         let memory_id: String = row.try_get("memory_id").map_err(unavailable)?;
-        let memory_revision_i64: i64 =
-            row.try_get("memory_revision").map_err(unavailable)?;
+        let memory_revision_i64: i64 = row.try_get("memory_revision").map_err(unavailable)?;
         let memory_revision = u64::try_from(memory_revision_i64).map_err(|_| {
-            CognitiveStoreError::Corrupt(
-                "negative fact-grounding memory revision".to_string(),
-            )
+            CognitiveStoreError::Corrupt("negative fact-grounding memory revision".to_string())
         })?;
         let stored_owner: String = row.try_get("owner_agent_id").map_err(unavailable)?;
         if stored_owner != owner_agent_id {
@@ -67,12 +64,9 @@ pub(super) async fn verify_receipts(
             ));
         }
         let source_id: String = row.try_get("source_id").map_err(unavailable)?;
-        let source_revision_i64: i64 =
-            row.try_get("source_revision").map_err(unavailable)?;
+        let source_revision_i64: i64 = row.try_get("source_revision").map_err(unavailable)?;
         let source_revision = u64::try_from(source_revision_i64).map_err(|_| {
-            CognitiveStoreError::Corrupt(
-                "negative fact-grounding source revision".to_string(),
-            )
+            CognitiveStoreError::Corrupt("negative fact-grounding source revision".to_string())
         })?;
         let fact_source_id: String = row.try_get("fact_source_id").map_err(unavailable)?;
         let fact_source_revision_i64: i64 =
@@ -85,9 +79,7 @@ pub(super) async fn verify_receipts(
         }
         let source: Vec<u8> = row.try_get("content").map_err(unavailable)?;
         let source_text = str::from_utf8(&source).map_err(|_| {
-            CognitiveStoreError::Corrupt(
-                "durably grounded source is not valid UTF-8".to_string(),
-            )
+            CognitiveStoreError::Corrupt("durably grounded source is not valid UTF-8".to_string())
         })?;
         if source.len() > MAX_GROUNDING_SOURCE_BYTES {
             return Err(CognitiveStoreError::Corrupt(
@@ -109,13 +101,10 @@ pub(super) async fn verify_receipts(
                 "durable grounding source digest failed recomputation".to_string(),
             ));
         }
-        let fact_set_sha256: String =
-            row.try_get("fact_set_sha256").map_err(unavailable)?;
-        Sha256Digest::parse(fact_set_sha256.clone())
-            .map_err(CognitiveStoreError::Corrupt)?;
+        let fact_set_sha256: String = row.try_get("fact_set_sha256").map_err(unavailable)?;
+        Sha256Digest::parse(fact_set_sha256.clone()).map_err(CognitiveStoreError::Corrupt)?;
         let entity_count: i64 = row.try_get("entity_count").map_err(unavailable)?;
-        let relation_count: i64 =
-            row.try_get("relation_count").map_err(unavailable)?;
+        let relation_count: i64 = row.try_get("relation_count").map_err(unavailable)?;
         if entity_count + relation_count <= 0 {
             return Err(CognitiveStoreError::Corrupt(
                 "zero-fact revision has an unexpected grounding receipt".to_string(),
@@ -142,12 +131,9 @@ pub(super) async fn verify_receipts(
         .fetch_all(pool)
         .await
         .map_err(unavailable)?;
-        let evidence_count_i64: i64 =
-            row.try_get("evidence_count").map_err(unavailable)?;
+        let evidence_count_i64: i64 = row.try_get("evidence_count").map_err(unavailable)?;
         let evidence_count = usize::try_from(evidence_count_i64).map_err(|_| {
-            CognitiveStoreError::Corrupt(
-                "negative durable grounding evidence count".to_string(),
-            )
+            CognitiveStoreError::Corrupt("negative durable grounding evidence count".to_string())
         })?;
         if span_rows.len() != evidence_count || evidence_count > MAX_TOTAL_SPANS {
             return Err(CognitiveStoreError::Corrupt(
@@ -160,8 +146,7 @@ pub(super) async fn verify_receipts(
         let mut support_text = BTreeMap::<FactIdentity, String>::new();
         let mut seen = BTreeSet::new();
         for span_row in span_rows {
-            let kind_text: String =
-                span_row.try_get("fact_kind").map_err(unavailable)?;
+            let kind_text: String = span_row.try_get("fact_kind").map_err(unavailable)?;
             let kind = parse_fact_kind(&kind_text)?;
             let key: String = span_row.try_get("fact_key").map_err(unavailable)?;
             if canonical_token(&key, MAX_FACT_KEY_BYTES, "stored fact key")? != key {
@@ -177,8 +162,7 @@ pub(super) async fn verify_receipts(
                     identity.key
                 )));
             }
-            let ordinal_i64: i64 =
-                span_row.try_get("evidence_ordinal").map_err(unavailable)?;
+            let ordinal_i64: i64 = span_row.try_get("evidence_ordinal").map_err(unavailable)?;
             let ordinal = u32::try_from(ordinal_i64).map_err(|_| {
                 CognitiveStoreError::Corrupt(
                     "negative durable grounding evidence ordinal".to_string(),
@@ -195,14 +179,10 @@ pub(super) async fn verify_receipts(
             let start_i64: i64 = span_row.try_get("start_byte").map_err(unavailable)?;
             let end_i64: i64 = span_row.try_get("end_byte").map_err(unavailable)?;
             let start = usize::try_from(start_i64).map_err(|_| {
-                CognitiveStoreError::Corrupt(
-                    "negative durable grounding start byte".to_string(),
-                )
+                CognitiveStoreError::Corrupt("negative durable grounding start byte".to_string())
             })?;
             let end = usize::try_from(end_i64).map_err(|_| {
-                CognitiveStoreError::Corrupt(
-                    "negative durable grounding end byte".to_string(),
-                )
+                CognitiveStoreError::Corrupt("negative durable grounding end byte".to_string())
             })?;
             validate_span_range_corrupt(source_text, start, end)?;
             let stored_evidence_sha256: String =
@@ -273,7 +253,10 @@ pub(super) async fn verify_receipts(
                 )));
             }
             if !support_is_sufficient(
-                support_text.get(identity).map(String::as_str).unwrap_or_default(),
+                support_text
+                    .get(identity)
+                    .map(String::as_str)
+                    .unwrap_or_default(),
                 support,
             ) {
                 return Err(CognitiveStoreError::Corrupt(format!(
@@ -292,20 +275,17 @@ pub(super) async fn verify_receipts(
                 "durable grounding fact-identity digest failed recomputation".to_string(),
             ));
         }
-        let expected_receipt_sha256 = durable_receipt_digest(
-            DurableReceiptDigestParts {
-                memory_id: &memory_id,
-                memory_revision,
-                source_id: &source_id,
-                source_revision,
-                source_content_sha256: source_content_sha256.as_str(),
-                fact_set_sha256: &fact_set_sha256,
-                fact_identity_sha256: expected_identity_sha256.as_str(),
-                spans: &spans,
-            },
-        );
-        let stored_receipt_sha256: String =
-            row.try_get("receipt_sha256").map_err(unavailable)?;
+        let expected_receipt_sha256 = durable_receipt_digest(DurableReceiptDigestParts {
+            memory_id: &memory_id,
+            memory_revision,
+            source_id: &source_id,
+            source_revision,
+            source_content_sha256: source_content_sha256.as_str(),
+            fact_set_sha256: &fact_set_sha256,
+            fact_identity_sha256: expected_identity_sha256.as_str(),
+            spans: &spans,
+        });
+        let stored_receipt_sha256: String = row.try_get("receipt_sha256").map_err(unavailable)?;
         if expected_receipt_sha256.as_str() != stored_receipt_sha256 {
             return Err(CognitiveStoreError::Corrupt(
                 "durable fact-grounding receipt digest failed recomputation".to_string(),

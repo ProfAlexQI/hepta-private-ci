@@ -3,68 +3,26 @@ use sqlx::Executor;
 
 const REQUIRED_GROUNDING_SCHEMA_OBJECTS: &[(&str, &str)] = &[
     ("cognitive_fact_grounding_migrations", "table"),
-    (
-        "cognitive_fact_grounding_migrations_no_delete",
-        "trigger",
-    ),
-    (
-        "cognitive_fact_grounding_migrations_no_update",
-        "trigger",
-    ),
+    ("cognitive_fact_grounding_migrations_no_delete", "trigger"),
+    ("cognitive_fact_grounding_migrations_no_update", "trigger"),
     ("kg_revision_fact_grounding_receipts", "table"),
     (
         "kg_revision_fact_grounding_receipts_binding_guard",
         "trigger",
     ),
-    (
-        "kg_revision_fact_grounding_receipts_digest_lookup",
-        "index",
-    ),
-    (
-        "kg_revision_fact_grounding_receipts_no_delete",
-        "trigger",
-    ),
-    (
-        "kg_revision_fact_grounding_receipts_no_update",
-        "trigger",
-    ),
-    (
-        "kg_revision_fact_grounding_receipts_source_lookup",
-        "index",
-    ),
+    ("kg_revision_fact_grounding_receipts_digest_lookup", "index"),
+    ("kg_revision_fact_grounding_receipts_no_delete", "trigger"),
+    ("kg_revision_fact_grounding_receipts_no_update", "trigger"),
+    ("kg_revision_fact_grounding_receipts_source_lookup", "index"),
     ("kg_revision_fact_grounding_spans", "table"),
-    (
-        "kg_revision_fact_grounding_spans_digest_lookup",
-        "index",
-    ),
-    (
-        "kg_revision_fact_grounding_spans_fact_guard",
-        "trigger",
-    ),
-    (
-        "kg_revision_fact_grounding_spans_fact_lookup",
-        "index",
-    ),
-    (
-        "kg_revision_fact_grounding_spans_no_delete",
-        "trigger",
-    ),
-    (
-        "kg_revision_fact_grounding_spans_no_update",
-        "trigger",
-    ),
-    (
-        "kg_revision_fact_grounding_spans_ordinal_guard",
-        "trigger",
-    ),
-    (
-        "kg_revision_fact_grounding_spans_range_guard",
-        "trigger",
-    ),
-    (
-        "kg_revision_fact_grounding_spans_total_guard",
-        "trigger",
-    ),
+    ("kg_revision_fact_grounding_spans_digest_lookup", "index"),
+    ("kg_revision_fact_grounding_spans_fact_guard", "trigger"),
+    ("kg_revision_fact_grounding_spans_fact_lookup", "index"),
+    ("kg_revision_fact_grounding_spans_no_delete", "trigger"),
+    ("kg_revision_fact_grounding_spans_no_update", "trigger"),
+    ("kg_revision_fact_grounding_spans_ordinal_guard", "trigger"),
+    ("kg_revision_fact_grounding_spans_range_guard", "trigger"),
+    ("kg_revision_fact_grounding_spans_total_guard", "trigger"),
 ];
 
 const REQUIRED_GROUNDING_SCHEMA_ORACLE_SHA256: &str =
@@ -160,9 +118,7 @@ fn verify_migration_rows(
     }
     let version: i64 = rows[0].try_get("version").map_err(unavailable)?;
     let description: String = rows[0].try_get("description").map_err(unavailable)?;
-    let checksum: String = rows[0]
-        .try_get("checksum_sha256")
-        .map_err(unavailable)?;
+    let checksum: String = rows[0].try_get("checksum_sha256").map_err(unavailable)?;
     if version != COMPONENT_MIGRATION_VERSION
         || description != COMPONENT_MIGRATION_DESCRIPTION
         || checksum != expected_checksum
@@ -210,9 +166,7 @@ async fn verify_schema_oracle(pool: &SqlitePool) -> Result<(), CognitiveStoreErr
     );
     super::super::frame_part(
         &mut hasher,
-        &u64::try_from(parts.len())
-            .unwrap_or(u64::MAX)
-            .to_be_bytes(),
+        &u64::try_from(parts.len()).unwrap_or(u64::MAX).to_be_bytes(),
     );
     for (name, object_type, sql) in &parts {
         super::super::frame_part(&mut hasher, name.as_bytes());

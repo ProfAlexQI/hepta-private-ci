@@ -147,8 +147,7 @@ pub(super) fn verify_operation_binding_row(
         || stored_binding != expected_binding_sha256.as_str()
     {
         return Err(CognitiveStoreError::Conflict(
-            "intelligence mutation operation ID is already bound to different inputs"
-                .to_string(),
+            "intelligence mutation operation ID is already bound to different inputs".to_string(),
         ));
     }
     Ok(())
@@ -257,16 +256,12 @@ fn verify_transition_row(
     let stored_from: String = row.try_get("from_phase").map_err(unavailable)?;
     let stored_to: String = row.try_get("to_phase").map_err(unavailable)?;
     let stored_request: String = row.try_get("request_sha256").map_err(unavailable)?;
-    let stored_parent: Option<String> = row
-        .try_get("causal_parent_sha256")
-        .map_err(unavailable)?;
+    let stored_parent: Option<String> = row.try_get("causal_parent_sha256").map_err(unavailable)?;
     let stored_transition: String = row.try_get("transition_sha256").map_err(unavailable)?;
     let stored_intent_appended: i64 = row
         .try_get("durable_intent_appended")
         .map_err(unavailable)?;
-    let stored_intent_settled: i64 = row
-        .try_get("durable_intent_settled")
-        .map_err(unavailable)?;
+    let stored_intent_settled: i64 = row.try_get("durable_intent_settled").map_err(unavailable)?;
     let stored_memory_writes: i64 = row.try_get("memory_write_count").map_err(unavailable)?;
     let stored_projection_publishes: i64 = row
         .try_get("projection_publish_count")
@@ -287,10 +282,11 @@ fn verify_transition_row(
         || stored_intent_settled != bool_i64(receipt.durable_intent_settled)
         || stored_memory_writes != i64::from(receipt.memory_write_count)
         || stored_projection_publishes != i64::from(receipt.projection_publish_count)
-        || stored_generation != to_i64(
-            receipt.last_published_generation,
-            "last published generation",
-        )?
+        || stored_generation
+            != to_i64(
+                receipt.last_published_generation,
+                "last published generation",
+            )?
     {
         return Err(CognitiveStoreError::Corrupt(
             "persisted intelligence mutation receipt failed exact replay".to_string(),

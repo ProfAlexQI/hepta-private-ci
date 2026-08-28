@@ -43,10 +43,7 @@ async fn append(
 ) -> IntelligenceMutationJournalAppend {
     let request = request_for(store, binding, action).await;
     store
-        .append_intelligence_mutation_transition(
-            request,
-            IntelligenceMutationJournalFault::None,
-        )
+        .append_intelligence_mutation_transition(request, IntelligenceMutationJournalFault::None)
         .await
         .expect("append")
 }
@@ -133,7 +130,10 @@ async fn journal_replays_normal_terminal_path_after_reopen() {
             IntelligenceMutationJournalDisposition::Replay
         );
         let terminal = drive_to_terminal(&store, &operation).await;
-        assert_eq!(terminal.receipt.to_phase, IntelligenceMutationPhase::Terminal);
+        assert_eq!(
+            terminal.receipt.to_phase,
+            IntelligenceMutationPhase::Terminal
+        );
         assert_eq!(terminal.receipt.memory_write_count, 1);
         assert_eq!(terminal.receipt.projection_publish_count, 1);
         assert!(terminal.receipt.durable_intent_settled);
@@ -191,7 +191,10 @@ async fn exact_retry_replays_and_changed_retry_fails_closed() {
         .await
         .expect("replay");
     assert_eq!(first.receipt, replay.receipt);
-    assert_eq!(replay.disposition, IntelligenceMutationJournalDisposition::Replay);
+    assert_eq!(
+        replay.disposition,
+        IntelligenceMutationJournalDisposition::Replay
+    );
 
     let changed = IntelligenceMutationTransitionRequest {
         action: IntelligenceMutationAction::WitnessSource {
@@ -302,13 +305,13 @@ async fn postcommit_ack_loss_is_adopted_by_exact_retry() {
         other => panic!("unexpected result: {other:?}"),
     };
     let retry = store
-        .append_intelligence_mutation_transition(
-            request,
-            IntelligenceMutationJournalFault::None,
-        )
+        .append_intelligence_mutation_transition(request, IntelligenceMutationJournalFault::None)
         .await
         .expect("retry");
-    assert_eq!(retry.disposition, IntelligenceMutationJournalDisposition::Replay);
+    assert_eq!(
+        retry.disposition,
+        IntelligenceMutationJournalDisposition::Replay
+    );
     assert_eq!(retry.receipt.transition_sha256, lost_digest);
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM cognitive_intelligence_mutation_transitions
@@ -384,10 +387,7 @@ async fn raw_sequence_gap_and_immutable_rows_are_rejected() {
     )
     .await;
     store
-        .append_intelligence_mutation_transition(
-            request,
-            IntelligenceMutationJournalFault::None,
-        )
+        .append_intelligence_mutation_transition(request, IntelligenceMutationJournalFault::None)
         .await
         .expect("append");
     assert!(
