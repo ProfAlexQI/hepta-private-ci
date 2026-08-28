@@ -12,6 +12,7 @@ BLOCKING = ROOT / ".github/workflows/blocking-ci.yml"
 BROWSER = ROOT / ".github/workflows/hepta-browser-next-required-v9.yml"
 VNEXT = ROOT / ".github/workflows/hepta-vnext-qualification.yml"
 SDK = ROOT / ".github/workflows/sdk.yml"
+SDK_RUNNER = "ubuntu-22.04"
 
 EXPECTED = [
     {
@@ -55,8 +56,9 @@ def require(text: str, label: str, *tokens: str) -> None:
 
 
 def verify_sdk_runner_contract(sdk: str) -> None:
-    if sdk.count("runs-on: ubuntu-24.04") != 2:
-        fail("SDK workflow must run both jobs on GitHub-hosted ubuntu-24.04")
+    runner_line = f"runs-on: {SDK_RUNNER}"
+    if sdk.count(runner_line) != 2:
+        fail(f"SDK workflow must run both jobs on GitHub-hosted {SDK_RUNNER}")
     require(
         sdk,
         "SDK workflow",
@@ -77,27 +79,32 @@ def verify_sdk_runner_contract(sdk: str) -> None:
         "${{ github.event.repository.name }}-linux-x64",
         "${{ github.event.repository.name }}-runners",
         "runs-on:\n      group:",
+        "runs-on: ubuntu-24.04",
+        "runs-on: ubuntu-latest",
     ):
         if forbidden in sdk:
-            fail(f"SDK workflow still depends on unavailable self-hosted routing: {forbidden}")
+            fail(f"SDK workflow still depends on unavailable runner routing: {forbidden}")
 
 
 def verify_vnext_windows_checkout_contract(vnext: str) -> None:
     marker = "Enable Git long paths before checkout (Windows)"
     checkout = "uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+    root_working_directory = "working-directory: ."
     require(
         vnext,
         "Hepta vNext Windows checkout",
         marker,
         "if: runner.os == 'Windows'",
+        root_working_directory,
         "git config --global core.longpaths true",
         checkout,
     )
     portable_product = vnext.index("portable-product:")
     marker_offset = vnext.index(marker, portable_product)
     checkout_offset = vnext.index(checkout, portable_product)
-    if marker_offset > checkout_offset:
-        fail("Hepta vNext enables Windows long paths only after checkout")
+    working_directory_offset = vnext.index(root_working_directory, marker_offset)
+    if not marker_offset < working_directory_offset < checkout_offset:
+        fail("Hepta vNext must enable Windows long paths from the repository root before checkout")
 
 
 def main() -> int:
@@ -175,8 +182,9 @@ def main() -> int:
                 "required_contexts": [item["check_name"] for item in EXPECTED],
                 "single_workflow_aggregation": False,
                 "superseded_run_cancellation": True,
-                "sdk_runner": "github_hosted_ubuntu_24_04",
+                "sdk_runner": "github_hosted_ubuntu_22_04",
                 "windows_checkout_longpaths": True,
+                "windows_checkout_working_directory": "repository_root",
                 "branch_ruleset_configured": False,
                 "authority": "all_false",
             },
