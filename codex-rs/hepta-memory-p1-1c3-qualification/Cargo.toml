@@ -1,0 +1,27 @@
+[package]
+name = "hepta-memory-p1-1c3-qualification"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "p1_1c3_receipt"
+path = "src/bin/p1_1c3_receipt.rs"
+
+[dependencies]
+ed25519-dalek = "=2.2.0"
+sha2 = "=0.10.9"
+hepta-memory-p1-1c1-qualification = { path = "../hepta-memory-p1-1c1-qualification" }
+
+[dev-dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "deny"
+
+[workspace]

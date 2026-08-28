@@ -1,0 +1,44 @@
+{
+  "schema": "hepta.intelligence.p1_1c3.implementation_receipt.v1",
+  "status": "SOURCE_IMPLEMENTED_EXTERNAL_EVIDENCE_ABSENT",
+  "tranche": "P1.1c.3",
+  "parent_commit": "c3c42f60e5ca11fd49fe5d4d2013c5b21e183619",
+  "claims": {
+    "signed_exact_head_ci_evidence": true,
+    "nonzero_runner_job_step_artifact_required": true,
+    "ed25519_signature_verification": true,
+    "trusted_key_role_scope_validity_and_revocation": true,
+    "reviewer_and_adjudicator_signatures": true,
+    "reviewer_affiliation_independence": true,
+    "adjudicator_affiliation_independence": true,
+    "license_provenance_privacy_operator_signatures": true,
+    "single_dataset_digest_binding": true,
+    "fixture_keys_rejected_by_external_policy": true,
+    "receipt_canonicality": true,
+    "real_external_evidence_present": false,
+    "trusted_corpus_accepted": false
+  },
+  "qualification": {
+    "source_gate": "pending_exact_head_execution",
+    "tests_expected": 16,
+    "qualified": false
+  },
+  "authority": {
+    "product_workspace_member": false,
+    "product_module_registered": false,
+    "runtime_wired": false,
+    "default_recall_changed": false,
+    "federation_recall_changed": false,
+    "context_attachment": false,
+    "physical_send": false,
+    "network_access": false,
+    "model_download": false,
+    "external_effects": false,
+    "production_authority": false,
+    "efficacy_validation": false,
+    "efficacy_claim": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  }
+}
