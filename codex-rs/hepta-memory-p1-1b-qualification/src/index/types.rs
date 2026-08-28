@@ -77,15 +77,20 @@ pub struct AnnIndexManifest {
 
 impl AnnIndexManifest {
     pub fn validate(&self) -> Result<(), ContractError> {
+        let item_count = usize::try_from(self.item_count).unwrap_or(usize::MAX);
+        let bucket_count = usize::try_from(self.bucket_count).unwrap_or(usize::MAX);
         if self.schema_version != P1_1B_SCHEMA_VERSION
             || self.namespace != INDEX_NAMESPACE
             || self.generation == 0
             || self.item_count == 0
-            || usize::try_from(self.item_count).unwrap_or(usize::MAX) > MAX_INDEX_ITEMS
+            || item_count > MAX_INDEX_ITEMS
             || self.bucket_count == 0
+            || self.bucket_count > self.item_count
+            || bucket_count > MAX_INDEX_ITEMS
+            || !(8..=MAX_EMBEDDING_DIMENSIONS).contains(&self.dimensions)
         {
             return Err(ContractError::Corrupt(
-                "invalid local ANN manifest shape".to_string(),
+                "invalid local ANN manifest shape or bounded counts".to_string(),
             ));
         }
         validate_id(&self.index_id, "ANN index id")?;
@@ -128,9 +133,12 @@ pub struct ExpectedAnnIndexBinding {
 impl ExpectedAnnIndexBinding {
     pub fn validate(&self) -> Result<(), ContractError> {
         validate_id(&self.index_id, "expected ANN index id")?;
-        if self.generation == 0 || self.dimensions == 0 {
+        if self.generation == 0
+            || !(8..=MAX_EMBEDDING_DIMENSIONS).contains(&self.dimensions)
+        {
             return Err(ContractError::Invalid(
-                "expected ANN generation and dimensions must be positive".to_string(),
+                "expected ANN generation or dimensions are outside the bounded contract"
+                    .to_string(),
             ));
         }
         Ok(())
@@ -159,6 +167,7 @@ impl IndexWriteReceipt {
         validate_id(&self.index_id, "index write receipt id")?;
         if self.generation == 0
             || self.file_bytes == 0
+            || self.file_bytes > MAX_INDEX_FILE_BYTES
             || !self.create_only
             || !self.immutable
             || !self.local_only
@@ -223,8 +232,16 @@ pub struct AnnSearchReceipt {
 impl AnnSearchReceipt {
     pub fn validate(&self) -> Result<(), ContractError> {
         validate_id(&self.index_id, "ANN search index id")?;
+        let result_count = usize::try_from(self.result_count).unwrap_or(usize::MAX);
+        let scanned_candidate_count =
+            usize::try_from(self.scanned_candidate_count).unwrap_or(usize::MAX);
         if self.generation == 0
-            || usize::try_from(self.result_count).ok() != Some(self.results.len())
+            || result_count != self.results.len()
+            || result_count > MAX_SEARCH_RESULTS
+            || scanned_candidate_count > MAX_SEARCH_CANDIDATES
+            || self.scanned_candidate_count < self.result_count
+            || self.visited_bucket_count > 65
+            || (self.scanned_candidate_count > 0 && self.visited_bucket_count == 0)
             || !self.ann_search_executed
             || self.runtime_wired
             || self.default_recall_changed
@@ -241,16 +258,21 @@ impl AnnSearchReceipt {
             || self.callers_ratchet
         {
             return Err(ContractError::Corrupt(
-                "ANN search receipt crosses the source-only boundary".to_string(),
+                "ANN search receipt crosses the bounded source-only boundary".to_string(),
             ));
         }
         if self.lexical_fallback_required != self.results.is_empty()
-            || self.lexical_fallback_required != self.fallback_reason.is_some()
+            || self.lexical_fallback_required != (self.scanned_candidate_count == 0)
+            || (self.lexical_fallback_required
+                && self.fallback_reason.as_deref() != Some("ann_bucket_empty"))
+            || (!self.lexical_fallback_required && self.fallback_reason.is_some())
         {
             return Err(ContractError::Corrupt(
                 "ANN search fallback fields are inconsistent".to_string(),
             ));
         }
+
+        let mut identities = BTreeSet::new();
         for result in &self.results {
             validate_id(&result.candidate_id, "ANN result candidate id")?;
             if result.memory_revision == 0 || result.similarity_ppm > 1_000_000 {
@@ -258,11 +280,30 @@ impl AnnSearchReceipt {
                     "invalid ANN search result shape".to_string(),
                 ));
             }
+            if !identities.insert((result.candidate_id.clone(), result.memory_revision)) {
+                return Err(ContractError::Corrupt(
+                    "duplicate ANN search result identity".to_string(),
+                ));
+            }
             if result.result_sha256 != ann_result_digest(result) {
                 return Err(ContractError::Corrupt(
                     "ANN result digest mismatch".to_string(),
                 ));
             }
+        }
+        if self.results.windows(2).any(|pair| {
+            let left = &pair[0];
+            let right = &pair[1];
+            left.similarity_ppm < right.similarity_ppm
+                || (left.similarity_ppm == right.similarity_ppm
+                    && left.candidate_id.as_str() > right.candidate_id.as_str())
+                || (left.similarity_ppm == right.similarity_ppm
+                    && left.candidate_id.as_str() == right.candidate_id.as_str()
+                    && left.memory_revision < right.memory_revision)
+        }) {
+            return Err(ContractError::Corrupt(
+                "ANN search results are not in deterministic order".to_string(),
+            ));
         }
         if self.receipt_sha256 != ann_search_receipt_digest(self) {
             return Err(ContractError::Corrupt(

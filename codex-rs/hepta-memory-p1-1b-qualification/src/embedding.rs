@@ -11,7 +11,7 @@ pub const MAX_EMBEDDING_REGISTRY_ENTRIES: usize = 16;
 pub const MAX_EMBEDDING_DIMENSIONS: u32 = 4096;
 pub const MAX_EMBEDDING_BATCH: u32 = 256;
 pub const Q15_UNIT_NORM_SQUARED: u64 = 1_073_676_289;
-const Q15_NORM_TOLERANCE_PPM: u64 = 100_000;
+pub(crate) const Q15_NORM_TOLERANCE_PPM: u64 = 10_000;
 const SCORE_SCALE_PPM: u64 = 1_000_000;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -168,10 +168,11 @@ pub struct EmbeddedVector {
 impl EmbeddedVector {
     pub fn validate(&self) -> Result<(), ContractError> {
         validate_id(&self.provider_id, "embedded vector provider id")?;
-        if self.dimensions == 0 || usize::try_from(self.dimensions).ok() != Some(self.vector.len())
+        if !(8..=MAX_EMBEDDING_DIMENSIONS).contains(&self.dimensions)
+            || usize::try_from(self.dimensions).ok() != Some(self.vector.len())
         {
             return Err(ContractError::Corrupt(
-                "embedded vector dimensions do not match vector length".to_string(),
+                "embedded vector dimensions are outside the bounded contract".to_string(),
             ));
         }
         if self.vector_sha256 != vector_digest(&self.vector) {
@@ -394,7 +395,7 @@ pub(crate) fn norm_squared(vector: &[i16]) -> Result<u64, ContractError> {
     })
 }
 
-fn norm_is_q15_unit(norm_squared: u64) -> bool {
+pub(crate) fn norm_is_q15_unit(norm_squared: u64) -> bool {
     let difference = norm_squared.abs_diff(Q15_UNIT_NORM_SQUARED);
     difference.saturating_mul(SCORE_SCALE_PPM)
         <= Q15_UNIT_NORM_SQUARED.saturating_mul(Q15_NORM_TOLERANCE_PPM)
@@ -446,6 +447,22 @@ mod tests {
         }
     }
 
+    struct ZeroVectorProvider {
+        descriptor: LocalEmbeddingDescriptor,
+    }
+
+    impl LocalEmbeddingProvider for ZeroVectorProvider {
+        fn descriptor(&self) -> &LocalEmbeddingDescriptor {
+            &self.descriptor
+        }
+
+        fn embed_batch(&self, inputs: &[&str]) -> Result<Vec<Vec<i16>>, ContractError> {
+            let dimensions =
+                usize::try_from(self.descriptor.dimensions).map_err(|_| ContractError::Overflow)?;
+            Ok(inputs.iter().map(|_| vec![0_i16; dimensions]).collect())
+        }
+    }
+
     #[test]
     fn reference_provider_is_local_deterministic_and_receipted() {
         let mut registry = EmbeddingRegistry::new();
@@ -463,12 +480,26 @@ mod tests {
     }
 
     #[test]
-    fn descriptor_rejects_remote_or_download_authority() {
+    fn descriptor_rejects_remote_download_or_dimension_overflow() {
         let mut invalid = descriptor();
         invalid.remote_execution = true;
         assert!(invalid.validate().is_err());
         let mut invalid = descriptor();
         invalid.model_download = true;
         assert!(invalid.validate().is_err());
+        let mut invalid = descriptor();
+        invalid.dimensions = MAX_EMBEDDING_DIMENSIONS + 1;
+        assert!(invalid.validate().is_err());
+    }
+
+    #[test]
+    fn provider_rejects_non_unit_vector() {
+        let descriptor = descriptor();
+        let provider_id = descriptor.provider_id.clone();
+        let mut registry = EmbeddingRegistry::new();
+        registry
+            .register(Box::new(ZeroVectorProvider { descriptor }))
+            .expect("register zero provider contract");
+        assert!(registry.embed_batch(&provider_id, &["alpha"]).is_err());
     }
 }

@@ -1,3 +1,17 @@
+fn ordered_probe_signatures(query_signature: u64) -> Vec<u64> {
+    let mut neighbors = Vec::with_capacity(64);
+    for bit in 0..64 {
+        neighbors.push(query_signature ^ (1_u64 << bit));
+    }
+    neighbors.sort_unstable();
+    neighbors.dedup();
+
+    let mut signatures = Vec::with_capacity(65);
+    signatures.push(query_signature);
+    signatures.extend(neighbors);
+    signatures
+}
+
 fn lsh_signature(vector: &[i16], seed: &Digest32) -> Result<u64, ContractError> {
     let mut seed_bytes = [0_u8; 8];
     seed_bytes.copy_from_slice(&seed.as_bytes()[..8]);
@@ -46,9 +60,39 @@ fn cosine_similarity_ppm(left: &[i16], right: &[i16]) -> Result<u32, ContractErr
     if dot <= 0 {
         return Ok(0);
     }
-    let numerator = dot
+
+    let left_norm_squared = norm_squared(left)?;
+    let right_norm_squared = norm_squared(right)?;
+    if left_norm_squared == 0 || right_norm_squared == 0 {
+        return Err(ContractError::Corrupt(
+            "cosine vectors must have non-zero norm".to_string(),
+        ));
+    }
+    let norm_product = u128::from(left_norm_squared)
+        .checked_mul(u128::from(right_norm_squared))
+        .ok_or(ContractError::Overflow)?;
+    let denominator = integer_sqrt_u128(norm_product);
+    if denominator == 0 {
+        return Err(ContractError::Overflow);
+    }
+
+    let numerator = u128::try_from(dot)
+        .map_err(|_| ContractError::Overflow)?
         .checked_mul(SCORE_SCALE_PPM)
         .ok_or(ContractError::Overflow)?;
-    let score = numerator / i128::from(Q15_UNIT_NORM_SQUARED);
-    u32::try_from(score.clamp(0, SCORE_SCALE_PPM)).map_err(|_| ContractError::Overflow)
+    let score = numerator / denominator;
+    u32::try_from(score.min(SCORE_SCALE_PPM)).map_err(|_| ContractError::Overflow)
+}
+
+fn integer_sqrt_u128(value: u128) -> u128 {
+    if value < 2 {
+        return value;
+    }
+    let mut previous = value;
+    let mut current = (value >> 1) + 1;
+    while current < previous {
+        previous = current;
+        current = (current + value / current) >> 1;
+    }
+    previous
 }

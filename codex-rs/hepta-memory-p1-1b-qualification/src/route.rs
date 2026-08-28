@@ -97,18 +97,24 @@ impl LocalSemanticRouteReceipt {
                 "semantic route receipt crosses the source-only boundary".to_string(),
             ));
         }
-        match self.route {
-            LocalSemanticRoute::ShadowSemanticReady if self.fallback_reason.is_some() => {
-                return Err(ContractError::Corrupt(
-                    "ready semantic route must not contain a fallback reason".to_string(),
-                ));
-            }
-            LocalSemanticRoute::LexicalOnly if self.fallback_reason.is_none() => {
-                return Err(ContractError::Corrupt(
-                    "lexical-only route requires a fallback reason".to_string(),
-                ));
-            }
-            _ => {}
+
+        let readiness = LocalSemanticReadiness {
+            tokenizer_registered: self.tokenizer_registered,
+            embedding_provider_registered: self.embedding_provider_registered,
+            index_opened_and_verified: self.index_opened_and_verified,
+            model_tokenizer_index_bindings_match: self.model_tokenizer_index_bindings_match,
+            dependencies_executable_qualified: self.dependencies_executable_qualified,
+        };
+        let expected_fallback = expected_semantic_fallback(&readiness);
+        let expected_route = if expected_fallback.is_some() {
+            LocalSemanticRoute::LexicalOnly
+        } else {
+            LocalSemanticRoute::ShadowSemanticReady
+        };
+        if self.route != expected_route || self.fallback_reason != expected_fallback {
+            return Err(ContractError::Corrupt(
+                "semantic route receipt is inconsistent with its readiness fields".to_string(),
+            ));
         }
         if self.receipt_sha256 != route_receipt_digest(self) {
             return Err(ContractError::Corrupt(
@@ -122,19 +128,7 @@ impl LocalSemanticRouteReceipt {
 pub fn decide_local_semantic_route(
     readiness: &LocalSemanticReadiness,
 ) -> Result<LocalSemanticRouteReceipt, ContractError> {
-    let fallback_reason = if !readiness.dependencies_executable_qualified {
-        Some(SemanticFallbackReason::DependencyUnqualified)
-    } else if !readiness.tokenizer_registered {
-        Some(SemanticFallbackReason::TokenizerUnavailable)
-    } else if !readiness.embedding_provider_registered {
-        Some(SemanticFallbackReason::EmbeddingProviderUnavailable)
-    } else if !readiness.index_opened_and_verified {
-        Some(SemanticFallbackReason::IndexUnavailable)
-    } else if !readiness.model_tokenizer_index_bindings_match {
-        Some(SemanticFallbackReason::BindingMismatch)
-    } else {
-        None
-    };
+    let fallback_reason = expected_semantic_fallback(readiness);
     let route = if fallback_reason.is_some() {
         LocalSemanticRoute::LexicalOnly
     } else {
@@ -164,6 +158,24 @@ pub fn decide_local_semantic_route(
     receipt.receipt_sha256 = route_receipt_digest(&receipt);
     receipt.validate()?;
     Ok(receipt)
+}
+
+fn expected_semantic_fallback(
+    readiness: &LocalSemanticReadiness,
+) -> Option<SemanticFallbackReason> {
+    if !readiness.dependencies_executable_qualified {
+        Some(SemanticFallbackReason::DependencyUnqualified)
+    } else if !readiness.tokenizer_registered {
+        Some(SemanticFallbackReason::TokenizerUnavailable)
+    } else if !readiness.embedding_provider_registered {
+        Some(SemanticFallbackReason::EmbeddingProviderUnavailable)
+    } else if !readiness.index_opened_and_verified {
+        Some(SemanticFallbackReason::IndexUnavailable)
+    } else if !readiness.model_tokenizer_index_bindings_match {
+        Some(SemanticFallbackReason::BindingMismatch)
+    } else {
+        None
+    }
 }
 
 fn route_receipt_digest(receipt: &LocalSemanticRouteReceipt) -> Digest32 {
@@ -228,5 +240,20 @@ mod tests {
         .expect("route");
         assert_eq!(receipt.route, LocalSemanticRoute::ShadowSemanticReady);
         receipt.validate().expect("receipt");
+    }
+
+    #[test]
+    fn route_receipt_rejects_inconsistent_readiness() {
+        let mut receipt = decide_local_semantic_route(&LocalSemanticReadiness {
+            tokenizer_registered: true,
+            embedding_provider_registered: true,
+            index_opened_and_verified: true,
+            model_tokenizer_index_bindings_match: true,
+            dependencies_executable_qualified: true,
+        })
+        .expect("route");
+        receipt.dependencies_executable_qualified = false;
+        receipt.receipt_sha256 = route_receipt_digest(&receipt);
+        assert!(receipt.validate().is_err());
     }
 }
