@@ -1,6 +1,6 @@
 {
   "schema": "hepta.authority-callers.v1",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "trustBoundary": {
     "rustTypeSafetyPreventsAccidentalConversion": true,
     "publicConstructorAloneIsCryptographicAuthority": false,
@@ -21,9 +21,6 @@
     "codex-rs/hepta-memory-runtime/src/lib.rs": [
       "runtime_boundary_unit_tests"
     ],
-    "codex-rs/hepta-memory-runtime/src/legacy_authority.rs": [
-      "verified_legacy_adapter_unit_tests"
-    ],
     "codex-rs/hepta-agentd/src/composition.rs": [
       "agent_process_composition_root"
     ]
@@ -38,14 +35,15 @@
   ],
   "allowedForbiddenRequestPath": "codex-rs/hepta-contracts/src/authority.rs",
   "legacyProductionAdapter": {
-    "path": "codex-rs/hepta-agentd/src/production_authority_adapter.rs",
-    "candidateFacadePath": "codex-rs/hepta-memory-runtime/src/legacy_authority.rs",
+    "path": "codex-rs/hepta-memory-runtime/src/legacy_authority.rs",
+    "agentdConsumerPath": "codex-rs/hepta-agentd/src/production_authority_adapter.rs",
     "productionWriterHostPath": "codex-rs/hepta-agentd/src/production_writer_host.rs",
     "mayReturn": "Authorized<CognitiveWriteCapability>",
     "mayIssueGrant": false,
     "requiresExternalVerifier": true,
     "requiresTypedExternalEffectCapability": true,
-    "existingProductionWriterCallerMigrated": true
+    "existingProductionWriterCallerMigrated": true,
+    "localQualificationProfileAcceptedAsProductionAuthority": false
   },
   "authority": {
     "productionCaller": false,
