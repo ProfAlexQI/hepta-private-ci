@@ -5,8 +5,8 @@ use std::process::Command;
 
 #[test]
 fn artifact_bound_trial_binds_bytes_and_shuts_down_cleanly() -> Result<(), Box<dyn Error>> {
-    let output = Command::new(env!("CARGO_BIN_EXE_hepta-browser-c1-artifact-bound-trial"))
-        .output()?;
+    let output =
+        Command::new(env!("CARGO_BIN_EXE_hepta-browser-c1-artifact-bound-trial")).output()?;
     if !output.status.success() {
         return Err(std::io::Error::other(format!(
             "artifact-bound trial failed: status={} stderr={}",
