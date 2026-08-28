@@ -1,0 +1,72 @@
+{
+  "schema": "hepta.intelligence.p1_1c1.implementation_receipt.v1",
+  "status": "PASS_P1_1C1_REVIEW_ACCEPTANCE_SOURCE_CANDIDATE",
+  "tranche": "P1.1c.1",
+  "parent_commit": "fe33565ce74c013e574c307e4fab101820c0ea88",
+  "implementation": {
+    "dependency_free_nested_workspace": true,
+    "dual_independent_review_contract": true,
+    "independent_adjudicator_contract": true,
+    "privacy_non_downgrade": true,
+    "redaction_receipt_required": true,
+    "fixed_point_agreement_metrics": true,
+    "quadratic_weighted_relevance_kappa": true,
+    "deterministic_receipts": true,
+    "aggregate_receipt_redaction": true,
+    "synthetic_seed_only": true
+  },
+  "seed": {
+    "provenance": "synthetic_review_seed",
+    "reviewed": false,
+    "human_review_attested": false,
+    "locales": [
+      "ar-SA",
+      "en-US",
+      "es-ES",
+      "fr-FR",
+      "hi-IN",
+      "ja-JP",
+      "pt-BR",
+      "zh-CN"
+    ],
+    "items": 8,
+    "reviews": 16,
+    "reviewers": 2,
+    "adjudications": 2
+  },
+  "qualification": {
+    "source_gate": false,
+    "rustfmt": false,
+    "tests": false,
+    "check": false,
+    "clippy": false,
+    "receipt_reproducibility": false,
+    "receipt_semantics": false,
+    "receipt_redaction": false,
+    "source_qualified": false
+  },
+  "claims": {
+    "review_pipeline_validated": true,
+    "reviewed_corpus_accepted": false,
+    "corpus_reviewed": false,
+    "human_review_attested": false,
+    "efficacy_validation": false,
+    "efficacy_claim": false
+  },
+  "authority": {
+    "product_workspace_member": false,
+    "product_module_registered": false,
+    "runtime_wired": false,
+    "default_recall_changed": false,
+    "federation_recall_changed": false,
+    "context_attachment": false,
+    "physical_send": false,
+    "network_access": false,
+    "model_download": false,
+    "external_effects": false,
+    "production_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  }
+}
