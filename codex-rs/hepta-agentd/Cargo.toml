@@ -15,6 +15,10 @@ default = []
 # Qualification-only host profile. This is intentionally opt-in at build time;
 # the default and production binaries keep the cognitive/KG writer disabled.
 qualification-cognitive-write = []
+# P0.4c source/qualification-only adapter. Enabling this feature merely
+# compiles an explicit host handle over the append-only shadow journal; Agentd
+# startup and App Server wiring remain unchanged.
+qualification-intelligence-mutation-shadow = []
 
 [[bin]]
 name = "codex-hepta-agentd"
