@@ -17,7 +17,16 @@ concurrency:
 
 jobs:
   land:
-    runs-on: macos-latest
+    name: land (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - ubuntu-24.04
+          - macos-14
+          - macos-15
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - name: Checkout exact bootstrap branch
@@ -78,9 +87,10 @@ jobs:
               shutil.rmtree(destination)
           destination.mkdir(parents=True)
           with tarfile.open(archive, mode="r:xz") as bundle:
+              root = destination.resolve()
               for member in bundle.getmembers():
                   target = (destination / member.name).resolve()
-                  if destination.resolve() not in target.parents and target != destination.resolve():
+                  if root not in target.parents and target != root:
                       raise SystemExit(f"unsafe archive path: {member.name}")
               bundle.extractall(destination)
           for source in destination.iterdir():
@@ -187,15 +197,24 @@ jobs:
           )
           PY
 
-          git push \
+          if git push \
             --force-with-lease="refs/heads/${BRANCH}:${BOOTSTRAP_HEAD}" \
-            origin "HEAD:${BRANCH}"
+            origin "HEAD:${BRANCH}"; then
+            echo "this matrix leg landed P0.3.2"
+          else
+            git fetch origin "${BRANCH}:refs/remotes/origin/${BRANCH}"
+            test -z "$(git ls-tree -r --name-only "origin/${BRANCH}" | grep '^\.p0-3-2-bootstrap/' || true)"
+            git cat-file -e "origin/${BRANCH}:codex-rs/hepta-memory/src/cognitive_kg_store.rs"
+            git cat-file -e "origin/${BRANCH}:scripts/verify-hepta-intelligence-kg-p0-3-2.py"
+            git cat-file -e "origin/${BRANCH}:plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_4.json"
+            echo "a peer matrix leg already landed the exact candidate"
+          fi
 
       - name: Upload repository-landing receipts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-intelligence-p0-3-2-repository-landing-${{ github.sha }}
+          name: hepta-intelligence-p0-3-2-repository-landing-${{ matrix.os }}-${{ github.sha }}
           path: /tmp/hepta-p0-3-2-receipts
           if-no-files-found: warn
           retention-days: 14
