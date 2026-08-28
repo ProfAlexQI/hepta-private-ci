@@ -4,7 +4,7 @@
   "repository": "ProfAlexQI/hepta-private-ci",
   "default_branch": "integration/vnext-main-20260811",
   "document_snapshot_head": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
-  "development_branch": "codex/hepta-intelligence-mutation-journal-v4b-r2-20260828",
+  "development_branch": "codex/hepta-intelligence-shadow-host-adapter-v4c-20260828",
   "authority": {
     "production_authority": false,
     "external_effects": false,
@@ -13,85 +13,61 @@
     "callers_ratchet": false
   },
   "dependency": {
-    "id": "P0.4a",
-    "branch": "codex/hepta-intelligence-mutation-state-machine-v4-20260828",
-    "head": "39c30cc1f07c90c4d5176da05e9bd97e1792bd2a",
-    "pull_request": 16,
-    "status": "source_only_implemented_hosted_runner_blocked",
+    "id": "P0.4b",
+    "branch": "codex/hepta-intelligence-mutation-journal-v4b-r2-20260828",
+    "head": "a5de899e9f6a97fa0803cc1e73d664be8b7d68bc",
+    "pull_request": 21,
+    "status": "source_and_sqlite_contract_implemented_hosted_runner_blocked",
     "qualified": false
   },
   "current_tranche": {
-    "id": "P0.4b",
-    "name": "sqlite_transition_journal_and_failpoints",
-    "status": "source_and_sqlite_contract_implemented_hosted_runner_blocked",
+    "id": "P0.4c",
+    "name": "shadow_host_orchestration_adapter",
+    "status": "source_only_implemented_activation_blocked",
     "qualified": false,
-    "source_candidate": "09d3fbb54021fdac8de0f35d3c013a4bb992fc4d",
-    "hosted_blocker_receipt_commit": "c6bb068c3b1946ee6e0fe6765f12136205d3100a",
+    "source_candidate": "beae20bb47e5a25637391eed98165c81e3f93d26",
     "files": [
-      "codex-rs/hepta-memory/mutation-migrations/0012_intelligence_mutation_journal.sql",
-      "codex-rs/hepta-memory/src/intelligence_mutation_journal_v3.rs",
-      "codex-rs/hepta-memory/src/intelligence_mutation_journal_v3/digest.rs",
-      "codex-rs/hepta-memory/src/intelligence_mutation_journal_v3/schema.rs",
-      "codex-rs/hepta-memory/src/intelligence_mutation_journal_v3/replay.rs",
-      "codex-rs/hepta-memory/src/intelligence_mutation_journal_v3/tests.rs",
+      "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
       "codex-rs/hepta-memory/src/framing.rs",
-      "codex-rs/hepta-memory/BUILD.bazel",
-      "scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py",
-      "scripts/verify-hepta-intelligence-mutation-journal.py",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4B_SQLITE_JOURNAL_2026-08-28.md",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4B_HOSTED_BLOCKER_2026-08-28.json",
+      "codex-rs/hepta-agentd/src/shadow_intelligence_mutation_host.rs",
+      "codex-rs/hepta-agentd/src/lib.rs",
+      "codex-rs/hepta-agentd/Cargo.toml",
+      "scripts/verify-hepta-intelligence-shadow-host.py",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4C_SHADOW_HOST_2026-08-28.md",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
-      ".github/workflows/hepta-intelligence-mutation-journal.yml"
+      ".github/workflows/hepta-intelligence-shadow-host.yml"
     ],
     "claims": {
-      "component_migration_0012": true,
-      "main_sqlx_migration_lineage_promoted": false,
-      "append_only_operation_binding": true,
-      "append_only_transition_receipts": true,
-      "exact_replay_from_genesis": true,
-      "action_payload_reconstruction": true,
-      "request_and_transition_digest_recomputation": true,
-      "schema_inventory_object_count": 14,
-      "scratch_database_schema_oracle": true,
-      "before_insert_failpoint": true,
-      "after_insert_before_commit_failpoint": true,
-      "after_commit_before_return_failpoint": true,
-      "exact_retry_adopts_committed_receipt": true,
-      "changed_retry_rejected": true,
+      "core_shadow_adapter_implemented": true,
+      "agentd_shadow_host_seam_implemented": true,
+      "agentd_feature_default_off": true,
+      "prepared_request_digest_binding": true,
+      "exact_retry_supported": true,
+      "postcommit_ack_loss_adoption_test_present": true,
+      "zero_product_source_memory_projection_rows_test_present": true,
+      "p0_4b_journal_delegation": true,
       "runtime_wired": false,
       "default_open_wired": false,
+      "app_runtime_attached": false,
+      "tool_registered": false,
+      "memory_write_authority": false,
+      "projection_write_authority": false,
+      "outbox_dispatch_authority": false,
       "production_authority": false,
       "external_effects": false
     },
     "qualification": {
-      "source_gate": "not_run_runner_blocked",
-      "sqlite_selftest": "not_run_runner_blocked",
-      "format": "not_run_runner_blocked",
-      "focused_tests": "not_run_runner_blocked",
-      "crate_tests": "not_run_runner_blocked",
-      "clippy": "not_run_runner_blocked",
-      "hosted_ci": "blocked_runner_not_assigned",
-      "workflow_run": {
-        "id": 33142073039,
-        "head": "09d3fbb54021fdac8de0f35d3c013a4bb992fc4d",
-        "jobs": [
-          {
-            "id": 98754880885,
-            "name": "P0.4b mutation journal source and SQLite contract",
-            "steps": [],
-            "runner_id": 0
-          },
-          {
-            "id": 98754881015,
-            "name": "P0.4b mutation journal Rust qualification",
-            "steps": [],
-            "runner_id": 0
-          }
-        ],
-        "commands_executed": false
-      },
+      "source_gate": "pending_exact_head_execution",
+      "format": "not_run",
+      "memory_focused_tests": "not_run",
+      "agentd_feature_focused_tests": "not_run",
+      "memory_crate_tests": "not_run",
+      "agentd_feature_crate_tests": "not_run",
+      "memory_clippy": "not_run",
+      "agentd_feature_clippy": "not_run",
+      "hosted_ci": "pending",
       "qualified": false,
-      "toolchain_pin": "1.95.0_source_bound_not_run"
+      "toolchain_pin": "1.95.0"
     }
   },
   "capabilities": [
@@ -151,7 +127,7 @@
     },
     {
       "id": "shadow_host_orchestration_adapter",
-      "implemented": false,
+      "implemented": true,
       "wired": false,
       "qualified": false,
       "efficacy_proven": false,
@@ -169,22 +145,20 @@
     }
   ],
   "next_tranche": {
-    "id": "P0.4c",
-    "name": "shadow_host_orchestration_adapter",
-    "activation": "source_development_allowed_on_separate_stacked_draft",
+    "id": "P1.1",
+    "name": "hybrid_retrieval_v2",
+    "activation": "blocked",
     "requirements": [
-      "adapter must be opt-in and shadow-only",
-      "no default Agentd or CognitiveStore wiring",
-      "no tool, projection, recall, physical-send or external effects",
-      "P0.1-P0.4b exact-head executable qualification before any activation",
+      "P0.1-P0.4c exact-head executable qualification",
       "readable source, SQLite, Rust and crash-window artifacts",
-      "candidate freeze and operator review"
+      "P0.4c candidate freeze and operator review",
+      "production authority and default runtime wiring remain false until a separate CALLERS decision"
     ]
   },
   "next_actions": [
-    "Preserve canonical P0.4b Draft PR #21 and its hosted blocker receipt.",
-    "Develop P0.4c on a separate stacked Draft from the latest P0.4b head.",
-    "Keep the host adapter dormant, in-memory or opt-in, and authority-negative.",
+    "Run the P0.4c fail-closed source gate on one exact head.",
+    "Run memory and Agentd formatting, focused tests, full tests and strict clippy with Rust 1.95.0.",
+    "Keep the Agentd feature off by default and leave runtime/app/tool registration unchanged.",
     "Do not activate P1.1, production callers, default open paths or external effects from source-only evidence."
   ]
 }
