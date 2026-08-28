@@ -43,18 +43,22 @@
     "No semantic retrieval efficacy, multilingual corpus, latency, device, or production claim is made.",
     "P0.1-P1.1a remain executable-qualification dependencies."
   ],
+  "pull_request": 34,
   "qualification": {
     "check": "not_run",
     "clippy": "not_run",
     "format": "not_run",
-    "hosted_ci": "pending",
+    "hosted_ci": "queued_runner_not_assigned",
     "qualified": false,
-    "source_gate": "pending_exact_head_execution",
+    "source_gate": "queued_runner_not_assigned",
     "tests": "not_run",
-    "toolchain": "1.95.0"
+    "toolchain": "1.95.0",
+    "workflow_run": 33151812316
   },
   "recorded_at": "2026-08-28",
   "repository": "ProfAlexQI/hepta-private-ci",
   "schema": "hepta_intelligence_p1_1b_implementation_receipt_v1",
+  "source_candidate": "f599e6179f60182c024ee24e66727a097cd193ba",
+  "source_tree": "01ff2bc0e64ee2e4b46d7e2d163899e1672f38ed",
   "status": "SOURCE_ONLY_IMPLEMENTED_QUALIFICATION_PENDING"
 }

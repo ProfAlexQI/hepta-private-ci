@@ -1,59 +1,47 @@
 {
+  "schema": "hepta_intelligence_execution_status_v2",
+  "generated_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "default_branch": "integration/vnext-main-20260811",
+  "document_snapshot_head": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+  "development_branch": "codex/hepta-intelligence-local-embedding-index-v1b-20260828",
   "authority": {
-    "callers_ratchet": false,
+    "production_authority": false,
     "external_effects": false,
     "operator_acceptance": false,
-    "production_authority": false,
-    "promotion": false
+    "promotion": false,
+    "callers_ratchet": false
   },
-  "capabilities": [
-    {
-      "efficacy_proven": false,
-      "id": "hybrid_retrieval_query_planner_and_fusion_contract",
-      "implemented": true,
-      "operator_accepted": false,
-      "promoted": false,
-      "qualified": false,
-      "wired": false
-    },
-    {
-      "efficacy_proven": false,
-      "id": "local_tokenizer_registry",
-      "implemented": true,
-      "operator_accepted": false,
-      "promoted": false,
-      "qualified": false,
-      "wired": false
-    },
-    {
-      "efficacy_proven": false,
-      "id": "local_embedding_provider_contract",
-      "implemented": true,
-      "operator_accepted": false,
-      "promoted": false,
-      "qualified": false,
-      "wired": false
-    },
-    {
-      "efficacy_proven": false,
-      "id": "immutable_local_ann_index",
-      "implemented": true,
-      "operator_accepted": false,
-      "promoted": false,
-      "qualified": false,
-      "wired": false
-    },
-    {
-      "efficacy_proven": false,
-      "id": "hybrid_retrieval_v2",
-      "implemented": false,
-      "operator_accepted": false,
-      "promoted": false,
-      "qualified": false,
-      "wired": false
-    }
-  ],
+  "dependency": {
+    "id": "P1.1a",
+    "branch": "codex/hepta-intelligence-hybrid-retrieval-v2-p1a-20260828",
+    "head": "906aad979ba9e606c2e41d804e7a0c226efae5cb",
+    "pull_request": 28,
+    "status": "source_only_contract_implemented_activation_blocked",
+    "qualified": false
+  },
   "current_tranche": {
+    "id": "P1.1b",
+    "name": "local_embedding_tokenizer_and_immutable_ann_index",
+    "status": "source_only_implemented_qualification_pending",
+    "qualified": false,
+    "source_candidate": "f599e6179f60182c024ee24e66727a097cd193ba",
+    "source_tree": "01ff2bc0e64ee2e4b46d7e2d163899e1672f38ed",
+    "files": [
+      "codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml",
+      "codex-rs/hepta-memory-p1-1b-qualification/src/lib.rs",
+      "codex-rs/hepta-memory-p1-1b-qualification/src/digest.rs",
+      "codex-rs/hepta-memory-p1-1b-qualification/src/tokenizer.rs",
+      "codex-rs/hepta-memory-p1-1b-qualification/src/embedding.rs",
+      "codex-rs/hepta-memory-p1-1b-qualification/src/index.rs",
+      "codex-rs/hepta-memory-p1-1b-qualification/src/route.rs",
+      "codex-rs/hepta-memory-p1-1b-qualification/tests/p1_1b.rs",
+      "scripts/verify-hepta-intelligence-local-embedding-index.py",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_LOCAL_EMBEDDING_INDEX_2026-08-28.md",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_IMPLEMENTATION_RECEIPT_2026-08-28.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
+      ".github/workflows/hepta-intelligence-local-embedding-index.yml"
+    ],
     "claims": {
       "context_attachment": false,
       "create_only_persistence": true,
@@ -80,66 +68,50 @@
       "runtime_wired": false,
       "utf8_byte_upper_bound_fallback": true
     },
-    "files": [
-      "codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml",
-      "codex-rs/hepta-memory-p1-1b-qualification/src/lib.rs",
-      "codex-rs/hepta-memory-p1-1b-qualification/src/digest.rs",
-      "codex-rs/hepta-memory-p1-1b-qualification/src/tokenizer.rs",
-      "codex-rs/hepta-memory-p1-1b-qualification/src/embedding.rs",
-      "codex-rs/hepta-memory-p1-1b-qualification/src/index.rs",
-      "codex-rs/hepta-memory-p1-1b-qualification/src/index/types.rs",
-      "codex-rs/hepta-memory-p1-1b-qualification/src/index/impl.rs",
-      "codex-rs/hepta-memory-p1-1b-qualification/src/index/build.rs",
-      "codex-rs/hepta-memory-p1-1b-qualification/src/index/search_math.rs",
-      "codex-rs/hepta-memory-p1-1b-qualification/src/index/digests.rs",
-      "codex-rs/hepta-memory-p1-1b-qualification/src/index/codec.rs",
-      "codex-rs/hepta-memory-p1-1b-qualification/src/index/tests_module.rs",
-      "codex-rs/hepta-memory-p1-1b-qualification/src/route.rs",
-      "codex-rs/hepta-memory-p1-1b-qualification/tests/p1_1b.rs",
-      "scripts/verify-hepta-intelligence-local-embedding-index.py",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_LOCAL_EMBEDDING_INDEX_2026-08-28.md",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_IMPLEMENTATION_RECEIPT_2026-08-28.json",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
-      ".github/workflows/hepta-intelligence-local-embedding-index.yml"
-    ],
-    "id": "P1.1b",
-    "name": "local_embedding_tokenizer_and_immutable_ann_index",
     "qualification": {
+      "source_gate": "pending_exact_head_execution",
+      "format": "not_run",
+      "tests": "not_run",
       "check": "not_run",
       "clippy": "not_run",
-      "format": "not_run",
-      "hosted_ci": "pending",
+      "hosted_ci": "queued_runner_not_assigned",
+      "workflow_run": 33151812316,
+      "jobs": [
+        {
+          "id": 98785302301,
+          "name": "P1.1b local embedding/index source contract",
+          "steps": [],
+          "runner_id": 0
+        },
+        {
+          "id": 98785302140,
+          "name": "P1.1b isolated Rust qualification",
+          "steps": [],
+          "runner_id": 0
+        }
+      ],
       "qualified": false,
-      "source_gate": "pending_exact_head_execution",
-      "tests": "not_run",
       "toolchain_pin": "1.95.0"
-    },
-    "qualified": false,
-    "source_candidate": "pending_exact_head_freeze",
-    "status": "source_only_implemented_qualification_pending"
+    }
   },
-  "default_branch": "integration/vnext-main-20260811",
-  "dependency": {
-    "branch": "codex/hepta-intelligence-hybrid-retrieval-v2-p1a-20260828",
-    "head": "906aad979ba9e606c2e41d804e7a0c226efae5cb",
-    "id": "P1.1a",
-    "pull_request": 28,
-    "qualified": false,
-    "status": "source_only_contract_implemented_activation_blocked"
-  },
-  "development_branch": "codex/hepta-intelligence-local-embedding-index-v1b-20260828",
-  "document_snapshot_head": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
-  "generated_at": "2026-08-28",
-  "next_actions": [
-    "Run the P1.1b source, isolated formatting, tests, check and clippy gates on one exact head.",
-    "Keep the nested qualification crate outside the product workspace and module graph.",
-    "Do not register a production model, remote provider, runtime caller, context attachment or physical-send path.",
-    "Develop P1.1c only as a separate stacked Draft after P1.1b source review."
+  "capabilities": [
+    {"id":"fact_grounding_contract","implemented":true,"wired":false,"qualified":false,"efficacy_proven":false,"operator_accepted":false,"promoted":false},
+    {"id":"durable_fact_grounding_ledger","implemented":true,"wired":false,"qualified":false,"efficacy_proven":false,"operator_accepted":false,"promoted":false},
+    {"id":"grounded_tool_protocol_v3","implemented":true,"wired":false,"qualified":false,"efficacy_proven":false,"operator_accepted":false,"promoted":false},
+    {"id":"grounded_projection_shadow_compare","implemented":true,"wired":false,"qualified":false,"efficacy_proven":false,"operator_accepted":false,"promoted":false},
+    {"id":"intelligence_mutation_state_machine","implemented":true,"wired":false,"qualified":false,"efficacy_proven":false,"operator_accepted":false,"promoted":false},
+    {"id":"intelligence_mutation_sqlite_journal","implemented":true,"wired":false,"qualified":false,"efficacy_proven":false,"operator_accepted":false,"promoted":false},
+    {"id":"shadow_host_orchestration_adapter","implemented":true,"wired":false,"qualified":false,"efficacy_proven":false,"operator_accepted":false,"promoted":false},
+    {"id":"hybrid_retrieval_query_planner_and_fusion_contract","implemented":true,"wired":false,"qualified":false,"efficacy_proven":false,"operator_accepted":false,"promoted":false},
+    {"id":"local_tokenizer_registry","implemented":true,"wired":false,"qualified":false,"efficacy_proven":false,"operator_accepted":false,"promoted":false},
+    {"id":"local_embedding_provider_contract","implemented":true,"wired":false,"qualified":false,"efficacy_proven":false,"operator_accepted":false,"promoted":false},
+    {"id":"immutable_local_ann_index","implemented":true,"wired":false,"qualified":false,"efficacy_proven":false,"operator_accepted":false,"promoted":false},
+    {"id":"hybrid_retrieval_v2","implemented":false,"wired":false,"qualified":false,"efficacy_proven":false,"operator_accepted":false,"promoted":false}
   ],
   "next_tranche": {
-    "activation": "source_development_allowed_on_separate_stacked_draft_after_p1_1b_source_review",
     "id": "P1.1c",
     "name": "multilingual_offline_efficacy_and_reranker_contract",
+    "activation": "source_development_allowed_on_separate_stacked_draft_after_p1_1b_source_review",
     "requirements": [
       "P1.1b exact-head source and isolated Rust qualification",
       "multilingual corpus with lexical/vector/KG ablations",
@@ -149,6 +121,11 @@
       "P0.1-P1.1b executable qualification before activation"
     ]
   },
-  "repository": "ProfAlexQI/hepta-private-ci",
-  "schema": "hepta_intelligence_execution_status_v2"
+  "next_actions": [
+    "Preserve canonical P1.1a Draft PR #28 and P1.1b Draft PR #34 as a linear stack.",
+    "Run the P1.1b source, isolated formatting, tests, check and clippy gates when an executable runner is assigned.",
+    "Keep the nested qualification crate outside the product workspace and module graph.",
+    "Do not register a production model, remote provider, runtime caller, context attachment or physical-send path.",
+    "Do not activate P1.1c, default recall, production callers or external effects from source-only evidence."
+  ]
 }
