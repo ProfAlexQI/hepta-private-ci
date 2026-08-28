@@ -81,7 +81,10 @@ fn run_host(mode: HostMode) -> Result<(), Box<dyn Error>> {
         _ => return Err(GateError::Invalid("host expected worker hello").into()),
     };
     validate_worker_hello(&hello, expected_pid, expected_binding, &challenge)?;
-    write_message(&mut host_writer, &Message::HostAck(HostAck::new(challenge)?))?;
+    write_message(
+        &mut host_writer,
+        &Message::HostAck(HostAck::new(challenge)?),
+    )?;
     let confirm = match read_message(&mut host_reader)? {
         Message::WorkerConfirm(confirm) => confirm,
         _ => return Err(GateError::Invalid("host expected worker confirmation").into()),
@@ -99,7 +102,9 @@ fn run_host(mode: HostMode) -> Result<(), Box<dyn Error>> {
             }
             write_message(&mut host_writer, &Message::Shutdown)?;
             if read_message(&mut host_reader)? != Message::ShutdownAck {
-                return Err(GateError::Invalid("host expected exact shutdown acknowledgement").into());
+                return Err(
+                    GateError::Invalid("host expected exact shutdown acknowledgement").into(),
+                );
             }
             drop(host_writer);
             drop(host_reader);
@@ -119,12 +124,17 @@ fn run_host(mode: HostMode) -> Result<(), Box<dyn Error>> {
                     if matches!(
                         error.kind(),
                         std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
-                    ) => true,
+                    ) =>
+                {
+                    true
+                }
                 Err(error) => return Err(error.into()),
                 Ok(_) => false,
             };
             if !timeout_observed {
-                return Err(GateError::Invalid("hung worker did not trigger a read deadline").into());
+                return Err(
+                    GateError::Invalid("hung worker did not trigger a read deadline").into(),
+                );
             }
             guard.kill()?;
             let status = guard.wait_bounded(REAP_TIMEOUT)?;
@@ -185,7 +195,11 @@ fn run_worker(hang_after_ping: bool) -> Result<(), Box<dyn Error>> {
                 write_message(&mut writer, &Message::ShutdownAck)?;
                 return Ok(());
             }
-            _ => return Err(GateError::Invalid("worker received an unexpected established message").into()),
+            _ => {
+                return Err(
+                    GateError::Invalid("worker received an unexpected established message").into(),
+                );
+            }
         }
     }
 }
