@@ -120,7 +120,8 @@ def main() -> int:
         [
             "prepared_request_supports_exact_retry_and_rejects_tamper",
             "postcommit_ack_loss_is_adopted_by_exact_retry",
-            '"journal_disposition"], "replay"',
+            'replay["journal_disposition"]',
+            '"replay"',
         ],
     )
     checks["core.no_product_mutation"] = not any(
@@ -189,6 +190,29 @@ def main() -> int:
             "inspect_shadow_intelligence_mutation",
         ],
     )
+    checks["agentd.prepare_append_envelope"] = contains_all(
+        agentd,
+        [
+            "unwrap_prepared_payload",
+            "prepared host envelope belongs to another Agentd identity or spawn",
+            "prepared host envelope payload digest mismatch",
+            "prepared host envelope receipt digest mismatch",
+            "prepared host envelope crosses the shadow authority boundary",
+            "prepared_envelope_round_trips_and_rejects_cross_spawn",
+            "prepared_envelope_rejects_payload_and_authority_tamper",
+        ],
+    )
+    checks["agentd.spawn_bound_operation"] = contains_all(
+        agentd,
+        [
+            "effective_operation_id",
+            "effective_lease_id",
+            "host_bound_causal_root",
+            "operation_and_causal_root_are_spawn_bound",
+            "agentd-shadow-operation:",
+            "agentd-shadow-lease:",
+        ],
+    )
     checks["agentd.not_runtime_attached"] = (
         "AgentdShadowIntelligenceMutationHost" not in runtime
         and "AgentdShadowIntelligenceMutationHost" not in app_runtime
@@ -246,6 +270,9 @@ def main() -> int:
             "app_runtime_attached=false",
             "tool_registered=false",
             "production_authority=false",
+            "prepare",
+            "append",
+            "spawn generation",
         ],
     )
     checks["workflow.toolchain"] = contains_all(
