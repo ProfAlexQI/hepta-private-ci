@@ -10,12 +10,17 @@
   },
   "candidate": {
     "branch": "codex/hepta-intelligence-hybrid-retrieval-v1a-20260828",
-    "source_head_before_receipt": "8a245f0501178b11ae0e2674caeb5f390cdbe0f6",
+    "source_head_before_receipt": "a533052ac7f41e1cd6476ae95951e3a88e4d8af8",
     "module_commit": "d6d4c085dd33138df5f85c71a5d84efd78ace02b",
     "tests_commit": "16a890ef3995e2bc940f470761cddd87fcb203bf",
     "registration_commit": "63fd7cdba4ec288db45df72739874bc8ef388432",
-    "source_gate_commit": "07f5460b43feb94e3c6e1c09d59cd55e36a1f29b",
-    "workflow_commit": "2c36e3a0fb123672688131f815502cc49622cfd1",
+    "source_gate_initial_commit": "07f5460b43feb94e3c6e1c09d59cd55e36a1f29b",
+    "source_gate_hardening_commit": "96e9eaa40ccd930d6177d52a56f3cd01be076925",
+    "workflow_initial_commit": "2c36e3a0fb123672688131f815502cc49622cfd1",
+    "workflow_scoped_format_commit": "169bf322b791b6d495d61b5ef49702f36f6e3c26",
+    "durable_grounding_root_path_fix": "12d91608a8dae6ff2c6abab39c58aae7c7b6c121",
+    "durable_grounding_child_path_fix": "c4ad8b2f04f193c96adec58eea6ec09a67ce15ca",
+    "durable_grounding_ledger_child_path_fix": "a533052ac7f41e1cd6476ae95951e3a88e4d8af8",
     "plan_commit": "8a245f0501178b11ae0e2674caeb5f390cdbe0f6"
   },
   "implemented_claims": {
@@ -36,6 +41,18 @@
     "dedicated_rust_workflow": true,
     "rust_toolchain_pin": "1.95.0"
   },
+  "dependency_hardening": {
+    "purpose": "Resolve pre-existing P0.2 module-path defects exposed by the first executable P1.1a Rust formatting runs.",
+    "functional_scope": "module resolution only",
+    "production_authority_changed": false,
+    "default_open_changed": false,
+    "grounding_semantics_changed": false,
+    "files": [
+      "codex-rs/hepta-memory/src/fact_grounding/durable.rs",
+      "codex-rs/hepta-memory/src/fact_grounding/durable/grounding.rs",
+      "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs"
+    ]
+  },
   "explicit_limitations": {
     "candidate_union_single_snapshot": false,
     "semantic_host_supplied_untrusted": true,
@@ -52,7 +69,7 @@
     "efficacy_proven": false
   },
   "not_claimed": {
-    "source_gate_pass": false,
+    "source_gate_pass_on_final_head": false,
     "rust_format_pass": false,
     "rust_test_pass": false,
     "rust_clippy_pass": false,
@@ -69,9 +86,10 @@
   "qualification": {
     "status": "PENDING_EXACT_HEAD_EXECUTION",
     "qualified": false,
+    "format_scope": "codex-hepta-memory",
     "required_commands": [
       "python3 scripts/verify-hepta-intelligence-hybrid-retrieval.py",
-      "cargo fmt --all -- --check",
+      "cargo fmt -p codex-hepta-memory -- --check",
       "cargo test -p codex-hepta-memory hybrid_retrieval_v2 -- --nocapture",
       "cargo test -p codex-hepta-memory cognitive_retrieval -- --nocapture",
       "cargo test -p codex-hepta-memory",
@@ -81,6 +99,7 @@
   "interpretation": [
     "P1.1a is a source-only query-planner and deterministic fusion contract layered over the unchanged existing retrieval API.",
     "A digest-valid host semantic batch is still untrusted evidence and is not proof that a local model or ANN index executed.",
+    "The P0.2 module-path fixes restore compilation against the existing file tree; they are not retrieval efficacy or production evidence.",
     "No implementation or source receipt may be interpreted as executable qualification, retrieval efficacy, operator acceptance, promotion, or production authority."
   ]
 }
