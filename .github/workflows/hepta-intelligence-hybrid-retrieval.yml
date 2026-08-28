@@ -1,0 +1,146 @@
+name: hepta-intelligence-hybrid-retrieval
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-hybrid-retrieval-v1a-*"
+  pull_request:
+    paths:
+      - "codex-rs/hepta-memory/src/hybrid_retrieval_v2.rs"
+      - "codex-rs/hepta-memory/src/hybrid_retrieval_v2/**"
+      - "codex-rs/hepta-memory/src/framing.rs"
+      - "scripts/verify-hepta-intelligence-hybrid-retrieval.py"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1A_HYBRID_RETRIEVAL_2026-08-28.md"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1A_IMPLEMENTATION_RECEIPT_2026-08-28.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json"
+      - ".github/workflows/hepta-intelligence-hybrid-retrieval.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-hybrid-retrieval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: P1.1a hybrid retrieval source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Validate Python and machine documents
+        run: |
+          python3 -m py_compile scripts/verify-hepta-intelligence-hybrid-retrieval.py
+          python3 -m json.tool \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json \
+            >/dev/null
+          python3 -m json.tool \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1A_IMPLEMENTATION_RECEIPT_2026-08-28.json \
+            >/dev/null
+
+      - name: Run fail-closed P1.1a source gate
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/hepta-intelligence-hybrid-retrieval
+          python3 scripts/verify-hepta-intelligence-hybrid-retrieval.py \
+            | tee artifacts/hepta-intelligence-hybrid-retrieval/source-gate.json
+
+      - name: Verify source-only authority boundary
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          receipt = json.loads(
+              Path("artifacts/hepta-intelligence-hybrid-retrieval/source-gate.json")
+              .read_text(encoding="utf-8")
+          )
+          assert receipt["status"] == "PASS_P1_1A_HYBRID_RETRIEVAL_SOURCE_ONLY"
+          for key in (
+              "runtime_wired",
+              "default_retrieval_changed",
+              "attachment_compiler_changed",
+              "physical_send_changed",
+              "local_embedding_executed",
+              "ann_index_executed",
+              "semantic_index_provenance_verified",
+              "grounding_filter_applied",
+              "truth_filter_applied",
+              "external_effects",
+              "production_authority",
+              "operator_acceptance",
+              "promotion",
+              "callers_ratchet",
+              "rust_compile_validation",
+              "rust_test_validation",
+              "efficacy_validation",
+          ):
+              assert receipt[key] is False, key
+          PY
+
+      - name: Upload source receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-hybrid-retrieval-source-${{ github.sha }}
+          path: artifacts/hepta-intelligence-hybrid-retrieval/source-gate.json
+          if-no-files-found: error
+          retention-days: 14
+
+  rust-qualification:
+    name: P1.1a hybrid retrieval Rust qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Verify repository toolchain pin
+        working-directory: codex-rs
+        run: |
+          expected="$(python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          print(tomllib.loads(Path('rust-toolchain.toml').read_text())['toolchain']['channel'])
+          PY
+          )"
+          actual="$(rustc --version | awk '{print $2}')"
+          test "$actual" = "$expected"
+
+      - name: Check workspace formatting
+        working-directory: codex-rs
+        run: cargo fmt --all -- --check
+
+      - name: Run focused hybrid retrieval tests
+        working-directory: codex-rs
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo test -p codex-hepta-memory hybrid_retrieval_v2 -- --nocapture
+
+      - name: Run retrieval regression tests
+        working-directory: codex-rs
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo test -p codex-hepta-memory cognitive_retrieval -- --nocapture
+
+      - name: Run full hepta-memory tests
+        working-directory: codex-rs
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo test -p codex-hepta-memory
+
+      - name: Run strict clippy
+        working-directory: codex-rs
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo clippy -p codex-hepta-memory --all-targets -- -D warnings
