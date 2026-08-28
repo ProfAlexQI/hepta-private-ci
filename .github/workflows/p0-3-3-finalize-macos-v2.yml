@@ -6,6 +6,7 @@ on:
       - codex/hepta-intelligence-evidence-resolver-v4-20260828
     paths:
       - .github/workflows/p0-3-3-finalize-macos-v2.yml
+      - scripts/finalize-hepta-intelligence-p0-3-3-v2.py
 
 permissions:
   contents: write
