@@ -1,0 +1,273 @@
+name: hepta-intelligence-p1-1b-current-hardening-proof
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-intelligence-p1-1b-current-hardening-proof-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: hepta-intelligence-p1-1b-current-hardening-proof
+  cancel-in-progress: false
+
+env:
+  SOURCE_BRANCH: codex/hepta-intelligence-local-embedding-index-v1b-20260828
+  WRAPPER_PATH: .github/workflows/hepta-intelligence-p1-1b-current-hardening-proof.yml
+  CRATE_ROOT: codex-rs/hepta-memory-p1-1b-qualification
+  MANIFEST_PATH: codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml
+  VERIFIER_PATH: scripts/verify-hepta-intelligence-local-embedding-index.py
+  ARTIFACT_DIR: artifacts/hepta-intelligence-p1-1b-current-hardening-proof
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  prove:
+    name: P1.1b current bounded-decoder proof
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout exact current source plus wrapper
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify exact source lease
+        id: source
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          git fetch --no-tags origin \
+            "+refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
+          source_sha="$(git rev-parse "refs/remotes/origin/$SOURCE_BRANCH")"
+          test "$(git rev-parse HEAD^)" = "$source_sha"
+          test "$(git rev-list --count "$source_sha"..HEAD)" = "1"
+          test "$(git diff --name-only "$source_sha"..HEAD)" = "$WRAPPER_PATH"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Isolate Cargo outputs
+        run: |
+          set -euo pipefail
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-p1-1b-current-proof-target" >> "$GITHUB_ENV"
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Execute complete hardening proof matrix
+        id: gates
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          rustc --version | tee "$ARTIFACT_DIR/rustc-version.txt"
+          cargo --version | tee "$ARTIFACT_DIR/cargo-version.txt"
+          rustfmt --version | tee "$ARTIFACT_DIR/rustfmt-version.txt"
+          cargo clippy --version | tee "$ARTIFACT_DIR/clippy-version.txt"
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
+
+          set +e
+          python3 - <<'PY' > "$ARTIFACT_DIR/hardening-markers.log" 2>&1
+          import json
+          from pathlib import Path
+
+          requirements = {
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/build.rs": [
+                  "read_bounded_index_bytes",
+                  "MAX_INDEX_FILE_BYTES.saturating_add(1)",
+                  "changed while being read or exceeded the bounded limit",
+              ],
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/impl.rs": [
+                  "MAX_EMBEDDING_DIMENSIONS",
+                  "bucket_count > item_count",
+              ],
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/tests_module.rs": [
+                  "decode_rejects_oversized_dimensions_before_vector_allocation",
+                  "bounded_reader_rejects_growth_after_metadata_without_unbounded_read",
+              ],
+              "scripts/verify-hepta-intelligence-local-embedding-index.py": [
+                  "MAX_EMBEDDING_DIMENSIONS",
+                  "read_bounded_index_bytes",
+                  "decode_rejects_oversized_dimensions_before_vector_allocation",
+                  "bounded_reader_rejects_growth_after_metadata_without_unbounded_read",
+              ],
+          }
+          missing = {}
+          for path, markers in requirements.items():
+              text = Path(path).read_text(encoding="utf-8")
+              absent = [marker for marker in markers if marker not in text]
+              if absent:
+                  missing[path] = absent
+          if missing:
+              raise SystemExit(json.dumps({"missing": missing}, indent=2, sort_keys=True))
+          print(json.dumps({"status": "PASS_P1_1B_HARDENING_MARKERS", "requirements": requirements}, indent=2, sort_keys=True))
+          PY
+          markers_code="$?"
+          python3 "$VERIFIER_PATH" > "$ARTIFACT_DIR/source-gate.log" 2>&1
+          source_gate_code="$?"
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check \
+            > "$ARTIFACT_DIR/rustfmt.log" 2>&1
+          rustfmt_code="$?"
+          cargo test --manifest-path "$MANIFEST_PATH" --all-targets -- --nocapture \
+            > "$ARTIFACT_DIR/tests.log" 2>&1
+          tests_code="$?"
+          cargo check --manifest-path "$MANIFEST_PATH" --all-targets \
+            > "$ARTIFACT_DIR/check.log" 2>&1
+          check_code="$?"
+          cargo clippy --manifest-path "$MANIFEST_PATH" --all-targets -- -D warnings \
+            > "$ARTIFACT_DIR/clippy.log" 2>&1
+          clippy_code="$?"
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+          git diff --exit-code -- "$CRATE_ROOT" "$VERIFIER_PATH" \
+            > "$ARTIFACT_DIR/clean-tree.log" 2>&1
+          clean_tree_code="$?"
+          test -z "$(git ls-files --others --exclude-standard -- "$CRATE_ROOT")"
+          untracked_code="$?"
+
+          export markers_code source_gate_code rustfmt_code tests_code
+          export check_code clippy_code clean_tree_code untracked_code
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          names = [
+              "markers",
+              "source_gate",
+              "rustfmt",
+              "tests",
+              "check",
+              "clippy",
+              "clean_tree",
+              "untracked",
+          ]
+          codes = {name: int(os.environ[f"{name}_code"]) for name in names}
+          tests_log = (artifact_dir / "tests.log").read_text(encoding="utf-8", errors="replace")
+          tests_passed = sum(int(value) for value in re.findall(r"test result: ok\. (\d+) passed", tests_log))
+          all_pass = all(code == 0 for code in codes.values()) and tests_passed == 15
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.current_hardening_proof.v1",
+              "status": "PASS" if all_pass else "FAIL",
+              "source_commit": os.environ["SOURCE_SHA"],
+              "exit_codes": codes,
+              "tests_passed": tests_passed,
+              "findings_closed": [
+                  "dimensions bounded before vector allocation",
+                  "bucket count bounded by item count",
+                  "file read capped at MAX_INDEX_FILE_BYTES + 1",
+                  "metadata/read-length drift rejected",
+              ],
+              "source_qualified": all_pass,
+              "qualified": False,
+              "runtime_wired": False,
+              "default_recall_changed": False,
+              "federation_recall_changed": False,
+              "context_attachment": False,
+              "physical_send": False,
+              "network_access": False,
+              "model_download": False,
+              "external_effects": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "callers_ratchet": False,
+          }
+          (artifact_dir / "qualification-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"passed={'true' if all_pass else 'false'}\n")
+          PY
+          set -e
+
+      - name: Upload complete proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1b-current-hardening-proof-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1b-current-hardening-proof
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Comment current proof on PR 34
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          receipt_path = artifact_dir / "qualification-receipt.json"
+          if receipt_path.is_file():
+              receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+          else:
+              receipt = {
+                  "status": "FAIL",
+                  "source_commit": "source-binding-failed",
+                  "exit_codes": {},
+                  "tests_passed": 0,
+                  "source_qualified": False,
+              }
+          lines = [
+              "## Current P1.1b bounded-decoder proof",
+              "",
+              f"- Outcome: `{receipt['status']}`",
+              f"- Current canonical head: `{receipt.get('source_commit', 'unknown')}`",
+              f"- Rust tests observed: `{receipt.get('tests_passed', 0)}/15`",
+              f"- Source-qualified for this tranche: `{receipt.get('source_qualified', False)}`",
+              f"- Workflow: {os.environ['RUN_URL']}",
+              "",
+              "Closed hardening findings:",
+              "- dimensions are bounded before vector allocation;",
+              "- bucket count cannot exceed item count;",
+              "- file reads are capped at `MAX_INDEX_FILE_BYTES + 1`;",
+              "- metadata/read-length drift fails closed.",
+              "",
+              "| Gate | Exit |",
+              "|---|---:|",
+          ]
+          for name, code in receipt.get("exit_codes", {}).items():
+              lines.append(f"| {name} | `{code}` |")
+          lines.extend([
+              "",
+              "Overall authority remains unchanged: `qualified=false`, `runtime_wired=false`, "
+              "`production_authority=false`; this PR remains Draft and unmerged.",
+          ])
+          if receipt["status"] != "PASS":
+              for name in ["hardening-markers", "source-gate", "rustfmt", "tests", "check", "clippy"]:
+                  path = artifact_dir / f"{name}.log"
+                  if not path.is_file():
+                      continue
+                  tail = path.read_text(encoding="utf-8", errors="replace").splitlines()[-30:]
+                  if tail:
+                      lines.extend(["", f"<details><summary>{name} tail</summary>", "", "```text", *tail, "```", "</details>"])
+                      break
+          (artifact_dir / "pr-comment.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/34/comments" \
+            -f body="$(cat "$ARTIFACT_DIR/pr-comment.md")"
+
+      - name: Enforce proof outcome
+        if: always()
+        run: |
+          set -euo pipefail
+          test -f "$ARTIFACT_DIR/qualification-receipt.json"
+          test "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$ARTIFACT_DIR/qualification-receipt.json")" = "PASS"
