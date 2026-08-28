@@ -1,5 +1,5 @@
 {
-  "schema": "hepta.inference.inf0c_source_receipt.v6",
+  "schema": "hepta.inference.inf0c_source_receipt.v7",
   "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
   "plan_version": "2.0.0",
   "source_binding": {
@@ -10,8 +10,8 @@
   },
   "development_branch": "codex/hepta-inference-runtime-v2-20260828",
   "plan_git_blob_sha1": "4381207acce1bf6371c248dc3280fff1f2ae59ce",
-  "source_candidate_commit": "8b0a081a590f5e4c917befd3aed89219050f0aab",
-  "source_candidate_tree": "4dbbcfe9b76611293d258a115fea72ae9846ca3b",
+  "source_candidate_commit": "cf8191c90e146ac8f3dec011cb5a22bd81179144",
+  "source_candidate_tree": "8039b16acb4ae17c9ef69a178e9c0cccbd0c6c3a",
   "source_candidate_components": {
     "inf0a_source_rebind": true,
     "inf0b_reference_contracts": true,
@@ -37,6 +37,7 @@
     "inf0c_explicit_fragment_rustfmt_gate": true,
     "inf0c_blank_pull_frame_gate_disambiguated": true,
     "inf0c_pull_request_jobs_checkout_exact_head": true,
+    "inf0c_rustfmt_artifact_diagnostics": true,
     "inf1_daemon": false
   },
   "validation": {
@@ -82,6 +83,22 @@
       "source_gate": "EXECUTED_FAILED",
       "failure": "PR_MERGE_REF_SHALLOW_CHECKOUT_OMITTED_RECEIPT_PARENT",
       "classification": "EXECUTED_FAILED_WORKFLOW_CHECKOUT_SHAPE"
+    },
+    {
+      "run_id": 33156553449,
+      "head": "e9d4ca9f1fb4612c38a2cfc20920fb8558dee882",
+      "runner_assigned": true,
+      "exact_head_checkout": "PASS",
+      "python_source_syntax": "PASS",
+      "source_gate": "PASS_HEPTA_INFERENCE_INF0C_SOURCE_ONLY",
+      "reference_format": "EXECUTED_FAILED_RUSTFMT_CHECK",
+      "compatibility_fragment_format": "EXECUTED_FAILED_RUSTFMT_CHECK",
+      "reference_test": "NOT_RUN_AFTER_FORMAT_FAILURE",
+      "reference_clippy": "NOT_RUN_AFTER_FORMAT_FAILURE",
+      "compatibility_check": "NOT_RUN_AFTER_FORMAT_FAILURE",
+      "compatibility_test": "NOT_RUN_AFTER_FORMAT_FAILURE",
+      "compatibility_clippy": "NOT_RUN_AFTER_FORMAT_FAILURE",
+      "classification": "EXECUTED_FAILED_FORMATTING"
     }
   ],
   "current_ci": {
@@ -112,10 +129,11 @@
     "release": false
   },
   "known_gaps": [
-    "the new exact receipt head has not executed source gate, Rust formatting, tests, or strict Clippy",
+    "the new exact receipt head has not executed the source gate or Rust matrix",
+    "the Rust 1.95 runner must emit and apply exact rustfmt repair artifacts before tests and strict Clippy can execute",
     "the real-software E2E harness has not executed against fixed pre-installed Ollama and LM Studio tuples",
-    "transport disconnect, backend cancellation acknowledgement, and controlled restart receipts remain in the stacked evidence lane",
-    "hepta-inferd, the UDS protocol, native workers, and hardware performance receipts are absent",
-    "INF-1 remains inactive and all production, effect, model-NPU, remote-inference, and promotion authority remains closed"
+    "semantic, tool-call, disconnect, backend cancellation acknowledgement and controlled-restart evidence remain in stacked qualification lanes",
+    "hepta-inferd, the UDS protocol, native workers and hardware performance receipts are absent",
+    "INF-1 remains inactive and all production, effect, model-NPU, remote-inference and promotion authority remains closed"
   ]
 }
