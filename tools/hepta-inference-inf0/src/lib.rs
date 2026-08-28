@@ -91,10 +91,9 @@ impl BoundedId {
         if value.trim() != value {
             return Err(IdentifierError::SurroundingWhitespace);
         }
-        if !value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/'))
-        {
+        if !value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/')
+        }) {
             return Err(IdentifierError::InvalidCharacter);
         }
         Ok(Self(value))
@@ -452,7 +451,10 @@ impl InferenceLifecycle {
                 | (LifecyclePhase::Running, LifecyclePhase::Draining)
                 | (LifecyclePhase::Draining, LifecyclePhase::Completed)
         );
-        let failure = matches!(next, LifecyclePhase::Cancelled | LifecyclePhase::FailedClosed);
+        let failure = matches!(
+            next,
+            LifecyclePhase::Cancelled | LifecyclePhase::FailedClosed
+        );
         if !normal && !failure {
             return Err(LifecycleError::InvalidTransition {
                 from: self.phase,
@@ -539,11 +541,7 @@ impl CancellationFence {
         })
     }
 
-    fn validate(
-        &self,
-        request_generation: u64,
-        backend_generation: u64,
-    ) -> Result<(), FenceError> {
+    fn validate(&self, request_generation: u64, backend_generation: u64) -> Result<(), FenceError> {
         if request_generation != self.request_generation {
             return Err(FenceError::StaleRequestGeneration);
         }
@@ -672,27 +670,49 @@ impl ReferenceLoopbackBackend {
         authority: InferenceAuthority,
         now_unix_ms: u64,
     ) -> Result<LoopbackOutcome, LoopbackError> {
-        let ticket = self
-            .registry
-            .admit(request, authority, now_unix_ms, self.backend_generation)?;
+        let ticket =
+            self.registry
+                .admit(request, authority, now_unix_ms, self.backend_generation)?;
         let result_digest = self
             .registry
             .profile(ticket.model_tuple_digest)
             .ok_or(LoopbackError::MissingProfile)?
             .loopback_result_digest;
         let mut lifecycle = InferenceLifecycle::new();
-        let mut fence = CancellationFence::new(
-            ticket.request_generation,
-            ticket.backend_generation,
-        )?;
+        let mut fence =
+            CancellationFence::new(ticket.request_generation, ticket.backend_generation)?;
         let mut events = Vec::with_capacity(7);
-        append_event(&mut events, &mut fence, &ticket, 1, InferenceEventKind::Accepted)?;
+        append_event(
+            &mut events,
+            &mut fence,
+            &ticket,
+            1,
+            InferenceEventKind::Accepted,
+        )?;
         lifecycle.transition(LifecyclePhase::Reserved)?;
-        append_event(&mut events, &mut fence, &ticket, 2, InferenceEventKind::Reserved)?;
+        append_event(
+            &mut events,
+            &mut fence,
+            &ticket,
+            2,
+            InferenceEventKind::Reserved,
+        )?;
         lifecycle.transition(LifecyclePhase::Queued)?;
-        append_event(&mut events, &mut fence, &ticket, 3, InferenceEventKind::Queued)?;
+        append_event(
+            &mut events,
+            &mut fence,
+            &ticket,
+            3,
+            InferenceEventKind::Queued,
+        )?;
         lifecycle.transition(LifecyclePhase::Running)?;
-        append_event(&mut events, &mut fence, &ticket, 4, InferenceEventKind::Running)?;
+        append_event(
+            &mut events,
+            &mut fence,
+            &ticket,
+            4,
+            InferenceEventKind::Running,
+        )?;
         append_event(
             &mut events,
             &mut fence,
@@ -704,7 +724,13 @@ impl ReferenceLoopbackBackend {
             },
         )?;
         lifecycle.transition(LifecyclePhase::Draining)?;
-        append_event(&mut events, &mut fence, &ticket, 6, InferenceEventKind::Draining)?;
+        append_event(
+            &mut events,
+            &mut fence,
+            &ticket,
+            6,
+            InferenceEventKind::Draining,
+        )?;
         lifecycle.transition(LifecyclePhase::Completed)?;
         append_event(
             &mut events,
@@ -848,7 +874,10 @@ mod tests {
     #[test]
     fn digest_is_strict() {
         assert_eq!(digest(D0).to_string(), D0);
-        assert_eq!("sha256:00".parse::<Digest>(), Err(DigestError::InvalidLength));
+        assert_eq!(
+            "sha256:00".parse::<Digest>(),
+            Err(DigestError::InvalidLength)
+        );
         assert_eq!(
             "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
                 .parse::<Digest>(),
@@ -875,24 +904,14 @@ mod tests {
         let mut wrong_policy = request();
         wrong_policy.scope.policy_digest = digest(D8);
         assert_eq!(
-            registry().admit(
-                &wrong_policy,
-                InferenceAuthority::default(),
-                1_000,
-                1,
-            ),
+            registry().admit(&wrong_policy, InferenceAuthority::default(), 1_000, 1,),
             Err(AdmissionError::PolicyMismatch)
         );
     }
 
     #[test]
     fn cache_scope_is_tenant_and_workspace_bound() {
-        let ticket = match registry().admit(
-            &request(),
-            InferenceAuthority::default(),
-            1_000,
-            7,
-        ) {
+        let ticket = match registry().admit(&request(), InferenceAuthority::default(), 1_000, 7) {
             Ok(ticket) => ticket,
             Err(error) => panic!("admission failed: {error:?}"),
         };
@@ -912,17 +931,29 @@ mod tests {
             Ok(fence) => fence,
             Err(error) => panic!("fence creation failed: {error:?}"),
         };
-        assert_eq!(fence.publish(3, 9, 1), Err(FenceError::StaleRequestGeneration));
-        assert_eq!(fence.publish(4, 8, 1), Err(FenceError::StaleBackendGeneration));
+        assert_eq!(
+            fence.publish(3, 9, 1),
+            Err(FenceError::StaleRequestGeneration)
+        );
+        assert_eq!(
+            fence.publish(4, 8, 1),
+            Err(FenceError::StaleBackendGeneration)
+        );
         assert_eq!(fence.publish(4, 9, 1), Ok(()));
-        assert_eq!(fence.publish(4, 9, 1), Err(FenceError::NonMonotonicSequence));
+        assert_eq!(
+            fence.publish(4, 9, 1),
+            Err(FenceError::NonMonotonicSequence)
+        );
         let receipt = match fence.cancel(4, 9, 1) {
             Ok(receipt) => receipt,
             Err(error) => panic!("cancel failed: {error:?}"),
         };
         assert_eq!(receipt.last_published_sequence, 1);
         assert_eq!(fence.publish(4, 9, 2), Err(FenceError::Cancelled));
-        assert_eq!(fence.cancel(4, 9, 1), Err(FenceError::StaleCancelGeneration));
+        assert_eq!(
+            fence.cancel(4, 9, 1),
+            Err(FenceError::StaleCancelGeneration)
+        );
     }
 
     #[test]

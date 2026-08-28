@@ -105,29 +105,8 @@ jobs:
           components: rustfmt, clippy
 
       - name: Check standalone reference formatting
-        id: reference_format
-        continue-on-error: true
-        shell: bash
-        run: cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml -- --check
-
-      - name: Materialize standalone formatted source
-        if: steps.reference_format.outcome == 'failure'
-        shell: bash
-        run: cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml
-
-      - name: Upload standalone formatted source
-        if: steps.reference_format.outcome == 'failure'
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: hepta-inference-reference-rustfmt
-          path: tools/hepta-inference-inf0/src/lib.rs
-          if-no-files-found: error
-
-      - name: Enforce standalone formatting
-        shell: bash
-        env:
-          REFERENCE_FORMAT_OUTCOME: ${{ steps.reference_format.outcome }}
-        run: test "$REFERENCE_FORMAT_OUTCOME" = success
+      shell: bash
+      run: cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml -- --check
 
       - name: Test standalone reference crate
         shell: bash
@@ -161,43 +140,13 @@ jobs:
           components: rustfmt, clippy
 
       - name: Check included inference source fragments
-        id: fragment_format
-        continue-on-error: true
-        shell: bash
-        run: |
-          rustfmt --edition 2024 --check \
-            ollama/src/client.rs \
-            ollama/src/client_*.inc.rs \
-            lmstudio/src/client.rs \
-            lmstudio/src/client_*.inc.rs
-
-      - name: Materialize included fragment formatting
-        if: steps.fragment_format.outcome == 'failure'
-        shell: bash
-        run: |
-          rustfmt --edition 2024 \
-            ollama/src/client.rs \
-            ollama/src/client_*.inc.rs \
-            lmstudio/src/client.rs \
-            lmstudio/src/client_*.inc.rs
-
-      - name: Upload formatted inference fragments
-        if: steps.fragment_format.outcome == 'failure'
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: hepta-inference-fragment-rustfmt
-          path: |
-            codex-rs/ollama/src/client.rs
-            codex-rs/ollama/src/client_*.inc.rs
-            codex-rs/lmstudio/src/client.rs
-            codex-rs/lmstudio/src/client_*.inc.rs
-          if-no-files-found: error
-
-      - name: Enforce included fragment formatting
-        shell: bash
-        env:
-          FRAGMENT_FORMAT_OUTCOME: ${{ steps.fragment_format.outcome }}
-        run: test "$FRAGMENT_FORMAT_OUTCOME" = success
+      shell: bash
+      run: |
+        rustfmt --edition 2024 --check \
+          ollama/src/client.rs \
+          ollama/src/client_*.inc.rs \
+          lmstudio/src/client.rs \
+          lmstudio/src/client_*.inc.rs
 
       - name: Workspace formatting
         shell: bash

@@ -68,7 +68,11 @@ impl OllamaClient {
             .await
             .map_err(|error| {
                 tracing::warn!(
-                    failure_class = if error.is_timeout() { "timeout" } else { "request" },
+                    failure_class = if error.is_timeout() {
+                        "timeout"
+                    } else {
+                        "request"
+                    },
                     "Failed to connect directly to the loopback Ollama server"
                 );
                 io::Error::other(OLLAMA_CONNECTION_ERROR)
@@ -116,7 +120,11 @@ impl OllamaClient {
         .and_then(JsonValue::as_array)
         .ok_or_else(|| invalid_shape("models", "missing model array"))?;
 
-        let field = if self.uses_openai_compat { "id" } else { "name" };
+        let field = if self.uses_openai_compat {
+            "id"
+        } else {
+            "name"
+        };
         let mut models = Vec::with_capacity(entries.len());
         for entry in entries {
             let model = entry

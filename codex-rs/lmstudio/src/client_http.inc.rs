@@ -59,7 +59,10 @@ impl LMStudioClient {
         Err(coded_error(
             io::ErrorKind::ConnectionRefused,
             "LMSTUDIO_HTTP_STATUS",
-            format!("operation=server_probe status={}", response.status().as_u16()),
+            format!(
+                "operation=server_probe status={}",
+                response.status().as_u16()
+            ),
         ))
     }
 

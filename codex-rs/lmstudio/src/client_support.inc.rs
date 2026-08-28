@@ -52,14 +52,14 @@ fn parse_authority<'a>(authority: &'a str, code: &str) -> io::Result<(&'a str, u
         })?;
         let host = &ipv6[..closing];
         let suffix = &ipv6[closing + 1..];
-        let port = suffix.strip_prefix(':').ok_or_else(|| {
-            coded_error(io::ErrorKind::InvalidInput, code, "missing port")
-        })?;
+        let port = suffix
+            .strip_prefix(':')
+            .ok_or_else(|| coded_error(io::ErrorKind::InvalidInput, code, "missing port"))?;
         (host, port)
     } else {
-        let (host, port) = authority.rsplit_once(':').ok_or_else(|| {
-            coded_error(io::ErrorKind::InvalidInput, code, "missing port")
-        })?;
+        let (host, port) = authority
+            .rsplit_once(':')
+            .ok_or_else(|| coded_error(io::ErrorKind::InvalidInput, code, "missing port"))?;
         if host.contains(':') {
             return Err(coded_error(
                 io::ErrorKind::InvalidInput,

@@ -12,8 +12,7 @@ fn decode_pull_frame(frame: &[u8]) -> Result<Vec<PullEvent>, String> {
         return Ok(Vec::default());
     }
 
-    let text = std::str::from_utf8(frame)
-        .map_err(|_| "OLLAMA_PULL_INVALID_UTF8".to_string())?;
+    let text = std::str::from_utf8(frame).map_err(|_| "OLLAMA_PULL_INVALID_UTF8".to_string())?;
     let value = serde_json::from_str::<JsonValue>(text)
         .map_err(|_| "OLLAMA_PULL_INVALID_JSON".to_string())?;
     if let Some(error) = value.get("error").and_then(JsonValue::as_str) {
@@ -54,12 +53,10 @@ async fn read_bounded_control_body(
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!(
-                concat!(
-                    "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={operation} ",
-                    "maximum={MAX_CONTROL_RESPONSE_BYTES}"
-                )
-            ),
+            format!(concat!(
+                "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={operation} ",
+                "maximum={MAX_CONTROL_RESPONSE_BYTES}"
+            )),
         ));
     }
     let mut body = Vec::new();
@@ -77,12 +74,10 @@ async fn read_bounded_control_body(
         if next_len > MAX_CONTROL_RESPONSE_BYTES {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!(
-                    concat!(
-                        "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={operation} ",
-                        "maximum={MAX_CONTROL_RESPONSE_BYTES}"
-                    )
-                ),
+                format!(concat!(
+                    "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={operation} ",
+                    "maximum={MAX_CONTROL_RESPONSE_BYTES}"
+                )),
             ));
         }
         body.extend_from_slice(&chunk);
@@ -135,21 +130,24 @@ fn validate_loopback_http_base_url(base_url: &str) -> io::Result<()> {
 
 fn parse_authority<'a>(authority: &'a str, code: &str) -> io::Result<(&'a str, u16)> {
     let (host, port) = if let Some(ipv6) = authority.strip_prefix('[') {
-        let closing = ipv6.find(']').ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidInput, code.to_string())
-        })?;
+        let closing = ipv6
+            .find(']')
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, code.to_string()))?;
         let host = &ipv6[..closing];
         let suffix = &ipv6[closing + 1..];
-        let port = suffix.strip_prefix(':').ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidInput, code.to_string())
-        })?;
+        let port = suffix
+            .strip_prefix(':')
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, code.to_string()))?;
         (host, port)
     } else {
-        let (host, port) = authority.rsplit_once(':').ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidInput, code.to_string())
-        })?;
+        let (host, port) = authority
+            .rsplit_once(':')
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, code.to_string()))?;
         if host.contains(':') {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, code.to_string()));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                code.to_string(),
+            ));
         }
         (host, port)
     };
@@ -167,21 +165,24 @@ fn require_loopback_resolution(host: &str, port: u16, code: &str) -> io::Result<
     } else {
         format!("{host}:{port}")
     };
-    let addresses = authority.to_socket_addrs().map_err(|error| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("{code}: {error}"),
-        )
-    })?;
+    let addresses = authority
+        .to_socket_addrs()
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, format!("{code}: {error}")))?;
     let mut resolved = false;
     for address in addresses {
         resolved = true;
         if !is_loopback_ip(address.ip()) {
-            return Err(io::Error::new(io::ErrorKind::PermissionDenied, code.to_string()));
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                code.to_string(),
+            ));
         }
     }
     if !resolved {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, code.to_string()));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            code.to_string(),
+        ));
     }
     Ok(())
 }

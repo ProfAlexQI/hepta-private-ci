@@ -23,8 +23,7 @@ use codex_model_provider_info::WireApi;
 #[cfg(test)]
 use codex_model_provider_info::create_oss_provider_with_base_url;
 
-const OLLAMA_CONNECTION_ERROR: &str =
-    "No running Ollama server detected. Start it with: `ollama serve` (after installing). Install instructions: https://github.com/ollama/ollama?tab=readme-ov-file#ollama";
+const OLLAMA_CONNECTION_ERROR: &str = "No running Ollama server detected. Start it with: `ollama serve` (after installing). Install instructions: https://github.com/ollama/ollama?tab=readme-ov-file#ollama";
 const OLLAMA_CONNECTION_TIMEOUT: Duration = Duration::from_secs(5);
 const OLLAMA_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 const OLLAMA_PULL_IDLE_TIMEOUT: Duration = Duration::from_secs(60);

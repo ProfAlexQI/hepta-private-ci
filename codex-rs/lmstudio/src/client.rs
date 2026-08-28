@@ -20,8 +20,7 @@ pub struct LMStudioClient {
     base_url: String,
 }
 
-const LMSTUDIO_CONNECTION_ERROR: &str =
-    "LM Studio is not responding. Install from https://lmstudio.ai/download and run `lms server start`.";
+const LMSTUDIO_CONNECTION_ERROR: &str = "LM Studio is not responding. Install from https://lmstudio.ai/download and run `lms server start`.";
 const LMSTUDIO_CONNECTION_TIMEOUT: Duration = Duration::from_secs(5);
 const LMSTUDIO_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 const LMS_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
