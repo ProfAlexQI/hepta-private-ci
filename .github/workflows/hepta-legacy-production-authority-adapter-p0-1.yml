@@ -1,0 +1,161 @@
+name: Hepta legacy production authority adapter P0.1
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "codex-rs/hepta-contracts/src/authority.rs"
+      - "codex-rs/hepta-memory-runtime/**"
+      - "docs/architecture/HEPTA_LEGACY_PRODUCTION_AUTHORITY_ADAPTER_P0_1.md"
+      - ".github/workflows/hepta-legacy-production-authority-adapter-p0-1.yml"
+  push:
+    branches:
+      - codex/hepta-architecture-convergence-p0-2-20260828
+    paths:
+      - "codex-rs/hepta-contracts/src/authority.rs"
+      - "codex-rs/hepta-memory-runtime/**"
+      - "docs/architecture/HEPTA_LEGACY_PRODUCTION_AUTHORITY_ADAPTER_P0_1.md"
+      - ".github/workflows/hepta-legacy-production-authority-adapter-p0-1.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-legacy-production-authority-adapter-p0-1-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  exact-source-head:
+    name: Exact source-head legacy authority attenuation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+          git rev-parse 'HEAD^{tree}'
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Verify adapter product binding
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import tomllib
+
+          root = pathlib.Path("codex-rs")
+          workspace = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
+          if "hepta-memory-runtime" not in workspace["workspace"]["members"]:
+              raise SystemExit("Memory runtime facade is not in the product workspace")
+          source = (root / "hepta-memory-runtime/src/lib.rs").read_text(encoding="utf-8")
+          adapter = (root / "hepta-memory-runtime/src/legacy_authority.rs").read_text(encoding="utf-8")
+          for needle in (
+              "mod legacy_authority;",
+              "adopt_verified_legacy_cognitive_write",
+              "VerifiedProductionCognitiveWrite",
+          ):
+              if needle not in source + adapter:
+                  raise SystemExit(f"legacy authority adapter is missing {needle!r}")
+          for forbidden in (
+              "Authorized<ModelInvocationCapability>",
+              "Authorized<ProviderDispatchCapability>",
+              "Authorized<ExternalEffectCapability>",
+              "Authorized<ReleasePromotionCapability>",
+          ):
+              if forbidden in adapter:
+                  raise SystemExit(f"legacy authority adapter escaped into {forbidden}")
+          PY
+
+      - name: Adapter rustfmt
+        working-directory: codex-rs
+        run: cargo fmt -p codex-hepta-memory-runtime -- --check
+
+      - name: Adapter regression tests
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-memory-runtime legacy_authority::tests -- --nocapture
+
+      - name: Strict adapter Clippy
+        working-directory: codex-rs
+        run: cargo clippy --locked -p codex-hepta-memory-runtime --all-targets -- -D warnings
+
+      - name: Record exact-head attenuation evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/hepta-legacy-authority-adapter"
+          mkdir -p "$evidence"
+          {
+            echo "schema=hepta_legacy_production_authority_adapter_evidence_v1"
+            echo "identity=source_head"
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "runner_name=$RUNNER_NAME"
+            echo "job_status=${{ job.status }}"
+            echo "typed_capability=cognitive_write"
+            echo "model_invocation=false"
+            echo "provider_dispatch=false"
+            echo "external_effect=false"
+            echo "fleet_mutation=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release=false"
+          } > "$evidence/receipt.txt"
+          cat "$evidence/receipt.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload exact-head attenuation evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-legacy-authority-adapter-${{ env.SOURCE_HEAD }}
+          path: ${{ runner.temp }}/hepta-legacy-authority-adapter
+          if-no-files-found: error
+
+  merge-candidate:
+    name: Merge-candidate legacy authority attenuation
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout merge candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify merge identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git rev-parse HEAD^1
+          git rev-parse HEAD^2
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: clippy
+
+      - name: Merge-candidate adapter tests and Clippy
+        working-directory: codex-rs
+        run: |
+          cargo test --locked -p codex-hepta-memory-runtime legacy_authority::tests -- --nocapture
+          cargo clippy --locked -p codex-hepta-memory-runtime --all-targets -- -D warnings
