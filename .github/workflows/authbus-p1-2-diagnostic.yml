@@ -1,4 +1,4 @@
-name: AuthBus P1.2 exact nonce TTL diagnostic
+name: AuthBus P1.2 canonical SQLite shim diagnostic
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   diagnostic:
-    name: Print the exact bounded nonce replay fixture body
+    name: Print exact P1.2 pool construction and canonical shim APIs
     runs-on: ubuntu-slim
     timeout-minutes: 15
     steps:
@@ -28,7 +28,7 @@ jobs:
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "integration/vnext-main-full-ci-authbus-p1-2-20260828"
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          test "$(git rev-parse HEAD^)" = "57a21dde0923898c1c6d0180f1f0f8c70dfb1ff6"
+          test "$(git rev-parse HEAD^)" = "51a344d2220192381cb22602ea13c2b2ef65f381"
 
       - name: Materialize the reviewed source archive without mutation
         shell: bash
@@ -56,26 +56,41 @@ jobs:
           with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as bundle:
               for member in bundle.getmembers():
                   path = PurePosixPath(member.name)
-                  if path.is_absolute() or ".." in path.parts or not member.isfile():
+                  if (
+                      path.is_absolute()
+                      or ".." in path.parts
+                      or not member.isfile()
+                      or member.size > 512_000
+                  ):
                       raise SystemExit(f"unsafe member: {member.name}")
                   source = bundle.extractfile(member)
                   if source is None:
                       raise SystemExit(f"missing member: {member.name}")
                   destination = Path(member.name)
+                  if destination.exists():
+                      raise SystemExit(f"destination already exists: {member.name}")
                   destination.parent.mkdir(parents=True, exist_ok=True)
                   with destination.open("wb") as output:
                       shutil.copyfileobj(source, output)
           PY
 
-      - name: Print only the failing test body and nonce policy setup
+      - name: Print bounded pool-construction and dependency context
         shell: bash
         run: |
           set -euo pipefail
-          echo '--- tests/p1_2.rs lines 390-500 ---'
-          nl -ba codex-rs/hepta-authbus-p1-2-qualification/tests/p1_2.rs \
-            | sed -n '390,500p'
-          echo '--- nonce policy and TTL references in test body ---'
-          grep -n -C 6 \
-            -E 'max_nonce_entries|identity_max_ttl_seconds|signed_identity|expires_at' \
-            codex-rs/hepta-authbus-p1-2-qualification/tests/p1_2.rs \
-            | sed -n '1,260p'
+          echo '--- P1.2 Cargo.toml ---'
+          cat codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
+          echo '--- P1.2 store.rs lines 1-155 ---'
+          nl -ba codex-rs/hepta-authbus-p1-2-qualification/src/store.rs \
+            | sed -n '1,155p'
+          echo '--- P0.2 canonical Cargo dependencies ---'
+          cat codex-rs/hepta-authbus-qualification/Cargo.toml
+          echo '--- P0.2 canonical store open lines 1-145 ---'
+          nl -ba codex-rs/hepta-authbus-qualification/src/store.rs \
+            | sed -n '1,145p'
+          echo '--- codex-state durable SQLite shim definitions ---'
+          grep -R -n -C 8 \
+            -E 'open_durable_evidence_pool|struct SqliteConfig|impl SqliteConfig|from_sqlite_home' \
+            codex-rs/state codex-rs \
+            --include='*.rs' \
+            | sed -n '1,360p'
