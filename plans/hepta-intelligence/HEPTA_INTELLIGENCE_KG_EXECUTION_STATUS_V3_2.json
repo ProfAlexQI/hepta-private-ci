@@ -9,7 +9,7 @@
     "pull_request": 14
   },
   "development_branch": "codex/hepta-intelligence-evidence-resolver-v4-20260828",
-  "source_candidate": "pending_first_commit",
+  "source_candidate": "7c9b5a29e24237e90201fbe0cf1a7b1fbd2a8415",
   "dependency": {
     "id": "P0.3.2",
     "name": "shared_semantic_projection_planner",
@@ -63,7 +63,8 @@
       "core_clippy": "not_run",
       "hosted_ci": "pending",
       "qualified": false
-    }
+    },
+    "implementation_commit": "7c9b5a29e24237e90201fbe0cf1a7b1fbd2a8415"
   },
   "authority": {
     "production_authority": false,
