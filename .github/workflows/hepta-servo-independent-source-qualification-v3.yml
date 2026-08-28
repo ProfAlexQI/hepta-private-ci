@@ -72,8 +72,10 @@ jobs:
             scripts/hepta-servo-source-bundle-verify-v2.py \
             scripts/tests/test_hepta_servo_independent_source_v2.py \
             scripts/tests/test_hepta_servo_source_bundle_verify_v2.py
-          python3 scripts/tests/test_hepta_servo_independent_source_v2.py 2>&1 | tee "$evidence_dir/source-v2-fixtures.log"
-          python3 scripts/tests/test_hepta_servo_source_bundle_verify_v2.py 2>&1 | tee "$evidence_dir/verifier-v2-fixtures.log"
+          python3 scripts/tests/test_hepta_servo_independent_source_v2.py \
+            2>&1 | tee "$evidence_dir/source-v2-fixtures.log"
+          python3 scripts/tests/test_hepta_servo_source_bundle_verify_v2.py \
+            2>&1 | tee "$evidence_dir/verifier-v2-fixtures.log"
           echo "pre_network_contract=passed" >> "$evidence_dir/posture.txt"
 
       - name: Acquire exact Servo source twice and create deterministic bundle
@@ -112,6 +114,7 @@ jobs:
         run: |
           set -euo pipefail
           output_dir="$RUNNER_TEMP/hepta-servo-independent-source-v3"
+          evidence_dir="$RUNNER_TEMP/hepta-servo-independent-source-v3-evidence"
           python3 - "$output_dir" <<'PY'
           import json
           import pathlib
@@ -142,9 +145,46 @@ jobs:
               assert str(pathlib.Path.home()) not in text
           PY
           rm "$output_dir/servo-source-a.tar"
-          sha256sum "$output_dir"/* > "$RUNNER_TEMP/hepta-servo-independent-source-v3-evidence/SHA256SUMS"
-          df -h . "$RUNNER_TEMP" > "$RUNNER_TEMP/hepta-servo-independent-source-v3-evidence/disk-after.txt"
-          echo "source_bundle=passed" >> "$RUNNER_TEMP/hepta-servo-independent-source-v3-evidence/posture.txt"
+          python3 - "$output_dir" "$evidence_dir/SHA256SUMS" <<'PY'
+          import hashlib
+          import os
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1]).resolve(strict=True)
+          output = pathlib.Path(sys.argv[2])
+          required = {
+              "fetch-a.receipt.json",
+              "fetch-b.receipt.json",
+              "independent-source-bundle.receipt.json",
+              "license-packet.json",
+              "servo-source-a.tar.gz",
+              "source-bundle.verification.json",
+          }
+          actual = {path.name for path in root.iterdir() if path.is_file()}
+          if actual != required:
+              raise SystemExit(
+                  f"exact-source retained file set drifted: missing={sorted(required - actual)} "
+                  f"extra={sorted(actual - required)}"
+              )
+          lines = []
+          for path in sorted(root.iterdir(), key=lambda item: item.name.encode("utf-8")):
+              digest = hashlib.sha256()
+              with path.open("rb") as handle:
+                  for block in iter(lambda: handle.read(1024 * 1024), b""):
+                      digest.update(block)
+              lines.append(f"{digest.hexdigest()}  {path.name}")
+          temporary = output.with_name(output.name + ".tmp")
+          descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+          with os.fdopen(descriptor, "w", encoding="ascii", newline="\n") as handle:
+              handle.write("\n".join(lines) + "\n")
+              handle.flush()
+              os.fsync(handle.fileno())
+          os.replace(temporary, output)
+          PY
+          df -h . "$RUNNER_TEMP" > "$evidence_dir/disk-after.txt"
+          echo "sha256sums_portable_basenames=true" >> "$evidence_dir/posture.txt"
+          echo "source_bundle=passed" >> "$evidence_dir/posture.txt"
 
       - name: Upload canonical source-only receipts
         if: always()
