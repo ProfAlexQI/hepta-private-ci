@@ -1,5 +1,5 @@
 {
-  "schema": "hepta.inference.inf0c_source_receipt.v2",
+  "schema": "hepta.inference.inf0c_source_receipt.v3",
   "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
   "plan_version": "2.0.0",
   "source_binding": {
@@ -10,8 +10,8 @@
   },
   "development_branch": "codex/hepta-inference-runtime-v2-20260828",
   "plan_git_blob_sha1": "4381207acce1bf6371c248dc3280fff1f2ae59ce",
-  "source_candidate_commit": "146ba43dadcfdc708c89df66b83f5a01862d0f24",
-  "source_candidate_tree": "d320b0879dc85465de3c366682835be6af3551f9",
+  "source_candidate_commit": "0ea322b71c3e615506ed98c8f72d5c942661d7f9",
+  "source_candidate_tree": "4e1e83b819ed9956430802f4c971f01d095877dc",
   "source_candidate_components": {
     "inf0a_source_rebind": true,
     "inf0b_reference_contracts": true,
@@ -34,6 +34,7 @@
     "inf0c_real_e2e_proxy_and_redirect_disabled": true,
     "inf0c_modular_source_fragments": true,
     "inf0c_explicit_fragment_rustfmt_gate": true,
+    "inf0c_blank_pull_frame_gate_disambiguated": true,
     "inf1_daemon": false
   },
   "local_validation": {
@@ -46,22 +47,36 @@
     "static_source_contract": "PASS",
     "source_gate_bundle_covers_include_fragments": true,
     "remote_source_tree_shape_reviewed": "PASS",
-    "exact_candidate_source_gate": "NOT_RUN_EXACT_GIT_CONTEXT_UNAVAILABLE",
-    "rust_fmt": "NOT_RUN_TOOLCHAIN_UNAVAILABLE",
-    "rust_test": "NOT_RUN_TOOLCHAIN_UNAVAILABLE",
-    "rust_clippy": "NOT_RUN_TOOLCHAIN_UNAVAILABLE",
+    "exact_candidate_source_gate": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
+    "rust_fmt": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
+    "rust_test": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
+    "rust_clippy": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
     "real_model_e2e": "NOT_RUN",
     "cancellation": "NOT_RUN",
     "controlled_restart": "NOT_RUN",
     "hardware_qualification": "NOT_RUN"
   },
   "ci": {
-    "status": "NOT_RUN_FOR_RECEIPT_HEAD",
-    "runner_assigned": false,
-    "source_gate": "NOT_RUN",
-    "reference_contract": "NOT_RUN",
-    "compatibility_readiness": "NOT_RUN",
-    "real_software_e2e": "NOT_RUN"
+    "current_candidate": {
+      "status": "NOT_RUN_FOR_RECEIPT_HEAD",
+      "runner_assigned": false,
+      "source_gate": "NOT_RUN",
+      "reference_contract": "NOT_RUN",
+      "compatibility_readiness": "NOT_RUN",
+      "real_software_e2e": "NOT_RUN"
+    },
+    "previous_executable_attempt": {
+      "run_id": 33146906491,
+      "head": "d409139d4d61c8ba83ccaf1e232a1ad62aa9754f",
+      "runner_id": 1000023613,
+      "checkout": "PASS",
+      "python_source_syntax": "PASS",
+      "source_gate": "EXECUTED_FAILED",
+      "failure": "OLLAMA_EMPTY_LIST_SCAN_FALSE_POSITIVE_ON_BLANK_PULL_FRAME",
+      "reference_contract": "SKIPPED_AFTER_SOURCE_GATE",
+      "compatibility_readiness": "SKIPPED_AFTER_SOURCE_GATE",
+      "classification": "EXECUTED_FAILED_SOURCE_GATE_FALSE_POSITIVE"
+    }
   },
   "claim": "SOURCE_PRESENT_NOT_RUN",
   "qualified": false,
@@ -83,7 +98,7 @@
     "release": false
   },
   "known_gaps": [
-    "the exact receipt head has not executed the source gate or Rust fmt, tests, and Clippy on an assigned runner",
+    "the new exact receipt head has not executed the source gate or Rust fmt, tests, and Clippy on an assigned runner",
     "the real-software E2E harness has not executed against fixed pre-installed Ollama and LM Studio model tuples",
     "cancellation and controlled service-restart evidence are absent",
     "hepta-inferd, the UDS protocol, native workers, and hardware performance receipts are absent",
