@@ -1,0 +1,141 @@
+name: Hepta inference INF-0C exact-head ARM qualification
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0c-exact-qualification-arm-20260828
+    paths:
+      - ".github/workflows/hepta-inference-inf0c-exact-arm.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-inf0c-exact-arm
+  cancel-in-progress: false
+
+jobs:
+  exact-qualification:
+    name: Exact receipt-head source and Rust qualification
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    env:
+      CANDIDATE: 333e8dbdde6ba7d82e183e0f648c5078a0f4aca3
+      SELF: .github/workflows/hepta-inference-inf0c-exact-arm.yml
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify isolated workflow branch and detach exact receipt head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          test "$(git rev-parse HEAD^)" = "$CANDIDATE"
+          git checkout --detach "$CANDIDATE"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE"
+          test -z "$(git status --porcelain)"
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Verify source and authority contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-inference-inf0-source-gate.py \
+            scripts/hepta-inference-inf0c-real-e2e.py
+          python3 scripts/hepta-inference-inf0-source-gate.py
+
+      - name: Verify standalone reference contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml -- --check
+          cargo test --manifest-path tools/hepta-inference-inf0/Cargo.toml --locked
+          cargo clippy --manifest-path tools/hepta-inference-inf0/Cargo.toml \
+            --all-targets --locked -- -D warnings
+
+      - name: Verify owned compatibility package formatting
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          rustfmt --edition 2024 --check \
+            ollama/src/client.rs \
+            ollama/src/client_*.inc.rs \
+            lmstudio/src/client.rs \
+            lmstudio/src/client_*.inc.rs
+          cargo fmt \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy \
+            -- --check
+
+      - name: Compile and test compatibility packages
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo check --locked \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy
+          cargo test --locked \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy
+
+      - name: Strict Clippy for owned compatibility packages
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --all-targets --no-deps \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy \
+            -- -D warnings
+
+      - name: Emit exact-head qualification receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          receipt="$RUNNER_TEMP/hepta-inference-inf0c-exact-arm.txt"
+          {
+            echo "candidate=$CANDIDATE"
+            echo "candidate_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "source_gate=PASS"
+            echo "reference_fmt_test_clippy=PASS"
+            echo "owned_fragment_and_package_fmt=PASS"
+            echo "owned_check_test_clippy_no_deps=PASS"
+            echo "qualification_only=true"
+            echo "real_model_e2e=false"
+            echo "qualified=false"
+            echo "INF-1=NOT_STARTED"
+            echo "production_effect_model_npu_remote_promotion_authority=false"
+          } | tee "$receipt"
+          cat "$receipt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload exact-head qualification receipt
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0c-exact-arm-${{ env.CANDIDATE }}
+          path: ${{ runner.temp }}/hepta-inference-inf0c-exact-arm.txt
+          if-no-files-found: error
+          retention-days: 14
