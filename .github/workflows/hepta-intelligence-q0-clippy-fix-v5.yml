@@ -12,11 +12,11 @@ permissions:
 
 concurrency:
   group: hepta-intelligence-q0-clippy-fix-v5-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-  EXPECTED_PARENT: cfdc46652b5fadb2ce7a45d4ca9af9ae3d1dd639
+  EXPECTED_PARENT: 05a4cea04544a0b9d2925b7fa96e6cd24b8949c7
   PATCH_FILE: .github/patches/hepta-intelligence-q0-compile-fix-v1.patch
   ARTIFACT_DIR: artifacts/hepta-intelligence-q0-clippy-fix-v5
   CARGO_TERM_COLOR: always
@@ -28,7 +28,7 @@ env:
 jobs:
   generate-and-prove:
     name: Generate minimal Rust 1.95 Clippy repair without source writeback
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
       - name: Checkout exact v5 candidate
@@ -45,10 +45,10 @@ jobs:
           test "$GITHUB_REF_NAME" = "$EXPECTED_BRANCH"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
-          test "$(uname -m)" = "aarch64"
+          test "$(uname -m)" = "x86_64"
           test -f "$PATCH_FILE"
           mkdir -p "$ARTIFACT_DIR"
-          printf '{"head":"%s","tree":"%s","parent":"%s","host":"aarch64-unknown-linux-gnu","runtime_authority":false,"source_writeback":false}\n' \
+          printf '{"head":"%s","tree":"%s","parent":"%s","host":"x86_64-unknown-linux-gnu","runtime_authority":false,"source_writeback":false}\n' \
             "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" "$(git rev-parse HEAD^)" \
             > "$ARTIFACT_DIR/identity.json"
 
@@ -72,7 +72,7 @@ jobs:
           )
           test "$expected" = "1.95.0"
           test "$(rustc --version | awk '{print $2}')" = "$expected"
-          test "$(rustc -vV | awk '/^host:/ {print $2}')" = "aarch64-unknown-linux-gnu"
+          test "$(rustc -vV | awk '/^host:/ {print $2}')" = "x86_64-unknown-linux-gnu"
           test -s Cargo.lock
 
       - name: Reconstruct the already-proven nine-file compile repair
@@ -126,15 +126,13 @@ jobs:
           git diff --check
 
       - name: Apply machine-applicable Clippy fixes
-        id: clippy_fix
         shell: bash
         working-directory: codex-rs
         run: |
           set +e
           cargo clippy --fix --locked -p codex-hepta-memory --all-targets --allow-dirty --allow-staged -- -D warnings \
             2>&1 | tee "../$ARTIFACT_DIR/clippy-fix.log"
-          status=${PIPESTATUS[0]}
-          printf '%s\n' "$status" > "../$ARTIFACT_DIR/clippy-fix.exit"
+          printf '%s\n' "${PIPESTATUS[0]}" > "../$ARTIFACT_DIR/clippy-fix.exit"
           exit 0
 
       - name: Format all Rust files changed by the repair
@@ -148,27 +146,23 @@ jobs:
           git diff --check
 
       - name: Run strict Clippy after automatic repair
-        id: strict_clippy
         shell: bash
         working-directory: codex-rs
         run: |
           set +e
           cargo clippy --locked -p codex-hepta-memory --all-targets -- -D warnings \
             2>&1 | tee "../$ARTIFACT_DIR/clippy-strict.log"
-          status=${PIPESTATUS[0]}
-          printf '%s\n' "$status" > "../$ARTIFACT_DIR/clippy-strict.exit"
+          printf '%s\n' "${PIPESTATUS[0]}" > "../$ARTIFACT_DIR/clippy-strict.exit"
           exit 0
 
       - name: Run full memory tests after automatic repair
-        id: full_tests
         shell: bash
         working-directory: codex-rs
         run: |
           set +e
           cargo test --locked -p codex-hepta-memory \
             2>&1 | tee "../$ARTIFACT_DIR/test-full-memory.log"
-          status=${PIPESTATUS[0]}
-          printf '%s\n' "$status" > "../$ARTIFACT_DIR/test-full-memory.exit"
+          printf '%s\n' "${PIPESTATUS[0]}" > "../$ARTIFACT_DIR/test-full-memory.exit"
           exit 0
 
       - name: Capture exact repair surface and source snapshots
