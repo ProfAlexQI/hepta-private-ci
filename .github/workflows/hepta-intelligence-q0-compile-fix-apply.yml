@@ -1,0 +1,334 @@
+name: Hepta Intelligence Q0 frozen compile-fix apply
+
+on:
+  push:
+    branches:
+      - codex/hepta-intelligence-plan-v3-20260828
+    paths:
+      - .github/workflows/hepta-intelligence-q0-compile-fix-apply.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-q0-compile-fix-apply-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
+  EXPECTED_PARENT: edbed25eaab9d8345aaccde81259f5391e2dad38
+  APPLY_WORKFLOW: .github/workflows/hepta-intelligence-q0-compile-fix-apply.yml
+  ARTIFACT_DIR: artifacts/hepta-intelligence-q0-compile-fix
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_BUILD_JOBS: 4
+  RUST_BACKTRACE: 1
+
+jobs:
+  apply-frozen-compile-fix:
+    name: Apply and prove the minimal frozen Q0 compile fix
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact compile-fix candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Prove branch, head, parent and ARM64 identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$EXPECTED_BRANCH"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(uname -m)" = "aarch64"
+          test -f "$APPLY_WORKFLOW"
+          mkdir -p "$ARTIFACT_DIR"
+          printf '{"head":"%s","tree":"%s","parent":"%s","host":"aarch64-unknown-linux-gnu","runtime_authority":false}\n' \
+            "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" "$(git rev-parse HEAD^)" \
+            > "$ARTIFACT_DIR/identity.json"
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Verify toolchain, host and repository pin
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          expected=$(python3 - <<'PY'
+          import pathlib
+          import tomllib
+          value = tomllib.loads(pathlib.Path("rust-toolchain.toml").read_text())
+          print(value["toolchain"]["channel"])
+          PY
+          )
+          test "$expected" = "1.95.0"
+          test "$(rustc --version | awk '{print $2}')" = "$expected"
+          test "$(rustc -vV | awk '/^host:/ {print $2}')" = "aarch64-unknown-linux-gnu"
+          test -s Cargo.lock
+
+      - name: Apply exact visibility, helper and test-shadowing repairs
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              count = text.count(old)
+              assert count == 1, (path, count, old)
+              target.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          prepare = "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs"
+          for name in (
+              "validate_source_binding",
+              "require_groundable_revision",
+              "bind_exact_citation",
+              "prepare",
+              "validate_canonical_identity_binding",
+          ):
+              replace_once(
+                  prepare,
+                  f"pub(super) fn {name}(",
+                  f"pub(in crate::framing::durable_fact_grounding) fn {name}(",
+              )
+
+          insert = "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs"
+          replace_once(
+              insert,
+              "use super::*;\n",
+              "use super::*;\nuse super::support::durable_receipt_digest;\nuse super::support::to_i64_len;\n",
+          )
+          replace_once(
+              insert,
+              "pub(super) async fn insert_tx(",
+              "pub(in crate::framing::durable_fact_grounding) async fn insert_tx(",
+          )
+
+          verify = "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs"
+          replace_once(
+              verify,
+              "use super::*;\n",
+              "use super::*;\nuse super::support::durable_receipt_digest;\nuse super::support::limit_plus_one;\nuse super::support::parse_fact_kind;\nuse super::support::stored_fact_supports;\nuse super::support::validate_span_range_corrupt;\n",
+          )
+          replace_once(
+              verify,
+              "pub(super) async fn verify_receipts(",
+              "pub(in crate::framing::durable_fact_grounding) async fn verify_receipts(",
+          )
+
+          support = "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs"
+          replace_once(
+              support,
+              "use super::*;\n",
+              "use super::*;\nuse crate::framing::frame_part;\n",
+          )
+          for old, new in (
+              ("async fn stored_fact_supports(", "pub(super) async fn stored_fact_supports("),
+              ("fn durable_receipt_digest(", "pub(super) fn durable_receipt_digest("),
+              ("fn parse_fact_kind(", "pub(super) fn parse_fact_kind("),
+              ("fn validate_span_range_corrupt(", "pub(super) fn validate_span_range_corrupt("),
+              ("fn to_i64_len(", "pub(super) fn to_i64_len("),
+              ("fn limit_plus_one(", "pub(super) fn limit_plus_one("),
+          ):
+              replace_once(support, old, new)
+          target = Path(support)
+          text = target.read_text(encoding="utf-8")
+          count = text.count("super::super::frame_part")
+          assert count == 16, count
+          target.write_text(
+              text.replace("super::super::frame_part", "frame_part"),
+              encoding="utf-8",
+          )
+
+          ledger = "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs"
+          replace_once(
+              ledger,
+              "pub(super) use insert::insert_tx;",
+              "pub(in crate::framing::durable_fact_grounding) use insert::insert_tx;",
+          )
+          replace_once(
+              ledger,
+              "pub(super) use verify::verify_receipts;",
+              "pub(in crate::framing::durable_fact_grounding) use verify::verify_receipts;",
+          )
+
+          state = "codex-rs/hepta-memory/src/intelligence_mutation_state.rs"
+          replace_once(
+              state,
+              "        let request = IntelligenceMutationTransitionRequest {\n            binding: drifted,\n",
+              "        let drift_request = IntelligenceMutationTransitionRequest {\n            binding: drifted,\n",
+          )
+          replace_once(
+              state,
+              "            state.apply(request),\n            Err(IntelligenceMutationStateError::BindingDrift)\n",
+              "            state.apply(drift_request),\n            Err(IntelligenceMutationStateError::BindingDrift)\n",
+          )
+
+          replace_once(
+              "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
+              "use sqlx::Executor;\n",
+              "",
+          )
+          replace_once(
+              "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
+              "use super::intelligence_mutation_state::IntelligenceMutationState;\n",
+              "",
+          )
+
+      - name: Format and assert the exact frozen repair set
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs
+            codex-rs/hepta-memory/src/intelligence_mutation_state.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs
+            codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs
+          )
+          rustfmt --edition 2024 --config skip_children=true "${files[@]}"
+          rustfmt --edition 2024 --check --config skip_children=true "${files[@]}"
+          git diff --check
+          python3 - <<'PY'
+          import subprocess
+
+          expected = {
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
+              "codex-rs/hepta-memory/src/intelligence_mutation_state.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
+              "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
+          }
+          actual = set(
+              subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          )
+          assert actual == expected, {
+              "missing": sorted(expected - actual),
+              "unexpected": sorted(actual - expected),
+          }
+          PY
+          git diff --stat | tee "$ARTIFACT_DIR/repair-stat.txt"
+          git diff --binary > "$ARTIFACT_DIR/repair.patch"
+
+      - name: Re-run all frozen source and SQLite contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json
+          canonical=$(mktemp)
+          cp "$status" "$canonical"
+          restore_status() { cp "$canonical" "$status"; rm -f "$canonical"; }
+          trap restore_status EXIT
+
+          test "$(python3 scripts/verify-hepta-intelligence-master-plan.py)" = \
+            "PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_SOURCE_ONLY"
+          python3 scripts/hepta-intelligence-status-compat.py P0.2 >/dev/null
+          python3 scripts/verify-hepta-intelligence-grounding-ledger.py >/dev/null
+          python3 scripts/hepta-intelligence-status-compat.py P0.3 >/dev/null
+          python3 scripts/verify-hepta-intelligence-grounding-gate.py >/dev/null
+          python3 scripts/hepta-intelligence-status-compat.py P0.4a >/dev/null
+          python3 scripts/verify-hepta-intelligence-mutation-state.py >/dev/null
+          python3 scripts/hepta-intelligence-status-compat.py P0.4b >/dev/null
+          python3 scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py >/dev/null
+          python3 scripts/verify-hepta-intelligence-mutation-journal.py >/dev/null
+          python3 scripts/hepta-intelligence-status-compat.py P0.4c >/dev/null
+          python3 scripts/verify-hepta-intelligence-shadow-host.py >/dev/null
+
+          restore_status
+          trap - EXIT
+          git diff --check
+
+      - name: Run focused frozen-tranche tests
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-memory durable_grounding -- --nocapture 2>&1 | tee "../$ARTIFACT_DIR/test-p0-2.log"
+          cargo test --locked -p codex-hepta-memory fact_grounding -- --nocapture 2>&1 | tee "../$ARTIFACT_DIR/test-p0-1-regression.log"
+          cargo test --locked -p codex-hepta-memory shadow_ -- --nocapture 2>&1 | tee "../$ARTIFACT_DIR/test-p0-3.log"
+          cargo test --locked -p codex-hepta-memory intelligence_mutation_state -- --nocapture 2>&1 | tee "../$ARTIFACT_DIR/test-p0-4a.log"
+          cargo test --locked -p codex-hepta-memory intelligence_mutation_journal -- --nocapture 2>&1 | tee "../$ARTIFACT_DIR/test-p0-4b.log"
+          cargo test --locked -p codex-hepta-memory shadow_intelligence_mutation_host -- --nocapture 2>&1 | tee "../$ARTIFACT_DIR/test-p0-4c-memory.log"
+          cargo test --locked -p codex-hepta-memory-extension grounding_v3 -- --nocapture 2>&1 | tee "../$ARTIFACT_DIR/test-p0-3-extension.log"
+          cargo test --locked -p codex-hepta-agentd --features qualification-intelligence-mutation-shadow shadow_intelligence_mutation_host -- --nocapture 2>&1 | tee "../$ARTIFACT_DIR/test-p0-4c-agentd.log"
+
+      - name: Run full memory tests and strict memory Clippy
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-memory 2>&1 | tee "../$ARTIFACT_DIR/test-full-memory.log"
+          cargo clippy --locked -p codex-hepta-memory --all-targets -- -D warnings 2>&1 | tee "../$ARTIFACT_DIR/clippy-memory.log"
+
+      - name: Upload compile-fix evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-q0-compile-fix-${{ github.sha }}
+          path: artifacts/hepta-intelligence-q0-compile-fix/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Commit the proven repair and self-delete the applier
+        shell: bash
+        run: |
+          set -euo pipefail
+          repaired=(
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs
+            codex-rs/hepta-memory/src/intelligence_mutation_state.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs
+            codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs
+          )
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "${repaired[@]}"
+          git rm "$APPLY_WORKFLOW"
+          python3 - <<'PY'
+          import os
+          import subprocess
+
+          expected = {
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
+              "codex-rs/hepta-memory/src/intelligence_mutation_state.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
+              "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
+              os.environ["APPLY_WORKFLOW"],
+          }
+          actual = set(
+              subprocess.check_output(
+                  ["git", "diff", "--cached", "--name-only"], text=True
+              ).splitlines()
+          )
+          assert actual == expected, {
+              "missing": sorted(expected - actual),
+              "unexpected": sorted(actual - expected),
+          }
+          PY
+          git diff --cached --check
+          git commit -m "fix(intelligence): restore nested grounding visibility and focused tests"
+          git fetch origin "$EXPECTED_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          git push origin "HEAD:$EXPECTED_BRANCH"
