@@ -378,7 +378,7 @@ impl<'a> HostEvidenceResolverV1<'a> {
     }
 }
 
-pub(crate) fn prepare_grounded_tool_v4(
+pub(super) fn prepare_grounded_tool_v4_impl(
     source_content: &str,
     segment_drafts: &[SourceSegmentDraftV1],
     input: GroundedToolV4Input,

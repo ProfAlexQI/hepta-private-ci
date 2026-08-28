@@ -27,7 +27,7 @@ mod support;
 mod tests;
 
 pub(crate) fn grounded_tool_v4_schema() -> serde_json::Value {
-    schema::grounded_tool_v4_schema()
+    schema::grounded_tool_v4_schema_impl()
 }
 
 pub(crate) fn prepare_grounded_tool_v4(
@@ -35,7 +35,7 @@ pub(crate) fn prepare_grounded_tool_v4(
     segment_drafts: &[SourceSegmentDraftV1],
     input: GroundedToolV4Input,
 ) -> Result<HostResolvedGroundingV4, String> {
-    resolver::prepare_grounded_tool_v4(source_content, segment_drafts, input)
+    resolver::prepare_grounded_tool_v4_impl(source_content, segment_drafts, input)
 }
 
 pub(crate) const GROUNDED_TOOL_V4_SCHEMA_VERSION: u32 = 4;

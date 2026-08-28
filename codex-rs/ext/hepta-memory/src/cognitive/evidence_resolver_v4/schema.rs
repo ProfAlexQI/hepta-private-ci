@@ -2,7 +2,7 @@ use serde_json::json;
 
 use super::*;
 
-pub(crate) fn grounded_tool_v4_schema() -> serde_json::Value {
+pub(super) fn grounded_tool_v4_schema_impl() -> serde_json::Value {
     let evidence_locator = || {
         json!({
             "oneOf": [
