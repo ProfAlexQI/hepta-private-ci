@@ -1,4 +1,4 @@
-name: hepta-intelligence-p1-1b-bounded-read-arm-v2
+name: hepta-intelligence-p1-1b-bounded-read-driver-v2
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-intelligence-p1-1b-bounded-read-arm-v2
+  group: hepta-intelligence-p1-1b-bounded-read-driver-v2
   cancel-in-progress: true
 
 env:
@@ -18,8 +18,8 @@ env:
 
 jobs:
   qualify:
-    name: P1.1b bounded index read hardening
-    runs-on: ubuntu-24.04-arm
+    name: P1.1b bounded index read materialization driver
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - name: Checkout exact qualification driver
