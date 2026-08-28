@@ -20,14 +20,16 @@ impl LocalAnnIndex {
         let mut identities = BTreeSet::new();
         for entry in &self.entries {
             validate_id(&entry.candidate_id, "stored ANN candidate id")?;
+            let entry_norm_squared = norm_squared(&entry.vector)?;
             if entry.memory_revision == 0
                 || usize::try_from(self.manifest.dimensions).ok() != Some(entry.vector.len())
                 || entry.vector_sha256 != vector_digest(&entry.vector)
+                || !norm_is_q15_unit(entry_norm_squared)
                 || entry.signature
                     != lsh_signature(&entry.vector, &self.manifest.seed_sha256)?
             {
                 return Err(ContractError::Corrupt(
-                    "stored ANN entry failed vector or signature verification".to_string(),
+                    "stored ANN entry failed vector, norm, or signature verification".to_string(),
                 ));
             }
             if !identities.insert((entry.candidate_id.clone(), entry.memory_revision)) {
@@ -130,17 +132,14 @@ impl LocalAnnIndex {
         }
 
         let query_signature = lsh_signature(&query.vector, &self.manifest.seed_sha256)?;
-        let mut visited_signatures = Vec::with_capacity(65);
-        visited_signatures.push(query_signature);
-        for bit in 0..64 {
-            visited_signatures.push(query_signature ^ (1_u64 << bit));
-        }
-        visited_signatures.sort_unstable();
-        visited_signatures.dedup();
-
+        let visited_signatures = ordered_probe_signatures(query_signature);
+        let mut visited_bucket_count = 0_usize;
         let mut candidate_indices = BTreeSet::new();
         for signature in &visited_signatures {
             if let Some(indices) = self.buckets.get(signature) {
+                visited_bucket_count = visited_bucket_count
+                    .checked_add(1)
+                    .ok_or(ContractError::Overflow)?;
                 for index in indices {
                     candidate_indices.insert(*index);
                     if candidate_indices.len() >= MAX_SEARCH_CANDIDATES {
@@ -192,7 +191,7 @@ impl LocalAnnIndex {
             query_vector_sha256: query.vector_sha256,
             query_signature,
             visited_bucket_count: usize_to_u32(
-                visited_signatures.len(),
+                visited_bucket_count,
                 "visited ANN bucket count",
             )?,
             scanned_candidate_count: usize_to_u32(
@@ -291,14 +290,25 @@ impl LocalAnnIndex {
         let model_sha256 = cursor.read_digest()?;
         let tokenizer_sha256 = cursor.read_digest()?;
         let dimensions = cursor.read_u32()?;
+        if !(8..=MAX_EMBEDDING_DIMENSIONS).contains(&dimensions) {
+            return Err(ContractError::Corrupt(
+                "ANN file dimensions exceed the pre-allocation bound".to_string(),
+            ));
+        }
         let metric = metric_from_code(cursor.read_u32()?)?;
         let quantization = quantization_from_code(cursor.read_u32()?)?;
         let seed_sha256 = cursor.read_digest()?;
         let item_count = cursor.read_u32()?;
         let bucket_count = cursor.read_u32()?;
+        let item_count_usize =
+            usize::try_from(item_count).map_err(|_| ContractError::Overflow)?;
+        let bucket_count_usize =
+            usize::try_from(bucket_count).map_err(|_| ContractError::Overflow)?;
         if item_count == 0
-            || usize::try_from(item_count).unwrap_or(usize::MAX) > MAX_INDEX_ITEMS
+            || item_count_usize > MAX_INDEX_ITEMS
             || bucket_count == 0
+            || bucket_count > item_count
+            || bucket_count_usize > MAX_INDEX_ITEMS
         {
             return Err(ContractError::Corrupt(
                 "local ANN file count limits are invalid".to_string(),
@@ -308,9 +318,7 @@ impl LocalAnnIndex {
         let buckets_sha256 = cursor.read_digest()?;
         let manifest_sha256 = cursor.read_digest()?;
 
-        let mut entries = Vec::with_capacity(
-            usize::try_from(item_count).map_err(|_| ContractError::Overflow)?,
-        );
+        let mut entries = Vec::with_capacity(item_count_usize);
         for _ in 0..item_count {
             let candidate_id = cursor.read_string()?;
             let memory_revision = cursor.read_u64()?;
@@ -323,9 +331,9 @@ impl LocalAnnIndex {
                     "ANN file vector dimension mismatch".to_string(),
                 ));
             }
-            let mut vector = Vec::with_capacity(
-                usize::try_from(vector_len).map_err(|_| ContractError::Overflow)?,
-            );
+            let vector_len_usize =
+                usize::try_from(vector_len).map_err(|_| ContractError::Overflow)?;
+            let mut vector = Vec::with_capacity(vector_len_usize);
             for _ in 0..vector_len {
                 vector.push(cursor.read_i16()?);
             }

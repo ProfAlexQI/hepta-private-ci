@@ -1,0 +1,73 @@
+{
+  "schema": "hepta_intelligence_p1_1b_hardening_status_v1",
+  "generated_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "stack": {
+    "dependency": {
+      "id": "P1.1a",
+      "pull_request": 28,
+      "head": "906aad979ba9e606c2e41d804e7a0c226efae5cb",
+      "qualified": false
+    },
+    "parent": {
+      "id": "P1.1b",
+      "pull_request": 34,
+      "branch": "codex/hepta-intelligence-local-embedding-index-v1b-20260828",
+      "head": "c804ce200e3eccec96e90b867de31c5cacfdf82f",
+      "qualified": false
+    },
+    "current": {
+      "id": "P1.1b-hardening",
+      "branch": "codex/hepta-intelligence-p1-1b-hardening-v1-20260828",
+      "status": "source_only_implemented_qualification_pending",
+      "qualified": false
+    },
+    "next": {
+      "id": "P1.1c",
+      "status": "blocked"
+    }
+  },
+  "source_review": {
+    "decode_dimension_preallocation_bound": "fixed",
+    "bucket_count_bound": "fixed",
+    "exact_bucket_priority": "fixed",
+    "stored_vector_norm_reverification": "fixed",
+    "actual_norm_cosine": "fixed",
+    "q15_norm_tolerance_ppm": 10000,
+    "fallback_receipt_binding_absence": "fixed",
+    "semantic_route_receipt_recomputation": "fixed",
+    "search_receipt_bounds_identity_order": "fixed",
+    "negative_regressions": "added"
+  },
+  "qualification": {
+    "source_gate": "pending_exact_hardening_head_execution",
+    "format": "not_run",
+    "tests": "not_run",
+    "check": "not_run",
+    "clippy": "not_run",
+    "hosted_ci": "pending",
+    "qualified": false
+  },
+  "authority": {
+    "wired": false,
+    "product_workspace_member": false,
+    "product_module_registered": false,
+    "default_recall_changed": false,
+    "federation_recall_changed": false,
+    "context_attachment": false,
+    "physical_send": false,
+    "remote_embedding": false,
+    "model_download": false,
+    "network_access": false,
+    "external_effects": false,
+    "production_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "next_actions": [
+    "Run source, rustfmt, all-target tests, all-target check and strict clippy on one frozen hardening head.",
+    "Review the negative regressions and exact-source evidence artifact.",
+    "Keep P1.1c, runtime wiring, default recall, context attachment and physical-send blocked."
+  ]
+}

@@ -140,6 +140,14 @@ impl TokenCountReceipt {
                 "token count exact flag does not match its mode".to_string(),
             ));
         }
+        if usize::try_from(self.input_bytes).unwrap_or(usize::MAX) > MAX_INPUT_BYTES {
+            return Err(ContractError::Corrupt(
+                "token count receipt input exceeds the bounded contract".to_string(),
+            ));
+        }
+        if let Some(tokenizer_id) = self.requested_tokenizer_id.as_deref() {
+            validate_id(tokenizer_id, "requested tokenizer id")?;
+        }
         if !self.local_execution
             || self.production_model_compatibility_verified
             || self.remote_execution
@@ -164,9 +172,16 @@ impl TokenCountReceipt {
                 }
             }
             TokenCountMode::Utf8ByteUpperBound => {
-                if self.token_count != self.input_bytes || self.fallback_reason.is_none() {
+                if self.tokenizer_descriptor_sha256.is_some()
+                    || self.tokenizer_artifact_sha256.is_some()
+                    || self.tokenizer_vocabulary_sha256.is_some()
+                    || self.model_compatibility_sha256.is_some()
+                    || self.token_count != self.input_bytes
+                    || self.fallback_reason.is_none()
+                {
                     return Err(ContractError::Corrupt(
-                        "fallback token receipt is not a UTF-8 byte upper bound".to_string(),
+                        "fallback token receipt must be an unbound UTF-8 byte upper bound"
+                            .to_string(),
                     ));
                 }
             }
@@ -437,5 +452,16 @@ mod tests {
         assert_eq!(fallback.token_count, 6);
         assert!(!fallback.exact);
         fallback.validate().expect("fallback receipt");
+    }
+
+    #[test]
+    fn fallback_receipt_rejects_injected_tokenizer_bindings() {
+        let registry = LocalTokenizerRegistry::new();
+        let mut fallback = registry
+            .count_or_fallback(Some("missing"), "世界")
+            .expect("fallback");
+        fallback.tokenizer_artifact_sha256 = Some(Digest32::for_bytes(b"injected"));
+        fallback.receipt_sha256 = token_receipt_digest(&fallback);
+        assert!(fallback.validate().is_err());
     }
 }

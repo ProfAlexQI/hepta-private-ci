@@ -1,0 +1,54 @@
+{
+  "schema": "hepta.intelligence.p1_1b.hardening_receipt.v1",
+  "date": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "parent_pull_request": 34,
+  "parent_branch": "codex/hepta-intelligence-local-embedding-index-v1b-20260828",
+  "parent_exact_head": "c804ce200e3eccec96e90b867de31c5cacfdf82f",
+  "hardening_branch": "codex/hepta-intelligence-p1-1b-hardening-v1-20260828",
+  "status": "SOURCE_ONLY_HARDENING_IMPLEMENTED_QUALIFICATION_PENDING",
+  "implemented": true,
+  "qualified": false,
+  "hardening": {
+    "decode_dimension_preallocation_bound": true,
+    "bucket_count_bound_to_item_count": true,
+    "exact_bucket_priority": true,
+    "stored_vector_q15_reverification": true,
+    "actual_norm_fixed_point_cosine": true,
+    "q15_norm_tolerance_ppm": 10000,
+    "fallback_binding_absence": true,
+    "semantic_route_recomputation": true,
+    "search_receipt_count_identity_and_order_validation": true,
+    "negative_regressions_added": true
+  },
+  "authority": {
+    "wired": false,
+    "product_workspace_member": false,
+    "product_module_registered": false,
+    "default_recall_changed": false,
+    "federation_recall_changed": false,
+    "context_attachment": false,
+    "physical_send": false,
+    "remote_embedding": false,
+    "model_download": false,
+    "network_access": false,
+    "external_effects": false,
+    "production_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "qualification": {
+    "source_gate": "pending_exact_hardening_head_execution",
+    "format": "not_run",
+    "tests": "not_run",
+    "check": "not_run",
+    "clippy": "not_run",
+    "exact_source_artifact": "pending",
+    "qualified": false
+  },
+  "next_tranche": {
+    "id": "P1.1c",
+    "status": "BLOCKED_PENDING_P1_1B_HARDENING_REVIEW_AND_EXECUTABLE_QUALIFICATION"
+  }
+}

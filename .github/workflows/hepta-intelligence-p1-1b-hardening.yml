@@ -1,0 +1,196 @@
+name: hepta-intelligence-p1-1b-hardening
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-p1-1b-hardening-v1-20260828"
+    paths:
+      - "codex-rs/hepta-memory-p1-1b-qualification/**"
+      - "scripts/verify-hepta-intelligence-local-embedding-index.py"
+      - "scripts/verify-hepta-intelligence-p1-1b-hardening.py"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_HARDENING_*"
+      - ".github/workflows/hepta-intelligence-p1-1b-hardening.yml"
+  pull_request:
+    paths:
+      - "codex-rs/hepta-memory-p1-1b-qualification/**"
+      - "scripts/verify-hepta-intelligence-local-embedding-index.py"
+      - "scripts/verify-hepta-intelligence-p1-1b-hardening.py"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_HARDENING_*"
+      - ".github/workflows/hepta-intelligence-p1-1b-hardening.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-p1-1b-hardening-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  P1_1B_MANIFEST_PATH: codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml
+  P1_1B_ARTIFACT_DIR: artifacts/hepta-intelligence-p1-1b-hardening
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  hardening-qualification:
+    name: P1.1b hardening source and isolated Rust gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Prepare evidence directory
+        run: mkdir -p "$P1_1B_ARTIFACT_DIR"
+
+      - name: Run P1.1b base source gate
+        id: base_source
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python3 scripts/verify-hepta-intelligence-local-embedding-index.py \
+            2>&1 | tee "$P1_1B_ARTIFACT_DIR/base-source-gate.log"
+
+      - name: Run P1.1b hardening source gate
+        id: hardening_source
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python3 scripts/verify-hepta-intelligence-p1-1b-hardening.py \
+            2>&1 | tee "$P1_1B_ARTIFACT_DIR/hardening-source-gate.log"
+
+      - name: Check exact rustfmt state
+        id: fmt
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo fmt \
+            --manifest-path "$P1_1B_MANIFEST_PATH" \
+            --all -- --check \
+            2>&1 | tee "$P1_1B_ARTIFACT_DIR/rustfmt.log"
+
+      - name: Run all unit and integration tests
+        id: tests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo test \
+            --manifest-path "$P1_1B_MANIFEST_PATH" \
+            --all-targets -- --nocapture \
+            2>&1 | tee "$P1_1B_ARTIFACT_DIR/tests.log"
+
+      - name: Check all isolated targets
+        id: check
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo check \
+            --manifest-path "$P1_1B_MANIFEST_PATH" \
+            --all-targets \
+            2>&1 | tee "$P1_1B_ARTIFACT_DIR/check.log"
+
+      - name: Run strict isolated Clippy
+        id: clippy
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo clippy \
+            --manifest-path "$P1_1B_MANIFEST_PATH" \
+            --all-targets -- -D warnings \
+            2>&1 | tee "$P1_1B_ARTIFACT_DIR/clippy.log"
+
+      - name: Prove gates did not rewrite tracked source
+        id: clean_tree
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          git diff --exit-code -- \
+            codex-rs/hepta-memory-p1-1b-qualification \
+            scripts/verify-hepta-intelligence-local-embedding-index.py \
+            scripts/verify-hepta-intelligence-p1-1b-hardening.py \
+            plans/hepta-intelligence \
+            2>&1 | tee "$P1_1B_ARTIFACT_DIR/clean-tree.log"
+
+      - name: Write machine qualification receipt
+        if: always()
+        env:
+          BASE_SOURCE_OUTCOME: ${{ steps.base_source.outcome }}
+          HARDENING_SOURCE_OUTCOME: ${{ steps.hardening_source.outcome }}
+          FMT_OUTCOME: ${{ steps.fmt.outcome }}
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+          CLIPPY_OUTCOME: ${{ steps.clippy.outcome }}
+          CLEAN_TREE_OUTCOME: ${{ steps.clean_tree.outcome }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          gates = {
+              "base_source": os.environ.get("BASE_SOURCE_OUTCOME", "missing"),
+              "hardening_source": os.environ.get("HARDENING_SOURCE_OUTCOME", "missing"),
+              "rustfmt": os.environ.get("FMT_OUTCOME", "missing"),
+              "tests": os.environ.get("TESTS_OUTCOME", "missing"),
+              "check": os.environ.get("CHECK_OUTCOME", "missing"),
+              "clippy": os.environ.get("CLIPPY_OUTCOME", "missing"),
+              "clean_tree": os.environ.get("CLEAN_TREE_OUTCOME", "missing"),
+          }
+          all_pass = all(value == "success" for value in gates.values())
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.hardening_ci.v1",
+              "source_sha": os.environ["SOURCE_SHA"],
+              "workflow": {
+                  "run_id": int(os.environ["RUN_ID"]),
+                  "run_attempt": int(os.environ["RUN_ATTEMPT"]),
+              },
+              "gates": gates,
+              "executable_gates_passed": all_pass,
+              "qualified": False,
+              "runtime_wired": False,
+              "default_recall_changed": False,
+              "context_attachment": False,
+              "physical_send": False,
+              "external_effects": False,
+              "production_authority": False,
+          }
+          artifact_dir = Path(os.environ["P1_1B_ARTIFACT_DIR"])
+          artifact_dir.mkdir(parents=True, exist_ok=True)
+          (artifact_dir / "qualification-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload hardening evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1b-hardening-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1b-hardening
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Enforce hardening gate result
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["P1_1B_ARTIFACT_DIR"]) / "qualification-receipt.json"
+          receipt = json.loads(path.read_text(encoding="utf-8"))
+          if not receipt["executable_gates_passed"]:
+              raise SystemExit(json.dumps(receipt["gates"], sort_keys=True))
+          PY
