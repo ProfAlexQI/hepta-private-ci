@@ -3,8 +3,7 @@
   "generated_at": "2026-08-28",
   "repository": "ProfAlexQI/hepta-private-ci",
   "default_branch": "integration/vnext-main-20260811",
-  "document_snapshot_head": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
-  "development_branch": "codex/hepta-intelligence-grounding-gate-v3-20260828",
+  "development_branch": "codex/hepta-intelligence-mutation-state-machine-v4-20260828",
   "authority": {
     "production_authority": false,
     "external_effects": false,
@@ -13,63 +12,63 @@
     "callers_ratchet": false
   },
   "dependency": {
-    "id": "P0.2",
-    "branch": "codex/hepta-intelligence-grounding-ledger-v2-20260828",
-    "head": "ad0cf81cd820bbb4b8154633c61ea68fb35bf872",
-    "pull_request": 13,
-    "status": "source_contract_implemented_hosted_runner_blocked",
+    "id": "P0.3",
+    "branch": "codex/hepta-intelligence-grounding-gate-v3-20260828",
+    "head": "256a47d882413ac1f80892a80177419bb5d12c70",
+    "pull_request": 14,
+    "status": "source_only_implemented_hosted_runner_blocked",
     "qualified": false
   },
   "current_tranche": {
-    "id": "P0.3",
-    "name": "tool_protocol_and_shadow_projection_grounding_gate",
-    "status": "source_only_implemented_activation_blocked",
+    "id": "P0.4",
+    "name": "typed_intelligence_mutation_state_machine",
+    "status": "source_only_implemented_runtime_wiring_blocked",
     "qualified": false,
-    "source_candidate": {
-      "shadow_compare_commit": "b21c5cd23207bfe513a5c9b4f1602ec6052bc939",
-      "core_registration_commit": "8f6379e51622b4b82d9566d6a6114b6a30769d72",
-      "tool_v3_contract_commit": "e240dfeafc08a3f01bdb03fcae8e348c37d81a3b",
-      "tool_v3_registration_commit": "4e23bf5eca9967f5ee7c1418a1ea73b17fd0ccb7",
-      "source_gate_commit": "0d7cb9857191f60cb77f39b34221049a4780bd1b",
-      "dormant_contract_lint_commit": "9fb7ac35866b028d4437e345ab2c66f275b8808f",
-      "plan_commit": "c25124503725d989be93c9f975f4710e1aaa3d32"
-    },
     "files": [
-      "codex-rs/hepta-memory/src/fact_grounding/shadow_projection_gate.rs",
+      "codex-rs/hepta-memory/src/intelligence_mutation_state.rs",
       "codex-rs/hepta-memory/src/framing.rs",
-      "codex-rs/ext/hepta-memory/src/cognitive/grounding_v3.rs",
-      "codex-rs/ext/hepta-memory/src/framing.rs",
-      "scripts/verify-hepta-intelligence-grounding-gate.py",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_3_SOURCE_TRANCHE_2026-08-28.md",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json"
+      "codex-rs/rust-toolchain.toml",
+      "scripts/verify-hepta-intelligence-mutation-state.py",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4_SOURCE_TRANCHE_2026-08-28.md",
+      "plans/hepta-intelligence/models/P0_4_INTELLIGENCE_MUTATION_STATE_MACHINE.tla",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
+      ".github/workflows/hepta-intelligence-grounding-ledger.yml",
+      ".github/workflows/hepta-intelligence-grounding-gate.yml",
+      ".github/workflows/hepta-intelligence-mutation-state-machine.yml"
     ],
     "claims": {
-      "tool_v3_schema_implemented": true,
-      "tool_v3_exact_span_validation": true,
-      "tool_v3_registered": false,
-      "shadow_projection_compare_implemented": true,
-      "shadow_grounding_explain_implemented": true,
-      "p0_2_ledger_verified_before_shadow_read": true,
-      "legacy_unreviewed_excluded_from_candidate": true,
-      "source_content_returned_by_explain": false,
-      "default_projection_pointer_changed": false,
-      "default_recall_query_changed": false,
-      "write_performed_by_shadow_compare": false,
-      "production_projection_gate": false,
+      "explicit_transition_table": true,
+      "operation_binding": true,
+      "lease_epoch_binding": true,
+      "expected_revision_binding": true,
+      "projection_generation_binding": true,
+      "causal_parent_binding": true,
+      "exact_duplicate_replay": true,
+      "changed_duplicate_rejected": true,
+      "reorder_rejected": true,
+      "terminal_requires_outbox_settlement": true,
+      "double_write_rejected": true,
+      "double_projection_publish_rejected": true,
+      "stale_generation_rejected": true,
+      "indeterminate_resolution": true,
+      "tla_model": true,
+      "runtime_wired": false,
+      "sqlite_persistence": false,
+      "sqlite_failpoint_execution": false,
       "production_authority": false,
-      "external_effects": false
+      "external_effects": false,
+      "qualification_toolchains_aligned_to_workspace": true,
+      "qualification_toolchain_runtime_executed": false
     },
     "qualification": {
       "source_gate": "pending_exact_head_execution",
       "format": "not_run",
-      "core_focused_tests": "not_run",
-      "extension_focused_tests": "not_run",
-      "core_crate_tests": "not_run",
-      "extension_crate_tests": "not_run",
-      "core_clippy": "not_run",
-      "extension_clippy": "not_run",
+      "focused_tests": "not_run",
+      "crate_tests": "not_run",
+      "clippy": "not_run",
       "hosted_ci": "pending",
-      "qualified": false
+      "qualified": false,
+      "toolchain_pin": "1.95.0_source_bound_not_run"
     }
   },
   "capabilities": [
@@ -110,17 +109,8 @@
       "promoted": false
     },
     {
-      "id": "production_grounded_projection_gate",
-      "implemented": false,
-      "wired": false,
-      "qualified": false,
-      "efficacy_proven": false,
-      "operator_accepted": false,
-      "promoted": false
-    },
-    {
       "id": "intelligence_mutation_state_machine",
-      "implemented": false,
+      "implemented": true,
       "wired": false,
       "qualified": false,
       "efficacy_proven": false,
@@ -128,10 +118,21 @@
       "promoted": false
     }
   ],
+  "next_tranche": {
+    "id": "P1.1",
+    "name": "hybrid_retrieval_v2",
+    "activation": "blocked",
+    "requirements": [
+      "P0.1-P0.4 exact-head executable qualification",
+      "P0.4 SQLite persistence and failpoint tranche",
+      "candidate freeze and readable CI artifacts",
+      "production authority remains false"
+    ]
+  },
   "next_actions": [
-    "Run the P0.3 fail-closed source gate on one exact head.",
-    "Run core and extension fmt, focused tests, full tests, and clippy when a runner is assigned.",
-    "Keep the v3 contract unregistered and shadow compare read-only until P0.1 and P0.2 qualify.",
-    "Do not change the default projection pointer, recall query, or production authority from this tranche."
+    "Run the P0.4 source gate on one exact head.",
+    "Run Rust format, focused tests, full crate tests, and clippy with repository toolchain 1.95.0 after an assigned runner is available.",
+    "Keep the state machine dormant until P0.1-P0.3 qualify.",
+    "Implement SQLite persistence and boundary failpoints as a separate guarded tranche before runtime wiring."
   ]
 }
