@@ -1,0 +1,260 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  shared: root.join("apps/hepta-native/src/shared/mod.rs"),
+  window_material: root.join("apps/hepta-native/src/shared/hepta_makepad_window_material.rs"),
+  lifecycle: root.join("apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs"),
+  probe: root.join("apps/hepta-native/src/bin/hepta-ui-v4-filter-probe.rs"),
+  control_matrix: root.join("docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json"),
+  material_matrix: root.join("docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"),
+  metrics_schema: root.join("docs/ui/schemas/hepta.ui.v4.native-component-metrics.v1.schema.json"),
+  status: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_8_WINDOW_VISUALS_DIAGNOSTICS_2026-08-28.md"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-window-visuals-diagnostics.yml")
+}.freeze
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+
+unless checks.values.all?
+  puts JSON.pretty_generate(
+    schema: "hepta.ui.v4.window-visuals-diagnostics-source-gate.v1",
+    status: "FAIL_MISSING_INPUT",
+    source_implemented: false,
+    native_compile_validation: false,
+    component_runtime_validation: false,
+    component_screenshot_validation: false,
+    framework_request_runtime_validation: false,
+    system_material_binding: false,
+    runtime_readback: false,
+    device_validation: false,
+    production_authority: false,
+    effect_authority: false,
+    live_adapter_authority: false,
+    operator_acceptance: false,
+    promotion: false,
+    release: false,
+    checks: checks,
+    failures: checks.reject { |_name, passed| passed }.keys
+  )
+  exit 1
+end
+
+shared = files.fetch(:shared).read
+window_material = files.fetch(:window_material).read
+lifecycle = files.fetch(:lifecycle).read
+probe = files.fetch(:probe).read
+control_matrix = JSON.parse(files.fetch(:control_matrix).read)
+material_matrix = JSON.parse(files.fetch(:material_matrix).read)
+metrics_schema = JSON.parse(files.fetch(:metrics_schema).read)
+workflow = files.fetch(:workflow).read
+
+checks["shared.window_material_declared"] =
+  shared.include?("pub mod hepta_makepad_window_material;")
+checks["shared.lifecycle_declared"] =
+  shared.include?("pub mod hepta_material_app_lifecycle;")
+checks["shared.module_order"] =
+  shared.index("pub mod hepta_makepad_window_material;") <
+    shared.index("pub mod hepta_material_app_lifecycle;")
+checks["shared.lifecycle_registered"] =
+  shared.include?("hepta_material_app_lifecycle::script_mod(vm);")
+
+checks["window.public_framework_types"] = %w[
+  WindowId WindowVisuals WindowBackdrop CxOsOp::SetWindowVisuals
+].all? { |name| window_material.include?(name) }
+checks["window.exact_framework_window"] =
+  window_material.include?("cx.windows.is_valid(window_id)") &&
+  window_material.include?("cx.windows[window_id].is_popup") &&
+  window_material.include?("self.window_id = Some(window_id)")
+checks["window.mica_and_vibrancy"] =
+  window_material.include?("WindowBackdrop::Mica") &&
+  window_material.include?("WindowBackdrop::Vibrancy")
+checks["window.solid_fallback"] =
+  window_material.include?("!preferences.transparency_allowed") &&
+  window_material.include?("preferences.high_contrast") &&
+  window_material.include?("WindowVisuals::default()")
+checks["window.focus_intensity"] =
+  window_material.include?("active_intensity") &&
+  window_material.include?("inactive_intensity")
+checks["window.framework_state_and_queue"] =
+  window_material.include?("window.transparent = visuals.transparent") &&
+  window_material.include?("window.backdrop = visuals.backdrop") &&
+  window_material.include?("cx.push_unique_platform_op(CxOsOp::SetWindowVisuals")
+checks["window.no_raw_native_handle_path"] =
+  %w[DwmSetWindowAttribute with_win32_app NSVisualEffectView objc2 JNIEnv jni::].none? do |term|
+    window_material.include?(term)
+  end
+checks["window.no_unsafe_or_ffi"] =
+  !window_material.match?(/\bunsafe\b/) &&
+  !window_material.match?(/extern\s+"(?:C|system)"/)
+checks["window.partial_claim_only"] = %w[
+  HEPTA_MAKEPAD_TRANSIENT_SYSTEM_MATERIAL_BOUND
+  HEPTA_MAKEPAD_COMPLETE_PROFILE_BOUND
+  HEPTA_MAKEPAD_RUNTIME_READBACK
+  HEPTA_MAKEPAD_PRODUCTION_AUTHORITY
+  HEPTA_MAKEPAD_EFFECT_AUTHORITY
+  HEPTA_MAKEPAD_LIVE_ADAPTER_AUTHORITY
+  HEPTA_MAKEPAD_OPERATOR_ACCEPTANCE
+  HEPTA_MAKEPAD_PROMOTION
+  HEPTA_MAKEPAD_RELEASE
+].all? { |name| window_material.include?("#{name}: bool = false") }
+checks["window.receipt_never_complete"] =
+  window_material.include?("transient_system_material_bound: false") &&
+  window_material.include?("complete_profile_bound: false") &&
+  window_material.include?("system_material_bound: false") &&
+  window_material.include?("runtime_readback: false")
+checks["window.focused_tests"] = %w[
+  windows_mica_request_is_event_bound_and_partial_only
+  high_contrast_and_suspend_restore_solid_visuals
+  unsupported_mobile_platforms_never_request_window_glass
+  macos_vibrancy_request_still_requires_runtime_readback
+].all? { |name| window_material.include?(name) }
+
+checks["lifecycle.partial_and_full_layers_separate"] =
+  lifecycle.include?("HeptaUnboundSystemMaterialAdapter") &&
+  lifecycle.include?("HeptaMakepadWindowMaterialController")
+checks["lifecycle.area_bound_window_id"] =
+  lifecycle.include?("cx.get_window_id_of(&area)") &&
+  lifecycle.include?("self.window_material.observe_window(cx, window_id)")
+checks["lifecycle.focus_events"] =
+  lifecycle.include?("Event::WindowGotFocus") &&
+  lifecycle.include?("Event::WindowLostFocus")
+checks["lifecycle.active_events"] = %w[Startup Resume Foreground].all? do |name|
+  lifecycle.include?("Event::#{name}")
+end
+checks["lifecycle_suspend_shutdown"] = %w[Pause Background Shutdown].all? do |name|
+  lifecycle.include?("Event::#{name}")
+end && lifecycle.include?(".suspend(cx, current_platform())") &&
+  lifecycle.include?(".shutdown(cx, current_platform())")
+checks["lifecycle.full_profile_unbound"] =
+  lifecycle.include?("HeptaMaterialHostCapabilities::default()") &&
+  lifecycle.include?("HEPTA_MATERIAL_APP_SYSTEM_ADAPTER_AVAILABLE: bool = false")
+checks["lifecycle.partial_claim_boundary"] = %w[
+  HEPTA_MATERIAL_APP_NATIVE_WINDOW_HANDLE_BOUND
+  HEPTA_MATERIAL_APP_TRANSIENT_SYSTEM_MATERIAL_BOUND
+  HEPTA_MATERIAL_APP_COMPLETE_PROFILE_BOUND
+  HEPTA_MATERIAL_APP_RUNTIME_READBACK
+  HEPTA_MATERIAL_APP_PRODUCTION_AUTHORITY
+  HEPTA_MATERIAL_APP_EFFECT_AUTHORITY
+  HEPTA_MATERIAL_APP_LIVE_ADAPTER_AUTHORITY
+  HEPTA_MATERIAL_APP_OPERATOR_ACCEPTANCE
+  HEPTA_MATERIAL_APP_PROMOTION
+  HEPTA_MATERIAL_APP_RELEASE
+].all? { |name| lifecycle.include?("#{name}: bool = false") }
+
+checks["probe.real_component"] =
+  probe.include?("mod.widgets.RoomFilterInputBar") &&
+  probe.include?("ids!(probe_filter)")
+checks["probe.actual_areas"] =
+  probe.include?("filter.area().rect(cx)") &&
+  probe.include?("input.area().rect(cx)") &&
+  probe.include?("clear.area().rect(cx)")
+checks["probe.metric_floors"] =
+  probe.include?("filterHeightAtLeast48") &&
+  probe.include?("inputHeightAtLeast48") &&
+  probe.include?("clearWidthAtLeast48") &&
+  probe.include?("clearHeightAtLeast48")
+checks["probe.screenshot_and_digest"] =
+  probe.include?("capture_next_frame_to_file") &&
+  probe.include?("Sha256::digest") &&
+  probe.include?("HEPTA_NATIVE_CAPTURE_FRAME_PATH")
+checks["probe.candidate_binding"] =
+  probe.include?("HEPTA_CANDIDATE_COMMIT") &&
+  probe.include?("HEPTA_CANDIDATE_TREE")
+checks["probe.bounded_exit"] =
+  probe.include?("HEPTA_NATIVE_UI_METRICS_PATH") &&
+  probe.include?("write_json_atomic") &&
+  probe.include?("cx.quit()")
+checks["probe.no_matrix_or_network_startup"] =
+  %w[start_matrix_tokio MatrixRequest HttpRequest fetch XMLHttpRequest WebSocket EventSource].none? do |term|
+    probe.include?(term)
+  end
+checks["probe.authority_false"] = %w[
+  network mutation effect liveAdapter production operatorAcceptance promotion release
+].all? { |key| probe.match?(/"#{key}":\s*false/) }
+checks["probe.product_claims_false"] =
+  probe.match?(/"nativeProductRuntime":\s*false/) &&
+  probe.match?(/"systemMaterialBinding":\s*false/) &&
+  probe.match?(/"deviceMatrix":\s*false/)
+
+checks["schema.identity"] =
+  metrics_schema["$id"].to_s.end_with?("hepta.ui.v4.native-component-metrics.v1.schema.json")
+checks["schema.false_product_claims"] =
+  metrics_schema.dig("properties", "qualification", "properties", "nativeProductRuntime", "const") == false &&
+  metrics_schema.dig("properties", "qualification", "properties", "systemMaterialBinding", "const") == false &&
+  metrics_schema.dig("properties", "qualification", "properties", "deviceMatrix", "const") == false
+checks["schema.authority_false"] =
+  metrics_schema.dig("properties", "authority", "additionalProperties", "const") == false
+
+checks["control_matrix.schema"] =
+  control_matrix["schema"] == "hepta.ui.native-control-migration.v1"
+checks["control_matrix.diagnostic_source_only"] =
+  control_matrix.dig("componentDiagnostic", "sourceStatus") == "IMPLEMENTED_SOURCE_ONLY" &&
+  control_matrix.dig("componentDiagnostic", "runtimeStatus") == "REQUIRED_NOT_RUN" &&
+  control_matrix.dig("componentDiagnostic", "screenshotStatus") == "REQUIRED_NOT_RUN"
+checks["control_matrix.runtime_unclaimed"] =
+  control_matrix.fetch("items").all? { |item| item.fetch("runtimeStatus") != "PASS" }
+checks["control_matrix.authority_false"] =
+  control_matrix.fetch("authority").values.none?
+
+checks["material_matrix.schema"] =
+  material_matrix["schema"] == "hepta.ui.platform-material-adapter-matrix.v1"
+checks["material_matrix.framework_request_not_readback"] =
+  material_matrix.dig("invariants", "frameworkRequestIsNotRuntimeReadback") == true &&
+  material_matrix.dig("hostLifecycle", "runtimeReadback") == false
+checks["material_matrix.partial_only"] =
+  material_matrix.dig("hostLifecycle", "persistentChromeRequestSource") == true &&
+  material_matrix.dig("hostLifecycle", "transientSystemMaterialBound") == false &&
+  material_matrix.dig("hostLifecycle", "completeProfileBound") == false &&
+  material_matrix.dig("hostLifecycle", "systemMaterialBindingClaim") == false
+checks["material_matrix.runtime_unclaimed"] =
+  material_matrix.fetch("platforms").all? { |entry| entry.fetch("runtimeStatus") != "PASS" } &&
+  material_matrix.dig("hostLifecycle", "runtimeStatus") != "PASS"
+checks["material_matrix.authority_false"] =
+  material_matrix.fetch("authority").values.none?
+
+checks["workflow.source_gate"] =
+  workflow.include?("ruby scripts/hepta-ui-v4-window-visuals-diagnostics-gate")
+checks["workflow.compile_matrix"] =
+  %w[ubuntu-latest windows-latest macos-latest].all? { |os| workflow.include?(os) }
+checks["workflow.probe_compile"] =
+  workflow.include?("--bin hepta-ui-v4-filter-probe")
+checks["workflow.manual_runtime_probe"] =
+  workflow.include?("github.event_name == 'workflow_dispatch'") &&
+  workflow.include?("xvfb-run") &&
+  workflow.include?("HEPTA_NATIVE_UI_METRICS_PATH")
+checks["workflow.read_only"] =
+  workflow.include?("permissions:") && workflow.include?("contents: read")
+checks["workflow.no_deploy_publish_release"] =
+  !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+
+failed = checks.reject { |_name, passed| passed }
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.window-visuals-diagnostics-source-gate.v1",
+  status: failed.empty? ?
+    "PASS_WINDOW_VISUALS_DIAGNOSTICS_SOURCE_ONLY" :
+    "FAIL_WINDOW_VISUALS_DIAGNOSTICS_SOURCE",
+  source_implemented: failed.empty?,
+  framework_window_visuals_source: failed.empty?,
+  component_metrics_producer_source: failed.empty?,
+  native_compile_validation: false,
+  component_runtime_validation: false,
+  component_screenshot_validation: false,
+  framework_request_runtime_validation: false,
+  system_material_binding: false,
+  runtime_readback: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  live_adapter_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  release: false,
+  checks: checks,
+  failures: failed.keys
+)
+exit(failed.empty? ? 0 : 1)

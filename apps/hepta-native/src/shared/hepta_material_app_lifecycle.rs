@@ -1,14 +1,23 @@
 //! Root-window lifecycle bridge for Hepta UI v4 platform materials.
 //!
-//! The bridge receives application lifecycle events through the canonical
-//! Makepad Window event tree and drives the consolidated material host. This
-//! tranche deliberately uses the unbound adapter with zero host capabilities:
-//! it can publish only `SemanticIntentOnly`, `SolidFallback`, `Suspended`, or
-//! `Shutdown`. Real system material requires a later explicit host-object
-//! adapter and runtime receipt.
+//! The bridge receives application and exact-window events through the
+//! canonical Makepad Window event tree. It drives two deliberately separate
+//! layers:
+//!
+//! 1. the consolidated semantic material host, which still owns only the
+//!    unbound full-profile adapter; and
+//! 2. a Makepad public-API controller that may queue a persistent root-window
+//!    Mica/Vibrancy request for the exact `WindowId` delivered by the framework.
+//!
+//! A queued `WindowVisuals` request is not an OS readback receipt and cannot
+//! claim transient material, a complete profile, effect, or production
+//! authority.
 
 use makepad_widgets::*;
 
+use super::hepta_makepad_window_material::{
+    HeptaMakepadWindowMaterialController, HeptaMakepadWindowMaterialReceipt,
+};
 use super::hepta_platform_material_host::{
     HeptaMaterialHostCapabilities, HeptaMaterialHostError, HeptaMaterialHostSnapshot,
     HeptaPlatformMaterialHost,
@@ -21,8 +30,14 @@ use super::hepta_system_preferences::{
 };
 
 pub const HEPTA_MATERIAL_APP_LIFECYCLE_SOURCE_WIRED: bool = true;
+pub const HEPTA_MATERIAL_APP_FRAMEWORK_WINDOW_VISUALS_SOURCE_WIRED: bool = true;
+pub const HEPTA_MATERIAL_APP_EXACT_WINDOW_ID_EVENT_BOUND_SOURCE: bool = true;
+pub const HEPTA_MATERIAL_APP_PERSISTENT_CHROME_REQUEST_SOURCE: bool = true;
 pub const HEPTA_MATERIAL_APP_SYSTEM_ADAPTER_AVAILABLE: bool = false;
-pub const HEPTA_MATERIAL_APP_WINDOW_HANDLE_BOUND: bool = false;
+pub const HEPTA_MATERIAL_APP_NATIVE_WINDOW_HANDLE_BOUND: bool = false;
+pub const HEPTA_MATERIAL_APP_TRANSIENT_SYSTEM_MATERIAL_BOUND: bool = false;
+pub const HEPTA_MATERIAL_APP_COMPLETE_PROFILE_BOUND: bool = false;
+pub const HEPTA_MATERIAL_APP_RUNTIME_READBACK: bool = false;
 pub const HEPTA_MATERIAL_APP_PRODUCTION_AUTHORITY: bool = false;
 pub const HEPTA_MATERIAL_APP_EFFECT_AUTHORITY: bool = false;
 pub const HEPTA_MATERIAL_APP_LIVE_ADAPTER_AUTHORITY: bool = false;
@@ -116,8 +131,7 @@ script_mod! {
     }
 
     // The App creates its main Window after shared modules load. Rebinding the
-    // prototype here injects the lifecycle node without forking app.rs. No
-    // system material is applied because the node owns only the unbound adapter.
+    // prototype here injects the lifecycle node without forking app.rs.
     mod.widgets.HeptaV4LifecycleWindow = mod.widgets.Window {
         body +: {
             hepta_v4_material_lifecycle := mod.widgets.HeptaV4MaterialLifecycleNode {}
@@ -132,25 +146,80 @@ pub struct HeptaV4MaterialLifecycleNode {
     view: View,
     #[rust]
     lifecycle: HeptaMaterialAppLifecycle,
+    #[rust]
+    window_material: HeptaMakepadWindowMaterialController,
+    #[rust]
+    last_preferences: HeptaSystemPreferenceSnapshot,
+    #[rust]
+    window_focused: bool,
 }
 
 impl HeptaV4MaterialLifecycleNode {
-    fn log_result(
+    fn activate(
+        &mut self,
+        cx: &mut Cx,
+        lifecycle_event: HeptaMaterialAppLifecycleEvent,
+    ) {
+        let preferences = current_system_preferences();
+        self.last_preferences = preferences;
+        let host_result = self.lifecycle.activate(lifecycle_event, preferences);
+        self.log_host_result(lifecycle_event, host_result);
+
+        let window_receipt = self.window_material.request_active(
+            cx,
+            current_platform(),
+            preferences.preferences,
+            self.window_focused,
+        );
+        self.log_window_receipt(lifecycle_event, window_receipt);
+    }
+
+    fn log_host_result(
         &self,
         event: HeptaMaterialAppLifecycleEvent,
         result: Result<HeptaMaterialHostSnapshot, HeptaMaterialHostError>,
     ) {
         match result {
             Ok(snapshot) => log!(
-                "Hepta material lifecycle {event:?}: phase={:?}, bound={}, generation={}, authority=false",
+                "Hepta material host {event:?}: phase={:?}, complete_bound={}, generation={}, authority=false",
                 snapshot.phase,
                 snapshot.system_material_bound,
                 snapshot.generation,
             ),
             Err(error) => error!(
-                "Hepta material lifecycle {event:?} remained fail-closed: {error:?}"
+                "Hepta material host {event:?} remained fail-closed: {error:?}"
             ),
         }
+    }
+
+    fn log_window_receipt(
+        &self,
+        event: HeptaMaterialAppLifecycleEvent,
+        receipt: HeptaMakepadWindowMaterialReceipt,
+    ) {
+        log!(
+            "Hepta framework window material {event:?}: phase={:?}, window={:?}:{:?}, request_queued={}, persistent_chrome_requested={}, transient_bound=false, complete_bound=false, readback=false, authority=false",
+            receipt.phase,
+            receipt.window_index,
+            receipt.window_generation,
+            receipt.framework_request_queued,
+            receipt.persistent_chrome_requested,
+        );
+    }
+
+    fn refresh_window_request(&mut self, cx: &mut Cx) {
+        let receipt = self.window_material.request_active(
+            cx,
+            current_platform(),
+            self.last_preferences.preferences,
+            self.window_focused,
+        );
+        self.log_window_receipt(
+            self.lifecycle
+                .last_event()
+                .unwrap_or(HeptaMaterialAppLifecycleEvent::Startup),
+            receipt,
+        );
     }
 }
 
@@ -158,40 +227,48 @@ impl Widget for HeptaV4MaterialLifecycleNode {
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
         match event {
             Event::Startup => {
-                let lifecycle_event = HeptaMaterialAppLifecycleEvent::Startup;
-                let result = self
-                    .lifecycle
-                    .activate(lifecycle_event, current_system_preferences());
-                self.log_result(lifecycle_event, result);
+                self.activate(cx, HeptaMaterialAppLifecycleEvent::Startup);
             }
             Event::Resume => {
-                let lifecycle_event = HeptaMaterialAppLifecycleEvent::Resume;
-                let result = self
-                    .lifecycle
-                    .activate(lifecycle_event, current_system_preferences());
-                self.log_result(lifecycle_event, result);
+                self.activate(cx, HeptaMaterialAppLifecycleEvent::Resume);
             }
             Event::Foreground => {
-                let lifecycle_event = HeptaMaterialAppLifecycleEvent::Foreground;
-                let result = self
-                    .lifecycle
-                    .activate(lifecycle_event, current_system_preferences());
-                self.log_result(lifecycle_event, result);
+                self.activate(cx, HeptaMaterialAppLifecycleEvent::Foreground);
+            }
+            Event::WindowGotFocus(window_id) => {
+                let _ = self.window_material.observe_window(cx, *window_id);
+                if self.window_material.owns_window(*window_id) {
+                    self.window_focused = true;
+                    self.refresh_window_request(cx);
+                }
+            }
+            Event::WindowLostFocus(window_id) if self.window_material.owns_window(*window_id) => {
+                self.window_focused = false;
+                self.refresh_window_request(cx);
+            }
+            Event::WindowClosed(event) => {
+                self.window_material.forget_window(event.window_id);
             }
             Event::Pause => {
                 let lifecycle_event = HeptaMaterialAppLifecycleEvent::Pause;
                 let snapshot = self.lifecycle.suspend(lifecycle_event);
-                self.log_result(lifecycle_event, Ok(snapshot));
+                self.log_host_result(lifecycle_event, Ok(snapshot));
+                let receipt = self.window_material.suspend(cx, current_platform());
+                self.log_window_receipt(lifecycle_event, receipt);
             }
             Event::Background => {
                 let lifecycle_event = HeptaMaterialAppLifecycleEvent::Background;
                 let snapshot = self.lifecycle.suspend(lifecycle_event);
-                self.log_result(lifecycle_event, Ok(snapshot));
+                self.log_host_result(lifecycle_event, Ok(snapshot));
+                let receipt = self.window_material.suspend(cx, current_platform());
+                self.log_window_receipt(lifecycle_event, receipt);
             }
             Event::Shutdown => {
                 let lifecycle_event = HeptaMaterialAppLifecycleEvent::Shutdown;
                 let snapshot = self.lifecycle.shutdown();
-                self.log_result(lifecycle_event, Ok(snapshot));
+                self.log_host_result(lifecycle_event, Ok(snapshot));
+                let receipt = self.window_material.shutdown(cx, current_platform());
+                self.log_window_receipt(lifecycle_event, receipt);
             }
             _ => {}
         }
@@ -199,7 +276,16 @@ impl Widget for HeptaV4MaterialLifecycleNode {
     }
 
     fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
-        self.view.draw_walk(cx, scope, walk)
+        let step = self.view.draw_walk(cx, scope, walk);
+        if step.is_done() {
+            let area = self.view.area();
+            if let Some(window_id) = cx.get_window_id_of(&area)
+                && self.window_material.observe_window(cx, window_id)
+            {
+                self.refresh_window_request(cx);
+            }
+        }
+        step
     }
 
     fn is_interactive(&self) -> bool {
@@ -213,7 +299,7 @@ mod tests {
     use super::super::hepta_platform_material_host::HeptaMaterialHostPhase;
 
     #[test]
-    fn unbound_app_lifecycle_never_claims_system_material_or_authority() {
+    fn unbound_full_profile_host_never_claims_system_material_or_authority() {
         let mut lifecycle = HeptaMaterialAppLifecycle::default();
         let active = lifecycle
             .activate(
@@ -247,10 +333,16 @@ mod tests {
     }
 
     #[test]
-    fn app_lifecycle_authority_constants_remain_false() {
+    fn app_lifecycle_claim_boundary_is_partial_and_fail_closed() {
         assert!(HEPTA_MATERIAL_APP_LIFECYCLE_SOURCE_WIRED);
+        assert!(HEPTA_MATERIAL_APP_FRAMEWORK_WINDOW_VISUALS_SOURCE_WIRED);
+        assert!(HEPTA_MATERIAL_APP_EXACT_WINDOW_ID_EVENT_BOUND_SOURCE);
+        assert!(HEPTA_MATERIAL_APP_PERSISTENT_CHROME_REQUEST_SOURCE);
         assert!(!HEPTA_MATERIAL_APP_SYSTEM_ADAPTER_AVAILABLE);
-        assert!(!HEPTA_MATERIAL_APP_WINDOW_HANDLE_BOUND);
+        assert!(!HEPTA_MATERIAL_APP_NATIVE_WINDOW_HANDLE_BOUND);
+        assert!(!HEPTA_MATERIAL_APP_TRANSIENT_SYSTEM_MATERIAL_BOUND);
+        assert!(!HEPTA_MATERIAL_APP_COMPLETE_PROFILE_BOUND);
+        assert!(!HEPTA_MATERIAL_APP_RUNTIME_READBACK);
         assert!(!HEPTA_MATERIAL_APP_PRODUCTION_AUTHORITY);
         assert!(!HEPTA_MATERIAL_APP_EFFECT_AUTHORITY);
         assert!(!HEPTA_MATERIAL_APP_LIVE_ADAPTER_AUTHORITY);

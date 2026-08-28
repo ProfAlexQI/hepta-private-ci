@@ -8,6 +8,7 @@ pub mod confirmation_modal;
 pub mod expand_arrow;
 pub mod file_upload_modal;
 pub mod helpers;
+pub mod hepta_makepad_window_material;
 pub mod hepta_material_app_lifecycle;
 pub mod hepta_platform_material;
 pub mod hepta_platform_material_host;
@@ -47,7 +48,9 @@ pub fn script_mod(vm: &mut ScriptVm) {
     hepta_v4_controls::script_mod(vm);
     hepta_v4_layout::script_mod(vm);
     // The lifecycle module rebinds the canonical Window prototype before the
-    // App root is evaluated. Its adapter remains explicitly unbound.
+    // App root is evaluated. Full-profile OS material remains explicitly
+    // unbound; its Makepad WindowVisuals controller can only queue a partial
+    // persistent-chrome request for an exact framework WindowId.
     hepta_material_app_lifecycle::script_mod(vm);
     helpers::script_mod(vm);
     icon_button::script_mod(vm);

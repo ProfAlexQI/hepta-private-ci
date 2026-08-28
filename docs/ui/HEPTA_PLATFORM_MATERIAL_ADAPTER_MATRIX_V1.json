@@ -1,11 +1,13 @@
 {
   "schema": "hepta.ui.platform-material-adapter-matrix.v1",
-  "status": "ROOT_LIFECYCLE_SOURCE_WIRED_AND_WINDOWS_ADAPTER_SOURCE_IMPLEMENTED_RUNTIME_EVIDENCE_REQUIRED",
-  "candidateBranch": "codex/ui-v4-filter-lifecycle-20260828",
+  "status": "MAKEPAD_ROOT_WINDOW_VISUALS_REQUEST_SOURCE_WIRED_RUNTIME_READBACK_REQUIRED",
+  "candidateBranch": "codex/ui-v4-window-visuals-diagnostics-20260828",
   "authority": {
-    "production": false,
+    "network": false,
+    "mutation": false,
     "effect": false,
     "liveAdapter": false,
+    "production": false,
     "operatorAcceptance": false,
     "promotion": false,
     "release": false
@@ -16,16 +18,19 @@
     "maxVisibleBackdropLayers": 2,
     "stableContentBackdropLayers": 0,
     "unknownPreferenceFallback": "transparency disabled and reduced motion enabled",
-    "directWindowHandleDiscovery": false,
-    "hostBindsOnlyVerifiedReceipt": true,
-    "hostUnbindsBeforeSemanticOnlyOrFallbackState": true,
-    "shutdownIsTerminal": true,
-    "rootLifecycleBridgeSystemAdapterAvailable": false,
-    "rootLifecycleBridgeWindowHandleBound": false
+    "rawNativeHandleDiscovery": false,
+    "exactWindowIdFromFrameworkAreaOrWindowEvent": true,
+    "frameworkRequestIsNotRuntimeReadback": true,
+    "persistentChromeRequestMayBePartial": true,
+    "transientSystemMaterialBound": false,
+    "completeProfileBound": false,
+    "hostBindsOnlyVerifiedFullReceipt": true,
+    "shutdownIsTerminal": true
   },
   "hostLifecycle": {
     "source": "apps/hepta-native/src/shared/hepta_platform_material_host.rs",
     "integrationSource": "apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs",
+    "frameworkWindowSource": "apps/hepta-native/src/shared/hepta_makepad_window_material.rs",
     "phases": [
       "SolidFallback",
       "SemanticIntentOnly",
@@ -38,18 +43,25 @@
     "suspendCleanup": true,
     "shutdownCleanup": true,
     "rootWindowEventSourceIntegration": true,
+    "frameworkWindowIdBoundFromAreaOrFocusEvent": true,
+    "frameworkWindowVisualsRequestSource": true,
+    "persistentChromeRequestSource": true,
+    "nativeWindowHandleBound": false,
+    "transientSystemMaterialBound": false,
+    "completeProfileBound": false,
+    "systemMaterialBindingClaim": false,
+    "runtimeReadback": false,
     "events": [
       "Startup",
       "Resume",
       "Foreground",
+      "WindowGotFocus",
+      "WindowLostFocus",
       "Pause",
       "Background",
       "Shutdown"
     ],
-    "systemAdapterAvailable": false,
-    "windowHandleBound": false,
-    "systemMaterialBindingClaim": false,
-    "sourceStatus": "ROOT_EVENT_BRIDGE_IMPLEMENTED_UNBOUND_ADAPTER",
+    "sourceStatus": "FRAMEWORK_WINDOW_REQUEST_SOURCE_WIRED_FULL_PROFILE_UNBOUND",
     "compileStatus": "REQUIRED_NOT_RUN",
     "runtimeStatus": "REQUIRED_NOT_RUN"
   },
@@ -60,9 +72,9 @@
       "chrome": "WindowsMica",
       "transient": "WindowsAcrylic",
       "preferenceProbe": "SystemParametersInfoW plus EnableTransparency registry value",
-      "adapterSource": "HeptaWindowsDwmBackdropApi",
-      "hostBinding": "explicit non-zero chrome and transient HWND values required",
-      "sourceStatus": "IMPLEMENTED_FAIL_CLOSED_HOST_OBJECT_EXTRACTION_REQUIRED",
+      "persistentChromePath": "Makepad WindowVisuals Mica request for exact WindowId",
+      "fullAdapterSource": "HeptaWindowsDwmBackdropApi requires governed persistent and transient hosts",
+      "sourceStatus": "PERSISTENT_CHROME_REQUEST_SOURCE_WIRED_TRANSIENT_AND_READBACK_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -71,9 +83,9 @@
       "chrome": "MacSystemChrome",
       "transient": "MacSystemPopover",
       "preferenceProbe": "host-provided or fail-closed",
-      "adapterSource": "semantic profile, host lifecycle, and root event bridge implemented; AppKit adapter required",
-      "hostBinding": "NSWindow and material-view integration required",
-      "sourceStatus": "ROOT_LIFECYCLE_IMPLEMENTED_PLATFORM_ADAPTER_REQUIRED",
+      "persistentChromePath": "Makepad WindowVisuals Vibrancy request source",
+      "fullAdapterSource": "AppKit chrome and popover material adapter required",
+      "sourceStatus": "PERSISTENT_CHROME_REQUEST_SOURCE_WIRED_PREFERENCE_AND_READBACK_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -81,9 +93,9 @@
       "environment": "Solid",
       "chrome": "IosSystemGlass",
       "transient": "IosSystemSheet",
-      "preferenceProbe": "UIKit accessibility reduce-transparency, reduce-motion, and darker-system-colors functions",
-      "adapterSource": "preference probe, host lifecycle, and root event bridge implemented; view adapter required",
-      "hostBinding": "UIView or controller integration required",
+      "preferenceProbe": "UIKit accessibility functions",
+      "persistentChromePath": "unsupported by this root-window request tranche",
+      "fullAdapterSource": "UIView or controller integration required",
       "sourceStatus": "PREFERENCE_AND_ROOT_LIFECYCLE_SOURCE_IMPLEMENTED_VIEW_ADAPTER_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
@@ -92,9 +104,9 @@
       "environment": "Solid",
       "chrome": "AndroidTonalChrome",
       "transient": "AndroidTonalSheet",
-      "preferenceProbe": "host-provided activity snapshot required",
-      "adapterSource": "dynamic-color capability gate, host lifecycle, and root event bridge implemented",
-      "hostBinding": "Activity, API level, animation scale, and dynamic-color availability required",
+      "preferenceProbe": "host-provided Activity snapshot required",
+      "persistentChromePath": "unsupported by this root-window request tranche",
+      "fullAdapterSource": "Activity/JNI dynamic-color and animation-scale bridge required",
       "fallbackWhenDynamicColorUnavailable": "Solid",
       "sourceStatus": "CAPABILITY_AND_ROOT_LIFECYCLE_GATE_IMPLEMENTED_ACTIVITY_ADAPTER_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
@@ -105,7 +117,8 @@
       "chrome": "WebBackdropChrome",
       "transient": "WebBackdropTransient",
       "preferenceProbe": "CSS media queries",
-      "adapterSource": "bounded Web material implementation",
+      "persistentChromePath": "Control UI bounded backdrop implementation",
+      "fullAdapterSource": "Rust-served browser qualification required",
       "sourceStatus": "IMPLEMENTED_BROWSER_EVIDENCE_REQUIRED",
       "runtimeStatus": "SOURCE_IMPLEMENTED_BROWSER_NOT_RUN"
     },
@@ -115,7 +128,8 @@
       "chrome": "Solid",
       "transient": "Solid",
       "preferenceProbe": "fail-closed",
-      "adapterSource": "solid fallback through the root lifecycle bridge",
+      "persistentChromePath": "solid fallback",
+      "fullAdapterSource": "reference fallback",
       "sourceStatus": "REFERENCE_FALLBACK_SOURCE_WIRED",
       "runtimeStatus": "REFERENCE_FALLBACK_NOT_RUN"
     }
@@ -124,6 +138,7 @@
     "apps/hepta-native/src/shared/hepta_platform_material.rs",
     "apps/hepta-native/src/shared/hepta_platform_material_runtime.rs",
     "apps/hepta-native/src/shared/hepta_platform_material_host.rs",
+    "apps/hepta-native/src/shared/hepta_makepad_window_material.rs",
     "apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs",
     "apps/hepta-native/src/shared/hepta_system_preferences.rs",
     "apps/hepta-native/src/shared/hepta_windows_material_adapter.rs"

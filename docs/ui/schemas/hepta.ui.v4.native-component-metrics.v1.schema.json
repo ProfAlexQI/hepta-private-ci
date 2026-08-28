@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.ai/schemas/ui/hepta.ui.v4.native-component-metrics.v1.schema.json",
+  "title": "Hepta UI v4 Native component metrics receipt",
+  "type": "object",
+  "required": [
+    "schema",
+    "status",
+    "candidate",
+    "fixture",
+    "component",
+    "viewport",
+    "dpiFactor",
+    "rects",
+    "checks",
+    "screenshot",
+    "qualification",
+    "authority"
+  ],
+  "properties": {
+    "schema": {
+      "const": "hepta.ui.v4.native-component-metrics.v1"
+    },
+    "status": {
+      "enum": [
+        "PASS_NATIVE_FILTER_COMPONENT_METRICS",
+        "FAIL_NATIVE_FILTER_COMPONENT_METRICS",
+        "FAIL_METRICS_NOT_CAPTURED"
+      ]
+    },
+    "candidate": {
+      "type": "object",
+      "required": [
+        "commit",
+        "tree"
+      ],
+      "properties": {
+        "commit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tree": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "fixture": {
+      "const": true
+    },
+    "component": {
+      "const": "room-filter"
+    },
+    "viewport": {
+      "type": "object",
+      "required": [
+        "width",
+        "height"
+      ],
+      "properties": {
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "dpiFactor": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "rects": {
+      "type": "object",
+      "required": [
+        "filter",
+        "input",
+        "clear"
+      ],
+      "additionalProperties": {
+        "$ref": "#/$defs/rect"
+      }
+    },
+    "checks": {
+      "type": "object",
+      "required": [
+        "candidateCommitBound",
+        "candidateTreeBound",
+        "filterHeightAtLeast48",
+        "inputHeightAtLeast48",
+        "clearWidthAtLeast48",
+        "clearHeightAtLeast48",
+        "filterWithinViewport",
+        "clearVisible"
+      ],
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "screenshot": {
+      "type": "object",
+      "required": [
+        "requested",
+        "present",
+        "bytes",
+        "sha256"
+      ],
+      "properties": {
+        "requested": {
+          "type": "boolean"
+        },
+        "present": {
+          "type": "boolean"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "qualification": {
+      "type": "object",
+      "required": [
+        "componentMetrics",
+        "componentScreenshot",
+        "nativeProductRuntime",
+        "systemMaterialBinding",
+        "deviceMatrix"
+      ],
+      "properties": {
+        "componentMetrics": {
+          "type": "boolean"
+        },
+        "componentScreenshot": {
+          "type": "boolean"
+        },
+        "nativeProductRuntime": {
+          "const": false
+        },
+        "systemMaterialBinding": {
+          "const": false
+        },
+        "deviceMatrix": {
+          "const": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "authority": {
+      "type": "object",
+      "required": [
+        "network",
+        "mutation",
+        "effect",
+        "liveAdapter",
+        "production",
+        "operatorAcceptance",
+        "promotion",
+        "release"
+      ],
+      "additionalProperties": {
+        "const": false
+      }
+    }
+  },
+  "$defs": {
+    "rect": {
+      "type": "object",
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number",
+          "minimum": 0
+        },
+        "height": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

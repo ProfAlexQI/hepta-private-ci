@@ -1,11 +1,13 @@
 {
   "schema": "hepta.ui.native-control-migration.v1",
-  "status": "ROOM_FILTER_AND_MOBILE_STACK_SOURCE_MIGRATED_RUNTIME_VALIDATION_REQUIRED",
-  "candidateBranch": "codex/ui-v4-filter-lifecycle-20260828",
+  "status": "ROOM_FILTER_RUNTIME_METRICS_PRODUCER_SOURCE_READY_EXECUTION_REQUIRED",
+  "candidateBranch": "codex/ui-v4-window-visuals-diagnostics-20260828",
   "authority": {
-    "production": false,
+    "network": false,
+    "mutation": false,
     "effect": false,
     "liveAdapter": false,
+    "production": false,
     "operatorAcceptance": false,
     "promotion": false,
     "release": false
@@ -14,6 +16,26 @@
   "mobileHeaderHeight": 56,
   "filterControlHeight": 48,
   "filterRowHeight": 56,
+  "componentDiagnostic": {
+    "binary": "apps/hepta-native/src/bin/hepta-ui-v4-filter-probe.rs",
+    "schema": "docs/ui/schemas/hepta.ui.v4.native-component-metrics.v1.schema.json",
+    "component": "room-filter",
+    "viewport": {
+      "width": 390,
+      "height": 180
+    },
+    "measuresActualMakepadAreas": true,
+    "measuresFilterInputAndClear": true,
+    "optionalRenderedFrameCapture": true,
+    "screenshotSha256": true,
+    "isolatedFromMatrixStartup": true,
+    "networkAuthority": false,
+    "mutationAuthority": false,
+    "sourceStatus": "IMPLEMENTED_SOURCE_ONLY",
+    "compileStatus": "REQUIRED_NOT_RUN",
+    "runtimeStatus": "REQUIRED_NOT_RUN",
+    "screenshotStatus": "REQUIRED_NOT_RUN"
+  },
   "items": [
     {
       "id": "explicit-v4-text-input",
@@ -37,7 +59,7 @@
       "path": "apps/hepta-native/src/shared/room_filter_input_bar.rs",
       "observedHeight": 48,
       "targetHeight": 48,
-      "sourceStatus": "BOUNDED_CONTROL_SOURCE_MIGRATED",
+      "sourceStatus": "BOUNDED_CONTROL_SOURCE_MIGRATED_DIAGNOSTIC_PRODUCER_ADDED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -45,7 +67,7 @@
       "path": "apps/hepta-native/src/shared/room_filter_input_bar.rs",
       "observedHeight": 48,
       "targetHeight": 48,
-      "sourceStatus": "BOUNDED_CLEAR_TARGET_SOURCE_MIGRATED",
+      "sourceStatus": "BOUNDED_CLEAR_TARGET_SOURCE_MIGRATED_DIAGNOSTIC_PRODUCER_ADDED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -53,7 +75,7 @@
       "path": "apps/hepta-native/src/home/hepta_v4_home_overrides.rs",
       "observedHeight": 56,
       "targetHeight": 56,
-      "sourceStatus": "NAMED_HOME_PAGE_OVERRIDE_PRESENT",
+      "sourceStatus": "EXPLICIT_NAMED_HOME_PAGE_OVERRIDE_PRESENT",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -61,7 +83,7 @@
       "path": "apps/hepta-native/src/home/hepta_v4_home_overrides.rs",
       "observedHeight": 56,
       "targetHeight": 56,
-      "sourceStatus": "BOUNDED_MOBILE_VARIANT_OVERRIDE_PRESENT",
+      "sourceStatus": "EXPLICIT_MOBILE_ROOT_OVERRIDE_PRESENT",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -85,7 +107,7 @@
       "path": "apps/hepta-native/src/home/hepta_v4_home_overrides.rs",
       "observedHeight": 56,
       "targetHeight": 56,
-      "sourceStatus": "POST_REGISTRATION_COMPATIBILITY_OVERRIDE_PRESENT",
+      "sourceStatus": "EXPLICIT_STACK_TEMPLATE_OVERRIDE_PRESENT",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -93,7 +115,7 @@
       "path": "apps/hepta-native/src/home/hepta_v4_home_overrides.rs",
       "observedHeight": 48,
       "targetHeight": 48,
-      "sourceStatus": "POST_REGISTRATION_COMPATIBILITY_OVERRIDE_PRESENT",
+      "sourceStatus": "EXPLICIT_STACK_TEMPLATE_OVERRIDE_PRESENT",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
