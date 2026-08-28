@@ -36,7 +36,7 @@ env:
 jobs:
   exact-source-head:
     name: Exact source-head legacy authority attenuation
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: Checkout exact source head
@@ -111,7 +111,7 @@ jobs:
   merge-candidate:
     name: Merge-candidate legacy authority attenuation
     if: ${{ github.event_name == 'pull_request' }}
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: Checkout merge candidate

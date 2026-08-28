@@ -31,7 +31,7 @@ env:
 jobs:
   exact-source-head:
     name: Exact source-head authority caller ratchet
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout exact source head
@@ -74,7 +74,7 @@ jobs:
   merge-candidate:
     name: Merge-candidate authority caller ratchet
     if: ${{ github.event_name == 'pull_request' }}
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout merge candidate
