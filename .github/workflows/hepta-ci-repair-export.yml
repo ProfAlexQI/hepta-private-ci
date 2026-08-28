@@ -1,35 +1,25 @@
-name: hepta-ci repair export
+name: hepta-ci repair apply
 
 on:
-  pull_request:
+  push:
+    branches:
+      - codex/hepta-vnext-plan-browser-c0-c3-20260827
     paths:
       - ".github/workflows/hepta-ci-repair-export.yml"
-      - ".github/workflows/hepta-vnext-qualification.yml"
-      - ".github/workflows/hepta-browser-*.yml"
-      - ".github/workflows/hepta-servo-*.yml"
-      - ".github/workflows/blocking-ci.yml"
-      - ".github/workflows/bazel.yml"
-      - ".github/workflows/blob-size-policy.yml"
-      - ".github/workflows/cargo-deny.yml"
-      - ".github/workflows/codespell.yml"
-      - ".github/workflows/repo-checks.yml"
-      - ".github/workflows/rust-ci.yml"
-      - ".github/workflows/sdk.yml"
-      - "codex-rs/**"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: ${{ github.workflow }}::${{ github.event.pull_request.number > 0 && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+  group: hepta-ci-repair-apply-v1
   cancel-in-progress: true
 
 jobs:
-  export:
-    name: Generate deterministic CI repair tree
+  apply:
+    name: Apply deterministic CI repair tree
     runs-on: windows-2025
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - name: Configure Git long paths before checkout
         shell: pwsh
@@ -38,22 +28,18 @@ jobs:
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: true
+          ref: codex/hepta-vnext-plan-browser-c0-c3-20260827
           fetch-depth: 1
 
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
-          components: rustfmt
+          components: rustfmt, clippy
 
-      - name: Generate deterministic repair tree
+      - name: Generate exact Rust 1.95 repair tree
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $evidenceDir = Join-Path $env:RUNNER_TEMP "hepta-ci-repair"
-          New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
-          git rev-parse HEAD | Out-File -FilePath (Join-Path $evidenceDir "source-head.txt") -Encoding utf8NoBOM
-
           @'
           from pathlib import Path
 
@@ -110,62 +96,11 @@ jobs:
           Push-Location codex-rs
           try {
             cargo +1.95.0 check --no-default-features -p codex-hepta-contracts --features authbus-local-qualification --all-targets
-            cargo +1.95.0 metadata --locked --no-deps --format-version 1 | Out-Null
           } finally {
             Pop-Location
           }
 
-          @'
-          import hashlib
-          import pathlib
-          import subprocess
-          import sys
-          import tarfile
-
-          evidence_dir = pathlib.Path(sys.argv[1])
-          patch = subprocess.check_output(
-              ["git", "diff", "--binary", "--full-index", "--no-ext-diff"]
-          )
-          (evidence_dir / "repair.patch").write_bytes(patch)
-          changed_text = subprocess.check_output(
-              ["git", "diff", "--name-only"], text=True, encoding="utf-8"
-          )
-          names = [line.strip() for line in changed_text.splitlines() if line.strip()]
-          if not patch or not names or len(names) != len(set(names)):
-              raise SystemExit("repair output is empty or contains duplicate paths")
-          (evidence_dir / "changed-files.txt").write_text(
-              "".join(f"{name}\n" for name in names), encoding="utf-8", newline="\n"
-          )
-          status = subprocess.check_output(
-              ["git", "status", "--short"], text=True, encoding="utf-8"
-          )
-          (evidence_dir / "status.txt").write_text(
-              status, encoding="utf-8", newline="\n"
-          )
-          archive_path = evidence_dir / "repair-tree.tar"
-          with tarfile.open(archive_path, "w", format=tarfile.GNU_FORMAT) as archive:
-              for name in names:
-                  path = pathlib.Path(name)
-                  if not path.is_file() or path.is_symlink():
-                      raise SystemExit(f"repair input is not a regular file: {name}")
-                  info = archive.gettarinfo(str(path), arcname=name)
-                  info.uid = 0
-                  info.gid = 0
-                  info.uname = ""
-                  info.gname = ""
-                  info.mtime = 0
-                  with path.open("rb") as handle:
-                      archive.addfile(info, handle)
-          for name in ["repair.patch", "repair-tree.tar"]:
-              path = evidence_dir / name
-              digest = hashlib.sha256(path.read_bytes()).hexdigest()
-              (evidence_dir / f"{name}.sha256").write_text(
-                  f"{digest}  {name}\n", encoding="ascii", newline="\n"
-              )
-          print(status, end="")
-          '@ | python - "$evidenceDir"
-
-      - name: Verify generated repair inputs
+      - name: Verify original locked gates against generated tree
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -174,29 +109,84 @@ jobs:
           try {
             cargo +1.95.0 metadata --locked --no-deps --format-version 1 | Out-Null
             cargo +1.95.0 check --locked --no-default-features -p codex-hepta-contracts --features authbus-local-qualification --all-targets
+            cargo +1.95.0 test --locked --no-default-features -p codex-hepta-contracts --features authbus-local-qualification --tests -- --nocapture
           } finally {
             Pop-Location
           }
           git diff --check
-          $evidenceDir = Join-Path $env:RUNNER_TEMP "hepta-ci-repair"
+
+      - name: Enforce changed-path boundary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
           @'
-          import hashlib
           import pathlib
-          import sys
+          import subprocess
 
-          evidence_dir = pathlib.Path(sys.argv[1])
-          for name in ["repair.patch", "repair-tree.tar"]:
-              expected = (evidence_dir / f"{name}.sha256").read_text(encoding="ascii").split()[0]
-              actual = hashlib.sha256((evidence_dir / name).read_bytes()).hexdigest()
-              if actual != expected:
-                  raise SystemExit(f"digest mismatch for {name}: {actual} != {expected}")
-          '@ | python - "$evidenceDir"
+          allowed_workflows = {
+              ".github/workflows/bazel.yml",
+              ".github/workflows/blob-size-policy.yml",
+              ".github/workflows/blocking-ci.yml",
+              ".github/workflows/cargo-deny.yml",
+              ".github/workflows/codespell.yml",
+              ".github/workflows/hepta-browser-c1-artifact-gate.yml",
+              ".github/workflows/hepta-browser-c1-protocol.yml",
+              ".github/workflows/hepta-browser-c1-startup-bridge.yml",
+              ".github/workflows/hepta-browser-ci.yml",
+              ".github/workflows/hepta-servo-artifact-contract.yml",
+              ".github/workflows/hepta-servo-build-input-contract-v3.yml",
+              ".github/workflows/hepta-servo-build-preflight-contract.yml",
+              ".github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml",
+              ".github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml",
+              ".github/workflows/hepta-servo-exact-source-review-candidate-v2-contract.yml",
+              ".github/workflows/hepta-servo-independent-source-contract-v3.yml",
+              ".github/workflows/hepta-servo-independent-source-qualification-v3.yml",
+              ".github/workflows/hepta-servo-worker-source-topology-acceptance-live-review-v1.yml",
+              ".github/workflows/hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml",
+              ".github/workflows/hepta-servo-worker-source-topology-contract.yml",
+              ".github/workflows/hepta-vnext-qualification.yml",
+              ".github/workflows/repo-checks.yml",
+              ".github/workflows/rust-ci.yml",
+              ".github/workflows/sdk.yml",
+          }
+          names = [
+              line.strip()
+              for line in subprocess.check_output(
+                  ["git", "diff", "--name-only"], text=True, encoding="utf-8"
+              ).splitlines()
+              if line.strip()
+          ]
+          if not names:
+              raise SystemExit("repair tree unexpectedly contains no changes")
+          rejected = []
+          for name in names:
+              path = pathlib.PurePosixPath(name)
+              if name in allowed_workflows or name == "codex-rs/Cargo.lock":
+                  continue
+              if path.suffix == ".rs" and path.parts and path.parts[0] == "codex-rs":
+                  continue
+              rejected.append(name)
+          if rejected:
+              raise SystemExit(f"repair tree changed paths outside the boundary: {rejected}")
+          print("\n".join(names))
+          '@ | python -
 
-      - name: Upload deterministic repair tree
-        if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: hepta-ci-repair-${{ github.event.pull_request.head.sha || github.sha }}
-          path: ${{ runner.temp }}/hepta-ci-repair
-          if-no-files-found: error
-          retention-days: 1
+      - name: Commit exact repair and remove one-shot workflow
+        shell: pwsh
+        env:
+          BRANCH: codex/hepta-vnext-plan-browser-c0-c3-20260827
+        run: |
+          $ErrorActionPreference = "Stop"
+          $remoteLine = git ls-remote origin "refs/heads/$env:BRANCH"
+          if ([string]::IsNullOrWhiteSpace($remoteLine)) { throw "remote branch is missing" }
+          $remoteHead = ($remoteLine -split "`t")[0]
+          if ($remoteHead -ne $env:GITHUB_SHA) {
+            throw "remote branch moved during repair: $remoteHead != $env:GITHUB_SHA"
+          }
+          Remove-Item -LiteralPath ".github/workflows/hepta-ci-repair-export.yml"
+          git diff --check
+          git config user.name "hepta-ci-repair-bot"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git add --all
+          git commit -m "fix(ci): apply deterministic Rust 1.95 repair tree"
+          git push origin "HEAD:refs/heads/$env:BRANCH"
