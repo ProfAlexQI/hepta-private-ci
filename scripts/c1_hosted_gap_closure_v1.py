@@ -2,10 +2,11 @@
 """Exact-head, fail-closed producer for the current WEB-C1 hosted gaps.
 
 This script is invoked only by the temporary ARM64 workflow. It patches a
-small allowlisted surface, validates every changed contract with Rust 1.95 and
-Python fixtures, commits only after all checks pass, and pushes only when the
-remote branch still equals EXPECTED_HEAD. It does not merge, accept source or
-topology, authorize a build, qualify runtime, promote, or release.
+small allowlisted contract surface, regenerates only Rustfmt output and the
+workspace Cargo.lock with Rust 1.95, validates the original locked gates,
+commits only after all checks pass, and pushes only when the remote branch
+still equals EXPECTED_HEAD. It does not merge, accept source or topology,
+authorize a build, qualify runtime, promote, or release.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+WORKSPACE = ROOT / "codex-rs"
 EXPECTED_BRANCH = "codex/hepta-vnext-plan-browser-c0-c3-20260827"
 EXPECTED_HEAD = os.environ.get("EXPECTED_HEAD", "")
 HEAD_REF = os.environ.get("HEAD_REF", "")
@@ -181,9 +183,30 @@ def patch_contracts() -> None:
     replace_all(".github/CODEOWNERS", "@ProfAlexQI", "@ProfHepta")
 
 
+def regenerate_rustfmt_and_lock() -> None:
+    # Rustfmt is the only permitted source generator in this closure slice.
+    run("cargo", "fmt", "--all", cwd=WORKSPACE)
+
+    # Resolve the exact qualification-only feature graph once without --locked.
+    # The subsequent validation restores --locked for every test/check/clippy gate.
+    run(
+        "cargo",
+        "test",
+        "--no-default-features",
+        "-p",
+        "codex-hepta-contracts",
+        "--features",
+        "authbus-local-qualification",
+        "--tests",
+        "--no-run",
+        cwd=WORKSPACE,
+    )
+
+
 def validate() -> None:
     run("cargo", "fmt", "--manifest-path", "tools/hepta-browser-c1-protocol/Cargo.toml")
     run("cargo", "fmt", "--manifest-path", "tools/hepta-browser-c1-startup-bridge/Cargo.toml")
+    regenerate_rustfmt_and_lock()
 
     python_files = (
         "scripts/hepta-servo-source-bundle-verify.py",
@@ -203,6 +226,48 @@ def validate() -> None:
         "scripts/verify-hepta-browser-plan.py",
     ):
         run("python3", script)
+
+    run("cargo", "fmt", "--all", "--", "--check", cwd=WORKSPACE)
+    run("cargo", "metadata", "--locked", "--no-deps", "--format-version", "1", cwd=WORKSPACE)
+    run(
+        "cargo",
+        "test",
+        "--locked",
+        "--no-default-features",
+        "-p",
+        "codex-hepta-contracts",
+        "--features",
+        "authbus-local-qualification",
+        "--tests",
+        cwd=WORKSPACE,
+    )
+    run(
+        "cargo",
+        "check",
+        "--locked",
+        "--no-default-features",
+        "-p",
+        "codex-hepta-contracts",
+        "--features",
+        "authbus-local-qualification",
+        "--all-targets",
+        cwd=WORKSPACE,
+    )
+    run(
+        "cargo",
+        "clippy",
+        "--locked",
+        "--no-default-features",
+        "-p",
+        "codex-hepta-contracts",
+        "--features",
+        "authbus-local-qualification",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings",
+        cwd=WORKSPACE,
+    )
 
     for manifest in (
         "tools/hepta-browser-c1-protocol/Cargo.toml",
@@ -226,43 +291,47 @@ def validate() -> None:
     run("git", "diff", "--check")
 
 
-def commit_and_push() -> None:
-    allowlisted = (
+def path_allowed(path: str) -> bool:
+    fixed = {
         ".github/CODEOWNERS",
         "scripts/verify-hepta-browser-plan.py",
         "scripts/tests/test_hepta_servo_build_input_seal_v3.py",
         "scripts/hepta-servo-source-bundle-verify.py",
         "scripts/verify-hepta-servo-build-preflight-contract.py",
-        "tools/hepta-browser-c1-protocol/src",
-        "tools/hepta-browser-c1-protocol/tests",
-        "tools/hepta-browser-c1-startup-bridge/src",
-        "tools/hepta-browser-c1-startup-bridge/tests",
+        "codex-rs/Cargo.lock",
+    }
+    if path in fixed:
+        return True
+    if path.startswith("tools/hepta-browser-c1-protocol/") and path.endswith(".rs"):
+        return True
+    if path.startswith("tools/hepta-browser-c1-startup-bridge/") and path.endswith(".rs"):
+        return True
+    return path.startswith("codex-rs/") and path.endswith(".rs")
+
+
+def commit_and_push() -> None:
+    run(
+        "git",
+        "add",
+        "--",
+        ".github/CODEOWNERS",
+        "scripts/verify-hepta-browser-plan.py",
+        "scripts/tests/test_hepta_servo_build_input_seal_v3.py",
+        "scripts/hepta-servo-source-bundle-verify.py",
+        "scripts/verify-hepta-servo-build-preflight-contract.py",
+        "tools/hepta-browser-c1-protocol",
+        "tools/hepta-browser-c1-startup-bridge",
+        "codex-rs",
     )
-    run("git", "add", "--", *allowlisted)
     staged = output("git", "diff", "--cached", "--name-only").splitlines()
     if not staged:
         fail("closure produced no staged changes")
-    allowed_prefixes = (
-        ".github/CODEOWNERS",
-        "scripts/verify-hepta-browser-plan.py",
-        "scripts/tests/test_hepta_servo_build_input_seal_v3.py",
-        "scripts/hepta-servo-source-bundle-verify.py",
-        "scripts/verify-hepta-servo-build-preflight-contract.py",
-        "tools/hepta-browser-c1-protocol/src/",
-        "tools/hepta-browser-c1-protocol/tests/",
-        "tools/hepta-browser-c1-startup-bridge/src/",
-        "tools/hepta-browser-c1-startup-bridge/tests/",
-    )
-    unexpected = [
-        path
-        for path in staged
-        if not any(
-            path == prefix or (prefix.endswith("/") and path.startswith(prefix))
-            for prefix in allowed_prefixes
-        )
-    ]
+    unexpected = [path for path in staged if not path_allowed(path)]
     if unexpected:
         fail(f"unexpected staged paths: {unexpected}")
+    unstaged = output("git", "diff", "--name-only").splitlines()
+    if unstaged:
+        fail(f"closure left unstaged tracked changes: {unstaged}")
     run("git", "config", "user.name", "Hepta Qualification Bot")
     run(
         "git",
