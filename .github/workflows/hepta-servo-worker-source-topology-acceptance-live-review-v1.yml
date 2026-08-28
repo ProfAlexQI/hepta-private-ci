@@ -1,0 +1,270 @@
+name: hepta Servo Worker source topology acceptance live review v1
+
+on:
+  workflow_call:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [integration/vnext-main-20260811]
+    paths:
+      - "docs/hepta-vnext/browser/source-topology-acceptance/**"
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: hepta-servo-worker-topology-acceptance-live-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  live-review:
+    name: Worker source/API topology accepted pointer live review
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Determine topology-acceptance applicability
+        id: scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref || github.head_ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" =~ ^pull_request(_review)?$ ]] && \
+             [[ "$HEAD_REF" == review/hepta-servo-worker-topology-acceptance-* ]]; then
+            echo "applicable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "applicable=false" >> "$GITHUB_OUTPUT"
+            echo '{"status":"PASS_NOT_APPLICABLE","trusted_base_verifier":true,"worker_source_topology_accepted":false,"build_authorized":false,"authority":"all_false"}'
+          fi
+
+      - name: Check out trusted base verifier and accepted-source prerequisite
+        if: steps.scope.outputs.applicable == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Resolve trusted-base source inputs
+        id: trusted
+        if: steps.scope.outputs.applicable == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import pathlib
+
+          root = pathlib.Path.cwd().resolve(strict=True)
+          source_pointer = (
+              root / "docs/hepta-vnext/browser/source-acceptance/ACCEPTED_SOURCE_POINTER.json"
+          ).resolve(strict=True)
+          source_value = json.loads(source_pointer.read_text(encoding="utf-8"))
+          for output_name, key in (("source_candidate", "candidate"), ("source_challenge", "challenge")):
+              relative = pathlib.PurePosixPath(source_value[key]["snapshot_path"])
+              if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
+                  raise SystemExit(f"unsafe accepted-source {key} snapshot")
+              target = (root / relative).resolve(strict=True)
+              target.relative_to(root)
+              if target != root / relative or not target.is_file():
+                  raise SystemExit(f"non-canonical accepted-source {key} snapshot")
+              print(f"{output_name}={target}")
+          print(f"accepted_source_pointer={source_pointer}")
+          print(
+              "source_policy="
+              + str((root / "docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json").resolve(strict=True))
+          )
+          print(
+              "topology="
+              + str((root / "docs/hepta-vnext/browser/SERVO_WORKER_SOURCE_TOPOLOGY_V1.json").resolve(strict=True))
+          )
+          print(
+              "topology_policy="
+              + str((root / "docs/hepta-vnext/browser/WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_REVIEW_POLICY_V1.json").resolve(strict=True))
+          )
+          PY
+
+      - name: Fetch bounded PR-head pointer snapshots and live GitHub evidence
+        if: steps.scope.outputs.applicable == 'true'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/hepta-worker-topology-acceptance-live-v1"
+          mkdir -p "$evidence"
+          chmod 700 "$evidence"
+          echo "HEPTA_WORKER_TOPOLOGY_LIVE_EVIDENCE=$evidence" >> "$GITHUB_ENV"
+          python3 - "$evidence" <<'PY'
+          import base64
+          import json
+          import os
+          import pathlib
+          import sys
+          import urllib.parse
+          import urllib.request
+
+          output = pathlib.Path(sys.argv[1]).resolve(strict=True)
+          api = os.environ["GITHUB_API_URL"].rstrip("/")
+          repository = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GITHUB_TOKEN"]
+          pr_number = int(os.environ["PR_NUMBER"])
+          head_sha = os.environ["HEAD_SHA"]
+          max_bytes = 64 * 1024 * 1024
+
+          def request_json(url: str):
+              request = urllib.request.Request(
+                  url,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "User-Agent": "hepta-worker-topology-acceptance-live-v1",
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  value = json.load(response)
+                  link = response.headers.get("Link")
+              return value, link
+
+          def write_new(name: str, raw: bytes) -> pathlib.Path:
+              if not raw or len(raw) > max_bytes:
+                  raise SystemExit(f"{name} is empty or exceeds the byte bound")
+              path = output / name
+              descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+              with os.fdopen(descriptor, "wb") as handle:
+                  handle.write(raw)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              return path
+
+          def fetch_head_file(relative: str, local_name: str) -> pathlib.Path:
+              pure = pathlib.PurePosixPath(relative)
+              if pure.is_absolute() or any(part in {"", ".", ".."} for part in pure.parts):
+                  raise SystemExit(f"unsafe PR-head path: {relative}")
+              encoded = urllib.parse.quote(relative, safe="/")
+              query = urllib.parse.urlencode({"ref": head_sha})
+              value, _ = request_json(
+                  f"{api}/repos/{repository}/contents/{encoded}?{query}"
+              )
+              if not isinstance(value, dict) or value.get("type") != "file":
+                  raise SystemExit(f"PR-head object is not a file: {relative}")
+              if value.get("encoding") != "base64" or not isinstance(value.get("content"), str):
+                  raise SystemExit(f"PR-head file is not inline base64: {relative}")
+              raw = base64.b64decode(value["content"], validate=True)
+              if value.get("size") != len(raw):
+                  raise SystemExit(f"PR-head file size drifted: {relative}")
+              return write_new(local_name, raw)
+
+          def paginated(path: str):
+              url = f"{api}/repos/{repository}/{path}"
+              items = []
+              while url:
+                  page, link = request_json(url)
+                  if not isinstance(page, list):
+                      raise SystemExit(f"expected list from {url}")
+                  items.extend(page)
+                  next_url = None
+                  if link:
+                      for part in link.split(","):
+                          sections = [item.strip() for item in part.split(";")]
+                          if len(sections) == 2 and sections[1] == 'rel="next"':
+                              next_url = sections[0][1:-1]
+                  url = next_url
+              return items
+
+          pointer_relative = (
+              "docs/hepta-vnext/browser/source-topology-acceptance/"
+              "ACCEPTED_WORKER_SOURCE_TOPOLOGY_POINTER.json"
+          )
+          pointer_path = fetch_head_file(pointer_relative, "accepted-topology-pointer.json")
+          pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+          receipt_relative = pointer.get("topology_receipt", {}).get("snapshot_path")
+          challenge_relative = pointer.get("challenge", {}).get("snapshot_path")
+          receipt_prefix = "docs/hepta-vnext/browser/source-topology-acceptance/receipts/"
+          challenge_prefix = "docs/hepta-vnext/browser/source-topology-acceptance/challenges/"
+          if not isinstance(receipt_relative, str) or not receipt_relative.startswith(receipt_prefix):
+              raise SystemExit("topology receipt snapshot is outside the governed prefix")
+          if not isinstance(challenge_relative, str) or not challenge_relative.startswith(challenge_prefix):
+              raise SystemExit("topology challenge snapshot is outside the governed prefix")
+          fetch_head_file(receipt_relative, "topology-verification-receipt.json")
+          fetch_head_file(challenge_relative, "topology-acceptance-challenge.json")
+
+          values = {
+              "pull-request.json": request_json(
+                  f"{api}/repos/{repository}/pulls/{pr_number}"
+              )[0],
+              "reviews.json": {
+                  "reviews": paginated(f"pulls/{pr_number}/reviews?per_page=100")
+              },
+              "files.json": {
+                  "files": paginated(f"pulls/{pr_number}/files?per_page=100")
+              },
+              "head-commit.json": request_json(
+                  f"{api}/repos/{repository}/commits/{urllib.parse.quote(head_sha)}"
+              )[0],
+          }
+          for name, value in values.items():
+              write_new(
+                  name,
+                  json.dumps(value, sort_keys=True, separators=(",", ":")).encode(),
+              )
+          PY
+
+      - name: Verify live topology review with trusted-base code
+        if: steps.scope.outputs.applicable == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-servo-worker-source-topology-acceptance-pointer-v1.py verify-live-review \
+            --accepted-source-pointer "${{ steps.trusted.outputs.accepted_source_pointer }}" \
+            --source-candidate "${{ steps.trusted.outputs.source_candidate }}" \
+            --source-policy "${{ steps.trusted.outputs.source_policy }}" \
+            --source-challenge "${{ steps.trusted.outputs.source_challenge }}" \
+            --topology-receipt "$HEPTA_WORKER_TOPOLOGY_LIVE_EVIDENCE/topology-verification-receipt.json" \
+            --topology "${{ steps.trusted.outputs.topology }}" \
+            --policy "${{ steps.trusted.outputs.topology_policy }}" \
+            --challenge "$HEPTA_WORKER_TOPOLOGY_LIVE_EVIDENCE/topology-acceptance-challenge.json" \
+            --pointer "$HEPTA_WORKER_TOPOLOGY_LIVE_EVIDENCE/accepted-topology-pointer.json" \
+            --pull-request "$HEPTA_WORKER_TOPOLOGY_LIVE_EVIDENCE/pull-request.json" \
+            --reviews "$HEPTA_WORKER_TOPOLOGY_LIVE_EVIDENCE/reviews.json" \
+            --files "$HEPTA_WORKER_TOPOLOGY_LIVE_EVIDENCE/files.json" \
+            --head-commit "$HEPTA_WORKER_TOPOLOGY_LIVE_EVIDENCE/head-commit.json" \
+            2>&1 | tee "$HEPTA_WORKER_TOPOLOGY_LIVE_EVIDENCE/verification.log"
+          grep -F 'PASS_LIVE_REVIEW_WORKER_SOURCE_TOPOLOGY_ONLY' \
+            "$HEPTA_WORKER_TOPOLOGY_LIVE_EVIDENCE/verification.log"
+
+      - name: Record fail-closed result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### Servo Worker source/API topology acceptance live review"
+            echo
+            echo "- applicable: ${{ steps.scope.outputs.applicable }}"
+            echo "- job status: ${{ job.status }}"
+            echo "- verifier checkout: trusted base SHA"
+            echo "- PR-head code executed: false"
+            echo "- exact source prerequisite: required"
+            echo "- topology acceptance: live review evidence only"
+            echo "- build authorized: false"
+            echo "- Servo built/runtime qualified: false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload bounded live-review evidence
+        if: always() && steps.scope.outputs.applicable == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hepta-worker-source-topology-acceptance-live-review-v1
+          path: ${{ env.HEPTA_WORKER_TOPOLOGY_LIVE_EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Check trusted-base worktree
+        if: always() && !cancelled() && steps.scope.outputs.applicable == 'true'
+        uses: ./.github/actions/check-clean-worktree
