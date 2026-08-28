@@ -16,7 +16,7 @@ concurrency:
 
 env:
   EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-  EXPECTED_PARENT: 95c3113c5026c96dc25672584200a633461ce561
+  EXPECTED_PARENT: 7afdc5c94260aa8249837791d82f53f7705ec631
   ARTIFACT_DIR: artifacts/hepta-intelligence-q0-one-shot
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
@@ -99,8 +99,30 @@ jobs:
           }
           trap restore_status EXIT
 
-          python3 scripts/verify-hepta-intelligence-master-plan.py \
-            | tee "${ARTIFACT_DIR}/master-plan-source.json"
+          plan_status=$(python3 scripts/verify-hepta-intelligence-master-plan.py)
+          test "${plan_status}" = "PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_SOURCE_ONLY"
+          PLAN_STATUS="${plan_status}" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "schema": "hepta_intelligence_master_plan_source_receipt_v1",
+              "status": "PASS_CANONICAL_MASTER_PLAN_SOURCE_ONLY",
+              "verifier_status": os.environ["PLAN_STATUS"],
+              "current_plan_authority_changed": False,
+              "runtime_wired": False,
+              "production_authority": False,
+              "external_effects": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "callers_ratchet": False,
+          }
+          Path(os.environ["ARTIFACT_DIR"], "master-plan-source.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
 
           python3 scripts/hepta-intelligence-status-compat.py P0.2 \
             | tee "${ARTIFACT_DIR}/p0-2-snapshot.json"
