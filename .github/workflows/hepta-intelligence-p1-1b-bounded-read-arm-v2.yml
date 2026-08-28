@@ -1,0 +1,46 @@
+name: hepta-intelligence-p1-1b-bounded-read-arm-v2
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-intelligence-p1-1b-bounded-read-arm-v2-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-p1-1b-bounded-read-arm-v2
+  cancel-in-progress: true
+
+env:
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  qualify:
+    name: P1.1b bounded index read hardening
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact qualification driver
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 4
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Execute fail-closed qualification runner
+        run: bash scripts/qualification/run-hepta-intelligence-p1-1b-bounded-read.sh
+
+      - name: Upload exact bounded-read evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1b-bounded-read-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1b-bounded-read
+          if-no-files-found: warn
+          retention-days: 14
