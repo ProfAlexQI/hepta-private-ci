@@ -19,7 +19,7 @@ env:
 jobs:
   linux-materialization:
     name: Linux materialization and full qualification
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 300
     steps:
       - name: Checkout exact source head
