@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 env:
-  EXPECTED_PARENT: b876287a97776b016895e8dff855a16b5f10a0a7
+  EXPECTED_PARENT: 9ee0e87e5b5518b5be65d1764f89ff909613a26b
   P02_MANIFEST: codex-rs/hepta-authbus-qualification/Cargo.toml
   P03_MANIFEST: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
   P13_MANIFEST: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
@@ -28,7 +28,7 @@ env:
 jobs:
   materialize:
     name: Materialize, qualify, and commit the exact P1.3 source
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     timeout-minutes: 120
     steps:
       - name: Checkout exact seed
