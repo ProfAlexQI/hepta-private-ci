@@ -1,0 +1,32 @@
+name: p0-3-3-finalize-macos-v2
+
+on:
+  push:
+    branches:
+      - codex/hepta-intelligence-evidence-resolver-v4-20260828
+    paths:
+      - .github/workflows/p0-3-3-finalize-macos-v2.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: p0-3-3-finalize-macos-v2
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: macos-15
+    timeout-minutes: 180
+    env:
+      P032_HEAD: fa59bb090043ba8d6fbf0991b167779d2385888c
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+      - run: python3 scripts/finalize-hepta-intelligence-p0-3-3-v2.py
