@@ -1,0 +1,39 @@
+name: C1 hosted gap closure self-hosted v1
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/c1-hosted-gap-closure-selfhosted-v1.yml"
+      - "scripts/c1_hosted_gap_closure_v1.py"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: c1-hosted-gap-closure-selfhosted-v1-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  close-current-gaps:
+    name: Close current hosted qualification gaps on controlled runner
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == 'integration/vnext-main-20260811'
+    runs-on: hepta-vnext-linux-x64-09e9
+    timeout-minutes: 45
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+      HEAD_REF: ${{ github.head_ref }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Execute fail-closed exact-head closure
+        run: python3 scripts/c1_hosted_gap_closure_v1.py
