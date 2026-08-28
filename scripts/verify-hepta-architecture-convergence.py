@@ -181,6 +181,7 @@ def verify_source_wiring() -> None:
     automation_service = read("codex-rs/hepta-agentd/src/automation_service.rs")
     runtime = read("codex-rs/hepta-agentd/src/runtime.rs")
     app_runtime = read("codex-rs/hepta-agentd/src/app_runtime.rs")
+    qualification_writer = read("codex-rs/hepta-agentd/src/qualification_writer.rs")
     authority_adapter = read("codex-rs/hepta-agentd/src/production_authority_adapter.rs")
     production_host = read("codex-rs/hepta-agentd/src/production_writer_host.rs")
 
@@ -244,6 +245,14 @@ def verify_source_wiring() -> None:
         "Memory service does not retain typed cognitive-write capability",
     )
     require(
+        "into_runtime_parts" in memory_service,
+        "Memory service does not pass typed write authority to App Server composition",
+    )
+    require(
+        "Option<Authorized<CognitiveWriteCapability>>" in memory_service,
+        "Memory service write authority is not represented as a typed optional capability",
+    )
+    require(
         "authorize::<AutomationMutationCapability>" in automation_service,
         "Automation service does not retain typed mutation capability",
     )
@@ -255,6 +264,10 @@ def verify_source_wiring() -> None:
     require(
         "AgentRuntimeComposition::open(config)" in runtime,
         "Agentd supervision loop bypasses the composition root",
+    )
+    require(
+        "memory_service.into_runtime_parts()" in runtime,
+        "Agentd supervision loop drops the typed Memory write capability",
     )
     require(
         "AgentAppServerService::new" in runtime,
@@ -274,12 +287,49 @@ def verify_source_wiring() -> None:
         "App Server service does not retain typed session authority",
     )
     require(
+        "cognitive_write: Option<Authorized<CognitiveWriteCapability>>" in app_runtime,
+        "App Server service does not own the typed cognitive-write capability",
+    )
+    require(
+        "validate_cognitive_write_capability" in app_runtime,
+        "App Server service does not validate typed cognitive-write identity/generation",
+    )
+    require(
+        "Agent App Server cannot consume external production cognitive-write authority" in app_runtime,
+        "App Server service does not reject an external production writer capability",
+    )
+    require(
         "COGNITIVE_WRITE_ENABLED" not in app_runtime,
         "App Server still uses a duplicated cognitive-write boolean",
     )
     require(
         "authority.allows(AuthorityAction::WriteCognitiveState)" in app_runtime,
-        "App Server cognitive-write state is not derived from AuthorityGrant",
+        "App Server cognitive-write profile is not cross-checked with AuthorityGrant",
+    )
+    require(
+        "cognitive_write.as_ref()" in app_runtime,
+        "App Server does not pass the typed capability into the qualification writer host",
+    )
+
+    require(
+        "cognitive_write: Option<&Authorized<CognitiveWriteCapability>>" in qualification_writer,
+        "qualification writer host does not require typed cognitive-write authority",
+    )
+    require(
+        "let cognitive_write = cognitive_write?.clone();" in qualification_writer,
+        "qualification writer host does not retain the typed capability",
+    )
+    require(
+        "cognitive_write.subject_agent_id() != &identity.agent_id" in qualification_writer,
+        "qualification writer host does not bind the capability to the Agent",
+    )
+    require(
+        "cognitive_write.generation() != identity.spawn_generation" in qualification_writer,
+        "qualification writer host does not bind the capability to the spawn generation",
+    )
+    require(
+        "hepta-agentd:qualification-turn-writer:v2" in qualification_writer,
+        "qualification writer capability namespace was not advanced",
     )
 
     require(
@@ -344,6 +394,7 @@ def main() -> int:
                 "data_authority_count": len(manifest["data_authorities"]),
                 "typed_legacy_adapter": True,
                 "typed_external_effect_gate": True,
+                "typed_writer_capability_end_to_end": True,
                 "service_builders": True,
                 "runtime_authority": False,
                 "external_effect": False,
