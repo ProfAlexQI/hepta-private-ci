@@ -1,0 +1,273 @@
+def validate_pointer(
+    pointer: dict[str, Any],
+    source_pointer: dict[str, Any],
+    source_pointer_raw: bytes,
+    topology_receipt: dict[str, Any],
+    topology_receipt_raw: bytes,
+    topology: dict[str, Any],
+    topology_raw: bytes,
+    policy: dict[str, Any],
+    policy_raw: bytes,
+    challenge: dict[str, Any],
+    challenge_raw: bytes,
+) -> None:
+    validate_policy(policy)
+    validate_challenge(
+        challenge,
+        source_pointer,
+        source_pointer_raw,
+        topology_receipt,
+        topology_receipt_raw,
+        topology,
+        topology_raw,
+        policy,
+        policy_raw,
+    )
+    if pointer.get("schema") != POINTER_SCHEMA or pointer.get("schema_version") != 1:
+        fail("accepted topology pointer schema/version drifted")
+    verify_self_binding(
+        pointer,
+        id_key="pointer_id",
+        prefix="hepta-servo-accepted-worker-source-topology-pointer:v1:",
+        domain=POINTER_DOMAIN,
+        label="accepted topology pointer",
+    )
+    if pointer.get("phase") != "DEVELOPMENT" or pointer.get("claim_level") != (
+        "EXACT_SOURCE_AND_WORKER_TOPOLOGY_ACCEPTED_BUILD_RECIPE_REVIEW_REQUIRED"
+    ):
+        fail("accepted topology pointer phase/claim drifted")
+    parse_timestamp(pointer.get("accepted_at_utc"), "accepted topology pointer timestamp")
+
+    if pointer.get("accepted_source_pointer") != {
+        "id": source_pointer["pointer_id"],
+        "sha256": sha256_bytes(source_pointer_raw),
+        "bytes": len(source_pointer_raw),
+    }:
+        fail("accepted topology pointer source pointer binding differs")
+
+    receipt_binding = pointer.get("topology_receipt")
+    if not isinstance(receipt_binding, dict) or set(receipt_binding) != {
+        "id", "sha256", "bytes", "snapshot_path"
+    }:
+        fail("accepted topology pointer receipt binding is malformed")
+    receipt_snapshot = deterministic_snapshot_path(
+        receipt_binding.get("snapshot_path"),
+        prefix=policy["topology_receipt_snapshot_prefix"],
+        identifier=topology_receipt["receipt_id"],
+        label="accepted topology pointer receipt snapshot path",
+    )
+    if receipt_binding != {
+        "id": topology_receipt["receipt_id"],
+        "sha256": sha256_bytes(topology_receipt_raw),
+        "bytes": len(topology_receipt_raw),
+        "snapshot_path": receipt_snapshot,
+    }:
+        fail("accepted topology pointer receipt bytes differ")
+
+    if pointer.get("topology_contract") != {
+        "id": topology["topology_id"],
+        "sha256": sha256_bytes(topology_raw),
+        "bytes": len(topology_raw),
+    }:
+        fail("accepted topology pointer contract bytes differ")
+
+    challenge_binding = pointer.get("challenge")
+    if not isinstance(challenge_binding, dict) or set(challenge_binding) != {
+        "id", "sha256", "bytes", "snapshot_path"
+    }:
+        fail("accepted topology pointer challenge binding is malformed")
+    challenge_snapshot = deterministic_snapshot_path(
+        challenge_binding.get("snapshot_path"),
+        prefix=policy["challenge_snapshot_prefix"],
+        identifier=challenge["challenge_id"],
+        label="accepted topology pointer challenge snapshot path",
+    )
+    if challenge_binding != {
+        "id": challenge["challenge_id"],
+        "sha256": sha256_bytes(challenge_raw),
+        "bytes": len(challenge_raw),
+        "snapshot_path": challenge_snapshot,
+    }:
+        fail("accepted topology pointer challenge bytes differ")
+
+    if pointer.get("policy") != {
+        "id": policy["policy_id"],
+        "sha256": sha256_bytes(policy_raw),
+        "bytes": len(policy_raw),
+    }:
+        fail("accepted topology pointer policy bytes differ")
+    if pointer.get("hepta") != source_pointer["hepta"]:
+        fail("accepted topology pointer Hepta binding differs")
+    if pointer.get("servo") != source_pointer["servo"]:
+        fail("accepted topology pointer Servo binding differs")
+
+    bindings = topology_receipt["bindings"]
+    selection = topology_receipt["selection"]
+    if pointer.get("bindings") != {
+        "source_bundle_receipt_sha256": bindings["source_bundle_receipt_sha256"],
+        "compressed_archive_sha256": bindings["compressed_archive_sha256"],
+        "topology_id": bindings["topology_id"],
+        "topology_sha256": bindings["topology_sha256"],
+        "file_projection_sha256": selection["file_projection_sha256"],
+    }:
+        fail("accepted topology pointer receipt projection differs")
+
+    review = pointer.get("review")
+    if not isinstance(review, dict) or set(review) != {
+        "mode",
+        "state",
+        "policy_id",
+        "challenge_id",
+        "pull_request_number",
+        "head_ref",
+    }:
+        fail("accepted topology pointer review binding is malformed")
+    require_positive_int(review.get("pull_request_number"), "topology acceptance PR number")
+    head_ref = review.get("head_ref")
+    if not isinstance(head_ref, str) or not head_ref.startswith(policy["review"]["head_ref_prefix"]):
+        fail("accepted topology pointer head ref is outside the review lane")
+    if {
+        "mode": review.get("mode"),
+        "state": review.get("state"),
+        "policy_id": review.get("policy_id"),
+        "challenge_id": review.get("challenge_id"),
+    } != {
+        "mode": "GITHUB_PULL_REQUEST_REVIEW",
+        "state": "REQUIRES_LIVE_APPROVAL_EVIDENCE",
+        "policy_id": policy["policy_id"],
+        "challenge_id": challenge["challenge_id"],
+    }:
+        fail("accepted topology pointer review posture drifted")
+    if pointer.get("claims") != ACCEPTED_TOPOLOGY_CLAIMS:
+        fail("accepted topology pointer claims drifted")
+    if pointer.get("authority") != AUTHORITY:
+        fail("accepted topology pointer authority posture is open")
+    if pointer.get("decision") != (
+        "WORKER_SOURCE_TOPOLOGY_ACCEPTED_BUILD_RECIPE_REVIEW_REQUIRED_BUILD_NOT_AUTHORIZED"
+    ):
+        fail("accepted topology pointer decision overclaims")
+
+
+def verify_live_review(
+    pointer: dict[str, Any],
+    policy: dict[str, Any],
+    challenge: dict[str, Any],
+    pull_request: dict[str, Any],
+    reviews_payload: Any,
+    files_payload: Any,
+    head_commit: dict[str, Any],
+) -> dict[str, Any]:
+    review_policy = policy["review"]
+    if pull_request.get("state") != "open":
+        fail("topology acceptance pull request must remain open while reviewed")
+    if pull_request.get("draft") is not review_policy["draft_allowed"]:
+        fail("topology acceptance pull request draft posture is invalid")
+    base = pull_request.get("base")
+    head = pull_request.get("head")
+    if not isinstance(base, dict) or not isinstance(head, dict):
+        fail("topology acceptance pull request refs are missing")
+    base_repo = base.get("repo")
+    head_repo = head.get("repo")
+    if (
+        not isinstance(base_repo, dict)
+        or not isinstance(head_repo, dict)
+        or base_repo.get("full_name") != REPOSITORY
+        or head_repo.get("full_name") != REPOSITORY
+        or base.get("ref") != policy["base_branch"]
+    ):
+        fail("topology acceptance pull request repository/base binding drifted")
+    head_ref = head.get("ref")
+    if not isinstance(head_ref, str) or not head_ref.startswith(review_policy["head_ref_prefix"]):
+        fail("topology acceptance pull request head ref is outside the review lane")
+    number = require_positive_int(
+        pull_request.get("number"), "topology acceptance pull request number"
+    )
+    if pointer["review"]["pull_request_number"] != number:
+        fail("accepted topology pointer PR number differs from live review evidence")
+    if pointer["review"]["head_ref"] != head_ref:
+        fail("accepted topology pointer head ref differs from live review evidence")
+    head_sha = require_sha40(head.get("sha"), "topology acceptance PR head SHA")
+    if head_commit.get("sha") != head_sha:
+        fail("topology acceptance head commit payload differs")
+    commit_record = head_commit.get("commit")
+    committer = commit_record.get("committer") if isinstance(commit_record, dict) else None
+    if not isinstance(committer, dict):
+        fail("topology acceptance head committer record is missing")
+    commit_time = parse_timestamp(committer.get("date"), "topology acceptance head commit time")
+    author = pull_request.get("user")
+    author_login = author.get("login") if isinstance(author, dict) else None
+    if not isinstance(author_login, str) or not SAFE_LOGIN.fullmatch(author_login):
+        fail("topology acceptance PR author login is invalid")
+
+    files = parse_collection(files_payload, "pull request files", "files")
+    filenames = [
+        validate_repo_path(
+            item.get("filename", item.get("path")), "topology acceptance changed path"
+        )
+        for item in files
+    ]
+    if len(filenames) != len(set(filenames)):
+        fail("topology acceptance PR contains duplicate changed paths")
+    required_paths = {
+        policy["pointer_path"],
+        pointer["topology_receipt"]["snapshot_path"],
+        pointer["challenge"]["snapshot_path"],
+    }
+    if not required_paths <= set(filenames):
+        fail("topology acceptance PR omits pointer, receipt, or challenge snapshot")
+    unknown = sorted(set(filenames) - (required_paths | set(policy["allowed_auxiliary_paths"])))
+    if unknown:
+        fail(f"topology acceptance PR changes non-governed paths: {unknown}")
+
+    reviews = parse_collection(reviews_payload, "pull request reviews", "reviews")
+    challenge_line = review_policy["required_body_prefix"] + challenge["challenge_id"]
+    approvals: dict[str, dict[str, Any]] = {}
+    changes_requested: set[str] = set()
+    for review in reviews:
+        state = review.get("state")
+        reviewer = review.get("user")
+        login = reviewer.get("login") if isinstance(reviewer, dict) else None
+        if not isinstance(login, str) or not SAFE_LOGIN.fullmatch(login):
+            continue
+        if review_policy["require_current_head_commit"] and review.get("commit_id") != head_sha:
+            continue
+        if state == "CHANGES_REQUESTED":
+            changes_requested.add(login)
+            continue
+        if state != "APPROVED":
+            continue
+        if review_policy["reviewer_must_differ_from_pr_author"] and login == author_login:
+            fail("topology acceptance review cannot be self-approved")
+        if review.get("author_association") not in review_policy["allowed_author_associations"]:
+            fail(f"topology acceptance reviewer {login!r} is not a trusted collaborator")
+        body = review.get("body")
+        if not isinstance(body, str) or challenge_line not in body.splitlines():
+            fail(f"topology acceptance reviewer {login!r} did not bind the exact challenge")
+        submitted = parse_timestamp(
+            review.get("submitted_at"), f"topology acceptance review time for {login}"
+        )
+        if submitted < commit_time:
+            fail(f"topology acceptance review by {login!r} predates the reviewed head")
+        approvals[login] = review
+    if review_policy["reject_changes_requested"] and changes_requested:
+        fail(f"topology acceptance has current-head change requests: {sorted(changes_requested)}")
+    if len(approvals) < review_policy["minimum_approvals"]:
+        fail("topology acceptance has insufficient distinct current-head approvals")
+    return {
+        "schema": "hepta.servo.worker_source_topology_acceptance_live_review.v1",
+        "status": "PASS_LIVE_REVIEW_WORKER_SOURCE_TOPOLOGY_ONLY",
+        "pointer_id": pointer["pointer_id"],
+        "challenge_id": challenge["challenge_id"],
+        "pull_request_number": number,
+        "head_ref": head_ref,
+        "head_sha": head_sha,
+        "approvers": sorted(approvals),
+        "changed_paths": sorted(filenames, key=lambda item: item.encode("utf-8")),
+        "exact_servo_source_accepted": True,
+        "worker_source_topology_accepted": True,
+        "build_authorized": False,
+        "servo_built": False,
+        "servo_runtime_qualified": False,
+        "authority": "all_false",
+    }
+
