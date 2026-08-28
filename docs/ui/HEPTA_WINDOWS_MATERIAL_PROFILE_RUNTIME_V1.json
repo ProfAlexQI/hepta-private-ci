@@ -1,6 +1,6 @@
 {
   "schema": "hepta.ui.windows-material-profile-runtime.v1",
-  "status": "SINGLE_PROCESS_ROOT_TRANSIENT_AGGREGATE_PRODUCER_SOURCE_READY_RUNTIME_REQUIRED",
+  "status": "SINGLE_PROCESS_ROOT_TRANSIENT_AGGREGATE_PRODUCER_SOURCE_READY_PATCH_MATERIALIZATION_REPAIRED_RUNTIME_REQUIRED",
   "candidateBranch": "codex/ui-v4-windows-material-profile-runtime-20260828",
   "baseBranch": "codex/ui-v4-windows-material-profile-aggregate-20260828",
   "baseCommit": "b1402886bc1e3e654120d8a4b38d8002696a064d",
@@ -10,7 +10,12 @@
     "revision": "c4335cee10b22aca768510c9d072b0ca1bba15c8",
     "vendoredPatchRequired": true,
     "defaultDependencyUnchanged": true,
-    "correlatedHookCfg": "hepta_makepad_windows_ack_hook"
+    "correlatedHookCfg": "hepta_makepad_windows_ack_hook",
+    "canonicalPatcher": "scripts/hepta-ui-v4-apply-makepad-windows-ack-patch",
+    "canonicalPatcherBlob": "369e607f4f80d08d739d2f83778fb4e37aa50d4e",
+    "boundedRepairWrapper": "scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch",
+    "repairScope": "correlated WindowHandle setter heredoc indentation only",
+    "sourceBlobAndChangedFileGuardsPreserved": true
   },
   "producer": {
     "source": "apps/hepta-native/src/bin/hepta-ui-v4-windows-material-profile-probe.rs",
@@ -44,6 +49,13 @@
       "X64",
       "hepta-ui-dwm"
     ]
+  },
+  "developmentEvidence": {
+    "hostedSourceGate": true,
+    "hostedSourceArtifact": true,
+    "patchMaterializationDefectObserved": true,
+    "patchMaterializationRepairImplemented": true,
+    "patchMaterializationValidatedAfterRepair": false
   },
   "qualification": {
     "sourceImplemented": true,

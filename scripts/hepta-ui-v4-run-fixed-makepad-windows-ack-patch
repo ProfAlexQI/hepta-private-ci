@@ -1,0 +1,78 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "open3"
+require "pathname"
+require "rbconfig"
+require "tempfile"
+
+EXPECTED_PATCHER_BLOB = "369e607f4f80d08d739d2f83778fb4e37aa50d4e"
+BLOCK_START = <<~'RUBY'.freeze
+  replace_once!(
+    checkout.join("platform/src/window.rs"),
+    <<~'RUST'.chomp,
+          pub fn set_window_visuals(&mut self, cx: &mut Cx, visuals: WindowVisuals) {
+RUBY
+BLOCK_END = <<~'RUBY'.freeze
+    "correlated WindowHandle setter"
+  )
+RUBY
+
+repo_root = Pathname.new(__dir__).join("..").expand_path
+original = repo_root.join("scripts/hepta-ui-v4-apply-makepad-windows-ack-patch")
+abort "canonical patcher is missing" unless original.file?
+
+actual_blob, blob_error, blob_status = Open3.capture3(
+  "git", "hash-object", original.to_s,
+  chdir: repo_root.to_s
+)
+abort "hash canonical patcher failed: #{blob_error}" unless blob_status.success?
+abort "canonical patcher drifted: #{actual_blob.strip}" unless
+  actual_blob.strip == EXPECTED_PATCHER_BLOB
+
+source = original.read
+start = source.index(BLOCK_START)
+abort "correlated setter repair anchor is missing" unless start
+finish_start = source.index(BLOCK_END, start)
+abort "correlated setter repair terminator is missing" unless finish_start
+finish = finish_start + BLOCK_END.length
+block = source[start...finish]
+abort "unexpected correlated setter heredoc count" unless
+  block.scan("<<~'RUST'.chomp").length == 2
+
+inside_heredoc = false
+fixed_block = block.lines.map do |line|
+  if line.include?("<<~'RUST'.chomp")
+    inside_heredoc = true
+    line.sub("<<~'RUST'.chomp", "<<-'RUST'.chomp")
+  elsif inside_heredoc && line.strip == "RUST"
+    inside_heredoc = false
+    line
+  elsif inside_heredoc && !line.strip.empty?
+    abort "correlated setter indentation repair drifted" unless line.start_with?("    ")
+    line.sub(/\A    /, "")
+  else
+    line
+  end
+end.join
+abort "unterminated correlated setter heredoc" if inside_heredoc
+
+fixed_source = source[0...start] + fixed_block + source[finish..]
+abort "repair did not preserve exactly two indented heredocs" unless
+  fixed_block.scan("<<-'RUST'.chomp").length == 2
+abort "repair left the broken setter heredoc" if
+  fixed_block.include?("<<~'RUST'.chomp")
+
+Tempfile.create(["hepta-ui-v4-fixed-makepad-patcher", ".rb"]) do |temporary|
+  temporary.write(fixed_source)
+  temporary.flush
+  stdout, stderr, status = Open3.capture3(
+    RbConfig.ruby,
+    temporary.path,
+    *ARGV,
+    chdir: repo_root.to_s
+  )
+  $stdout.write(stdout)
+  $stderr.write(stderr)
+  exit(status.exitstatus || 1) unless status.success?
+end

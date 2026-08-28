@@ -45,7 +45,7 @@ run!("git", "remote", "add", "origin", REMOTE, chdir: checkout)
 run!("git", "fetch", "--quiet", "--depth", "1", "origin", REVISION, chdir: checkout)
 run!("git", "checkout", "--quiet", "--detach", "FETCH_HEAD", chdir: checkout)
 
-patcher = repo_root.join("scripts/hepta-ui-v4-apply-makepad-windows-ack-patch")
+patcher = repo_root.join("scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch")
 run!(RbConfig.ruby, patcher.to_s, checkout.to_s, patch_receipt.to_s, chdir: repo_root)
 patch_payload = JSON.parse(patch_receipt.read)
 abort "patch did not reach source-only PASS" unless
@@ -71,7 +71,9 @@ payload = {
     head: run!("git", "rev-parse", "HEAD", chdir: checkout),
     dirty: !run!("git", "status", "--porcelain", chdir: checkout).empty?,
     diffSha256: patch_payload.dig("makepad", "diffSha256"),
-    changedFiles: patch_payload.dig("makepad", "changedFiles")
+    changedFiles: patch_payload.dig("makepad", "changedFiles"),
+    patcher: "scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch",
+    canonicalPatcherBlob: "369e607f4f80d08d739d2f83778fb4e37aa50d4e"
   },
   cargoOverride: {
     config: config.to_s,

@@ -32,6 +32,31 @@ The pass and fail shapes share the same Schema. A failure requires the exact
 probe phase and at least one bounded failure reason, while keeping every
 qualification and authority flag false.
 
+## Hosted source result and patcher repair
+
+The first exact-head hosted run executed real steps and passed the source
+contract, inherited aggregate gate, runtime source gate, claim-boundary check,
+and artifact upload.
+
+Its patch-materialization job then exposed a real implementation defect in the
+inherited patcher: the `correlated WindowHandle setter` squiggly heredoc removed
+all method indentation, so the fixed Makepad source could not be matched.
+
+The repair is deliberately bounded:
+
+- the canonical patcher must still have Git blob
+  `369e607f4f80d08d739d2f83778fb4e37aa50d4e`;
+- only the two heredocs inside the named setter block are rewritten in a
+  temporary patcher copy;
+- exactly four leading spaces are restored to the matched method block;
+- all original Makepad revision/blob checks, changed-file guards, diff checks,
+  receipt semantics, and authority boundaries remain active;
+- the default product dependency remains unchanged.
+
+The materializer now invokes
+`scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch` and records the repair
+wrapper and canonical patcher blob in its receipt.
+
 ## Runtime environment
 
 Compilation remains portable across Ubuntu, Windows and macOS. The actual DWM
