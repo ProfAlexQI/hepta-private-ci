@@ -1,0 +1,179 @@
+class TopologyAcceptanceTests(unittest.TestCase):
+    def assert_rejected(self, function, *args) -> None:
+        with self.assertRaises(T.TopologyAcceptanceError):
+            function(*args)
+
+    def test_contract_passes(self) -> None:
+        f = fixture()
+        summary = T.contract(f["review_policy"])
+        self.assertEqual(summary["status"], "PASS_CONTRACT_ONLY")
+        self.assertFalse(summary["pointer_creation_command"])
+
+    def test_valid_challenge_passes(self) -> None:
+        f = fixture()
+        T.validate_challenge(
+            f["challenge"], f["source"], f["source_raw"], f["receipt"],
+            f["receipt_raw"], f["topology"], f["topology_raw"],
+            f["review_policy"], f["review_policy_raw"],
+        )
+
+    def test_create_only_output_is_0600(self) -> None:
+        f = fixture()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp).resolve() / "challenge.json"
+            T.create_only_json(path, f["challenge"])
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            with self.assertRaises(T.TopologyAcceptanceError):
+                T.create_only_json(path, f["challenge"])
+
+    def test_unaccepted_source_pointer_is_rejected(self) -> None:
+        f = fixture()
+        f["source"]["claims"]["exact_servo_source_accepted"] = False
+        rebind(f["source"], "pointer_id", "hepta-servo-accepted-source-pointer:v1:", T.SOURCE_POINTER_DOMAIN)
+        self.assert_rejected(
+            T.validate_source_pointer, f["source"], T.canonical(f["source"]), {}, b"{}", {}, b"{}", {}, b"{}"
+        )
+
+    def test_source_pointer_positive_authority_is_rejected(self) -> None:
+        f = fixture()
+        f["source"]["authority"]["runtime_authority"] = True
+        rebind(f["source"], "pointer_id", "hepta-servo-accepted-source-pointer:v1:", T.SOURCE_POINTER_DOMAIN)
+        self.assert_rejected(
+            T.validate_source_pointer, f["source"], T.canonical(f["source"]), {}, b"{}", {}, b"{}", {}, b"{}"
+        )
+
+    def test_topology_receipt_source_drift_is_rejected(self) -> None:
+        f = fixture()
+        f["receipt"]["source"]["tree"] = "e" * 40
+        rebind(f["receipt"], "receipt_id", "hepta-servo-worker-source-topology-verification:v1:", T.TOPOLOGY_RECEIPT_DOMAIN)
+        self.assert_rejected(
+            T.validate_topology_receipt, f["receipt"], T.canonical(f["receipt"]), f["source"], f["topology"], f["topology_raw"]
+        )
+
+    def test_source_bundle_digest_drift_is_rejected(self) -> None:
+        f = fixture()
+        f["receipt"]["bindings"]["source_bundle_receipt_sha256"] = "f" * 64
+        rebind(f["receipt"], "receipt_id", "hepta-servo-worker-source-topology-verification:v1:", T.TOPOLOGY_RECEIPT_DOMAIN)
+        self.assert_rejected(T.validate_topology_receipt, f["receipt"], T.canonical(f["receipt"]), f["source"], f["topology"], f["topology_raw"])
+
+    def test_archive_digest_drift_is_rejected(self) -> None:
+        f = fixture()
+        f["receipt"]["bindings"]["compressed_archive_sha256"] = "f" * 64
+        rebind(f["receipt"], "receipt_id", "hepta-servo-worker-source-topology-verification:v1:", T.TOPOLOGY_RECEIPT_DOMAIN)
+        self.assert_rejected(T.validate_topology_receipt, f["receipt"], T.canonical(f["receipt"]), f["source"], f["topology"], f["topology_raw"])
+
+    def test_topology_id_drift_is_rejected(self) -> None:
+        f = fixture()
+        f["receipt"]["bindings"]["topology_id"] = "hepta-servo-worker-source-topology:v1:" + "f" * 64
+        rebind(f["receipt"], "receipt_id", "hepta-servo-worker-source-topology-verification:v1:", T.TOPOLOGY_RECEIPT_DOMAIN)
+        self.assert_rejected(T.validate_topology_receipt, f["receipt"], T.canonical(f["receipt"]), f["source"], f["topology"], f["topology_raw"])
+
+    def test_servoshell_widening_is_rejected(self) -> None:
+        f = fixture()
+        f["receipt"]["selection"]["servoshell_dependency"] = True
+        rebind(f["receipt"], "receipt_id", "hepta-servo-worker-source-topology-verification:v1:", T.TOPOLOGY_RECEIPT_DOMAIN)
+        self.assert_rejected(T.validate_topology_receipt, f["receipt"], T.canonical(f["receipt"]), f["source"], f["topology"], f["topology_raw"])
+
+    def test_webdriver_widening_is_rejected(self) -> None:
+        f = fixture()
+        f["receipt"]["selection"]["webdriver_server_dependency"] = True
+        rebind(f["receipt"], "receipt_id", "hepta-servo-worker-source-topology-verification:v1:", T.TOPOLOGY_RECEIPT_DOMAIN)
+        self.assert_rejected(T.validate_topology_receipt, f["receipt"], T.canonical(f["receipt"]), f["source"], f["topology"], f["topology_raw"])
+
+    def test_build_recipe_claim_is_rejected(self) -> None:
+        f = fixture()
+        f["receipt"]["verification"]["build_recipe_created"] = True
+        rebind(f["receipt"], "receipt_id", "hepta-servo-worker-source-topology-verification:v1:", T.TOPOLOGY_RECEIPT_DOMAIN)
+        self.assert_rejected(T.validate_topology_receipt, f["receipt"], T.canonical(f["receipt"]), f["source"], f["topology"], f["topology_raw"])
+
+    def test_receipt_positive_authority_is_rejected(self) -> None:
+        f = fixture()
+        f["receipt"]["authority"]["runtime_authority"] = True
+        rebind(f["receipt"], "receipt_id", "hepta-servo-worker-source-topology-verification:v1:", T.TOPOLOGY_RECEIPT_DOMAIN)
+        self.assert_rejected(T.validate_topology_receipt, f["receipt"], T.canonical(f["receipt"]), f["source"], f["topology"], f["topology_raw"])
+
+    def test_valid_pointer_passes(self) -> None:
+        f = fixture()
+        T.validate_pointer(
+            f["pointer"], f["source"], f["source_raw"], f["receipt"], f["receipt_raw"],
+            f["topology"], f["topology_raw"], f["review_policy"], f["review_policy_raw"],
+            f["challenge"], f["challenge_raw"],
+        )
+
+    def test_pointer_build_authority_is_rejected(self) -> None:
+        f = fixture()
+        f["pointer"]["claims"]["build_authorized"] = True
+        rebind(f["pointer"], "pointer_id", "hepta-servo-accepted-worker-source-topology-pointer:v1:", T.POINTER_DOMAIN)
+        self.assert_rejected(T.validate_pointer, f["pointer"], f["source"], f["source_raw"], f["receipt"], f["receipt_raw"], f["topology"], f["topology_raw"], f["review_policy"], f["review_policy_raw"], f["challenge"], f["challenge_raw"])
+
+    def test_pointer_receipt_snapshot_is_deterministic(self) -> None:
+        f = fixture()
+        f["pointer"]["topology_receipt"]["snapshot_path"] = "docs/hepta-vnext/browser/source-topology-acceptance/receipts/wrong.json"
+        rebind(f["pointer"], "pointer_id", "hepta-servo-accepted-worker-source-topology-pointer:v1:", T.POINTER_DOMAIN)
+        self.assert_rejected(T.validate_pointer, f["pointer"], f["source"], f["source_raw"], f["receipt"], f["receipt_raw"], f["topology"], f["topology_raw"], f["review_policy"], f["review_policy_raw"], f["challenge"], f["challenge_raw"])
+
+    def test_valid_live_review_passes(self) -> None:
+        f = fixture()
+        result = T.verify_live_review(f["pointer"], f["review_policy"], f["challenge"], f["pull_request"], f["reviews"], f["files"], f["head_commit"])
+        self.assertEqual(result["status"], "PASS_LIVE_REVIEW_WORKER_SOURCE_TOPOLOGY_ONLY")
+        self.assertFalse(result["build_authorized"])
+
+    def test_draft_pull_request_is_rejected(self) -> None:
+        f = fixture(); f["pull_request"]["draft"] = True
+        self.assert_rejected(T.verify_live_review, f["pointer"], f["review_policy"], f["challenge"], f["pull_request"], f["reviews"], f["files"], f["head_commit"])
+
+    def test_wrong_head_prefix_is_rejected(self) -> None:
+        f = fixture(); f["pull_request"]["head"]["ref"] = "feature/not-review"
+        self.assert_rejected(T.verify_live_review, f["pointer"], f["review_policy"], f["challenge"], f["pull_request"], f["reviews"], f["files"], f["head_commit"])
+
+    def test_pull_request_number_mismatch_is_rejected(self) -> None:
+        f = fixture(); f["pull_request"]["number"] = 99
+        self.assert_rejected(T.verify_live_review, f["pointer"], f["review_policy"], f["challenge"], f["pull_request"], f["reviews"], f["files"], f["head_commit"])
+
+    def test_self_approval_is_rejected(self) -> None:
+        f = fixture(); f["reviews"]["reviews"][0]["user"]["login"] = "author"
+        self.assert_rejected(T.verify_live_review, f["pointer"], f["review_policy"], f["challenge"], f["pull_request"], f["reviews"], f["files"], f["head_commit"])
+
+    def test_untrusted_association_is_rejected(self) -> None:
+        f = fixture(); f["reviews"]["reviews"][0]["author_association"] = "CONTRIBUTOR"
+        self.assert_rejected(T.verify_live_review, f["pointer"], f["review_policy"], f["challenge"], f["pull_request"], f["reviews"], f["files"], f["head_commit"])
+
+    def test_stale_approval_is_rejected(self) -> None:
+        f = fixture(); f["reviews"]["reviews"][0]["commit_id"] = "e" * 40
+        self.assert_rejected(T.verify_live_review, f["pointer"], f["review_policy"], f["challenge"], f["pull_request"], f["reviews"], f["files"], f["head_commit"])
+
+    def test_wrong_challenge_line_is_rejected(self) -> None:
+        f = fixture(); f["reviews"]["reviews"][0]["body"] = "wrong"
+        self.assert_rejected(T.verify_live_review, f["pointer"], f["review_policy"], f["challenge"], f["pull_request"], f["reviews"], f["files"], f["head_commit"])
+
+    def test_current_head_change_request_is_rejected(self) -> None:
+        f = fixture(); f["reviews"]["reviews"].append({"state": "CHANGES_REQUESTED", "user": {"login": "blocker"}, "commit_id": f["pull_request"]["head"]["sha"]})
+        self.assert_rejected(T.verify_live_review, f["pointer"], f["review_policy"], f["challenge"], f["pull_request"], f["reviews"], f["files"], f["head_commit"])
+
+    def test_unknown_changed_path_is_rejected(self) -> None:
+        f = fixture(); f["files"]["files"].append({"filename": "scripts/evil.py"})
+        self.assert_rejected(T.verify_live_review, f["pointer"], f["review_policy"], f["challenge"], f["pull_request"], f["reviews"], f["files"], f["head_commit"])
+
+    def test_missing_required_snapshot_is_rejected(self) -> None:
+        f = fixture(); f["files"]["files"] = f["files"]["files"][:-1]
+        self.assert_rejected(T.verify_live_review, f["pointer"], f["review_policy"], f["challenge"], f["pull_request"], f["reviews"], f["files"], f["head_commit"])
+
+    def test_duplicate_json_key_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp).resolve() / "duplicate.json"
+            path.write_text('{"a":1,"a":2}', encoding="utf-8")
+            with self.assertRaises(T.TopologyAcceptanceError):
+                T.load_json(path, "duplicate")
+
+    def test_hardlinked_evidence_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp).resolve()
+            original = root / "a.json"; link = root / "b.json"
+            original.write_text('{}', encoding="utf-8")
+            os.link(original, link)
+            with self.assertRaises(T.TopologyAcceptanceError):
+                T.load_json(original, "hardlinked", canonical_required=False)
+
+
+if __name__ == "__main__":
+    unittest.main()
