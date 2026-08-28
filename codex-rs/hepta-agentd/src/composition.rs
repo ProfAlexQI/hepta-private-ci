@@ -205,7 +205,8 @@ mod tests {
         let workspace = root.join("workspace");
         std::fs::create_dir(&workspace).expect("create workspace");
         let agent_id = AgentId::parse(AGENT_ID).expect("valid agent id");
-        let binding = WorkspaceBinding::new(workspace.clone(), &fleet_root).expect("bind workspace");
+        let binding =
+            WorkspaceBinding::new(workspace.clone(), &fleet_root).expect("bind workspace");
         let manifest = AgentManifest::new(
             agent_id.clone(),
             binding,

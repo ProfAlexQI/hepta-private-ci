@@ -160,7 +160,9 @@ impl fmt::Display for ProductGraphError {
                 "product graph is missing required authority {}",
                 action.as_str()
             ),
-            Self::DuplicateComponent => formatter.write_str("product graph has duplicate components"),
+            Self::DuplicateComponent => {
+                formatter.write_str("product graph has duplicate components")
+            }
             Self::QualificationComponentInProductGraph => formatter
                 .write_str("qualification plane cannot be a product runtime component"),
             Self::EdgeReferencesUnknownComponent => {
