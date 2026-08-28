@@ -25,7 +25,18 @@
     "name": "shadow_host_orchestration_adapter",
     "status": "source_only_implemented_activation_blocked",
     "qualified": false,
-    "source_candidate": "beae20bb47e5a25637391eed98165c81e3f93d26",
+    "source_candidate": "a1f0f1e4a5c10c84a71a4a39d90791f13e02bf7b",
+    "source_commits": {
+      "core_adapter": "27b64141575f1a937ae12d5d1e3bf344f7818491",
+      "core_registration": "0b60f474992b4ac490444ec575bed82bea317360",
+      "agentd_adapter": "8ad52c71074e465b861b488cd6a09112a00cb6c2",
+      "agentd_feature": "8b473361073d042c06eacca0d35832a800f9a5a6",
+      "agentd_export": "cd3f0227a8d3d4caf254c71b0a172e299027f88f",
+      "agentd_prepare_append_hardening": "914917b4a1f71189042e2654a6be2ea10d176023",
+      "source_gate": "d0b19ca7644b672406af079ff485bc10ca880dda",
+      "workflow": "59832f15548dcbd86d47d6c41035e68a04b759f8",
+      "plan": "a1f0f1e4a5c10c84a71a4a39d90791f13e02bf7b"
+    },
     "files": [
       "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
       "codex-rs/hepta-memory/src/framing.rs",
@@ -34,6 +45,7 @@
       "codex-rs/hepta-agentd/Cargo.toml",
       "scripts/verify-hepta-intelligence-shadow-host.py",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4C_SHADOW_HOST_2026-08-28.md",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4C_IMPLEMENTATION_RECEIPT_2026-08-28.json",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
       ".github/workflows/hepta-intelligence-shadow-host.yml"
     ],
@@ -46,6 +58,13 @@
       "postcommit_ack_loss_adoption_test_present": true,
       "zero_product_source_memory_projection_rows_test_present": true,
       "p0_4b_journal_delegation": true,
+      "agentd_prepare_returns_host_envelope": true,
+      "agentd_append_validates_and_unwraps_prepare_envelope": true,
+      "agentd_cross_spawn_envelope_rejected": true,
+      "agentd_payload_and_authority_tamper_rejected": true,
+      "agentd_operation_id_spawn_bound": true,
+      "agentd_lease_id_spawn_bound": true,
+      "agentd_causal_root_spawn_bound": true,
       "runtime_wired": false,
       "default_open_wired": false,
       "app_runtime_attached": false,
@@ -156,7 +175,7 @@
     ]
   },
   "next_actions": [
-    "Run the P0.4c fail-closed source gate on one exact head.",
+    "Run the hardened P0.4c fail-closed source gate on one exact head.",
     "Run memory and Agentd formatting, focused tests, full tests and strict clippy with Rust 1.95.0.",
     "Keep the Agentd feature off by default and leave runtime/app/tool registration unchanged.",
     "Do not activate P1.1, production callers, default open paths or external effects from source-only evidence."
