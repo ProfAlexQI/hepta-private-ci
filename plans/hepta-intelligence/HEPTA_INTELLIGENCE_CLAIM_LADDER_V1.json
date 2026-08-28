@@ -2,7 +2,10 @@
   "schema": "hepta_intelligence_claim_ladder_v1",
   "generated_at": "2026-08-28",
   "repository": "ProfAlexQI/hepta-private-ci",
-  "plan_id": "HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28",
+  "plan_id": "HEPTA_INTELLIGENCE_MASTER_PLAN_V4",
+  "classification": "POLICY_SCHEMA_AND_TRANSITION_RULES",
+  "current_state_authority": false,
+  "current_state_source": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
   "authority": {
     "production_authority": false,
     "external_effects": false,
@@ -37,7 +40,7 @@
     },
     {
       "level": "qualified",
-      "meaning": "exact_head_executable_evidence_passed",
+      "meaning": "exact_identity_executable_evidence_passed",
       "requires": [
         "implemented",
         "wired_or_explicit_qualification_host"
@@ -286,7 +289,9 @@
       ]
     }
   ],
-  "current_claims": {
+  "reference_baseline_claims": {
+    "classification": "NON_AUTHORITATIVE_REFERENCE",
+    "source": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
     "system_learning_level": "L0_STATIC_SHADOW_WITH_PARTIAL_L1_FOUNDATIONS",
     "h5_level": "N0_METAPHORICAL_TYPED_PROPOSAL",
     "h6_level": "I0_DETERMINISTIC_SELECTIVE_POLICY",
