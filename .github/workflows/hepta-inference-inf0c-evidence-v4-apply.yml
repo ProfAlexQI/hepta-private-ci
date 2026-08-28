@@ -1,0 +1,255 @@
+name: Apply Hepta inference INF-0C evidence v4
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0c-evidence-v4-staging-20260828
+
+permissions:
+  contents: write
+
+env:
+  TARGET_BRANCH: codex/hepta-inference-inf0c-evidence-v2-20260828
+  EXPECTED_TARGET_HEAD: 9d5a592d50e333fd5db3bf73f5ab3fc9fe4d8988
+  OVERLAY_SHA256: e0cb07229bf4aec06b615da22c24e9688aa91cfc15c42e6bbbb480cc6a256415
+
+jobs:
+  apply:
+    name: Validate and publish evidence-v4 source plus receipt
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out staging commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Reconstruct exact overlay from verified Git blobs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import urllib.request
+
+          chunks = """
+          a406eb51a559a58644af474cbec6796faa0bc4ce
+          73889302198d954cda1440512de8e56f4b51e39c
+          6b47cfc54759c95f9a89c2fbcea801cacb6769ed
+          be567e269bb96b65c867512e773f6ec889972c33
+          ffde469b8ee66b9d5ec2e9ce03f8d5187a3e8b14
+          d26e62431d88a36b287735208f7cded7f0744ddd
+          0eaa97f5398ab5b5ca3510ad041b29cd543a04aa
+          673d23e7d228c51085afead9c152215108272a27
+          d10a833894264ba8783cc948fb443bd57c2efa2f
+          eed8c8225d44ba0990f90e8ba639891291683202
+          d46b3439613c9df6f5019cb181f80feac34c1bec
+          dc2a1384f83994ada0c44bbdffab6e924da2cd29
+          aaf8ce55941c0f04cc685bc131dac81cb70b3357
+          7be348e3f9f8f6cb997eb1fc273c5aa97404c1d5
+          ae28aedf8a607241f437fd23219a7778623c58b1
+          1c0c53c300d0d3d401d54dbe17c3f34ebdced42e
+          b3959e9797f66713835abc73006cd2959be7cd3a
+          fe69e00680a4d6e9e714c2702e940274b5cc8d7e
+          9a7c585ab2493bec3bb3333a23a97e16e2c7c251
+          840ddee3d27bdcc8160c87593051c5ec66d33d65
+          """.split()
+          token = os.environ["GH_TOKEN"]
+          repository = os.environ["GH_REPOSITORY"]
+          expected_overlay = os.environ["OVERLAY_SHA256"]
+          encoded_parts: list[bytes] = []
+          for sha in chunks:
+              request = urllib.request.Request(
+                  f"https://api.github.com/repos/{repository}/git/blobs/{sha}",
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  payload = json.load(response)
+              if payload.get("sha") != sha or payload.get("encoding") != "base64":
+                  raise SystemExit(f"unexpected blob response for {sha}")
+              chunk = base64.b64decode(payload["content"], validate=True)
+              framed = b"blob " + str(len(chunk)).encode("ascii") + b"\0" + chunk
+              if hashlib.sha1(framed).hexdigest() != sha:
+                  raise SystemExit(f"Git blob digest mismatch for {sha}")
+              encoded_parts.append(chunk)
+
+          overlay_encoded = b"".join(encoded_parts)
+          overlay = base64.b64decode(overlay_encoded, validate=True)
+          actual = hashlib.sha256(overlay).hexdigest()
+          if actual != expected_overlay:
+              raise SystemExit(f"overlay SHA-256 mismatch: {actual}")
+          output = pathlib.Path(os.environ["RUNNER_TEMP"]) / "inf0c-evidence-v4-overlay.zip"
+          output.write_bytes(overlay)
+          print(f"PASS_OVERLAY_SHA256={actual}")
+          PY
+
+      - name: Verify exact archive path set
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import zipfile
+
+          expected = {
+              ".github/workflows/hepta-inference-inf0c-evidence-v2.yml",
+              "scripts/hepta-inference-inf0c-real-e2e.py",
+              "scripts/hepta-inference-inf0c-real-e2e-semantic-selftest.py",
+              "scripts/hepta-inference-inf0c-evidence-v2.py",
+              "scripts/hepta-inference-inf0c-evidence-v2-loopback-selftest.py",
+              "scripts/hepta-inference-inf0c-controlled-restart-selftest.py",
+              "scripts/hepta-inference-inf0c-real-receipt-gate.py",
+              "scripts/hepta-inference-inf0c-evidence-v2-source-gate.py",
+              "scripts/apply-inf0c-evidence-v4-machine-state.py",
+              "scripts/rebind-inf0c-evidence-receipt.py",
+              "tools/hepta-inference-cancellation-contract/Cargo.toml",
+              "tools/hepta-inference-cancellation-contract/Cargo.lock",
+              "tools/hepta-inference-cancellation-contract/README.md",
+              "tools/hepta-inference-cancellation-contract/src/lib.rs",
+              "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_EVIDENCE_HARNESS_V4.md",
+              "docs/hepta-vnext/inference/HEPTA_INFERENCE_CANCELLATION_CAPABILITY_CONTRACT_V1.md",
+          }
+          archive = pathlib.Path(os.environ["RUNNER_TEMP"]) / "inf0c-evidence-v4-overlay.zip"
+          with zipfile.ZipFile(archive) as bundle:
+              names = set(bundle.namelist())
+              if names != expected:
+                  raise SystemExit(f"archive path drift: {sorted(names ^ expected)}")
+              for name in names:
+                  path = pathlib.PurePosixPath(name)
+                  if path.is_absolute() or ".." in path.parts:
+                      raise SystemExit(f"unsafe archive path: {name}")
+              bundle.testzip()
+          print("PASS_INF0C_EVIDENCE_V4_ARCHIVE_PATHS")
+          PY
+
+      - name: Check out exact target head and apply overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          actual="$(git rev-parse "refs/remotes/origin/$TARGET_BRANCH")"
+          test "$actual" = "$EXPECTED_TARGET_HEAD"
+          git checkout -B "$TARGET_BRANCH" "refs/remotes/origin/$TARGET_BRANCH"
+          rm -rf "$RUNNER_TEMP/inf0c-evidence-v4-overlay"
+          mkdir -p "$RUNNER_TEMP/inf0c-evidence-v4-overlay"
+          unzip -q "$RUNNER_TEMP/inf0c-evidence-v4-overlay.zip" \
+            -d "$RUNNER_TEMP/inf0c-evidence-v4-overlay"
+          cp -a "$RUNNER_TEMP/inf0c-evidence-v4-overlay/." "$GITHUB_WORKSPACE/"
+          python3 scripts/apply-inf0c-evidence-v4-machine-state.py
+
+      - name: Validate exact Python evidence bundle
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-inference-inf0-source-gate.py \
+            scripts/hepta-inference-inf0c-real-e2e.py \
+            scripts/hepta-inference-inf0c-real-e2e-semantic-selftest.py \
+            scripts/hepta-inference-inf0c-evidence-v2.py \
+            scripts/hepta-inference-inf0c-evidence-v2-loopback-selftest.py \
+            scripts/hepta-inference-inf0c-controlled-restart-selftest.py \
+            scripts/hepta-inference-inf0c-real-receipt-gate.py \
+            scripts/hepta-inference-inf0c-evidence-v2-source-gate.py \
+            scripts/apply-inf0c-evidence-v4-machine-state.py \
+            scripts/rebind-inf0c-evidence-receipt.py
+          python3 scripts/hepta-inference-inf0c-evidence-v2.py --self-test
+          python3 scripts/hepta-inference-inf0c-real-e2e-semantic-selftest.py
+          python3 scripts/hepta-inference-inf0c-evidence-v2-loopback-selftest.py
+          python3 scripts/hepta-inference-inf0c-controlled-restart-selftest.py
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
+
+      - name: Install pinned Rust qualification toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Validate cancellation capability reference crate
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/hepta-inference-cancellation-target
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path \
+            tools/hepta-inference-cancellation-contract/Cargo.toml -- --check
+          cargo test --manifest-path \
+            tools/hepta-inference-cancellation-contract/Cargo.toml --locked
+          cargo clippy --manifest-path \
+            tools/hepta-inference-cancellation-contract/Cargo.toml \
+            --all-targets --locked -- -D warnings
+
+      - name: Commit frozen evidence-v4 source candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "hepta-inference-qualification"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
+          git diff --check
+          git add -A
+          test -n "$(git diff --cached --name-only)"
+          git commit -m "feat(inference): add cancellation contract and evidence-v4 gates"
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_ENV"
+
+      - name: Create append-only source receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/rebind-inf0c-evidence-receipt.py
+          changed="$(git diff --name-only)"
+          test "$changed" = \
+            "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_SOURCE_RECEIPT_2026-08-28.json"
+          git add docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_SOURCE_RECEIPT_2026-08-28.json
+          git commit -m "docs(inference): bind evidence-v4 source receipt"
+          test "$(git rev-parse HEAD^)" = "$SOURCE_COMMIT"
+          test "$(git show -s --format=%T HEAD^)" = "$SOURCE_TREE"
+          test "$(git diff --name-only HEAD^ HEAD)" = \
+            "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_SOURCE_RECEIPT_2026-08-28.json"
+
+      - name: Run exact receipt and parent gates
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-evidence-v2-source-gate.py
+          python3 scripts/hepta-inference-inf0-source-gate.py
+          git diff --check HEAD^^ HEAD
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Publish fast-forward-only evidence-v4 candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | cut -f1)"
+          test "$remote_head" = "$EXPECTED_TARGET_HEAD"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          {
+            echo "### INF-0C evidence-v4 publication"
+            echo
+            echo "- parent receipt: $EXPECTED_TARGET_HEAD"
+            echo "- source candidate: $SOURCE_COMMIT"
+            echo "- source tree: $SOURCE_TREE"
+            echo "- receipt head: $(git rev-parse HEAD)"
+            echo "- receipt tree: $(git rev-parse 'HEAD^{tree}')"
+            echo "- qualification_only: true"
+            echo "- qualified: false"
+            echo "- INF-1: NOT_STARTED"
+            echo "- production/effect/remote/promotion authority: false"
+          } >> "$GITHUB_STEP_SUMMARY"
