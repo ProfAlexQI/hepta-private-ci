@@ -1,0 +1,74 @@
+{
+  "schema": "hepta_intelligence_p0_4c_implementation_receipt_v1",
+  "recorded_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "base": {
+    "branch": "codex/hepta-intelligence-mutation-journal-v4b-r2-20260828",
+    "commit": "a5de899e9f6a97fa0803cc1e73d664be8b7d68bc",
+    "pull_request": 21,
+    "qualified": false
+  },
+  "candidate": {
+    "branch": "codex/hepta-intelligence-shadow-host-adapter-v4c-20260828",
+    "source_head_before_receipt": "d197575c298a731589938f292b1d490cb422db96",
+    "core_adapter_commit": "27b64141575f1a937ae12d5d1e3bf344f7818491",
+    "core_registration_commit": "0b60f474992b4ac490444ec575bed82bea317360",
+    "agentd_adapter_commit": "8ad52c71074e465b861b488cd6a09112a00cb6c2",
+    "agentd_feature_commit": "8b473361073d042c06eacca0d35832a800f9a5a6",
+    "agentd_export_commit": "cd3f0227a8d3d4caf254c71b0a172e299027f88f",
+    "source_gate_commit": "91b774cf5e30d25f0192bb453b2a81c2cb889464",
+    "workflow_commit": "59832f15548dcbd86d47d6c41035e68a04b759f8",
+    "plan_commit": "beae20bb47e5a25637391eed98165c81e3f93d26",
+    "status_commit": "d197575c298a731589938f292b1d490cb422db96"
+  },
+  "implemented_claims": {
+    "core_shadow_adapter": true,
+    "agentd_feature_gated_host": true,
+    "prepared_request_digest": true,
+    "exact_retry_protocol": true,
+    "postcommit_ack_loss_adoption_test": true,
+    "zero_product_rows_test": true,
+    "spawn_bound_agentd_envelope": true,
+    "dedicated_source_gate": true,
+    "dedicated_rust_workflow": true,
+    "rust_toolchain_pin": "1.95.0"
+  },
+  "not_claimed": {
+    "source_gate_pass": false,
+    "rust_format_pass": false,
+    "rust_test_pass": false,
+    "rust_clippy_pass": false,
+    "runtime_wired": false,
+    "default_open_wired": false,
+    "app_runtime_attached": false,
+    "tool_registered": false,
+    "memory_write_authority": false,
+    "projection_write_authority": false,
+    "outbox_dispatch_authority": false,
+    "production_authority": false,
+    "external_effects": false,
+    "efficacy_proven": false,
+    "operator_accepted": false,
+    "promoted": false,
+    "callers_ratchet": false
+  },
+  "qualification": {
+    "status": "PENDING_EXACT_HEAD_EXECUTION",
+    "qualified": false,
+    "required_commands": [
+      "python3 scripts/verify-hepta-intelligence-shadow-host.py",
+      "cargo fmt --all -- --check",
+      "cargo test -p codex-hepta-memory shadow_intelligence_mutation_host -- --nocapture",
+      "cargo test -p codex-hepta-agentd --features qualification-intelligence-mutation-shadow shadow_intelligence_mutation_host -- --nocapture",
+      "cargo test -p codex-hepta-memory",
+      "cargo test -p codex-hepta-agentd --features qualification-intelligence-mutation-shadow",
+      "cargo clippy -p codex-hepta-memory --all-targets -- -D warnings",
+      "cargo clippy -p codex-hepta-agentd --features qualification-intelligence-mutation-shadow --all-targets -- -D warnings"
+    ]
+  },
+  "interpretation": [
+    "The adapter records typed observations in the qualification-only P0.4b journal and does not execute the represented product mutation.",
+    "The Agentd seam is build-feature gated, default-off, and absent from runtime and App Server construction paths.",
+    "No source-only or implementation receipt may be interpreted as executable qualification, efficacy, operator acceptance, promotion, or production authority."
+  ]
+}
