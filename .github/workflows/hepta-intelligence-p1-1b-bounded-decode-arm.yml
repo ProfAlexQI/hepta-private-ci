@@ -1,0 +1,515 @@
+name: hepta-intelligence-p1-1b-bounded-decode-arm
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-intelligence-p1-1b-bounded-decode-arm-e6cded3-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-p1-1b-bounded-decode-arm-e6cded3
+  cancel-in-progress: true
+
+env:
+  SOURCE_SHA: e6cded3099ec53c1b6de36bf7b389ff30a8d3718
+  WRAPPER_PATH: .github/workflows/hepta-intelligence-p1-1b-bounded-decode-arm.yml
+  OUTPUT_BRANCH: qualification/hepta-intelligence-p1-1b-bounded-decode-output-e6cded3-20260828
+  CRATE_ROOT: codex-rs/hepta-memory-p1-1b-qualification
+  MANIFEST_PATH: codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml
+  VERIFIER_PATH: scripts/verify-hepta-intelligence-local-embedding-index.py
+  ARTIFACT_DIR: artifacts/hepta-intelligence-p1-1b-bounded-decode
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  harden:
+    name: P1.1b bounded ANN decode hardening
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout exact source plus wrapper
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify exact source binding
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          def git(*args: str) -> str:
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+          source = os.environ["SOURCE_SHA"]
+          wrapper = os.environ["WRAPPER_PATH"]
+          changed = git("diff", "--name-only", f"{source}..HEAD").splitlines()
+          assert git("rev-parse", "HEAD^") == source
+          assert int(git("rev-list", "--count", f"{source}..HEAD")) == 1
+          assert changed == [wrapper], changed
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.bounded_decode_source_binding.v1",
+              "source_commit": source,
+              "source_tree": git("rev-parse", f"{source}^{{tree}}"),
+              "wrapper_commit": git("rev-parse", "HEAD"),
+              "wrapper_path": wrapper,
+              "wrapper_only_diff": True,
+              "runtime_wired": False,
+              "production_authority": False,
+          }
+          (Path(os.environ["ARTIFACT_DIR"]) / "source-binding.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Apply exact bounded-decoder patch
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one replacement target, found {count}")
+              target.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index.rs",
+              "use crate::embedding::LocalEmbeddingDescriptor;\nuse crate::embedding::Q15_UNIT_NORM_SQUARED;\n",
+              "use crate::embedding::LocalEmbeddingDescriptor;\nuse crate::embedding::MAX_EMBEDDING_DIMENSIONS;\nuse crate::embedding::Q15_UNIT_NORM_SQUARED;\n",
+          )
+
+          replace_once(
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/types.rs",
+              '''        if self.item_count == 0
+            || usize::try_from(self.item_count).unwrap_or(usize::MAX) > MAX_INDEX_ITEMS
+            || self.bucket_count == 0
+        {
+            return Err(ContractError::Corrupt(
+                "ANN manifest counts are outside bounded limits".to_string(),
+            ));
+        }
+''',
+              '''        if self.item_count == 0
+            || usize::try_from(self.item_count).unwrap_or(usize::MAX) > MAX_INDEX_ITEMS
+            || self.bucket_count == 0
+            || self.bucket_count > self.item_count
+        {
+            return Err(ContractError::Corrupt(
+                "ANN manifest counts are outside bounded limits".to_string(),
+            ));
+        }
+        if !(8..=MAX_EMBEDDING_DIMENSIONS).contains(&self.dimensions) {
+            return Err(ContractError::Corrupt(
+                "ANN manifest dimensions exceed the bounded embedding contract".to_string(),
+            ));
+        }
+''',
+          )
+
+          replace_once(
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/types.rs",
+              '''        if self.generation == 0 || self.dimensions == 0 {
+            return Err(ContractError::Invalid(
+                "expected ANN generation and dimensions must be non-zero".to_string(),
+            ));
+        }
+''',
+              '''        if self.generation == 0
+            || !(8..=MAX_EMBEDDING_DIMENSIONS).contains(&self.dimensions)
+        {
+            return Err(ContractError::Invalid(format!(
+                "expected ANN generation must be non-zero and dimensions must contain 8..={MAX_EMBEDDING_DIMENSIONS}"
+            )));
+        }
+''',
+          )
+
+          replace_once(
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/impl.rs",
+              '''        let dimensions = cursor.read_u32()?;
+        let metric = metric_from_code(cursor.read_u32()?)?;
+''',
+              '''        let dimensions = cursor.read_u32()?;
+        if !(8..=MAX_EMBEDDING_DIMENSIONS).contains(&dimensions) {
+            return Err(ContractError::Corrupt(
+                "ANN file dimensions exceed the bounded embedding contract".to_string(),
+            ));
+        }
+        let metric = metric_from_code(cursor.read_u32()?)?;
+''',
+          )
+
+          replace_once(
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/impl.rs",
+              '''        if item_count == 0
+            || usize::try_from(item_count).unwrap_or(usize::MAX) > MAX_INDEX_ITEMS
+            || bucket_count == 0
+        {
+''',
+              '''        if item_count == 0
+            || usize::try_from(item_count).unwrap_or(usize::MAX) > MAX_INDEX_ITEMS
+            || bucket_count == 0
+            || bucket_count > item_count
+        {
+''',
+          )
+
+          build_path = "codex-rs/hepta-memory-p1-1b-qualification/src/index/build.rs"
+          replace_once(
+              build_path,
+              "pub fn reopen_local_ann_index(\n",
+              '''fn read_bounded_index_bytes<R: Read>(
+    reader: &mut R,
+    expected_file_bytes: u64,
+) -> Result<Vec<u8>, ContractError> {
+    if expected_file_bytes == 0 || expected_file_bytes > MAX_INDEX_FILE_BYTES {
+        return Err(ContractError::Corrupt(
+            "ANN index file size is outside bounded limits".to_string(),
+        ));
+    }
+    let expected_len =
+        usize::try_from(expected_file_bytes).map_err(|_| ContractError::Overflow)?;
+    let mut bytes = Vec::with_capacity(expected_len);
+    reader
+        .take(MAX_INDEX_FILE_BYTES.saturating_add(1))
+        .read_to_end(&mut bytes)?;
+    if bytes.len() != expected_len {
+        return Err(ContractError::Corrupt(
+            "ANN index file changed while being read or exceeded the bounded limit".to_string(),
+        ));
+    }
+    Ok(bytes)
+}
+
+pub fn reopen_local_ann_index(
+''',
+          )
+
+          replace_once(
+              build_path,
+              '''    let file_bytes = file.metadata()?.len();
+    if file_bytes == 0 || file_bytes > MAX_INDEX_FILE_BYTES {
+        return Err(ContractError::Corrupt(
+            "ANN index file size is outside bounded limits".to_string(),
+        ));
+    }
+    let mut bytes = Vec::with_capacity(
+        usize::try_from(file_bytes).map_err(|_| ContractError::Overflow)?,
+    );
+    file.read_to_end(&mut bytes)?;
+''',
+              '''    let file_bytes = file.metadata()?.len();
+    let bytes = read_bounded_index_bytes(&mut file, file_bytes)?;
+''',
+          )
+
+          tests_path = Path(
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/tests_module.rs"
+          )
+          tests_text = tests_path.read_text(encoding="utf-8")
+          if not tests_text.endswith("}\n"):
+              raise SystemExit("index tests module does not end with the expected module brace")
+          additions = r'''
+
+    fn sample_index() -> LocalAnnIndex {
+        let descriptor = descriptor();
+        let mut registry = EmbeddingRegistry::new();
+        registry
+            .register(Box::new(
+                QualificationHashOneHotProvider::new(descriptor.clone()).expect("provider"),
+            ))
+            .expect("register");
+        let embedding = registry
+            .embed_batch("qualification-hash-one-hot", &["bounded sample"])
+            .expect("embed")
+            .remove(0);
+        build_local_ann_index(AnnIndexBuildDraft {
+            index_id: "bounded-index".to_string(),
+            generation: 1,
+            seed_sha256: Digest32::for_bytes(b"bounded-seed"),
+            provider: descriptor,
+            items: vec![AnnIndexItemDraft {
+                candidate_id: "memory-bounded".to_string(),
+                memory_revision: 1,
+                content_sha256: embedding.input_sha256,
+                embedding,
+            }],
+        })
+        .expect("index")
+    }
+
+    #[test]
+    fn decode_rejects_oversized_dimensions_before_vector_allocation() {
+        let mut bytes = sample_index().encode().expect("encode");
+        let dimensions_offset = {
+            let mut cursor = ByteCursor::new(&bytes);
+            cursor.take(INDEX_MAGIC.len()).expect("magic");
+            cursor.read_u32().expect("schema");
+            cursor.read_string().expect("namespace");
+            cursor.read_string().expect("index id");
+            cursor.read_u64().expect("generation");
+            cursor.read_u32().expect("algorithm");
+            cursor.read_string().expect("provider id");
+            cursor.read_digest().expect("provider digest");
+            cursor.read_digest().expect("model digest");
+            cursor.read_digest().expect("tokenizer digest");
+            cursor.position
+        };
+        bytes[dimensions_offset..dimensions_offset + 4]
+            .copy_from_slice(&(MAX_EMBEDDING_DIMENSIONS + 1).to_be_bytes());
+
+        let error = LocalAnnIndex::decode(&bytes).expect_err("oversized dimensions");
+        assert!(matches!(
+            error,
+            ContractError::Corrupt(message) if message.contains("dimensions")
+        ));
+    }
+
+    #[test]
+    fn bounded_reader_rejects_growth_after_metadata_without_unbounded_read() {
+        let mut reader = std::io::Cursor::new(vec![0_u8; 16]);
+        let error = read_bounded_index_bytes(&mut reader, 8).expect_err("growth");
+        assert!(matches!(
+            error,
+            ContractError::Corrupt(message) if message.contains("changed while being read")
+        ));
+    }
+'''
+          tests_path.write_text(tests_text[:-2] + additions + "}\n", encoding="utf-8")
+
+          replace_once(
+              "scripts/verify-hepta-intelligence-local-embedding-index.py",
+              '''                "OpenOptions::new().create_new(true)",
+                "sync_all",
+                "MAX_INDEX_FILE_BYTES",
+''',
+              '''                "OpenOptions::new().create_new(true)",
+                "sync_all",
+                "MAX_INDEX_FILE_BYTES",
+                "MAX_EMBEDDING_DIMENSIONS",
+                "read_bounded_index_bytes",
+''',
+          )
+
+          replace_once(
+              "scripts/verify-hepta-intelligence-local-embedding-index.py",
+              '''                "tampered_file_and_binding_drift_fail_closed",
+                "route_is_dependency_first_and_fails_to_lexical_only",
+''',
+              '''                "tampered_file_and_binding_drift_fail_closed",
+                "decode_rejects_oversized_dimensions_before_vector_allocation",
+                "bounded_reader_rejects_growth_after_metadata_without_unbounded_read",
+                "route_is_dependency_first_and_fails_to_lexical_only",
+''',
+          )
+          PY
+
+      - name: Isolate Cargo outputs and install Rust 1.95.0
+        run: |
+          set -euo pipefail
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-p1-1b-bounded-decode-target" >> "$GITHUB_ENV"
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Format and enforce exact patch scope
+        run: |
+          set -euo pipefail
+          rustc --version | tee "$ARTIFACT_DIR/rustc-version.txt"
+          cargo --version | tee "$ARTIFACT_DIR/cargo-version.txt"
+          rustfmt --version | tee "$ARTIFACT_DIR/rustfmt-version.txt"
+          cargo clippy --version | tee "$ARTIFACT_DIR/clippy-version.txt"
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          expected = [
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/build.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/impl.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/tests_module.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/types.rs",
+              "scripts/verify-hepta-intelligence-local-embedding-index.py",
+          ]
+          actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          untracked = subprocess.check_output(
+              ["git", "ls-files", "--others", "--exclude-standard", "--", os.environ["CRATE_ROOT"]],
+              text=True,
+          ).splitlines()
+          if actual != expected or untracked:
+              raise SystemExit(json.dumps({"expected": expected, "actual": actual, "untracked": untracked}, indent=2))
+          (Path(os.environ["ARTIFACT_DIR"]) / "changed-paths.txt").write_text(
+              "\n".join(actual) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Run upgraded source gate
+        run: |
+          set -o pipefail
+          python3 "$VERIFIER_PATH" 2>&1 | tee "$ARTIFACT_DIR/source-gate.log"
+
+      - name: Run complete Rust gate matrix
+        run: |
+          set -o pipefail
+          cargo test --manifest-path "$MANIFEST_PATH" --all-targets -- --nocapture \
+            2>&1 | tee "$ARTIFACT_DIR/tests.log"
+          cargo check --manifest-path "$MANIFEST_PATH" --all-targets \
+            2>&1 | tee "$ARTIFACT_DIR/check.log"
+          cargo clippy --manifest-path "$MANIFEST_PATH" --all-targets -- -D warnings \
+            2>&1 | tee "$ARTIFACT_DIR/clippy.log"
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          log = Path("artifacts/hepta-intelligence-p1-1b-bounded-decode/tests.log").read_text(
+              encoding="utf-8", errors="replace"
+          )
+          passed = sum(int(value) for value in re.findall(r"test result: ok\. (\d+) passed", log))
+          if passed != 15:
+              raise SystemExit(f"expected 15 tests, observed {passed}")
+          PY
+
+      - name: Create clean six-file hardening commit
+        id: output_commit
+        run: |
+          set -euo pipefail
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+          git checkout -B "$OUTPUT_BRANCH" "$SOURCE_SHA"
+          git diff --check
+
+          python3 - <<'PY'
+          import json
+          import subprocess
+
+          expected = [
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/build.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/impl.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/tests_module.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/types.rs",
+              "scripts/verify-hepta-intelligence-local-embedding-index.py",
+          ]
+          actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          if actual != expected:
+              raise SystemExit(json.dumps({"expected": expected, "actual": actual}, indent=2))
+          PY
+
+          git add -- \
+            "$CRATE_ROOT/src/index.rs" \
+            "$CRATE_ROOT/src/index/build.rs" \
+            "$CRATE_ROOT/src/index/impl.rs" \
+            "$CRATE_ROOT/src/index/tests_module.rs" \
+            "$CRATE_ROOT/src/index/types.rs" \
+            "$VERIFIER_PATH"
+
+          test "$(git diff --cached --name-only | wc -l | tr -d ' ')" = "6"
+          git config user.name "Hepta Qualification Bot"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git commit -m "fix(intelligence): bound P1.1b ANN file decoding"
+          output_sha="$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
+          echo "sha=$output_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Write hardening receipt and archive evidence
+        env:
+          OUTPUT_SHA: ${{ steps.output_commit.outputs.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUNNER_NAME: ${{ runner.name }}
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.bounded_decode_hardening.v1",
+              "status": "PASS_P1_1B_BOUNDED_DECODE_HARDENING",
+              "source_commit": os.environ["SOURCE_SHA"],
+              "output_commit": os.environ["OUTPUT_SHA"],
+              "output_branch": os.environ["OUTPUT_BRANCH"],
+              "changed_paths": (artifact_dir / "changed-paths.txt").read_text(encoding="utf-8").splitlines(),
+              "findings_closed": [
+                  "dimension allocation is bounded before vector allocation",
+                  "bucket iteration is bounded by item count",
+                  "file reads are capped at MAX_INDEX_FILE_BYTES + 1",
+                  "metadata/read length drift fails closed",
+              ],
+              "tests_passed": 15,
+              "gates": {
+                  "source_binding": "success",
+                  "rust_1_95_0": "success",
+                  "rustfmt": "success",
+                  "source_gate": "success",
+                  "tests": "success",
+                  "check": "success",
+                  "clippy": "success",
+                  "changed_path_allowlist": "success",
+              },
+              "runner": {
+                  "name": os.environ["RUNNER_NAME"],
+                  "os": os.environ["RUNNER_OS"],
+                  "arch": os.environ["RUNNER_ARCH"],
+              },
+              "workflow": {
+                  "run_id": int(os.environ["RUN_ID"]),
+                  "run_attempt": int(os.environ["RUN_ATTEMPT"]),
+              },
+              "qualified": False,
+              "runtime_wired": False,
+              "default_recall_changed": False,
+              "federation_recall_changed": False,
+              "context_attachment": False,
+              "physical_send": False,
+              "external_effects": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "callers_ratchet": False,
+          }
+          (artifact_dir / "hardening-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload bounded-decoder evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1b-bounded-decode-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1b-bounded-decode
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Push clean hardening output branch
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:refs/heads/$OUTPUT_BRANCH"
