@@ -1,5 +1,5 @@
 {
-  "schema": "hepta.inference.inf0c_source_receipt.v5",
+  "schema": "hepta.inference.inf0c_source_receipt.v6",
   "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
   "plan_version": "2.0.0",
   "source_binding": {
@@ -10,8 +10,8 @@
   },
   "development_branch": "codex/hepta-inference-runtime-v2-20260828",
   "plan_git_blob_sha1": "4381207acce1bf6371c248dc3280fff1f2ae59ce",
-  "source_candidate_commit": "8fb0f3848a7e90da9e0a6106d505c4257cba56b1",
-  "source_candidate_tree": "7ccd975777af21aab00280adaeb71a4632ec6e43",
+  "source_candidate_commit": "8b0a081a590f5e4c917befd3aed89219050f0aab",
+  "source_candidate_tree": "4dbbcfe9b76611293d258a115fea72ae9846ca3b",
   "source_candidate_components": {
     "inf0a_source_rebind": true,
     "inf0b_reference_contracts": true,
@@ -36,11 +36,11 @@
     "inf0c_modular_source_fragments": true,
     "inf0c_explicit_fragment_rustfmt_gate": true,
     "inf0c_blank_pull_frame_gate_disambiguated": true,
-    "inf0c_merge_ref_exact_head_gate": true,
+    "inf0c_pull_request_jobs_checkout_exact_head": true,
     "inf1_daemon": false
   },
   "validation": {
-    "local_python_syntax": "PASS",
+    "local_python_syntax": "PASS_FOR_PREVIOUS_CANDIDATE",
     "local_receipt_json_parse": "PASS",
     "exact_candidate_source_gate": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
     "rust_fmt": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
@@ -72,6 +72,16 @@
       "source_gate": "EXECUTED_FAILED",
       "failure": "INSTALL_FENCE_CANONICAL_TEXT_SPLIT_ACROSS_STRING_LITERALS",
       "classification": "EXECUTED_FAILED_SOURCE_GATE_FALSE_POSITIVE"
+    },
+    {
+      "run_id": 33151950190,
+      "head": "e6fd6240381125901ae3811beba29aafdd19c3ee",
+      "runner_assigned": true,
+      "checkout": "PASS_MERGE_REF_SHALLOW_DEPTH_2",
+      "python_source_syntax": "PASS",
+      "source_gate": "EXECUTED_FAILED",
+      "failure": "PR_MERGE_REF_SHALLOW_CHECKOUT_OMITTED_RECEIPT_PARENT",
+      "classification": "EXECUTED_FAILED_WORKFLOW_CHECKOUT_SHAPE"
     }
   ],
   "current_ci": {
@@ -104,7 +114,7 @@
   "known_gaps": [
     "the new exact receipt head has not executed source gate, Rust formatting, tests, or strict Clippy",
     "the real-software E2E harness has not executed against fixed pre-installed Ollama and LM Studio tuples",
-    "transport disconnect, backend cancellation acknowledgement, and controlled restart receipts are absent",
+    "transport disconnect, backend cancellation acknowledgement, and controlled restart receipts remain in the stacked evidence lane",
     "hepta-inferd, the UDS protocol, native workers, and hardware performance receipts are absent",
     "INF-1 remains inactive and all production, effect, model-NPU, remote-inference, and promotion authority remains closed"
   ]
