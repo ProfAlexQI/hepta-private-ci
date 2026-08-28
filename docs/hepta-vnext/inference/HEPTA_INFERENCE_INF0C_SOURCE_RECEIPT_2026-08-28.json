@@ -1,5 +1,5 @@
 {
-  "schema": "hepta.inference.inf0c_source_receipt.v1",
+  "schema": "hepta.inference.inf0c_source_receipt.v2",
   "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
   "plan_version": "2.0.0",
   "source_binding": {
@@ -10,20 +10,30 @@
   },
   "development_branch": "codex/hepta-inference-runtime-v2-20260828",
   "plan_git_blob_sha1": "4381207acce1bf6371c248dc3280fff1f2ae59ce",
-  "source_candidate_commit": "2ded60c3d4499d907d540473c8dd18b3e5d2afba",
-  "source_candidate_tree": "560899389ecfb23224cfb29949d6cf0e2e3dce3c",
+  "source_candidate_commit": "146ba43dadcfdc708c89df66b83f5a01862d0f24",
+  "source_candidate_tree": "d320b0879dc85465de3c366682835be6af3551f9",
   "source_candidate_components": {
     "inf0a_source_rebind": true,
     "inf0b_reference_contracts": true,
     "inf0c_ollama_typed_fail_closed": true,
     "inf0c_ollama_bounded_pull_stream": true,
+    "inf0c_ollama_pull_idle_timeout": true,
+    "inf0c_control_response_bounds": true,
+    "inf0c_local_provider_loopback_only": true,
+    "inf0c_local_transport_direct_no_proxy_no_redirect": true,
     "inf0c_implicit_model_install_disabled": true,
     "inf0c_lmstudio_async_timeout": true,
     "inf0c_lmstudio_cli_sha256_provenance": true,
     "inf0c_lmstudio_bounded_stderr": true,
+    "inf0c_lmstudio_sanitized_subprocess_environment": true,
     "inf0c_digest_only_debug_dump": true,
     "inf0c_owner_only_bounded_dump_storage": true,
+    "inf0c_atomic_dump_file_reservation": true,
+    "inf0c_failed_partial_dump_cleanup": true,
     "inf0c_real_software_e2e_harness": true,
+    "inf0c_real_e2e_proxy_and_redirect_disabled": true,
+    "inf0c_modular_source_fragments": true,
+    "inf0c_explicit_fragment_rustfmt_gate": true,
     "inf1_daemon": false
   },
   "local_validation": {
@@ -31,7 +41,11 @@
     "real_e2e_harness_syntax": "PASS",
     "json_parse": "PASS",
     "workflow_yaml_parse": "PASS",
-    "created_git_blob_sha1_matches_local_bytes": "PASS",
+    "e2e_non_loopback_rejection": "PASS",
+    "e2e_redirect_fail_closed": "PASS",
+    "static_source_contract": "PASS",
+    "source_gate_bundle_covers_include_fragments": true,
+    "remote_source_tree_shape_reviewed": "PASS",
     "exact_candidate_source_gate": "NOT_RUN_EXACT_GIT_CONTEXT_UNAVAILABLE",
     "rust_fmt": "NOT_RUN_TOOLCHAIN_UNAVAILABLE",
     "rust_test": "NOT_RUN_TOOLCHAIN_UNAVAILABLE",
@@ -69,10 +83,11 @@
     "release": false
   },
   "known_gaps": [
-    "the exact receipt head has not executed the source gate or Rust fmt/test/Clippy on an assigned runner",
+    "the exact receipt head has not executed the source gate or Rust fmt, tests, and Clippy on an assigned runner",
     "the real-software E2E harness has not executed against fixed pre-installed Ollama and LM Studio model tuples",
     "cancellation and controlled service-restart evidence are absent",
-    "hepta-inferd, the UDS protocol, native workers and hardware performance receipts are absent",
-    "INF-1 remains inactive and no production, effect, model-NPU, remote-inference or promotion authority is granted"
+    "hepta-inferd, the UDS protocol, native workers, and hardware performance receipts are absent",
+    "provider and model capabilities still require the future backend-manifest-policy intersection",
+    "INF-1 remains inactive and no production, effect, model-NPU, remote-inference, or promotion authority is granted"
   ]
 }
