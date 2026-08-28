@@ -1,5 +1,3 @@
-use pretty_assertions::assert_eq;
-
 use super::AgentId;
 
 const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
