@@ -1,0 +1,257 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "open3"
+require "pathname"
+require "rbconfig"
+require "tempfile"
+
+CANONICAL_RELATIVE_PATH = "scripts/hepta-ui-v4-execution-provenance-audit"
+CANONICAL_BLOB = "0ad77b0f629509ed0e8c6f4affe54dedd2ddeabb"
+SELF_TEST_STATUS = "PASS_SAME_RUN_EXECUTION_PROVENANCE_SELF_TEST"
+
+OPTIONS_BEFORE = <<~'SOURCE'.freeze
+Options = Struct.new(
+  :run,
+  :jobs,
+  :artifacts,
+  :candidate_commit,
+  :candidate_tree,
+  :auditor_commit,
+  :auditor_tree,
+  :output,
+  :require_windows_runtime,
+  :self_test,
+  keyword_init: true
+)
+SOURCE
+
+OPTIONS_AFTER = <<~'SOURCE'.freeze
+Options = Struct.new(
+  :run,
+  :jobs,
+  :artifacts,
+  :candidate_commit,
+  :candidate_tree,
+  :auditor_commit,
+  :auditor_tree,
+  :output,
+  :require_windows_runtime,
+  :allow_in_progress_run,
+  :self_test,
+  keyword_init: true
+)
+SOURCE
+
+VALIDATE_RUN_BEFORE = <<~'SOURCE'.freeze
+def validate_run!(run, candidate)
+  raise AuditError, "wrong workflow" unless run["name"] == WORKFLOW_NAME
+  raise AuditError, "source run is not completed" unless run["status"] == "completed"
+  raise AuditError, "source run conclusion=#{run['conclusion']}" unless run["conclusion"] == "success"
+  raise AuditError, "source run head drift" unless run["head_sha"] == candidate
+  repository = run.dig("repository", "full_name").to_s
+  raise AuditError, "source repository missing" unless repository.match?(/\A[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\z/)
+  run_id = run["id"]
+  raise AuditError, "source run ID invalid" unless positive_integer?(run_id)
+  run_attempt = run["run_attempt"]
+  raise AuditError, "source run attempt invalid" unless positive_integer?(run_attempt)
+  {
+    "repository" => repository,
+    "runId" => run_id,
+    "runAttempt" => run_attempt,
+    "event" => run["event"].to_s,
+    "headSha" => candidate,
+    "qualified" => true
+  }
+end
+SOURCE
+
+VALIDATE_RUN_AFTER = <<~'SOURCE'.freeze
+def validate_run!(run, candidate, allow_in_progress_run)
+  raise AuditError, "wrong workflow" unless run["name"] == WORKFLOW_NAME
+  status = run["status"]
+  conclusion = run["conclusion"]
+  if allow_in_progress_run
+    unless %w[in_progress completed].include?(status)
+      raise AuditError, "source run status=#{status} is not eligible for same-run audit"
+    end
+    if status == "completed"
+      raise AuditError, "source run conclusion=#{conclusion}" unless conclusion == "success"
+    elsif !conclusion.nil?
+      raise AuditError, "in-progress source run unexpectedly has conclusion=#{conclusion}"
+    end
+  else
+    raise AuditError, "source run is not completed" unless status == "completed"
+    raise AuditError, "source run conclusion=#{conclusion}" unless conclusion == "success"
+  end
+  raise AuditError, "source run head drift" unless run["head_sha"] == candidate
+  repository = run.dig("repository", "full_name").to_s
+  raise AuditError, "source repository missing" unless repository.match?(/\A[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\z/)
+  run_id = run["id"]
+  raise AuditError, "source run ID invalid" unless positive_integer?(run_id)
+  run_attempt = run["run_attempt"]
+  raise AuditError, "source run attempt invalid" unless positive_integer?(run_attempt)
+  {
+    "repository" => repository,
+    "runId" => run_id,
+    "runAttempt" => run_attempt,
+    "event" => run["event"].to_s,
+    "headSha" => candidate,
+    "qualified" => true
+  }
+end
+SOURCE
+
+CALL_BEFORE = <<~'SOURCE'.freeze
+    source_run = validate_run!(run, candidate)
+SOURCE
+CALL_AFTER = <<~'SOURCE'.freeze
+    source_run = validate_run!(run, candidate, options.allow_in_progress_run == true)
+SOURCE
+
+SELF_TEST_BEFORE = <<~'SOURCE'.freeze
+    pre = build_audit(options)
+    raise AuditError, "pre-runtime self-test failed" unless pre["status"] == PASS_PRE_RUNTIME
+    tests["preRuntime"] = true
+SOURCE
+
+SELF_TEST_AFTER = <<~'SOURCE'.freeze
+    pre = build_audit(options)
+    raise AuditError, "pre-runtime self-test failed" unless pre["status"] == PASS_PRE_RUNTIME
+    tests["preRuntime"] = true
+
+    run["status"] = "in_progress"
+    run["conclusion"] = nil
+    write_fixture(run_path, run)
+    options.allow_in_progress_run = true
+    same_run = build_audit(options)
+    unless same_run["status"] == PASS_PRE_RUNTIME
+      raise AuditError, "same-run in-progress self-test failed"
+    end
+    tests["sameRunInProgress"] = true
+    options.allow_in_progress_run = false
+    run["status"] = "completed"
+    run["conclusion"] = "success"
+    write_fixture(run_path, run)
+SOURCE
+
+DEFAULT_BEFORE = 'options = Options.new(require_windows_runtime: false, self_test: false)'
+DEFAULT_AFTER = 'options = Options.new(require_windows_runtime: false, allow_in_progress_run: false, self_test: false)'
+PARSER_BEFORE = '  arguments.on("--require-windows-runtime") { options.require_windows_runtime = true }'
+PARSER_AFTER = <<~'SOURCE'.strip.freeze
+  arguments.on("--require-windows-runtime") { options.require_windows_runtime = true }
+  arguments.on("--allow-in-progress-run") { options.allow_in_progress_run = true }
+SOURCE
+
+class SameRunPatchError < StandardError; end
+
+def git_blob_id(source)
+  Digest::SHA1.hexdigest("blob #{source.bytesize}\0#{source}")
+end
+
+def replace_once!(source, before, after, label)
+  count = source.scan(before).length
+  raise SameRunPatchError, "#{label}: expected one exact match, got #{count}" unless count == 1
+  source.sub(before) { after }
+end
+
+def patch_source(source)
+  patched = source
+  patched = replace_once!(patched, OPTIONS_BEFORE, OPTIONS_AFTER, "Options allow-in-progress field")
+  patched = replace_once!(patched, VALIDATE_RUN_BEFORE, VALIDATE_RUN_AFTER, "same-run validate_run")
+  patched = replace_once!(patched, CALL_BEFORE, CALL_AFTER, "validate_run call")
+  patched = replace_once!(patched, SELF_TEST_BEFORE, SELF_TEST_AFTER, "same-run self-test")
+  patched = replace_once!(patched, DEFAULT_BEFORE, DEFAULT_AFTER, "Options default")
+  patched = replace_once!(patched, PARSER_BEFORE, PARSER_AFTER, "allow-in-progress CLI")
+  raise SameRunPatchError, "patched source lacks allow-in-progress flag" unless patched.include?("--allow-in-progress-run")
+  raise SameRunPatchError, "patched source lacks same-run self-test" unless patched.include?("sameRunInProgress")
+  patched
+end
+
+def canonical_source
+  root = Pathname.new(__dir__).join("..").expand_path
+  path = root.join(CANONICAL_RELATIVE_PATH)
+  raise SameRunPatchError, "canonical execution provenance audit is missing" unless path.file?
+  source = path.read
+  actual = git_blob_id(source)
+  raise SameRunPatchError, "canonical audit drifted: #{actual}" unless actual == CANONICAL_BLOB
+  [root, source]
+end
+
+def run_patched(source, root, arguments)
+  Tempfile.create(["hepta-ui-v4-same-run-provenance", ".rb"]) do |file|
+    file.write(source)
+    file.flush
+    stdout, stderr, status = Open3.capture3(
+      RbConfig.ruby,
+      file.path,
+      *arguments,
+      chdir: root.to_s
+    )
+    $stdout.write(stdout)
+    $stderr.write(stderr)
+    return status
+  end
+end
+
+def run_self_test
+  root, source = canonical_source
+  patched = patch_source(source)
+  syntax_out, syntax_err, syntax_status = Open3.capture3(
+    RbConfig.ruby,
+    "-c",
+    stdin_data: patched,
+    chdir: root.to_s
+  )
+  raise SameRunPatchError, "patched syntax failed: #{syntax_err}" unless syntax_status.success?
+  Tempfile.create(["hepta-ui-v4-same-run-provenance-self-test", ".rb"]) do |file|
+    file.write(patched)
+    file.flush
+    stdout, stderr, status = Open3.capture3(
+      RbConfig.ruby,
+      file.path,
+      "--self-test",
+      chdir: root.to_s
+    )
+    raise SameRunPatchError, "patched canonical self-test failed: #{stderr}" unless status.success?
+    payload = JSON.parse(stdout)
+    raise SameRunPatchError, "unexpected patched self-test status" unless
+      payload["status"] == "PASS_EXECUTION_PROVENANCE_AUDIT_SELF_TEST"
+    raise SameRunPatchError, "same-run self-test missing" unless
+      payload.dig("tests", "sameRunInProgress") == true
+  end
+  puts JSON.pretty_generate(
+    "schema" => "hepta.ui.v4.same-run-execution-provenance-self-test.v1",
+    "status" => SELF_TEST_STATUS,
+    "canonicalAuditBlob" => CANONICAL_BLOB,
+    "patchedSyntax" => syntax_out.include?("Syntax OK"),
+    "sameRunInProgress" => true,
+    "authority" => {
+      "network" => false,
+      "mutation" => false,
+      "effect" => false,
+      "liveAdapter" => false,
+      "production" => false,
+      "operatorAcceptance" => false,
+      "promotion" => false,
+      "release" => false
+    }
+  )
+end
+
+if ARGV == ["--self-test"]
+  run_self_test
+  exit 0
+end
+
+begin
+  root, source = canonical_source
+  patched = patch_source(source)
+  status = run_patched(patched, root, ARGV)
+  exit(status.exitstatus || 1)
+rescue SameRunPatchError, JSON::ParserError => error
+  warn "same-run execution provenance wrapper failed: #{error.message}"
+  exit 1
+end
