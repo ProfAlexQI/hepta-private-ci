@@ -417,6 +417,7 @@ impl P03OldPermitReconcileRequest {
         push_fence(&mut bytes, &self.current_fence);
         push_digest(&mut bytes, &self.provider_status_receipt_sha256);
         push_digest(&mut bytes, &self.owner_evidence_sha256);
+        push_u64(&mut bytes, self.expected_revision);
         push_u64(&mut bytes, self.observed_at_ms);
         match self.outcome {
             P03ReconcileOutcome::VerifiedConsumed { actual } => {
