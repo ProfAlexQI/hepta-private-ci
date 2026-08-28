@@ -1,0 +1,60 @@
+{
+  "schema": "hepta.authority-callers.v1",
+  "schemaVersion": 1,
+  "trustBoundary": {
+    "rustTypeSafetyPreventsAccidentalConversion": true,
+    "publicConstructorAloneIsCryptographicAuthority": false,
+    "linkedProductCodeIsTrusted": true,
+    "callerSetIsVersionControlled": true,
+    "productionEvidenceRequiresExternalVerifier": true
+  },
+  "grantConstructorCallers": {
+    "codex-rs/hepta-contracts/src/authority.rs": [
+      "definition_and_unit_tests"
+    ],
+    "codex-rs/hepta-contracts/src/product_graph.rs": [
+      "product_graph_unit_tests"
+    ],
+    "codex-rs/hepta-memory/src/cognitive_runtime.rs": [
+      "authority_facade_unit_tests"
+    ],
+    "codex-rs/hepta-memory-runtime/src/lib.rs": [
+      "runtime_boundary_unit_tests"
+    ],
+    "codex-rs/hepta-memory-runtime/src/legacy_authority.rs": [
+      "verified_legacy_adapter_unit_tests"
+    ],
+    "codex-rs/hepta-agentd/src/composition.rs": [
+      "agent_process_composition_root"
+    ],
+    "codex-rs/hepta-agentd/src/app_runtime.rs": [
+      "compatibility_test_seam_and_product_validation"
+    ]
+  },
+  "forbiddenProductRequests": [
+    "authorize::<ModelInvocationCapability>",
+    "authorize::<ProviderDispatchCapability>",
+    "authorize::<ExternalEffectCapability>",
+    "authorize::<FleetMutationCapability>",
+    "authorize::<OperatorAcceptanceCapability>",
+    "authorize::<ReleasePromotionCapability>"
+  ],
+  "allowedForbiddenRequestPath": "codex-rs/hepta-contracts/src/authority.rs",
+  "legacyProductionAdapter": {
+    "path": "codex-rs/hepta-memory-runtime/src/legacy_authority.rs",
+    "mayReturn": "Authorized<CognitiveWriteCapability>",
+    "mayIssueGrant": false,
+    "requiresExternalVerifier": true,
+    "existingProductionWriterCallerMigrated": false
+  },
+  "authority": {
+    "productionCaller": false,
+    "productionWriter": false,
+    "effectAuthority": false,
+    "externalEffect": false,
+    "modelInvocationAuthority": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
