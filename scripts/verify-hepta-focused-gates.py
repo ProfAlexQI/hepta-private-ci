@@ -9,7 +9,6 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BLOCKING = ROOT / ".github/workflows/blocking-ci.yml"
-V8 = ROOT / ".github/workflows/hepta-browser-next-required-v8.yml"
 V9 = ROOT / ".github/workflows/hepta-browser-next-required-v9.yml"
 SOURCE_LIVE = ROOT / ".github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml"
 TOPOLOGY_CONTRACT = ROOT / ".github/workflows/hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml"
@@ -60,7 +59,6 @@ def main() -> int:
     try:
         paths = (
             BLOCKING,
-            V8,
             V9,
             SOURCE_LIVE,
             TOPOLOGY_CONTRACT,
@@ -81,7 +79,6 @@ def main() -> int:
                 fail(f"missing {path.relative_to(ROOT)}")
 
         blocking = BLOCKING.read_text(encoding="utf-8")
-        v8 = V8.read_text(encoding="utf-8")
         v9 = V9.read_text(encoding="utf-8")
         source_live = SOURCE_LIVE.read_text(encoding="utf-8")
         topology_contract = TOPOLOGY_CONTRACT.read_text(encoding="utf-8")
@@ -96,35 +93,53 @@ def main() -> int:
         readme = README.read_text(encoding="utf-8")
 
         require(
-            v8,
-            "workflow_call:",
-            "hepta-servo-exact-source-acceptance-live-review-v2.yml",
-            '"build_authorized": False',
-        )
-        require(
             v9,
             "workflow_call:",
-            "hepta-browser-next-required-v8.yml",
-            "hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml",
             "name: Hepta Browser next required v9",
-            "- canonical-v8",
+            "reusable workflow nesting: blocking-ci -> v9 -> leaf",
+            "uses: ./.github/workflows/hepta-browser-ci.yml",
+            "uses: ./.github/workflows/hepta-servo-independent-source-contract-v3.yml",
+            "uses: ./.github/workflows/hepta-servo-exact-source-review-candidate-v2-contract.yml",
+            "uses: ./.github/workflows/hepta-servo-worker-source-topology-contract.yml",
+            "uses: ./.github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml",
+            "uses: ./.github/workflows/hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml",
+            "uses: ./.github/workflows/hepta-servo-build-input-contract-v3.yml",
+            "uses: ./.github/workflows/hepta-servo-build-preflight-contract.yml",
+            "- source-acceptance-pointer-v1",
             "- topology-acceptance-pointer-v1",
             '"worker_source_topology_accepted": False',
             '"build_authorized": False',
         )
+        if "uses: ./.github/workflows/hepta-browser-next-required-v8.yml" in v9:
+            fail("canonical v9 is nested through obsolete v8")
         require(
             blocking,
             "hepta-browser-next-v9:",
             "uses: ./.github/workflows/hepta-browser-next-required-v9.yml",
             "- hepta-browser-next-v9",
             "name: CI required",
+            "Do not duplicate its leaf workflows here",
         )
         if "hepta-browser-next-v8:" in blocking or "- hepta-browser-next-v8" in blocking:
             fail("blocking CI still requires obsolete v8")
         if blocking.count("- hepta-browser-next-v9") != 1:
             fail("blocking CI must require canonical v9 exactly once")
+        for obsolete_job in (
+            "hepta-browser-c0-c3:",
+            "hepta-browser-c1-protocol:",
+            "hepta-servo-source-bundle-contract:",
+            "hepta-servo-source-contract:",
+            "hepta-servo-worker-build-inputs-contract:",
+        ):
+            if obsolete_job in blocking:
+                fail(f"blocking CI duplicates canonical v9 leaf {obsolete_job}")
 
-        require(source_live, "pull_request_target:", "ref: ${{ github.event.pull_request.base.sha }}", "PR-head code executed: false")
+        require(
+            source_live,
+            "pull_request_target:",
+            "ref: ${{ github.event.pull_request.base.sha }}",
+            "PR-head code executed: false",
+        )
         require(
             topology_live,
             "pull_request_target:",
@@ -173,7 +188,9 @@ def main() -> int:
             "test_current_head_change_request_is_rejected",
         )
 
-        if policy.get("claims_after_acceptance", {}).get("worker_source_topology_accepted") is not True:
+        if policy.get("claims_after_acceptance", {}).get(
+            "worker_source_topology_accepted"
+        ) is not True:
             fail("topology policy does not define topology-only acceptance")
         if policy.get("claims_after_acceptance", {}).get("build_authorized") is not False:
             fail("topology policy grants build authority")
@@ -182,9 +199,13 @@ def main() -> int:
 
         if current.get("c1_current") != "docs/hepta-vnext/browser/C1_CURRENT_V7.json":
             fail("root CURRENT does not select C1 v7")
-        if current.get("canonical_aggregate_workflow") != ".github/workflows/hepta-browser-next-required-v9.yml":
+        if current.get("canonical_aggregate_workflow") != (
+            ".github/workflows/hepta-browser-next-required-v9.yml"
+        ):
             fail("root CURRENT does not select v9")
-        if c1.get("canonical_aggregate_workflow") != ".github/workflows/hepta-browser-next-required-v9.yml":
+        if c1.get("canonical_aggregate_workflow") != (
+            ".github/workflows/hepta-browser-next-required-v9.yml"
+        ):
             fail("C1 v7 does not select v9")
         if "Canonical C1 pointer: `C1_CURRENT_V7.json`" not in readme:
             fail("README does not identify C1 v7")
@@ -212,6 +233,7 @@ def main() -> int:
             {
                 "status": "HEPTA_FOCUSED_GATES_PASS",
                 "canonical_aggregate": "hepta-browser-next-required-v9.yml",
+                "flat_call_graph": True,
                 "blocking_ci_required": True,
                 "trusted_base_source_review": True,
                 "trusted_base_topology_review": True,
