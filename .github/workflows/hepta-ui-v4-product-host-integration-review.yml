@@ -1,0 +1,359 @@
+name: hepta-ui-v4-product-host-integration-review
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-product-host-integration-review-*"
+  pull_request:
+    paths:
+      - "apps/hepta-native/src/shared/hepta_windows_product_host_integration_review.rs"
+      - "tools/hepta-ui-product-host-review-contract/**"
+      - "scripts/hepta-ui-v4-product-host-integration-review"
+      - "scripts/hepta-ui-v4-product-host-integration-review-gate"
+      - "docs/ui/HEPTA_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_V1.json"
+      - "docs/ui/schemas/hepta.ui.v4.windows-product-host-integration-review-envelope.v1.schema.json"
+      - "docs/ui/HEPTA_UI_V4_TRANCHE_21_PRODUCT_HOST_INTEGRATION_REVIEW_2026-08-28.md"
+      - ".github/workflows/hepta-ui-v4-product-host-integration-review.yml"
+  workflow_run:
+    workflows:
+      - "hepta-ui-v4-execution-provenance-audit"
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      provenance_run_id:
+        description: "Completed hepta-ui-v4-execution-provenance-audit run ID"
+        required: true
+        type: string
+      require_eligible:
+        description: "Require a runtime-provenance PASS review envelope rather than a bounded pre-runtime block"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: hepta-ui-v4-product-host-review-${{ github.event.workflow_run.id || inputs.provenance_run_id || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-contract:
+    name: Product-host integration review source contract
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      REVIEWER_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout exact reviewer candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REVIEWER_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact reviewer checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$REVIEWER_SHA"
+      - name: Install isolated Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+      - name: Validate source, self-tests, and isolated Rust contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -c scripts/hepta-ui-v4-product-host-integration-review
+          ruby -c scripts/hepta-ui-v4-product-host-integration-review-gate
+          ruby -rjson -e 'ARGV.each { |path| JSON.parse(File.read(path)) }' \
+            docs/ui/HEPTA_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_V1.json \
+            docs/ui/schemas/hepta.ui.v4.windows-product-host-integration-review-envelope.v1.schema.json
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-product-host-integration-review.yml")'
+          mkdir -p artifacts/product-host-review-source
+          ruby scripts/hepta-ui-v4-product-host-integration-review --self-test \
+            | tee artifacts/product-host-review-source/self-test.json
+          ruby scripts/hepta-ui-v4-product-host-integration-review-gate \
+            | tee artifacts/product-host-review-source/source-gate.json
+          cargo test --manifest-path tools/hepta-ui-product-host-review-contract/Cargo.toml \
+            | tee artifacts/product-host-review-source/rust-contract.log
+          ruby -rjson -e '
+            receipt=JSON.parse(File.read("artifacts/product-host-review-source/source-gate.json"))
+            abort "unexpected source status" unless receipt.fetch("status") == "PASS_PRODUCT_HOST_INTEGRATION_REVIEW_SOURCE_ONLY"
+            %w[
+              rust_compile_validated hosted_source_validated runtime_provenance_validated
+              review_envelope_produced implementation_review_eligible implementation_approved
+              product_host_may_bind product_bound transient_system_material_binding
+              complete_profile_binding system_material_binding native_product_runtime
+              device_validation production_authority effect_authority live_adapter_authority
+              operator_acceptance promotion release
+            ].each do |key|
+              abort "#{key} escaped source boundary" unless receipt.fetch(key) == false
+            end
+          '
+      - name: Upload source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-product-host-review-source-${{ env.REVIEWER_SHA }}
+          path: artifacts/product-host-review-source
+          if-no-files-found: error
+          retention-days: 14
+
+  review-envelope:
+    name: Produce product-host integration review envelope
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REVIEWER_SHA: ${{ github.sha }}
+    steps:
+      - name: Resolve execution-provenance audit run
+        id: provenance_run
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          DISPATCH_RUN_ID: ${{ inputs.provenance_run_id }}
+          REQUIRE_ELIGIBLE_INPUT: ${{ inputs.require_eligible }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            run_id="$WORKFLOW_RUN_ID"
+            require_eligible=false
+          else
+            run_id="$DISPATCH_RUN_ID"
+            require_eligible="$REQUIRE_ELIGIBLE_INPUT"
+          fi
+          [[ "$run_id" =~ ^[1-9][0-9]*$ ]]
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
+            > provenance-run.json
+          RUN_ID="$run_id" REQUIRE_ELIGIBLE="$require_eligible" ruby -rjson -e '
+            run=JSON.parse(File.read("provenance-run.json"))
+            abort "wrong provenance workflow" unless run.fetch("name") == "hepta-ui-v4-execution-provenance-audit"
+            abort "provenance run incomplete" unless run.fetch("status") == "completed"
+            abort "provenance run failed" unless run.fetch("conclusion") == "success"
+            abort "repository drift" unless run.dig("repository","full_name") == ENV.fetch("GITHUB_REPOSITORY")
+            puts "run_id=#{ENV.fetch("RUN_ID")}"
+            puts "require_eligible=#{ENV.fetch("REQUIRE_ELIGIBLE") == "true"}"
+          ' >> "$GITHUB_OUTPUT"
+      - name: Checkout exact review-controller source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REVIEWER_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify review-controller identity and source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$REVIEWER_SHA"
+          ruby -c scripts/hepta-ui-v4-product-host-integration-review
+          ruby -c scripts/hepta-ui-v4-product-host-integration-review-gate
+          ruby scripts/hepta-ui-v4-product-host-integration-review --self-test > review-self-test.json
+          ruby scripts/hepta-ui-v4-product-host-integration-review-gate > review-source-gate.json
+      - name: Download exact provenance receipt
+        id: provenance
+        shell: bash
+        env:
+          PROVENANCE_RUN_ID: ${{ steps.provenance_run.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/review-input/provenance artifacts/review-output archives
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$PROVENANCE_RUN_ID/artifacts?per_page=100" \
+            > artifacts/review-output/provenance-artifacts.json
+          ruby -rjson -e '
+            payload=JSON.parse(File.read("artifacts/review-output/provenance-artifacts.json"))
+            selected=payload.fetch("artifacts").select do |artifact|
+              !artifact.fetch("expired") && artifact.fetch("name").start_with?("hepta-ui-v4-execution-provenance-")
+            end
+            abort "provenance artifact count=#{selected.length}" unless selected.length == 1
+            artifact=selected.fetch(0)
+            name=artifact.fetch("name")
+            abort "unsafe artifact name" unless name.match?(/\A[A-Za-z0-9_.-]+\z/)
+            puts [name, artifact.fetch("archive_download_url")].join("\t")
+          ' > artifacts/review-output/provenance-download.tsv
+          IFS=$'\t' read -r name url < artifacts/review-output/provenance-download.tsv
+          curl --fail --location --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$url" > "archives/$name.zip"
+          unzip -Z1 "archives/$name.zip" > "archives/$name.entries"
+          NAME="$name" ruby -e '
+            File.readlines("archives/#{ENV.fetch("NAME")}.entries", chomp: true).each do |entry|
+              abort "empty archive entry" if entry.empty?
+              abort "absolute archive entry" if entry.start_with?("/", "\\")
+              abort "drive-qualified archive entry" if entry.match?(/\A[A-Za-z]:/)
+              abort "path traversal archive entry" if entry.tr("\\", "/").split("/").include?("..")
+            end
+          '
+          unzip -q "archives/$name.zip" -d artifacts/review-input/provenance
+          provenance_path="$(find artifacts/review-input/provenance -type f -name execution-provenance.json -print)"
+          test "$(printf '%s\n' "$provenance_path" | sed '/^$/d' | wc -l)" -eq 1
+          PROVENANCE_PATH="$provenance_path" ruby -rjson -e '
+            receipt=JSON.parse(File.read(ENV.fetch("PROVENANCE_PATH")))
+            candidate=receipt.dig("candidate","commit")
+            abort "candidate invalid" unless candidate.to_s.match?(/\A[0-9a-f]{40}\z/)
+            run_id=receipt.dig("sourceRun","runId")
+            abort "source run invalid" unless run_id.is_a?(Integer) && run_id.positive?
+            status=receipt.fetch("status")
+            allowed=%w[PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE]
+            abort "provenance status=#{status}" unless allowed.include?(status)
+            puts "path=#{ENV.fetch("PROVENANCE_PATH")}"
+            puts "candidate=#{candidate}"
+            puts "source_run_id=#{run_id}"
+            puts "status=#{status}"
+          ' >> "$GITHUB_OUTPUT"
+      - name: Download runtime qualification inputs
+        if: steps.provenance.outputs.status == 'PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE'
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ steps.provenance.outputs.source_run_id }}
+          CANDIDATE: ${{ steps.provenance.outputs.candidate }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" \
+            > artifacts/review-output/source-run.json
+          ruby -rjson -e '
+            run=JSON.parse(File.read("artifacts/review-output/source-run.json"))
+            abort "wrong exact workflow" unless run.fetch("name") == "hepta-ui-v4-windows-material-profile-exact"
+            abort "exact workflow incomplete" unless run.fetch("status") == "completed"
+            abort "candidate drift" unless run.fetch("head_sha") == ENV.fetch("CANDIDATE")
+            abort "repository drift" unless run.dig("repository","full_name") == ENV.fetch("GITHUB_REPOSITORY")
+          '
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
+            > artifacts/review-output/source-artifacts.json
+          ruby -rjson -e '
+            payload=JSON.parse(File.read("artifacts/review-output/source-artifacts.json"))
+            candidate=ENV.fetch("CANDIDATE")
+            required=[
+              "hepta-ui-v4-same-run-qualification-index-#{candidate}",
+              "hepta-ui-v4-exact-windows-profile-#{candidate}"
+            ]
+            selected=payload.fetch("artifacts").select { |a| required.include?(a.fetch("name")) && !a.fetch("expired") }
+            names=selected.map { |a| a.fetch("name") }
+            abort "runtime artifact set drift" unless names.sort == required.sort
+            selected.each do |artifact|
+              name=artifact.fetch("name")
+              abort "unsafe artifact name" unless name.match?(/\A[A-Za-z0-9_.-]+\z/)
+              puts [name, artifact.fetch("archive_download_url")].join("\t")
+            end
+          ' > artifacts/review-output/runtime-downloads.tsv
+          while IFS=$'\t' read -r name url; do
+            mkdir -p "artifacts/review-input/$name"
+            curl --fail --location --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$url" > "archives/$name.zip"
+            unzip -Z1 "archives/$name.zip" > "archives/$name.entries"
+            NAME="$name" ruby -e '
+              File.readlines("archives/#{ENV.fetch("NAME")}.entries", chomp: true).each do |entry|
+                abort "empty archive entry" if entry.empty?
+                abort "absolute archive entry" if entry.start_with?("/", "\\")
+                abort "drive-qualified archive entry" if entry.match?(/\A[A-Za-z]:/)
+                abort "path traversal archive entry" if entry.tr("\\", "/").split("/").include?("..")
+              end
+            '
+            unzip -q "archives/$name.zip" -d "artifacts/review-input/$name"
+          done < artifacts/review-output/runtime-downloads.tsv
+      - name: Produce review envelope
+        id: review
+        continue-on-error: true
+        shell: bash
+        env:
+          PROVENANCE_PATH: ${{ steps.provenance.outputs.path }}
+          PROVENANCE_STATUS: ${{ steps.provenance.outputs.status }}
+          CANDIDATE: ${{ steps.provenance.outputs.candidate }}
+          REQUIRE_ELIGIBLE: ${{ steps.provenance_run.outputs.require_eligible }}
+        run: |
+          set -euo pipefail
+          reviewer_tree="$(git rev-parse 'HEAD^{tree}')"
+          args=(
+            --provenance "$PROVENANCE_PATH"
+            --reviewer-commit "$REVIEWER_SHA"
+            --reviewer-tree "$reviewer_tree"
+            --output artifacts/review-output/product-host-review.json
+          )
+          if [[ "$PROVENANCE_STATUS" == "PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE" ]]; then
+            index_path="$(find artifacts/review-input -type f -name qualification-index.json -print)"
+            aggregate_path="$(find artifacts/review-input -type f -name receipt.json -print)"
+            test "$(printf '%s\n' "$index_path" | sed '/^$/d' | wc -l)" -eq 1
+            test "$(printf '%s\n' "$aggregate_path" | sed '/^$/d' | wc -l)" -eq 1
+            args+=(--qualification-index "$index_path" --runtime-aggregate "$aggregate_path")
+          fi
+          if [[ "$REQUIRE_ELIGIBLE" == "true" ]]; then
+            args+=(--require-eligible)
+          fi
+          ruby scripts/hepta-ui-v4-product-host-integration-review "${args[@]}"
+      - name: Validate bounded review envelope
+        if: always()
+        shell: bash
+        env:
+          REVIEW_OUTCOME: ${{ steps.review.outcome }}
+          REQUIRE_ELIGIBLE: ${{ steps.provenance_run.outputs.require_eligible }}
+          CANDIDATE: ${{ steps.provenance.outputs.candidate }}
+        run: |
+          set -euo pipefail
+          ruby -rjson -e '
+            path="artifacts/review-output/product-host-review.json"
+            abort "review envelope missing" unless File.file?(path)
+            receipt=JSON.parse(File.read(path))
+            abort "candidate drift" unless receipt.dig("candidate","commit") == ENV.fetch("CANDIDATE")
+            abort "authority escaped" unless receipt.fetch("authority").values.all? { |value| value == false }
+            %w[implementationApproved productHostMayBind productBound transientSystemMaterialBound completeProfileBound systemMaterialBound nativeProductRuntime deviceValidation].each do |key|
+              abort "#{key} escaped" unless receipt.dig("qualification",key) == false
+            end
+            abort "automatic binding escaped" unless receipt.dig("plan","automaticBindingAllowed") == false
+            status=receipt.fetch("status")
+            if ENV.fetch("REVIEW_OUTCOME") == "success"
+              allowed=%w[PASS_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_ENVELOPE BLOCKED_WINDOWS_RUNTIME_PROVENANCE_REQUIRED]
+              abort "unexpected review status" unless allowed.include?(status)
+              if ENV.fetch("REQUIRE_ELIGIBLE") == "true"
+                abort "eligible review envelope missing" unless status == "PASS_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_ENVELOPE"
+              end
+            else
+              abort "missing fail-closed envelope" unless status == "FAIL_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_ENVELOPE"
+              failures=receipt.fetch("failures")
+              abort "failure list missing" unless failures.is_a?(Array) && !failures.empty?
+              exit 1
+            end
+          '
+      - name: Upload product-host review envelope
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-product-host-integration-review-${{ steps.provenance.outputs.candidate }}
+          path: |
+            artifacts/review-output/product-host-review.json
+            artifacts/review-output/provenance-artifacts.json
+            artifacts/review-output/source-run.json
+            artifacts/review-output/source-artifacts.json
+            review-self-test.json
+            review-source-gate.json
+          if-no-files-found: warn
+          retention-days: 14
