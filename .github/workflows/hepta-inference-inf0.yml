@@ -105,8 +105,8 @@ jobs:
           components: rustfmt, clippy
 
       - name: Check standalone reference formatting
-      shell: bash
-      run: cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml -- --check
+        shell: bash
+        run: cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml -- --check
 
       - name: Test standalone reference crate
         shell: bash
@@ -140,13 +140,13 @@ jobs:
           components: rustfmt, clippy
 
       - name: Check included inference source fragments
-      shell: bash
-      run: |
-        rustfmt --edition 2024 --check \
-          ollama/src/client.rs \
-          ollama/src/client_*.inc.rs \
-          lmstudio/src/client.rs \
-          lmstudio/src/client_*.inc.rs
+        shell: bash
+        run: |
+          rustfmt --edition 2024 --check \
+            ollama/src/client.rs \
+            ollama/src/client_*.inc.rs \
+            lmstudio/src/client.rs \
+            lmstudio/src/client_*.inc.rs
 
       - name: Workspace formatting
         shell: bash
