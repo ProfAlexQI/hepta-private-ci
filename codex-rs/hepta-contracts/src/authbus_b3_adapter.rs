@@ -1,12 +1,9 @@
 //! Qualification-only process-bound adapter for the AuthBus B3 contracts.
 //!
-//! This module is deliberately a small local harness, not an OpenBao client or
-//! a production writer.  It demonstrates the safety boundary required by the
-//! B3 stage: a [`SecretRefBackend`] resolves an opaque reference into
-//! zeroizing, process-local material; a [`SecretRefProvider`] consumes that
-//! material and returns only typed status/opaque references; and status
-//! reconciliation is a lookup-only path.  No listener, network client,
-//! durable store, provider effect, or authority flag is enabled here.
+//! This module is deliberately a local safety harness, not an OpenBao client,
+//! durable writer, listener, or production caller. It keeps raw secret bytes
+//! process-bound, classifies provider-call uncertainty conservatively, and
+//! models explicit retry versus lookup-only reconciliation.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -33,9 +30,19 @@ pub const AUTHBUS_B3_ADAPTER_PROMOTION: bool = false;
 pub const AUTHBUS_B3_ADAPTER_G5_ALLOWED: bool = false;
 pub const AUTHBUS_B3_ADAPTER_EXECUTE_ALLOWED: bool = false;
 
-/// Errors returned by a secret backend.  The variants intentionally carry no
-/// provider body, header, or secret bytes; the adapter maps them to a bounded
-/// [`SecretProviderStatus`] classification.
+const _: () = {
+    assert!(AUTHBUS_B3_ADAPTER_QUALIFICATION_ONLY);
+    assert!(!AUTHBUS_B3_ADAPTER_AUTHORITY);
+    assert!(!AUTHBUS_B3_ADAPTER_EFFECT_AUTHORITY);
+    assert!(!AUTHBUS_B3_ADAPTER_PRODUCTION_CALLER);
+    assert!(!AUTHBUS_B3_ADAPTER_PRODUCTION_WRITER);
+    assert!(!AUTHBUS_B3_ADAPTER_OPERATOR_ACCEPTANCE);
+    assert!(!AUTHBUS_B3_ADAPTER_PROMOTION);
+    assert!(!AUTHBUS_B3_ADAPTER_G5_ALLOWED);
+    assert!(!AUTHBUS_B3_ADAPTER_EXECUTE_ALLOWED);
+};
+
+/// Errors returned before a provider call is reached.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SecretBackendError {
     NotFound,
@@ -60,9 +67,33 @@ impl fmt::Display for SecretBackendError {
     }
 }
 
-/// Errors observed at the provider adapter boundary.  `Unknown` is the only
-/// variant that can produce an indeterminate outcome; no variant authorizes a
-/// blind retry after a call has crossed the boundary.
+impl SecretBackendError {
+    fn status(self) -> SecretProviderStatus {
+        match self {
+            Self::NotFound | Self::Unavailable => SecretProviderStatus::Unavailable,
+            Self::Unauthorized => SecretProviderStatus::Unauthorized,
+            Self::Timeout => SecretProviderStatus::Timeout,
+            Self::Sealed => SecretProviderStatus::Sealed,
+            Self::InvalidReference => SecretProviderStatus::SchemaInvalid,
+        }
+    }
+
+    /// Backend failures happen before the provider boundary and are therefore
+    /// safe to classify as retryable failures rather than unknown effects.
+    fn outcome(self) -> SecretRefOutcome {
+        SecretRefOutcome::TransientFailure
+    }
+
+    fn event(self) -> SecretRefEvent {
+        SecretRefEvent::TransientFailure
+    }
+}
+
+/// Errors observed after the provider adapter method has been entered.
+///
+/// Timeout, transport unavailability, malformed response schema, and an
+/// explicitly unknown outcome are conservative post-dispatch uncertainty:
+/// they require status lookup and never authorize a blind retry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderAdapterError {
     InvalidGrant,
@@ -82,11 +113,11 @@ impl fmt::Display for ProviderAdapterError {
             Self::InvalidGrant => "provider rejected the grant",
             Self::Unauthorized => "provider denied the request",
             Self::Conflict => "provider reported a conflict",
-            Self::Timeout => "provider timed out",
-            Self::Unavailable => "provider is unavailable",
+            Self::Timeout => "provider outcome is unknown after timeout",
+            Self::Unavailable => "provider outcome is unknown after transport unavailability",
             Self::Sealed => "provider backend is sealed",
             Self::StaleFence => "provider rejected a stale fence",
-            Self::SchemaInvalid => "provider returned an invalid schema",
+            Self::SchemaInvalid => "provider response schema is invalid after the call",
             Self::Unknown => "provider outcome is unknown",
         };
         formatter.write_str(label)
@@ -99,75 +130,45 @@ impl ProviderAdapterError {
             Self::InvalidGrant => SecretProviderStatus::InvalidGrant,
             Self::Unauthorized => SecretProviderStatus::Unauthorized,
             Self::Conflict => SecretProviderStatus::Conflict,
-            Self::Timeout => SecretProviderStatus::Timeout,
-            Self::Unavailable => SecretProviderStatus::Unavailable,
+            Self::Timeout | Self::Unavailable | Self::SchemaInvalid | Self::Unknown => {
+                SecretProviderStatus::Unknown
+            }
             Self::Sealed => SecretProviderStatus::Sealed,
             Self::StaleFence => SecretProviderStatus::StaleFence,
-            Self::SchemaInvalid => SecretProviderStatus::SchemaInvalid,
-            Self::Unknown => SecretProviderStatus::Unknown,
         }
     }
 
     fn outcome(self) -> SecretRefOutcome {
         match self {
             Self::InvalidGrant => SecretRefOutcome::Quarantined,
-            Self::Unknown => SecretRefOutcome::Indeterminate,
-            Self::Unauthorized
-            | Self::Conflict
-            | Self::Timeout
-            | Self::Unavailable
-            | Self::Sealed
-            | Self::StaleFence
-            | Self::SchemaInvalid => SecretRefOutcome::TransientFailure,
+            Self::Timeout | Self::Unavailable | Self::SchemaInvalid | Self::Unknown => {
+                SecretRefOutcome::Indeterminate
+            }
+            Self::Unauthorized | Self::Conflict | Self::Sealed | Self::StaleFence => {
+                SecretRefOutcome::TransientFailure
+            }
         }
     }
 
     fn event(self) -> SecretRefEvent {
-        match self {
-            Self::InvalidGrant => SecretRefEvent::InvalidGrant,
-            Self::Unknown => SecretRefEvent::ResponseUnknown,
-            Self::Unauthorized
-            | Self::Conflict
-            | Self::Timeout
-            | Self::Unavailable
-            | Self::Sealed
-            | Self::StaleFence
-            | Self::SchemaInvalid => SecretRefEvent::TransientFailure,
+        match self.outcome() {
+            SecretRefOutcome::Succeeded => unreachable!("provider errors cannot be success"),
+            SecretRefOutcome::Quarantined => SecretRefEvent::InvalidGrant,
+            SecretRefOutcome::TransientFailure => SecretRefEvent::TransientFailure,
+            SecretRefOutcome::Indeterminate => SecretRefEvent::ResponseUnknown,
         }
     }
 }
 
-impl SecretBackendError {
-    fn provider_error(self) -> ProviderAdapterError {
-        match self {
-            // A missing reference cannot prove a successful rotation.  Keep
-            // it in the bounded unavailable class rather than inventing a
-            // terminal invalid-grant result.
-            Self::NotFound => ProviderAdapterError::Unavailable,
-            Self::Unauthorized => ProviderAdapterError::Unauthorized,
-            Self::Timeout => ProviderAdapterError::Timeout,
-            Self::Unavailable => ProviderAdapterError::Unavailable,
-            Self::Sealed => ProviderAdapterError::Sealed,
-            Self::InvalidReference => ProviderAdapterError::SchemaInvalid,
-        }
-    }
-}
-
-/// Process-local secret material.  The underlying bytes are intentionally not
-/// serializable or printable and are zeroized when this value is dropped.
-/// Providers should use [`Self::with_bytes`] only for the duration of their
-/// synchronous call and must not retain or return the borrowed slice.
+/// Process-local secret material. The underlying bytes are not serializable or
+/// printable and are zeroized when this value is dropped.
 pub struct ProcessBoundSecret(Zeroizing<Vec<u8>>);
 
 impl ProcessBoundSecret {
-    /// Creates process-local material for a qualification backend.  A real
-    /// backend would construct this value directly after an in-place read.
     pub fn from_bytes(bytes: impl AsRef<[u8]>) -> Self {
         Self(Zeroizing::new(bytes.as_ref().to_vec()))
     }
 
-    /// Runs a provider operation against the borrowed bytes without exposing a
-    /// byte-bearing value in any B3 request/response type.
     pub fn with_bytes<T>(&self, operation: impl FnOnce(&[u8]) -> T) -> T {
         operation(self.0.as_slice())
     }
@@ -190,8 +191,7 @@ impl fmt::Debug for ProcessBoundSecret {
     }
 }
 
-/// Process-bound backend boundary.  Implementations must not persist or
-/// return the resolved bytes outside the returned zeroizing wrapper.
+/// Process-bound backend boundary.
 pub trait SecretRefBackend: Send + Sync {
     fn resolve(
         &self,
@@ -199,9 +199,7 @@ pub trait SecretRefBackend: Send + Sync {
     ) -> Result<ProcessBoundSecret, SecretBackendError>;
 }
 
-/// Provider boundary used by the local adapter.  The only raw bytes appear as
-/// a borrowed [`ProcessBoundSecret`] during the synchronous call.  Provider
-/// results contain opaque references and digests only.
+/// Provider boundary used by the local adapter.
 pub trait SecretRefProvider: Send + Sync {
     fn refresh(
         &self,
@@ -215,9 +213,6 @@ pub trait SecretRefProvider: Send + Sync {
         secret: &ProcessBoundSecret,
     ) -> Result<ProviderRotationResult, ProviderAdapterError>;
 
-    /// Provider-owned lookup by the durable operation key.  This is the
-    /// decode-only `StatusByEffectKey` alias from the registry; it is never a
-    /// dispatch operation and receives no secret material.
     fn status_by_operation_key(
         &self,
         request: &RefreshStatusByOperationKeyRequest,
@@ -231,8 +226,6 @@ pub trait SecretRefProvider: Send + Sync {
     }
 }
 
-/// Provider response for a refresh call.  It deliberately has no raw token or
-/// provider response-body field.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderRefreshResult {
     pub response_id: String,
@@ -243,7 +236,6 @@ pub struct ProviderRefreshResult {
     pub response_digest: Sha256Digest,
 }
 
-/// Provider response for a rotation call.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderRotationResult {
     pub response_id: String,
@@ -253,8 +245,6 @@ pub struct ProviderRotationResult {
     pub response_digest: Sha256Digest,
 }
 
-/// Provider-owned status lookup result.  The adapter adds the local evidence
-/// sentinel and computes the binding digest before exposing the response.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderStatusResult {
     pub response_id: String,
@@ -268,8 +258,7 @@ pub struct ProviderStatusResult {
     pub new_refresh_secret_ref: Option<OpaqueSecretRef>,
 }
 
-/// A deterministic in-memory backend used by qualification tests.  It is not
-/// a substitute for OpenBao and is never wired to a runtime listener.
+/// Deterministic in-memory backend used by qualification tests.
 #[derive(Default)]
 pub struct QualificationSecretBackend {
     entries: BTreeMap<String, (OpaqueSecretRef, Zeroizing<Vec<u8>>)>,
@@ -289,14 +278,13 @@ impl QualificationSecretBackend {
         if Sha256Digest::for_bytes(bytes) != secret_ref.secret_digest {
             return Err(SecretBackendError::InvalidReference);
         }
-        self.entries.insert(
-            secret_ref
-                .digest()
-                .map_err(|_| SecretBackendError::InvalidReference)?
-                .as_str()
-                .to_string(),
-            (secret_ref, Zeroizing::new(bytes.to_vec())),
-        );
+        let key = secret_ref
+            .digest()
+            .map_err(|_| SecretBackendError::InvalidReference)?
+            .as_str()
+            .to_string();
+        self.entries
+            .insert(key, (secret_ref, Zeroizing::new(bytes.to_vec())));
         Ok(())
     }
 
@@ -335,8 +323,6 @@ impl SecretRefBackend for QualificationSecretBackend {
     }
 }
 
-/// Errors returned by the qualification adapter.  A binding or provider
-/// error is reported without carrying provider bytes or headers.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum B3AdapterError {
     InvalidRequest(String),
@@ -346,6 +332,11 @@ pub enum B3AdapterError {
     Conflict,
     SingleflightConflict,
     ReconcileRequired,
+    RetryRequired,
+    RetryNotAllowed,
+    RetryBudgetExhausted,
+    ManualEvidenceRequired,
+    StatusRevisionConflict,
     OperationNotFound,
     AlreadyTerminal,
     InvalidState(String),
@@ -365,7 +356,20 @@ impl fmt::Display for B3AdapterError {
                 formatter.write_str("B3 token-family singleflight conflict")
             }
             Self::ReconcileRequired => {
-                formatter.write_str("B3 operation requires status reconciliation")
+                formatter.write_str("B3 operation requires lookup-only reconciliation")
+            }
+            Self::RetryRequired => {
+                formatter.write_str("B3 operation requires explicit retry, not status lookup")
+            }
+            Self::RetryNotAllowed => formatter.write_str("B3 retry is not allowed in this state"),
+            Self::RetryBudgetExhausted => {
+                formatter.write_str("B3 retry budget is exhausted; manual evidence is required")
+            }
+            Self::ManualEvidenceRequired => {
+                formatter.write_str("B3 operation requires explicit manual evidence")
+            }
+            Self::StatusRevisionConflict => {
+                formatter.write_str("B3 status observation is stale or conflicting")
             }
             Self::OperationNotFound => formatter.write_str("B3 operation was not found"),
             Self::AlreadyTerminal => formatter.write_str("B3 operation is already terminal"),
@@ -383,21 +387,30 @@ enum OperationKind {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+enum StoredRequest {
+    Refresh(RefreshWithSecretRefRequest),
+    Rotate(RotateSecretRefRequest),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum StoredResponse {
     Refresh(RefreshWithSecretRefResponse),
     Rotate(RotateSecretRefResponse),
 }
 
+#[derive(Clone)]
 struct OperationEntry {
     request_digest: Sha256Digest,
     claim_key: String,
     kind: OperationKind,
+    request: StoredRequest,
     record: SecretRefOperationRecord,
     response: Option<StoredResponse>,
+    last_status_revision: Option<u64>,
 }
 
-/// Local process-bound adapter.  The map is intentionally in-memory and is
-/// only a qualification witness; it is not the AuthBus durable writer.
+/// Local process-bound adapter. All state remains in memory and carries no
+/// production or durability authority.
 pub struct ProcessBoundSecretRefAdapter<B, P> {
     backend: B,
     provider: P,
@@ -406,30 +419,86 @@ pub struct ProcessBoundSecretRefAdapter<B, P> {
     claims: BTreeMap<String, String>,
 }
 
-trait RequestRecordSource {
+trait AdapterRequest: Clone {
+    fn kind(&self) -> OperationKind;
+    fn operation_id(&self) -> &str;
+    fn provider_id(&self) -> &str;
+    fn profile_id(&self) -> &str;
+    fn token_family_id(&self) -> &str;
+    fn digest_for_adapter(&self) -> Result<Sha256Digest, AuthBusContractError>;
     fn operation_record(
         &self,
         retry_budget: u32,
     ) -> Result<SecretRefOperationRecord, AuthBusContractError>;
+    fn stored_request(&self) -> StoredRequest;
 }
 
-impl RequestRecordSource for RefreshWithSecretRefRequest {
+impl AdapterRequest for RefreshWithSecretRefRequest {
+    fn kind(&self) -> OperationKind {
+        OperationKind::Refresh
+    }
+
+    fn operation_id(&self) -> &str {
+        self.operation_id.as_str()
+    }
+
+    fn provider_id(&self) -> &str {
+        self.provider_id.as_str()
+    }
+
+    fn profile_id(&self) -> &str {
+        self.profile_id.as_str()
+    }
+
+    fn token_family_id(&self) -> &str {
+        self.token_family_id.as_str()
+    }
+
+    fn digest_for_adapter(&self) -> Result<Sha256Digest, AuthBusContractError> {
+        self.digest()
+    }
+
     fn operation_record(
         &self,
         retry_budget: u32,
     ) -> Result<SecretRefOperationRecord, AuthBusContractError> {
         SecretRefOperationRecord::from_refresh_request(self, retry_budget)
     }
+
+    fn stored_request(&self) -> StoredRequest {
+        StoredRequest::Refresh(self.clone())
+    }
 }
 
-impl RequestRecordSource for RotateSecretRefRequest {
+impl AdapterRequest for RotateSecretRefRequest {
+    fn kind(&self) -> OperationKind {
+        OperationKind::Rotate
+    }
+
+    fn operation_id(&self) -> &str {
+        self.operation_id.as_str()
+    }
+
+    fn provider_id(&self) -> &str {
+        self.provider_id.as_str()
+    }
+
+    fn profile_id(&self) -> &str {
+        self.profile_id.as_str()
+    }
+
+    fn token_family_id(&self) -> &str {
+        self.token_family_id.as_str()
+    }
+
+    fn digest_for_adapter(&self) -> Result<Sha256Digest, AuthBusContractError> {
+        self.digest()
+    }
+
     fn operation_record(
         &self,
         retry_budget: u32,
     ) -> Result<SecretRefOperationRecord, AuthBusContractError> {
-        // Rotation has the same identity/fence shape as refresh.  Convert
-        // only the contract fields needed by the local operation record; no
-        // secret bytes are copied or retained.
         let refresh = RefreshWithSecretRefRequest {
             schema_version: self.schema_version,
             operation_id: self.operation_id.clone(),
@@ -456,6 +525,10 @@ impl RequestRecordSource for RotateSecretRefRequest {
             audience: self.audience.clone(),
         };
         SecretRefOperationRecord::from_refresh_request(&refresh, retry_budget)
+    }
+
+    fn stored_request(&self) -> StoredRequest {
+        StoredRequest::Rotate(self.clone())
     }
 }
 
@@ -500,13 +573,18 @@ where
             .map(|entry| entry.record.state)
     }
 
+    pub fn operation_attempt(&self, operation_id: &str) -> Option<u32> {
+        self.operations
+            .get(operation_id)
+            .map(|entry| entry.record.attempt)
+    }
+
     pub fn operation_count(&self) -> usize {
         self.operations.len()
     }
 
-    /// Execute one refresh.  A repeated operation key replays a recorded
-    /// response and never calls the provider a second time.  Non-terminal
-    /// operations must use [`Self::status_by_operation_key`] instead.
+    /// Initial refresh. Repeated calls replay the current recorded result and
+    /// never turn a non-terminal observation into an implicit retry.
     pub fn refresh(
         &mut self,
         request: RefreshWithSecretRefRequest,
@@ -514,50 +592,28 @@ where
         request
             .validate()
             .map_err(|error| B3AdapterError::InvalidRequest(error.to_string()))?;
-        let request_digest = request
-            .digest()
-            .map_err(|error| B3AdapterError::InvalidRequest(error.to_string()))?;
-        if let Some(replay) = self.begin_or_replay(
-            request.operation_id.as_str(),
-            request.provider_id.as_str(),
-            request.profile_id.as_str(),
-            request.token_family_id.as_str(),
-            OperationKind::Refresh,
-            request_digest,
-            &request,
-        )? {
+        if let Some(replay) = self.begin_or_replay(&request)? {
             return match replay {
                 StoredResponse::Refresh(response) => Ok(response),
                 StoredResponse::Rotate(_) => Err(B3AdapterError::Conflict),
             };
         }
-
-        let provider_result = {
-            let backend = &self.backend;
-            let provider = &self.provider;
-            backend
-                .resolve(&request.secret_ref)
-                .map_err(B3AdapterError::Backend)
-                .and_then(|secret| {
-                    let result = provider.refresh(&request, &secret);
-                    // `secret` is dropped here, before any response is
-                    // persisted or returned to the caller.
-                    result.map_err(B3AdapterError::Provider)
-                })
-        };
-
-        match provider_result {
-            Ok(result) => self.finish_refresh(&request, result),
-            Err(B3AdapterError::Backend(error)) => {
-                self.finish_refresh_error(&request, error.provider_error())
-            }
-            Err(B3AdapterError::Provider(error)) => self.finish_refresh_error(&request, error),
-            Err(error) => Err(error),
-        }
+        self.call_refresh(&request)
     }
 
-    /// Execute one refresh-token rotation with the same process-bound and
-    /// singleflight rules as [`Self::refresh`].
+    /// Explicit retry after a verified transient failure or a completed status
+    /// lookup has moved the operation to backoff.
+    pub fn retry_refresh(
+        &mut self,
+        request: RefreshWithSecretRefRequest,
+    ) -> Result<RefreshWithSecretRefResponse, B3AdapterError> {
+        request
+            .validate()
+            .map_err(|error| B3AdapterError::InvalidRequest(error.to_string()))?;
+        self.prepare_retry(&request)?;
+        self.call_refresh(&request)
+    }
+
     pub fn rotate(
         &mut self,
         request: RotateSecretRefRequest,
@@ -565,48 +621,29 @@ where
         request
             .validate()
             .map_err(|error| B3AdapterError::InvalidRequest(error.to_string()))?;
-        let request_digest = request
-            .digest()
-            .map_err(|error| B3AdapterError::InvalidRequest(error.to_string()))?;
-        if let Some(replay) = self.begin_or_replay(
-            request.operation_id.as_str(),
-            request.provider_id.as_str(),
-            request.profile_id.as_str(),
-            request.token_family_id.as_str(),
-            OperationKind::Rotate,
-            request_digest,
-            &request,
-        )? {
+        if let Some(replay) = self.begin_or_replay(&request)? {
             return match replay {
                 StoredResponse::Rotate(response) => Ok(response),
                 StoredResponse::Refresh(_) => Err(B3AdapterError::Conflict),
             };
         }
-
-        let provider_result = {
-            let backend = &self.backend;
-            let provider = &self.provider;
-            backend
-                .resolve(&request.secret_ref)
-                .map_err(B3AdapterError::Backend)
-                .and_then(|secret| {
-                    let result = provider.rotate(&request, &secret);
-                    result.map_err(B3AdapterError::Provider)
-                })
-        };
-
-        match provider_result {
-            Ok(result) => self.finish_rotate(&request, result),
-            Err(B3AdapterError::Backend(error)) => {
-                self.finish_rotate_error(&request, error.provider_error())
-            }
-            Err(B3AdapterError::Provider(error)) => self.finish_rotate_error(&request, error),
-            Err(error) => Err(error),
-        }
+        self.call_rotate(&request)
     }
 
-    /// Perform a provider-owned lookup by operation key.  No secret is
-    /// resolved and no dispatch method is reachable from this path.
+    pub fn retry_rotate(
+        &mut self,
+        request: RotateSecretRefRequest,
+    ) -> Result<RotateSecretRefResponse, B3AdapterError> {
+        request
+            .validate()
+            .map_err(|error| B3AdapterError::InvalidRequest(error.to_string()))?;
+        self.prepare_retry(&request)?;
+        self.call_rotate(&request)
+    }
+
+    /// Lookup-only reconciliation. It is accepted only for indeterminate or
+    /// already-reconciling operations. Transient failures use the explicit
+    /// retry methods; manual holds require a separate evidence ceremony.
     pub fn status_by_operation_key(
         &mut self,
         request: RefreshStatusByOperationKeyRequest,
@@ -614,24 +651,30 @@ where
         request
             .validate()
             .map_err(|error| B3AdapterError::InvalidRequest(error.to_string()))?;
-        let operation = self
-            .operations
-            .get(request.operation_id.as_str())
-            .ok_or(B3AdapterError::OperationNotFound)?;
-        if operation.record.refresh_operation_key != request.refresh_operation_key
-            || operation.record.provider_id != request.provider_id
-            || operation.record.profile_id != request.profile_id
-            || operation.record.token_family_id != request.token_family_id
-            || operation.record.expected_secret_revision != request.expected_secret_revision
-            || operation.record.authority_epoch != request.authority_epoch
-            || operation.record.owner_epoch != request.owner_epoch
-            || operation.record.generation != request.generation
-            || operation.record.fencing_token != request.fencing_token
-        {
-            return Err(B3AdapterError::Conflict);
-        }
-        if operation.record.state.is_terminal() {
-            return Err(B3AdapterError::AlreadyTerminal);
+
+        let state = {
+            let entry = self
+                .operations
+                .get(request.operation_id.as_str())
+                .ok_or(B3AdapterError::OperationNotFound)?;
+            Self::validate_status_request(entry, &request)?;
+            entry.record.state
+        };
+
+        match state {
+            SecretRefState::Succeeded | SecretRefState::Quarantined => {
+                return Err(B3AdapterError::AlreadyTerminal);
+            }
+            SecretRefState::Indeterminate | SecretRefState::Reconciling => {}
+            SecretRefState::TransientFailure | SecretRefState::Backoff => {
+                return Err(B3AdapterError::RetryRequired);
+            }
+            SecretRefState::ManualRequired => {
+                return Err(B3AdapterError::ManualEvidenceRequired);
+            }
+            SecretRefState::Idle | SecretRefState::Claimed | SecretRefState::InFlight => {
+                return Err(B3AdapterError::ReconcileRequired);
+            }
         }
 
         let provider_result = self
@@ -639,11 +682,27 @@ where
             .status_by_effect_key(&request)
             .map_err(B3AdapterError::Provider)?;
         let response = self.build_status_response(&request, provider_result)?;
+        self.validate_status_progress(request.operation_id.as_str(), &response)?;
+
+        let reconciled_replay = if response.outcome.is_terminal() {
+            Some(self.build_reconciled_replay(request.operation_id.as_str(), &response)?)
+        } else {
+            None
+        };
+
         self.apply_status_transition(&request, response.outcome)?;
+
+        let entry = self
+            .operations
+            .get_mut(request.operation_id.as_str())
+            .ok_or(B3AdapterError::OperationNotFound)?;
+        entry.last_status_revision = Some(response.status_revision);
+        if let Some(replay) = reconciled_replay {
+            entry.response = Some(replay);
+        }
         Ok(response)
     }
 
-    /// Registry alias for [`Self::status_by_operation_key`].
     pub fn status_by_effect_key(
         &mut self,
         request: RefreshStatusByOperationKeyRequest,
@@ -651,22 +710,15 @@ where
         self.status_by_operation_key(request)
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn begin_or_replay<R>(
-        &mut self,
-        operation_id: &str,
-        provider_id: &str,
-        profile_id: &str,
-        token_family_id: &str,
-        kind: OperationKind,
-        request_digest: Sha256Digest,
-        request: &R,
-    ) -> Result<Option<StoredResponse>, B3AdapterError>
+    fn begin_or_replay<R>(&mut self, request: &R) -> Result<Option<StoredResponse>, B3AdapterError>
     where
-        R: RequestRecordSource,
+        R: AdapterRequest,
     {
-        if let Some(existing) = self.operations.get(operation_id) {
-            if existing.kind != kind || existing.request_digest != request_digest {
+        let request_digest = request
+            .digest_for_adapter()
+            .map_err(|error| B3AdapterError::InvalidRequest(error.to_string()))?;
+        if let Some(existing) = self.operations.get(request.operation_id()) {
+            if existing.kind != request.kind() || existing.request_digest != request_digest {
                 return Err(B3AdapterError::Conflict);
             }
             return existing
@@ -675,9 +727,14 @@ where
                 .map(Some)
                 .ok_or(B3AdapterError::ReconcileRequired);
         }
-        let claim_key = format!("{provider_id}:{profile_id}:{token_family_id}");
+
+        let claim_key = claim_key(
+            request.provider_id(),
+            request.profile_id(),
+            request.token_family_id(),
+        );
         if let Some(existing_operation) = self.claims.get(&claim_key)
-            && existing_operation != operation_id
+            && existing_operation != request.operation_id()
         {
             return Err(B3AdapterError::SingleflightConflict);
         }
@@ -691,21 +748,113 @@ where
         record
             .transition(SecretRefEvent::Dispatch)
             .map_err(|error| B3AdapterError::InvalidState(error.to_string()))?;
-        // Insertion happens before resolve/provider call.  This is the local
-        // witness for operation-key-before-call ordering; it is not a durable
-        // fsync and therefore cannot be used as production authority.
+
         self.operations.insert(
-            operation_id.to_string(),
+            request.operation_id().to_string(),
             OperationEntry {
                 request_digest,
                 claim_key: claim_key.clone(),
-                kind,
+                kind: request.kind(),
+                request: request.stored_request(),
                 record,
                 response: None,
+                last_status_revision: None,
             },
         );
-        self.claims.insert(claim_key, operation_id.to_string());
+        self.claims
+            .insert(claim_key, request.operation_id().to_string());
         Ok(None)
+    }
+
+    fn prepare_retry<R>(&mut self, request: &R) -> Result<(), B3AdapterError>
+    where
+        R: AdapterRequest,
+    {
+        let request_digest = request
+            .digest_for_adapter()
+            .map_err(|error| B3AdapterError::InvalidRequest(error.to_string()))?;
+        let entry = self
+            .operations
+            .get_mut(request.operation_id())
+            .ok_or(B3AdapterError::OperationNotFound)?;
+        if entry.kind != request.kind() || entry.request_digest != request_digest {
+            return Err(B3AdapterError::Conflict);
+        }
+
+        match entry.record.state {
+            SecretRefState::Succeeded | SecretRefState::Quarantined => {
+                return Err(B3AdapterError::AlreadyTerminal);
+            }
+            SecretRefState::Indeterminate | SecretRefState::Reconciling => {
+                return Err(B3AdapterError::ReconcileRequired);
+            }
+            SecretRefState::ManualRequired => {
+                return Err(B3AdapterError::RetryBudgetExhausted);
+            }
+            SecretRefState::TransientFailure | SecretRefState::Backoff => {}
+            SecretRefState::Idle | SecretRefState::Claimed | SecretRefState::InFlight => {
+                return Err(B3AdapterError::RetryNotAllowed);
+            }
+        }
+
+        if !retry_available(&entry.record) {
+            if entry.record.state == SecretRefState::TransientFailure {
+                entry
+                    .record
+                    .transition(SecretRefEvent::RetryBudgetExhausted)
+                    .map_err(|error| B3AdapterError::InvalidState(error.to_string()))?;
+            }
+            return Err(B3AdapterError::RetryBudgetExhausted);
+        }
+
+        if entry.record.state == SecretRefState::TransientFailure {
+            entry
+                .record
+                .transition(SecretRefEvent::RetryScheduled)
+                .map_err(|error| B3AdapterError::InvalidState(error.to_string()))?;
+        }
+        entry
+            .record
+            .transition(SecretRefEvent::ClaimAgain)
+            .map_err(|error| B3AdapterError::InvalidState(error.to_string()))?;
+        entry
+            .record
+            .transition(SecretRefEvent::Dispatch)
+            .map_err(|error| B3AdapterError::InvalidState(error.to_string()))?;
+        entry.response = None;
+        Ok(())
+    }
+
+    fn call_refresh(
+        &mut self,
+        request: &RefreshWithSecretRefRequest,
+    ) -> Result<RefreshWithSecretRefResponse, B3AdapterError> {
+        let secret = match self.backend.resolve(&request.secret_ref) {
+            Ok(secret) => secret,
+            Err(error) => return self.finish_refresh_backend_error(request, error),
+        };
+        let result = self.provider.refresh(request, &secret);
+        drop(secret);
+        match result {
+            Ok(result) => self.finish_refresh(request, result),
+            Err(error) => self.finish_refresh_provider_error(request, error),
+        }
+    }
+
+    fn call_rotate(
+        &mut self,
+        request: &RotateSecretRefRequest,
+    ) -> Result<RotateSecretRefResponse, B3AdapterError> {
+        let secret = match self.backend.resolve(&request.secret_ref) {
+            Ok(secret) => secret,
+            Err(error) => return self.finish_rotate_backend_error(request, error),
+        };
+        let result = self.provider.rotate(request, &secret);
+        drop(secret);
+        match result {
+            Ok(result) => self.finish_rotate(request, result),
+            Err(error) => self.finish_rotate_provider_error(request, error),
+        }
     }
 
     fn finish_refresh(
@@ -722,12 +871,16 @@ where
             profile_id: request.profile_id.clone(),
             token_family_id: request.token_family_id.clone(),
             outcome,
-            access_secret_ref: (outcome == SecretRefOutcome::Succeeded)
-                .then_some(result.access_secret_ref)
-                .flatten(),
-            refresh_secret_ref: (outcome == SecretRefOutcome::Succeeded)
-                .then_some(result.refresh_secret_ref)
-                .flatten(),
+            access_secret_ref: if outcome == SecretRefOutcome::Succeeded {
+                result.access_secret_ref
+            } else {
+                None
+            },
+            refresh_secret_ref: if outcome == SecretRefOutcome::Succeeded {
+                result.refresh_secret_ref
+            } else {
+                None
+            },
             secret_revision: result.secret_revision,
             refresh_operation_key: request.refresh_operation_key.clone(),
             provider_status: result.provider_status,
@@ -744,55 +897,67 @@ where
             self.mark_response_unknown(request.operation_id.as_str())?;
             return Err(B3AdapterError::ProviderResponseInvalid(error.to_string()));
         }
-        self.apply_event(
-            request.operation_id.as_str(),
+        self.finish_refresh_response(request, response)
+    }
+
+    fn finish_refresh_backend_error(
+        &mut self,
+        request: &RefreshWithSecretRefRequest,
+        error: SecretBackendError,
+    ) -> Result<RefreshWithSecretRefResponse, B3AdapterError> {
+        let response = local_refresh_error_response(
             request,
-            event_for_outcome(outcome),
-        )?;
-        self.store_response(
+            error.outcome(),
+            error.status(),
+            "backend-error",
+        );
+        response
+            .validate_against(request)
+            .map_err(|validation| B3AdapterError::ProviderResponseInvalid(validation.to_string()))?;
+        self.apply_event(request.operation_id.as_str(), request, error.event())?;
+        self.mark_retry_exhausted_if_needed(request.operation_id.as_str())?;
+        self.set_response(
             request.operation_id.as_str(),
             StoredResponse::Refresh(response.clone()),
         )?;
         Ok(response)
     }
 
-    fn finish_refresh_error(
+    fn finish_refresh_provider_error(
         &mut self,
         request: &RefreshWithSecretRefRequest,
         error: ProviderAdapterError,
     ) -> Result<RefreshWithSecretRefResponse, B3AdapterError> {
-        let outcome = error.outcome();
-        let response = RefreshWithSecretRefResponse {
-            schema_version: request.schema_version,
-            response_id: local_response_id("refresh", request.operation_id.as_str()),
-            operation_id: request.operation_id.clone(),
-            provider_id: request.provider_id.clone(),
-            profile_id: request.profile_id.clone(),
-            token_family_id: request.token_family_id.clone(),
-            outcome,
-            access_secret_ref: None,
-            refresh_secret_ref: None,
-            secret_revision: None,
-            refresh_operation_key: request.refresh_operation_key.clone(),
-            provider_status: error.status(),
-            response_digest: local_response_digest(
-                "refresh-error",
-                request.operation_id.as_str(),
-                error.status(),
-            ),
-            idempotency_key: request.idempotency_key.clone(),
-            payload_digest: request.payload_digest.clone(),
-            expected_secret_revision: request.expected_secret_revision,
-            authority_epoch: request.authority_epoch,
-            owner_epoch: request.owner_epoch,
-            generation: request.generation,
-            fencing_token: request.fencing_token.clone(),
-        };
-        response.validate_against(request).map_err(|validation| {
-            B3AdapterError::ProviderResponseInvalid(validation.to_string())
-        })?;
+        let response = local_refresh_error_response(
+            request,
+            error.outcome(),
+            error.status(),
+            "provider-error",
+        );
+        response
+            .validate_against(request)
+            .map_err(|validation| B3AdapterError::ProviderResponseInvalid(validation.to_string()))?;
         self.apply_event(request.operation_id.as_str(), request, error.event())?;
-        self.store_response(
+        self.mark_retry_exhausted_if_needed(request.operation_id.as_str())?;
+        self.set_response(
+            request.operation_id.as_str(),
+            StoredResponse::Refresh(response.clone()),
+        )?;
+        Ok(response)
+    }
+
+    fn finish_refresh_response(
+        &mut self,
+        request: &RefreshWithSecretRefRequest,
+        response: RefreshWithSecretRefResponse,
+    ) -> Result<RefreshWithSecretRefResponse, B3AdapterError> {
+        self.apply_event(
+            request.operation_id.as_str(),
+            request,
+            event_for_outcome(response.outcome),
+        )?;
+        self.mark_retry_exhausted_if_needed(request.operation_id.as_str())?;
+        self.set_response(
             request.operation_id.as_str(),
             StoredResponse::Refresh(response.clone()),
         )?;
@@ -813,9 +978,11 @@ where
             profile_id: request.profile_id.clone(),
             token_family_id: request.token_family_id.clone(),
             outcome,
-            new_refresh_secret_ref: (outcome == SecretRefOutcome::Succeeded)
-                .then_some(result.new_refresh_secret_ref)
-                .flatten(),
+            new_refresh_secret_ref: if outcome == SecretRefOutcome::Succeeded {
+                result.new_refresh_secret_ref
+            } else {
+                None
+            },
             secret_revision: result.secret_revision,
             refresh_operation_key: request.refresh_operation_key.clone(),
             response_digest: result.response_digest,
@@ -831,53 +998,59 @@ where
             self.mark_response_unknown(request.operation_id.as_str())?;
             return Err(B3AdapterError::ProviderResponseInvalid(error.to_string()));
         }
-        self.apply_event(
-            request.operation_id.as_str(),
-            request,
-            event_for_outcome(outcome),
-        )?;
-        self.store_response(
+        self.finish_rotate_response(request, response)
+    }
+
+    fn finish_rotate_backend_error(
+        &mut self,
+        request: &RotateSecretRefRequest,
+        error: SecretBackendError,
+    ) -> Result<RotateSecretRefResponse, B3AdapterError> {
+        let response =
+            local_rotate_error_response(request, error.outcome(), error.status(), "backend-error");
+        response
+            .validate_against(request)
+            .map_err(|validation| B3AdapterError::ProviderResponseInvalid(validation.to_string()))?;
+        self.apply_event(request.operation_id.as_str(), request, error.event())?;
+        self.mark_retry_exhausted_if_needed(request.operation_id.as_str())?;
+        self.set_response(
             request.operation_id.as_str(),
             StoredResponse::Rotate(response.clone()),
         )?;
         Ok(response)
     }
 
-    fn finish_rotate_error(
+    fn finish_rotate_provider_error(
         &mut self,
         request: &RotateSecretRefRequest,
         error: ProviderAdapterError,
     ) -> Result<RotateSecretRefResponse, B3AdapterError> {
-        let outcome = error.outcome();
-        let response = RotateSecretRefResponse {
-            schema_version: request.schema_version,
-            response_id: local_response_id("rotate", request.operation_id.as_str()),
-            operation_id: request.operation_id.clone(),
-            provider_id: request.provider_id.clone(),
-            profile_id: request.profile_id.clone(),
-            token_family_id: request.token_family_id.clone(),
-            outcome,
-            new_refresh_secret_ref: None,
-            secret_revision: None,
-            refresh_operation_key: request.refresh_operation_key.clone(),
-            response_digest: local_response_digest(
-                "rotate-error",
-                request.operation_id.as_str(),
-                error.status(),
-            ),
-            idempotency_key: request.idempotency_key.clone(),
-            payload_digest: request.payload_digest.clone(),
-            expected_secret_revision: request.expected_secret_revision,
-            authority_epoch: request.authority_epoch,
-            owner_epoch: request.owner_epoch,
-            generation: request.generation,
-            fencing_token: request.fencing_token.clone(),
-        };
-        response.validate_against(request).map_err(|validation| {
-            B3AdapterError::ProviderResponseInvalid(validation.to_string())
-        })?;
+        let response =
+            local_rotate_error_response(request, error.outcome(), error.status(), "provider-error");
+        response
+            .validate_against(request)
+            .map_err(|validation| B3AdapterError::ProviderResponseInvalid(validation.to_string()))?;
         self.apply_event(request.operation_id.as_str(), request, error.event())?;
-        self.store_response(
+        self.mark_retry_exhausted_if_needed(request.operation_id.as_str())?;
+        self.set_response(
+            request.operation_id.as_str(),
+            StoredResponse::Rotate(response.clone()),
+        )?;
+        Ok(response)
+    }
+
+    fn finish_rotate_response(
+        &mut self,
+        request: &RotateSecretRefRequest,
+        response: RotateSecretRefResponse,
+    ) -> Result<RotateSecretRefResponse, B3AdapterError> {
+        self.apply_event(
+            request.operation_id.as_str(),
+            request,
+            event_for_outcome(response.outcome),
+        )?;
+        self.mark_retry_exhausted_if_needed(request.operation_id.as_str())?;
+        self.set_response(
             request.operation_id.as_str(),
             StoredResponse::Rotate(response.clone()),
         )?;
@@ -919,17 +1092,23 @@ where
             evidence_profile: "local-qualification-provider-status".to_string(),
             provider_query_receipt_digest: result.provider_query_receipt_digest,
             execution_mode: request.expected_execution_mode.clone(),
-            mode_attestation_digest: Sha256Digest::for_bytes(b"hepta-authbus-b3-local-status-mode"),
+            mode_attestation_digest: Sha256Digest::for_bytes(
+                b"hepta-authbus-b3-local-status-mode",
+            ),
             policy_digest: request.policy_digest.clone(),
             audience: request.audience.clone(),
             key_epoch: 0,
             issuer: "local-mode-registry".to_string(),
-            new_access_secret_ref: (outcome == SecretRefOutcome::Succeeded)
-                .then_some(result.new_access_secret_ref)
-                .flatten(),
-            new_refresh_secret_ref: (outcome == SecretRefOutcome::Succeeded)
-                .then_some(result.new_refresh_secret_ref)
-                .flatten(),
+            new_access_secret_ref: if outcome == SecretRefOutcome::Succeeded {
+                result.new_access_secret_ref
+            } else {
+                None
+            },
+            new_refresh_secret_ref: if outcome == SecretRefOutcome::Succeeded {
+                result.new_refresh_secret_ref
+            } else {
+                None
+            },
             signature: None,
             key_id: None,
             issued_at: None,
@@ -942,6 +1121,128 @@ where
             .validate_against(request)
             .map_err(|error| B3AdapterError::ProviderResponseInvalid(error.to_string()))?;
         Ok(response)
+    }
+
+    fn validate_status_request(
+        entry: &OperationEntry,
+        request: &RefreshStatusByOperationKeyRequest,
+    ) -> Result<(), B3AdapterError> {
+        if entry.record.refresh_operation_key != request.refresh_operation_key
+            || entry.record.provider_id != request.provider_id
+            || entry.record.profile_id != request.profile_id
+            || entry.record.token_family_id != request.token_family_id
+            || entry.record.expected_secret_revision != request.expected_secret_revision
+            || entry.record.authority_epoch != request.authority_epoch
+            || entry.record.owner_epoch != request.owner_epoch
+            || entry.record.generation != request.generation
+            || entry.record.fencing_token != request.fencing_token
+        {
+            return Err(B3AdapterError::Conflict);
+        }
+
+        let matches_request = match &entry.request {
+            StoredRequest::Refresh(original) => {
+                original.idempotency_key == request.idempotency_key
+                    && original.payload_digest == request.payload_digest
+                    && original.policy_digest == request.policy_digest
+                    && original.audience == request.audience
+            }
+            StoredRequest::Rotate(original) => {
+                original.idempotency_key == request.idempotency_key
+                    && original.payload_digest == request.payload_digest
+                    && original.policy_digest == request.policy_digest
+                    && original.audience == request.audience
+            }
+        };
+        if !matches_request {
+            return Err(B3AdapterError::Conflict);
+        }
+        Ok(())
+    }
+
+    fn validate_status_progress(
+        &self,
+        operation_id: &str,
+        response: &RefreshStatusByOperationKeyResponse,
+    ) -> Result<(), B3AdapterError> {
+        let entry = self
+            .operations
+            .get(operation_id)
+            .ok_or(B3AdapterError::OperationNotFound)?;
+        if entry
+            .last_status_revision
+            .is_some_and(|previous_revision| response.status_revision <= previous_revision)
+        {
+            return Err(B3AdapterError::StatusRevisionConflict);
+        }
+        Ok(())
+    }
+
+    fn build_reconciled_replay(
+        &self,
+        operation_id: &str,
+        status: &RefreshStatusByOperationKeyResponse,
+    ) -> Result<StoredResponse, B3AdapterError> {
+        let entry = self
+            .operations
+            .get(operation_id)
+            .ok_or(B3AdapterError::OperationNotFound)?;
+        match &entry.request {
+            StoredRequest::Refresh(request) => {
+                let response = RefreshWithSecretRefResponse {
+                    schema_version: request.schema_version,
+                    response_id: status.response_id.clone(),
+                    operation_id: request.operation_id.clone(),
+                    provider_id: request.provider_id.clone(),
+                    profile_id: request.profile_id.clone(),
+                    token_family_id: request.token_family_id.clone(),
+                    outcome: status.outcome,
+                    access_secret_ref: status.new_access_secret_ref.clone(),
+                    refresh_secret_ref: status.new_refresh_secret_ref.clone(),
+                    secret_revision: Some(status.secret_revision),
+                    refresh_operation_key: request.refresh_operation_key.clone(),
+                    provider_status: status.provider_status,
+                    response_digest: status.response_digest.clone(),
+                    idempotency_key: request.idempotency_key.clone(),
+                    payload_digest: request.payload_digest.clone(),
+                    expected_secret_revision: request.expected_secret_revision,
+                    authority_epoch: request.authority_epoch,
+                    owner_epoch: request.owner_epoch,
+                    generation: request.generation,
+                    fencing_token: request.fencing_token.clone(),
+                };
+                response.validate_against(request).map_err(|error| {
+                    B3AdapterError::ProviderResponseInvalid(error.to_string())
+                })?;
+                Ok(StoredResponse::Refresh(response))
+            }
+            StoredRequest::Rotate(request) => {
+                let response = RotateSecretRefResponse {
+                    schema_version: request.schema_version,
+                    response_id: status.response_id.clone(),
+                    operation_id: request.operation_id.clone(),
+                    provider_id: request.provider_id.clone(),
+                    profile_id: request.profile_id.clone(),
+                    token_family_id: request.token_family_id.clone(),
+                    outcome: status.outcome,
+                    new_refresh_secret_ref: status.new_refresh_secret_ref.clone(),
+                    secret_revision: Some(status.secret_revision),
+                    refresh_operation_key: request.refresh_operation_key.clone(),
+                    response_digest: status.response_digest.clone(),
+                    idempotency_key: request.idempotency_key.clone(),
+                    payload_digest: request.payload_digest.clone(),
+                    expected_secret_revision: request.expected_secret_revision,
+                    authority_epoch: request.authority_epoch,
+                    owner_epoch: request.owner_epoch,
+                    generation: request.generation,
+                    fencing_token: request.fencing_token.clone(),
+                };
+                response.validate_against(request).map_err(|error| {
+                    B3AdapterError::ProviderResponseInvalid(error.to_string())
+                })?;
+                Ok(StoredResponse::Rotate(response))
+            }
+        }
     }
 
     fn apply_status_transition(
@@ -960,20 +1261,27 @@ where
             .operations
             .get_mut(request.operation_id.as_str())
             .ok_or(B3AdapterError::OperationNotFound)?;
+
         if entry.record.state == SecretRefState::Indeterminate {
             entry
                 .record
                 .transition(SecretRefEvent::Lookup)
                 .map_err(|error| B3AdapterError::InvalidState(error.to_string()))?;
-        } else if entry.record.state == SecretRefState::ManualRequired {
-            entry
-                .record
-                .transition_with_fence(SecretRefEvent::ManualEvidenceSubmitted, &fence)
-                .map_err(|error| B3AdapterError::InvalidState(error.to_string()))?;
+        } else if entry.record.state != SecretRefState::Reconciling {
+            return Err(B3AdapterError::InvalidState(format!(
+                "status lookup cannot advance {:?}",
+                entry.record.state
+            )));
         }
+
         let event = match outcome {
             SecretRefOutcome::Succeeded => SecretRefEvent::LookupRotated,
             SecretRefOutcome::Quarantined => SecretRefEvent::LookupInvalidGrant,
+            SecretRefOutcome::TransientFailure | SecretRefOutcome::Indeterminate
+                if !retry_available(&entry.record) =>
+            {
+                SecretRefEvent::ManualRequired
+            }
             SecretRefOutcome::TransientFailure => SecretRefEvent::LookupTransientFailure,
             SecretRefOutcome::Indeterminate => SecretRefEvent::LookupRetryable,
         };
@@ -981,8 +1289,13 @@ where
             .record
             .transition_with_fence(event, &fence)
             .map_err(|error| B3AdapterError::InvalidState(error.to_string()))?;
-        if entry.record.state.is_terminal() {
-            self.claims.remove(&entry.claim_key);
+        let terminal_claim = entry
+            .record
+            .state
+            .is_terminal()
+            .then(|| entry.claim_key.clone());
+        if let Some(claim_key) = terminal_claim {
+            self.claims.remove(&claim_key);
         }
         Ok(())
     }
@@ -1011,8 +1324,32 @@ where
                 .transition(event)
                 .map_err(|error| B3AdapterError::InvalidState(error.to_string()))?;
         }
-        if entry.record.state.is_terminal() {
-            self.claims.remove(&entry.claim_key);
+        let terminal_claim = entry
+            .record
+            .state
+            .is_terminal()
+            .then(|| entry.claim_key.clone());
+        if let Some(claim_key) = terminal_claim {
+            self.claims.remove(&claim_key);
+        }
+        Ok(())
+    }
+
+    fn mark_retry_exhausted_if_needed(
+        &mut self,
+        operation_id: &str,
+    ) -> Result<(), B3AdapterError> {
+        let entry = self
+            .operations
+            .get_mut(operation_id)
+            .ok_or(B3AdapterError::OperationNotFound)?;
+        if entry.record.state == SecretRefState::TransientFailure
+            && !retry_available(&entry.record)
+        {
+            entry
+                .record
+                .transition(SecretRefEvent::RetryBudgetExhausted)
+                .map_err(|error| B3AdapterError::InvalidState(error.to_string()))?;
         }
         Ok(())
     }
@@ -1038,7 +1375,7 @@ where
         Ok(())
     }
 
-    fn store_response(
+    fn set_response(
         &mut self,
         operation_id: &str,
         response: StoredResponse,
@@ -1047,9 +1384,6 @@ where
             .operations
             .get_mut(operation_id)
             .ok_or(B3AdapterError::OperationNotFound)?;
-        if entry.response.is_some() {
-            return Err(B3AdapterError::Conflict);
-        }
         entry.response = Some(response);
         Ok(())
     }
@@ -1081,6 +1415,10 @@ impl RequestIdentity for RotateSecretRefRequest {
     }
 }
 
+fn retry_available(record: &SecretRefOperationRecord) -> bool {
+    record.attempt <= record.retry_budget
+}
+
 fn outcome_for_status(status: SecretProviderStatus) -> SecretRefOutcome {
     match status {
         SecretProviderStatus::Succeeded | SecretProviderStatus::Rotated => {
@@ -1107,6 +1445,81 @@ fn event_for_outcome(outcome: SecretRefOutcome) -> SecretRefEvent {
         SecretRefOutcome::Quarantined => SecretRefEvent::InvalidGrant,
         SecretRefOutcome::TransientFailure => SecretRefEvent::TransientFailure,
         SecretRefOutcome::Indeterminate => SecretRefEvent::ResponseUnknown,
+    }
+}
+
+fn claim_key(provider_id: &str, profile_id: &str, token_family_id: &str) -> String {
+    let mut bytes = Vec::new();
+    for value in [provider_id, profile_id, token_family_id] {
+        bytes.extend_from_slice(&(value.len() as u64).to_be_bytes());
+        bytes.extend_from_slice(value.as_bytes());
+    }
+    format!("claim:{}", Sha256Digest::for_bytes(&bytes).as_str())
+}
+
+fn local_refresh_error_response(
+    request: &RefreshWithSecretRefRequest,
+    outcome: SecretRefOutcome,
+    status: SecretProviderStatus,
+    source: &str,
+) -> RefreshWithSecretRefResponse {
+    RefreshWithSecretRefResponse {
+        schema_version: request.schema_version,
+        response_id: local_response_id(source, request.operation_id.as_str()),
+        operation_id: request.operation_id.clone(),
+        provider_id: request.provider_id.clone(),
+        profile_id: request.profile_id.clone(),
+        token_family_id: request.token_family_id.clone(),
+        outcome,
+        access_secret_ref: None,
+        refresh_secret_ref: None,
+        secret_revision: None,
+        refresh_operation_key: request.refresh_operation_key.clone(),
+        provider_status: status,
+        response_digest: local_response_digest(
+            source,
+            request.operation_id.as_str(),
+            status,
+        ),
+        idempotency_key: request.idempotency_key.clone(),
+        payload_digest: request.payload_digest.clone(),
+        expected_secret_revision: request.expected_secret_revision,
+        authority_epoch: request.authority_epoch,
+        owner_epoch: request.owner_epoch,
+        generation: request.generation,
+        fencing_token: request.fencing_token.clone(),
+    }
+}
+
+fn local_rotate_error_response(
+    request: &RotateSecretRefRequest,
+    outcome: SecretRefOutcome,
+    status: SecretProviderStatus,
+    source: &str,
+) -> RotateSecretRefResponse {
+    RotateSecretRefResponse {
+        schema_version: request.schema_version,
+        response_id: local_response_id(source, request.operation_id.as_str()),
+        operation_id: request.operation_id.clone(),
+        provider_id: request.provider_id.clone(),
+        profile_id: request.profile_id.clone(),
+        token_family_id: request.token_family_id.clone(),
+        outcome,
+        new_refresh_secret_ref: None,
+        secret_revision: None,
+        refresh_operation_key: request.refresh_operation_key.clone(),
+        response_digest: local_response_digest(
+            source,
+            request.operation_id.as_str(),
+            status,
+        ),
+        idempotency_key: request.idempotency_key.clone(),
+        payload_digest: request.payload_digest.clone(),
+        expected_secret_revision: request.expected_secret_revision,
+        authority_epoch: request.authority_epoch,
+        owner_epoch: request.owner_epoch,
+        generation: request.generation,
+        fencing_token: request.fencing_token.clone(),
     }
 }
 
