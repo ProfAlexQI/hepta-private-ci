@@ -17,6 +17,7 @@ STATUS = DOCS / "HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V1.json"
 RECEIPT = DOCS / "HEPTA_INFERENCE_INF0C_SOURCE_RECEIPT_2026-08-28.json"
 WORKFLOW = ROOT / ".github/workflows/hepta-inference-inf0.yml"
 E2E = ROOT / "scripts/hepta-inference-inf0c-real-e2e.py"
+EVIDENCE_V2 = ROOT / "scripts/hepta-inference-inf0c-evidence-v2.py"
 BASE = "fe0889ecd46a5fc89de7b1ff3f28158c133a3502"
 BASE_TREE = "636341eb865b7c6d669958a96e7959de74fee020"
 BRANCH = "codex/hepta-inference-runtime-v2-20260828"
@@ -70,7 +71,7 @@ def candidate_head() -> str:
     parents = git("rev-list", "--parents", "-n", "1", "HEAD").split()
     need(len(parents) in (2, 3), "unexpected checkout parent shape")
     candidate = git("rev-parse", "HEAD^2") if len(parents) == 3 else git("rev-parse", "HEAD")
-    need(bool(git("merge-base", "--is-ancestor", candidate, "HEAD", check=False) == ""), "candidate ancestry check failed")
+    need(git("merge-base", "--is-ancestor", candidate, "HEAD", check=False) == "", "candidate ancestry check failed")
     return candidate
 
 
@@ -103,8 +104,12 @@ def main() -> int:
     need(matrix.get("overall_status") == status.get("status") == "SOURCE_PRESENT_NOT_RUN", "status drift")
     need(status.get("qualified") is False and receipt.get("qualified") is False, "qualified early")
     stages = {item.get("id"): item for item in matrix.get("stages", []) if isinstance(item, dict)}
-    need(stages.get("INF-0C", {}).get("source_complete") is True, "INF-0C source incomplete")
-    need(stages.get("INF-0C", {}).get("real_software_e2e_executed") is False, "E2E claimed early")
+    inf0c = stages.get("INF-0C", {})
+    need(inf0c.get("source_complete") is True, "INF-0C source incomplete")
+    need(inf0c.get("real_software_e2e_executed") is False, "E2E claimed early")
+    need(inf0c.get("transport_disconnect_harness_source_complete") is True, "disconnect harness source incomplete")
+    need(inf0c.get("controlled_restart_harness_source_complete") is True, "restart harness source incomplete")
+    need(inf0c.get("backend_cancellation_acknowledged") is False, "backend cancellation acknowledged early")
     need(stages.get("INF-1", {}).get("status") == "NOT_STARTED", "INF-1 activated early")
     implemented = status.get("implemented", {})
     for flag in (
@@ -113,7 +118,9 @@ def main() -> int:
         "lmstudio_cli_sha256_provenance", "lmstudio_sanitized_subprocess_environment",
         "responses_proxy_digest_only_dump", "responses_proxy_atomic_file_reservation",
         "local_provider_loopback_only", "local_provider_direct_no_proxy_no_redirect",
-        "real_software_e2e_harness", "control_response_body_bound",
+        "real_software_e2e_harness", "real_e2e_transport_disconnect_harness",
+        "real_e2e_controlled_restart_harness", "real_e2e_trusted_control_helper",
+        "control_response_body_bound",
     ):
         need(implemented.get(flag) is True, f"implemented flag false: {flag}")
     for flag in ("hepta_inferd", "native_worker", "real_model_e2e", "hardware_receipt"):
@@ -156,17 +163,27 @@ def main() -> int:
     for banned in ("body: Vec<u8>", "dump_body(", "String::from_utf8_lossy(body)"):
         need(banned not in proxy, f"proxy raw-body path: {banned}")
 
-    e2e, workflow = read(E2E), read(WORKFLOW)
+    e2e, evidence, workflow = read(E2E), read(EVIDENCE_V2), read(WORKFLOW)
     markers(e2e, (
         "urllib.request.ProxyHandler({})", "NoRedirect", "endpoint host is not loopback",
         "implicit_download", "raw_model_output_persisted", "cancellation_executed",
         "controlled_restart_executed", "--execute",
     ), "real E2E")
+    markers(evidence, (
+        "http.client", "transport_disconnect_executed", "backend_cancellation_acknowledged",
+        "HEPTA_INF0C_SERVICE_CONTROL_HELPER", "HEPTA_INF0C_SERVICE_CONTROL_HELPER_SHA256",
+        "parse_sha256_binding", "resolve_control_helper", "subprocess.run",
+        "stdout=subprocess.DEVNULL", "stderr=subprocess.DEVNULL", "shell=False",
+        "sanitized_helper_environment", "controlled_restart_executed",
+        "unavailable_observed", "raw_helper_output_persisted", "--self-test",
+    ), "evidence v2")
     for command in (
         "cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml",
         "cargo test --manifest-path tools/hepta-inference-inf0/Cargo.toml",
         "cargo clippy --manifest-path tools/hepta-inference-inf0/Cargo.toml",
         "-p codex-responses-api-proxy", "python3 scripts/hepta-inference-inf0c-real-e2e.py",
+        "python3 scripts/hepta-inference-inf0c-evidence-v2.py --self-test",
+        "--run-controlled-restart",
     ):
         need(command in workflow, f"workflow missing {command}")
 
