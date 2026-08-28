@@ -1,33 +1,41 @@
-name: hepta-intelligence-p1c2-semantic-close
+name: hepta-intelligence-p1c2-stack-close
 
 on:
   push:
     branches:
-      - "qualification/p1c2-fmt-close-v1-20260828"
+      - "qualification/p1c2-stack-v2"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: hepta-intelligence-p1c2-semantic-close
+  group: hepta-intelligence-p1c2-stack-close
   cancel-in-progress: true
 
 env:
   CARGO_NET_OFFLINE: "true"
-  QUALIFICATION_DRIVER_SHA: 6c7d621cbdeca30bd6f9aea1c32db2137beff2e3
+  SOURCE_SHA: c3c42f60e5ca11fd49fe5d4d2013c5b21e183619
 
 jobs:
   qualify:
-    name: P1.1c.2 final-label semantic closure preflight
-    runs-on: macos-latest
+    name: P1.1c.2 labels, references, and parent-stack closure
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
 
     steps:
-      - name: Checkout qualification trigger
+      - name: Checkout complete qualification ancestry
         uses: actions/checkout@v4
         with:
-          fetch-depth: 8
+          fetch-depth: 0
+
+      - name: Verify exact qualification driver ancestry
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          git cat-file -e "$SOURCE_SHA^{commit}"
+          test "$(git merge-base "$SOURCE_SHA" HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-list --count "$SOURCE_SHA"..HEAD)" = "3"
 
       - name: Install Rust 1.95.0
         uses: dtolnay/rust-toolchain@stable
@@ -35,22 +43,22 @@ jobs:
           toolchain: "1.95.0"
           components: rustfmt,clippy
 
-      - name: Execute exact fail-closed semantic closure
+      - name: Execute exact fail-closed stack closure
         env:
           RUNNER_NAME: ${{ runner.name }}
           RUNNER_OS: ${{ runner.os }}
           RUNNER_ARCH: ${{ runner.arch }}
         run: |
-          git checkout --detach "$QUALIFICATION_DRIVER_SHA"
+          set -euo pipefail
           cp scripts/qualification/run-hepta-intelligence-p1c2-fmt-close.sh \
-            "$RUNNER_TEMP/run-hepta-intelligence-p1c2-semantic-close.sh"
-          bash "$RUNNER_TEMP/run-hepta-intelligence-p1c2-semantic-close.sh"
+            "$RUNNER_TEMP/run-hepta-intelligence-p1c2-stack-close.sh"
+          bash "$RUNNER_TEMP/run-hepta-intelligence-p1c2-stack-close.sh"
 
-      - name: Upload semantic closure evidence
+      - name: Upload stack closure evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-intelligence-p1c2-semantic-close-${{ github.sha }}
-          path: artifacts/hepta-intelligence-p1-1c2-semantic-closure
+          name: hepta-intelligence-p1c2-stack-close-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1c2-stack-closure
           if-no-files-found: warn
           retention-days: 14
