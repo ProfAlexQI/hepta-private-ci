@@ -4,7 +4,10 @@ on:
   pull_request:
     paths:
       - "codex-rs/hepta-infer-core/**"
+      - "codex-rs/hepta-infer-client/**"
       - "codex-rs/hepta-inferd/**"
+      - "codex-rs/Cargo.toml"
+      - "codex-rs/Cargo.lock"
       - "docs/hepta-vnext/inference/**"
       - "scripts/hepta-inference-inf0-source-gate.py"
       - "scripts/hepta-inference-inf0c-cancel-reclassifier.py"
@@ -44,10 +47,10 @@ jobs:
             --receipt docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_RECEIPT_2026-08-29.json
 
   runtime-rust:
-    name: INF-1 and INF-2A exact-head Rust qualification
+    name: INF-1 through INF-5 exact-head Rust qualification
     needs: evidence-contract
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: codex-rs
@@ -61,15 +64,29 @@ jobs:
         with:
           components: rustfmt, clippy
       - name: Formatting
-        run: cargo fmt -p codex-hepta-infer-core -p codex-hepta-inferd -- --check
+        run: |
+          cargo fmt \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd -- --check
       - name: Locked check
-        run: cargo check --locked -p codex-hepta-infer-core -p codex-hepta-inferd --all-targets
+        run: |
+          cargo check --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
       - name: All-target tests
-        run: cargo test --locked -p codex-hepta-infer-core -p codex-hepta-inferd --all-targets
+        run: |
+          cargo test --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
       - name: Strict Clippy
         run: |
           cargo clippy --locked --all-targets --no-deps \
-            -p codex-hepta-infer-core -p codex-hepta-inferd -- -D warnings
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd -- -D warnings
 
   aggregate:
     name: Gap closure aggregate
@@ -87,4 +104,4 @@ jobs:
           set -euo pipefail
           test "$EVIDENCE" = success
           test "$RUST" = success
-          echo PASS_HEPTA_INFERENCE_GAP_CLOSURE_INF2A_SOURCE
+          echo PASS_HEPTA_INFERENCE_GAP_CLOSURE_INF1_THROUGH_INF5_SOURCE
