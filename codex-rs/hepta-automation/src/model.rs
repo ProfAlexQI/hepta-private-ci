@@ -278,9 +278,9 @@ impl AutomationLease {
         let command_bytes = u64::try_from(command.len()).map_err(|_| AutomationError::Invalid)?;
         if binding.operation_id.as_str() != expected_operation_id
             || binding.idempotency_key.as_str() != self.client_user_message_id
-            || &binding.source_owner_agent_id != &self.task.owner_agent_id
+            || binding.source_owner_agent_id != self.task.owner_agent_id
             || binding.source_component != ProductComponentId::AutomationRuntime
-            || &binding.destination_owner_agent_id != &self.task.owner_agent_id
+            || binding.destination_owner_agent_id != self.task.owner_agent_id
             || binding.destination_component != ProductComponentId::AppServer
             || binding.action != AuthorityAction::MutateAutomation
             || binding.generation != self.lease_generation
