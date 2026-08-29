@@ -1,9 +1,9 @@
-name: Hepta P0.7a deterministic materialization
+name: Hepta P0.7a deterministic materialization ARM
 
 on:
   push:
     branches:
-      - codex/hepta-architecture-v4-p0-7a-source-closure-20260830
+      - codex/hepta-architecture-v4-p0-7a-source-closure-arm-20260830
     paths:
       - .github/workflows/hepta-p0-7a-materialize.yml
 
@@ -11,19 +11,19 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-p0-7a-materialize-${{ github.ref }}
+  group: hepta-p0-7a-materialize-arm-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   materialize:
     name: Materialize committed locks and scoped format
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: codex/hepta-architecture-v4-p0-7a-source-closure-20260830
+          ref: codex/hepta-architecture-v4-p0-7a-source-closure-arm-20260830
           fetch-depth: 0
           persist-credentials: true
 
@@ -224,4 +224,4 @@ jobs:
             exit 0
           fi
           git commit -m 'fix(hepta): close deterministic P0.7a source gaps'
-          git push origin HEAD:codex/hepta-architecture-v4-p0-7a-source-closure-20260830
+          git push origin HEAD:codex/hepta-architecture-v4-p0-7a-source-closure-arm-20260830
