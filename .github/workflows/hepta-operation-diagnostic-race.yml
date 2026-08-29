@@ -1,0 +1,72 @@
+name: Hepta operation diagnostic runner race
+
+on:
+  push:
+    branches:
+      - codex/hepta-operation-diagnostic-v3-20260829
+
+permissions:
+  contents: read
+
+env:
+  TARGET_SOURCE: 312830e63a62e5c995762ce57e8e7a919344283f
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+
+jobs:
+  matrix-fault:
+    name: Matrix SQLITE_FULL (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-slim, ubuntu-24.04-arm, macos-15]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - run: python3 scripts/hepta-operation-safety-repair.py
+      - working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          rustfmt --edition 2024 --config skip_children=true \
+            hepta-matrix-store/src/operation.rs \
+            hepta-matrix-store/src/store.rs \
+            hepta-matrix-store/tests/sqlite_full.rs
+          cargo test --locked -p codex-hepta-matrix-store operation::tests -- --nocapture
+          cargo test --locked -p codex-hepta-matrix-store \
+            --features qualification-fault-injection --test sqlite_full -- --nocapture
+          cargo clippy --locked -p codex-hepta-matrix-store --all-targets \
+            --features qualification-fault-injection -- -D warnings
+
+  memory-runtime:
+    name: Memory Runtime (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-slim, ubuntu-24.04-arm, macos-15]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          rustfmt --edition 2024 --config skip_children=true \
+            hepta-memory-runtime/src/production_writer.rs
+          cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
+          cargo clippy --locked -p codex-hepta-memory-runtime --all-targets -- -D warnings
