@@ -14,8 +14,7 @@ use std::sync::Arc;
 use codex_hepta_infer_core::Digest;
 use codex_hepta_infer_core::RequestId;
 
-pub type AdapterFuture<'a, T> =
-    Pin<Box<dyn Future<Output = Result<T, AdapterError>> + Send + 'a>>;
+pub type AdapterFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, AdapterError>> + Send + 'a>>;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[repr(u8)]
@@ -219,9 +218,10 @@ impl AdapterRegistry {
     ) -> Result<(), AdapterError> {
         adapter.profile().validate()?;
         let key = adapter.profile().model_tuple_digest.clone();
-        if self.adapters.insert(key, adapter).is_some() {
+        if self.adapters.contains_key(&key) {
             return Err(AdapterError::DuplicateTuple);
         }
+        self.adapters.insert(key, adapter);
         Ok(())
     }
 
@@ -267,7 +267,9 @@ impl AdapterRegistry {
             return Err(AdapterError::StaleBackendGeneration);
         }
         if profile.capabilities.explicit_cancel != CapabilityStatus::Qualified {
-            return Err(AdapterError::CapabilityUnsupported(Capability::ExplicitCancel));
+            return Err(AdapterError::CapabilityUnsupported(
+                Capability::ExplicitCancel,
+            ));
         }
         let event = adapter
             .cancel(
@@ -295,10 +297,7 @@ impl AdapterRegistry {
     }
 }
 
-fn validate_health(
-    profile: &AdapterProfile,
-    health: &AdapterHealth,
-) -> Result<(), AdapterError> {
+fn validate_health(profile: &AdapterProfile, health: &AdapterHealth) -> Result<(), AdapterError> {
     if health.backend_id != profile.backend_id
         || health.model_tuple_digest != profile.model_tuple_digest
         || health.backend_generation != profile.backend_generation
@@ -668,14 +667,40 @@ mod tests {
         assert_eq!(event.kind, NormalizedEventKind::Cancelled);
     }
 
-    #[test]
-    fn unsafe_profiles_are_rejected() {
-        let mut profile = DeterministicAdapter::new(matrix(
+    #[tokio::test]
+    async fn duplicate_registration_preserves_original_adapter() {
+        let original = Arc::new(DeterministicAdapter::new(matrix(
             QUALIFIED,
             UNSUPPORTED,
             UNSUPPORTED,
-        ))
-        .profile;
+        )));
+        let replacement = Arc::new(DeterministicAdapter::new(matrix(
+            QUALIFIED,
+            UNSUPPORTED,
+            UNSUPPORTED,
+        )));
+        let mut registry = AdapterRegistry::default();
+        if let Err(error) = registry.register(original.clone()) {
+            panic!("unexpected registration error: {error}");
+        }
+        assert_eq!(
+            registry.register(replacement.clone()),
+            Err(AdapterError::DuplicateTuple)
+        );
+        if let Err(error) = registry
+            .execute(&request(QualificationFixture::SemanticHeptaOk))
+            .await
+        {
+            panic!("unexpected execution error: {error}");
+        }
+        assert_eq!(original.executions.load(Ordering::SeqCst), 1);
+        assert_eq!(replacement.executions.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn unsafe_profiles_are_rejected() {
+        let mut profile =
+            DeterministicAdapter::new(matrix(QUALIFIED, UNSUPPORTED, UNSUPPORTED)).profile;
         profile.remote_fallback = true;
         assert_eq!(profile.validate(), Err(AdapterError::UnsafeProfile));
         profile.remote_fallback = false;
