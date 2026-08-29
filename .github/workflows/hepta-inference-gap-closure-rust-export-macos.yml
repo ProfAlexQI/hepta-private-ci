@@ -1,0 +1,181 @@
+name: Hepta inference exact Rust gap-closure export macOS
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-gap-closure-scratch-check-20260829
+    paths:
+      - ".github/workflows/hepta-inference-gap-closure-rust-export-macos.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-gap-closure-rust-export-macos
+  cancel-in-progress: false
+
+jobs:
+  export:
+    name: Format, qualify, and export exact macOS candidate
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    env:
+      TARGET_HEAD: 83f675720bee198f7e2524a447ab1177fcb99ef6
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ env.TARGET_HEAD }}
+          fetch-depth: 0
+
+      - name: Verify exact target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_HEAD"
+          test -z "$(git status --porcelain)"
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply Rust 1.95 formatting
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
+          cargo fmt \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd -- --check
+
+      - name: Locked check
+        id: check
+        continue-on-error: true
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -o pipefail
+          cargo check --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd \
+            2>&1 | tee "$RUNNER_TEMP/cargo-check.log"
+
+      - name: All-target tests
+        id: test
+        continue-on-error: true
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -o pipefail
+          cargo test --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd \
+            2>&1 | tee "$RUNNER_TEMP/cargo-test.log"
+
+      - name: Strict Clippy
+        id: clippy
+        continue-on-error: true
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -o pipefail
+          cargo clippy --locked --all-targets --no-deps \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd -- -D warnings \
+            2>&1 | tee "$RUNNER_TEMP/cargo-clippy.log"
+
+      - name: Build exact source export
+        if: always()
+        shell: bash
+        env:
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+          TEST_OUTCOME: ${{ steps.test.outcome }}
+          CLIPPY_OUTCOME: ${{ steps.clippy.outcome }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/hepta-inference-gap-closure-rust-export"
+          mkdir -p "$root/files"
+          git diff --name-only > "$root/changed-files.txt"
+          git diff --binary > "$root/rustfmt.patch"
+          while IFS= read -r path; do
+            test -n "$path" || continue
+            mkdir -p "$root/files/$(dirname "$path")"
+            cp "$path" "$root/files/$path"
+          done < "$root/changed-files.txt"
+          cp "$RUNNER_TEMP"/cargo-*.log "$root/" 2>/dev/null || true
+          python3 - "$root" <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import subprocess
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          files_root = root / "files"
+          files = []
+          for path in sorted(p for p in files_root.rglob("*") if p.is_file()):
+              data = path.read_bytes()
+              files.append({
+                  "path": str(path.relative_to(files_root)),
+                  "bytes": len(data),
+                  "sha256": hashlib.sha256(data).hexdigest(),
+              })
+          manifest = {
+              "schema": "hepta.inference.gap-closure-rust-export.v1",
+              "target_head": os.environ["TARGET_HEAD"],
+              "target_tree": subprocess.check_output(
+                  ["git", "rev-parse", "HEAD^{tree}"], text=True
+              ).strip(),
+              "runner_os": os.environ.get("RUNNER_OS"),
+              "runner_arch": os.environ.get("RUNNER_ARCH"),
+              "rustc": subprocess.check_output(["rustc", "--version"], text=True).strip(),
+              "rustfmt": subprocess.check_output(["rustfmt", "--version"], text=True).strip(),
+              "check": os.environ["CHECK_OUTCOME"],
+              "test": os.environ["TEST_OUTCOME"],
+              "clippy": os.environ["CLIPPY_OUTCOME"],
+              "files": files,
+              "qualified": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "release": False,
+          }
+          (root / "manifest.json").write_text(
+              json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+          find "$root" -type f -print0 | sort -z | xargs -0 shasum -a 256 > "$root/SHA256SUMS"
+
+      - name: Upload exact export
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-gap-closure-rust-export-macos-${{ env.TARGET_HEAD }}
+          path: ${{ runner.temp }}/hepta-inference-gap-closure-rust-export
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce complete Rust qualification
+        if: always()
+        shell: bash
+        env:
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+          TEST_OUTCOME: ${{ steps.test.outcome }}
+          CLIPPY_OUTCOME: ${{ steps.clippy.outcome }}
+        run: |
+          set -euo pipefail
+          test "$CHECK_OUTCOME" = success
+          test "$TEST_OUTCOME" = success
+          test "$CLIPPY_OUTCOME" = success
+          echo PASS_HEPTA_INFERENCE_EXACT_RUST_EXPORT_MACOS
