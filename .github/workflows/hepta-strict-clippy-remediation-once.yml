@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
-      EXPECTED_PARENT: 75f5a44f4b3a6e4793fe3f8095dd1356a6e624ce
+      EXPECTED_PARENT: 41576972e063962db0d6cc6faffe81c1a4b6657c
       BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
       WORKFLOW_PATH: .github/workflows/hepta-strict-clippy-remediation-once.yml
     steps:
@@ -59,80 +59,90 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
+          def remove_struct_fields(
+              source: str,
+              struct_name: str,
+              fields: tuple[str, ...],
+          ) -> str:
+              marker = f"struct {struct_name} {{\n"
+              start = source.find(marker)
+              if start < 0:
+                  raise SystemExit(f"missing struct: {struct_name}")
+              end = source.find("}\n", start)
+              if end < 0:
+                  raise SystemExit(f"unterminated struct: {struct_name}")
+              end += 2
+              block = source[start:end]
+              seen = {field: 0 for field in fields}
+              kept: list[str] = []
+              for line in block.splitlines(keepends=True):
+                  stripped = line.strip()
+                  matched = next(
+                      (field for field in fields if stripped.startswith(field + ":")),
+                      None,
+                  )
+                  if matched is None:
+                      kept.append(line)
+                      continue
+                  seen[matched] += 1
+              if any(count != 1 for count in seen.values()):
+                  raise SystemExit(f"unexpected {struct_name} field counts: {seen}")
+              return source[:start] + "".join(kept) + source[end:]
+
+          def remove_initializer_fields(
+              source: str,
+              marker: str,
+              fields: tuple[str, ...],
+          ) -> str:
+              start = source.find(marker)
+              if start < 0:
+                  raise SystemExit(f"missing initializer: {marker.strip()}")
+              terminator = "\n        });"
+              end = source.find(terminator, start)
+              if end < 0:
+                  raise SystemExit(f"unterminated initializer: {marker.strip()}")
+              end += len(terminator)
+              block = source[start:end]
+              seen = {field: 0 for field in fields}
+              kept: list[str] = []
+              for line in block.splitlines(keepends=True):
+                  stripped = line.strip()
+                  matched = next(
+                      (field for field in fields if stripped == field + ","),
+                      None,
+                  )
+                  if matched is None:
+                      kept.append(line)
+                      continue
+                  seen[matched] += 1
+              if any(count != 1 for count in seen.values()):
+                  raise SystemExit(
+                      f"unexpected initializer field counts for {marker.strip()}: {seen}"
+                  )
+              return source[:start] + "".join(kept) + source[end:]
+
           memory = Path("codex-rs/hepta-memory/src/local_lease_outbox.rs")
           source = memory.read_text()
-          for old in (
-              "    sequence: u64,\n",
-              "    previous_sha256: Sha256Digest,\n",
-              "    event_sha256: Sha256Digest,\n",
-          ):
-              if old not in source:
-                  raise SystemExit(f"missing EventRow field: {old!r}")
-              source = source.replace(old, "", 1)
-          for old in (
-              "    sequence: u64,\n",
-              "    previous_sha256: Sha256Digest,\n",
-              "    outbox_sha256: Sha256Digest,\n",
-          ):
-              if old not in source:
-                  raise SystemExit(f"missing OutboxRow field: {old!r}")
-              source = source.replace(old, "", 1)
-
-          event_old = """        events.push(EventRow {
-                      sequence,
-                      event_id,
-                      occurrence_key,
-                      owner_agent_id: owner,
-                      generation,
-                      fencing_token,
-                      kind,
-                      payload_json,
-                      payload_sha256,
-                      previous_sha256,
-                      event_sha256,
-                  });"""
-          event_new = """        events.push(EventRow {
-                      event_id,
-                      occurrence_key,
-                      owner_agent_id: owner,
-                      generation,
-                      fencing_token,
-                      kind,
-                      payload_json,
-                      payload_sha256,
-                  });"""
-          if event_old not in source:
-              raise SystemExit("event initializer not found")
-          source = source.replace(event_old, event_new, 1)
-
-          outbox_old = """        outbox_rows.push(OutboxRow {
-                      sequence,
-                      outbox_id,
-                      event_id,
-                      occurrence_key,
-                      owner_agent_id: owner,
-                      generation,
-                      fencing_token,
-                      topic,
-                      payload_json,
-                      payload_sha256,
-                      previous_sha256,
-                      outbox_sha256,
-                  });"""
-          outbox_new = """        outbox_rows.push(OutboxRow {
-                      outbox_id,
-                      event_id,
-                      occurrence_key,
-                      owner_agent_id: owner,
-                      generation,
-                      fencing_token,
-                      topic,
-                      payload_json,
-                      payload_sha256,
-                  });"""
-          if outbox_old not in source:
-              raise SystemExit("outbox initializer not found")
-          source = source.replace(outbox_old, outbox_new, 1)
+          source = remove_struct_fields(
+              source,
+              "EventRow",
+              ("sequence", "previous_sha256", "event_sha256"),
+          )
+          source = remove_struct_fields(
+              source,
+              "OutboxRow",
+              ("sequence", "previous_sha256", "outbox_sha256"),
+          )
+          source = remove_initializer_fields(
+              source,
+              "        events.push(EventRow {\n",
+              ("sequence", "previous_sha256", "event_sha256"),
+          )
+          source = remove_initializer_fields(
+              source,
+              "        outbox_rows.push(OutboxRow {\n",
+              ("sequence", "previous_sha256", "outbox_sha256"),
+          )
           memory.write_text(source)
 
           agentd = Path("codex-rs/hepta-agentd/src/app_runtime.rs")
@@ -142,8 +152,10 @@ jobs:
               "pub(crate) fn app_server_runtime_options_for_agent(\n",
               "fn cognitive_write_for_authority(\n",
           ):
-              if signature not in source:
-                  raise SystemExit(f"missing helper signature: {signature!r}")
+              if source.count(signature) != 1:
+                  raise SystemExit(f"unexpected helper signature count: {signature!r}")
+              if "#[cfg(test)]\n" + signature in source:
+                  raise SystemExit(f"helper already test-only: {signature!r}")
               source = source.replace(signature, "#[cfg(test)]\n" + signature, 1)
           agentd.write_text(source)
           PY
@@ -215,7 +227,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo "schema=hepta_strict_clippy_remediation_once_v7"
+            echo "schema=hepta_strict_clippy_remediation_once_v8"
             echo "bootstrap_head=$GITHUB_SHA"
             echo "expected_parent=$EXPECTED_PARENT"
             echo "job_status=${{ job.status }}"
