@@ -3477,6 +3477,7 @@ dependencies = [
  "codex-hepta-fleet",
  "codex-hepta-memory",
  "codex-hepta-memory-extension",
+ "codex-hepta-memory-runtime",
  "codex-hepta-paths",
  "codex-hepta-supervisor",
  "codex-protocol",
@@ -3698,6 +3699,17 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "codex-hepta-memory-runtime"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-contracts",
+ "codex-hepta-memory",
+ "codex-hepta-paths",
  "tempfile",
  "tokio",
 ]
