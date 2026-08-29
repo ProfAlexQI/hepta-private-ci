@@ -1,0 +1,67 @@
+name: Hepta inference INF-1 clean qualification
+on:
+  push:
+    branches: [codex/hepta-inference-inf1-clean-qualification-20260829]
+    paths: [".github/workflows/hepta-inference-inf1-clean-qualification.yml"]
+permissions:
+  contents: read
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      RECEIPT: 1683f3a1a5aaba7c0d46ac60bcd73efd1be366ae
+      SOURCE: 715c48bcdf2a322da683f2bebb182d0856158930
+      SOURCE_TREE: 0cc6642544fe90b39cd09d06386a8302751a719f
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Verify clean append-only receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout --detach "$RECEIPT"
+          test "$(git rev-parse HEAD^)" = "$SOURCE"
+          test "$(git rev-parse "$SOURCE^{tree}")" = "$SOURCE_TREE"
+          test "$(git diff --name-only "$SOURCE" "$RECEIPT")" = \
+            "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_CLEAN_SOURCE_RECEIPT_2026-08-29.json"
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+      - name: Run exact clean source gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-source-gate.py
+          cd codex-rs
+          cargo fmt -p codex-hepta-infer-core -p codex-hepta-inferd -- --check
+          cargo check --locked -p codex-hepta-infer-core -p codex-hepta-inferd
+          cargo test --locked -p codex-hepta-infer-core
+          cargo test --locked -p codex-hepta-inferd -- --test-threads=1
+          cargo clippy --locked --all-targets --no-deps -p codex-hepta-infer-core -p codex-hepta-inferd -- -D warnings
+      - name: Record qualification
+        shell: bash
+        run: |
+          {
+            echo PASS_HEPTA_INFERENCE_INF1_CLEAN_QUALIFICATION
+            echo receipt=$RECEIPT
+            echo source=$SOURCE
+            echo source_tree=$SOURCE_TREE
+            echo core_tests=7_pass
+            echo daemon_tests=4_pass
+            echo strict_clippy=pass
+            echo source_qualified=true
+            echo runtime_activated=false
+            echo production_authority=false
+          } | tee "$RUNNER_TEMP/receipt.txt" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf1-clean-${{ env.RECEIPT }}
+          path: ${{ runner.temp }}/receipt.txt
+          if-no-files-found: error
+          retention-days: 14
