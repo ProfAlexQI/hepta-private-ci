@@ -16,6 +16,7 @@ on:
   push:
     branches:
       - "codex/hepta-architecture-v4-*"
+      - "codex/hepta-architecture-v5-*"
     paths:
       - "README.md"
       - "ARCHITECTURE.md"
@@ -60,11 +61,11 @@ jobs:
           set -euo pipefail
           python3 scripts/generate-hepta-architecture-projections.py --check
 
-      - name: Verify selected V4 plan and gap contracts
+      - name: Verify current selected plan and gap contracts
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/verify-hepta-architecture-plan-v4.py
+          python3 scripts/verify-hepta-selected-architecture-plan.py
 
       - name: Verify inherited source contracts
         shell: bash
@@ -101,7 +102,9 @@ jobs:
           set -euo pipefail
           python3 -m py_compile \
             scripts/generate-hepta-architecture-projections.py \
+            scripts/verify-hepta-selected-architecture-plan.py \
             scripts/verify-hepta-architecture-plan-v4.py \
+            scripts/verify-hepta-architecture-plan-v5.py \
             scripts/verify-hepta-p0-5-gap-closure.py \
             scripts/verify-hepta-cross-owner-operation-wiring.py \
             scripts/verify-hepta-p0-6-runtime-authority.py
