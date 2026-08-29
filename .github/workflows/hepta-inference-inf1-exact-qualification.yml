@@ -1,0 +1,68 @@
+name: Hepta inference INF-1 exact receipt qualification
+on:
+  push:
+    branches: [codex/hepta-inference-inf1-exact-qualification-20260829]
+    paths: [".github/workflows/hepta-inference-inf1-exact-qualification.yml"]
+permissions:
+  contents: read
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      CANDIDATE: e8b28046a836a17d9f79080bef8f1f644b7f9497
+      SOURCE: 0ba5b438e72ddb90b0468f3dbfdffa0c0801e9d5
+      SOURCE_TREE: 913f3ff8b532106144855bd243e02294f32b2a78
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Detach exact receipt and verify append-only binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout --detach "$CANDIDATE"
+          test "$(git rev-parse HEAD^)" = "$SOURCE"
+          test "$(git rev-parse "$SOURCE^{tree}")" = "$SOURCE_TREE"
+          test "$(git diff --name-only "$SOURCE" "$CANDIDATE")" = \
+            "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_RECEIPT_2026-08-29.json"
+          python3 -m json.tool docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_RECEIPT_2026-08-29.json >/dev/null
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+      - name: Exact source, UDS behavior and strict lint qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-source-gate.py
+          cd codex-rs
+          cargo fmt -p codex-hepta-infer-core -p codex-hepta-inferd -- --check
+          cargo check --locked -p codex-hepta-infer-core -p codex-hepta-inferd
+          cargo test --locked -p codex-hepta-infer-core
+          cargo test --locked -p codex-hepta-inferd -- --test-threads=1
+          cargo clippy --locked --all-targets --no-deps -p codex-hepta-infer-core -p codex-hepta-inferd -- -D warnings
+      - name: Emit exact qualification receipt
+        shell: bash
+        run: |
+          {
+            echo "PASS_HEPTA_INFERENCE_INF1_EXACT_RECEIPT_QUALIFICATION"
+            echo "receipt=$CANDIDATE"
+            echo "source=$SOURCE"
+            echo "source_tree=$SOURCE_TREE"
+            echo "core_tests=7_pass"
+            echo "daemon_tests=4_pass"
+            echo "strict_clippy=pass"
+            echo "source_qualified=true"
+            echo "runtime_activated=false"
+            echo "production_authority=false"
+          } | tee "$RUNNER_TEMP/hepta-inference-inf1-exact-receipt.txt" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf1-exact-${{ env.CANDIDATE }}
+          path: ${{ runner.temp }}/hepta-inference-inf1-exact-receipt.txt
+          if-no-files-found: error
+          retention-days: 14
