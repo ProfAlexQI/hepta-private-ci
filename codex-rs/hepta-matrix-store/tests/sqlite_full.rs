@@ -14,6 +14,7 @@ use codex_hepta_matrix_store::RoomBindingDraft;
 use codex_hepta_paths::HeptaFleetRoot;
 use codex_state::SqliteConfig;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use sqlx::AssertSqlSafe;
 
 const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 
@@ -89,12 +90,13 @@ async fn real_matrix_sqlite_full_rolls_back_failed_inbox_and_preserves_operation
         .await
         .expect("page count");
     let limited_pages = page_count.checked_add(4).expect("page limit");
-    let applied_limit: i64 = sqlx::query_scalar(&format!(
-        "PRAGMA max_page_count = {limited_pages}"
-    ))
-    .fetch_one(&control_pool)
-    .await
-    .expect("apply max page count");
+    // SQLite does not accept a bind parameter for PRAGMA assignment. The only
+    // interpolated value is this checked integer obtained from SQLite itself.
+    let page_limit_pragma = format!("PRAGMA max_page_count = {limited_pages}");
+    let applied_limit: i64 = sqlx::query_scalar(AssertSqlSafe(page_limit_pragma))
+        .fetch_one(&control_pool)
+        .await
+        .expect("apply max page count");
     assert_eq!(applied_limit, limited_pages);
     control_pool.close().await;
 
