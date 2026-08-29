@@ -1,0 +1,44 @@
+name: Hepta exact source snapshot 591a500
+
+on:
+  push:
+    branches:
+      - codex/hepta-source-snapshot-591a500-20260829
+
+permissions:
+  contents: read
+
+env:
+  TARGET_SOURCE: 591a50005bba363dca287078a9326a30f3158b0a
+
+jobs:
+  package:
+    name: Package exact immutable source on macOS
+    runs-on: macos-15-arm64
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - name: Verify exact identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+          git diff --exit-code
+          git diff --cached --exit-code
+      - name: Package source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/hepta-source"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/hepta-source/hepta-source-$TARGET_SOURCE.tar.gz" "$TARGET_SOURCE"
+          shasum -a 256 "$RUNNER_TEMP/hepta-source/hepta-source-$TARGET_SOURCE.tar.gz" > "$RUNNER_TEMP/hepta-source/sha256.txt"
+          printf 'source=%s\ntree=%s\nsource_mutation=false\n' "$TARGET_SOURCE" "$(git rev-parse 'HEAD^{tree}')" > "$RUNNER_TEMP/hepta-source/identity.txt"
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-source-${{ env.TARGET_SOURCE }}
+          path: ${{ runner.temp }}/hepta-source
+          if-no-files-found: error
+          retention-days: 1
