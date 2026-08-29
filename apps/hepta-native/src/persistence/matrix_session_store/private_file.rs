@@ -1,10 +1,13 @@
 use std::{
     fs,
-    fs::{File, OpenOptions},
+    fs::OpenOptions,
     io::Write,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(unix)]
+use std::fs::File;
 
 use anyhow::{Context, Result, bail};
 
@@ -86,7 +89,7 @@ fn replace_file_atomically(source: &Path, destination: &Path) -> std::io::Result
     use std::os::windows::ffi::OsStrExt as _;
 
     use windows_sys::Win32::Storage::FileSystem::{
-        MOVE_FILE_REPLACE_EXISTING, MOVE_FILE_WRITE_THROUGH, MoveFileExW,
+        MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
     };
 
     let source: Vec<u16> = source
@@ -103,7 +106,7 @@ fn replace_file_atomically(source: &Path, destination: &Path) -> std::io::Result
         MoveFileExW(
             source.as_ptr(),
             destination.as_ptr(),
-            MOVE_FILE_REPLACE_EXISTING | MOVE_FILE_WRITE_THROUGH,
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
         )
     };
     if moved == 0 {
@@ -133,22 +136,29 @@ fn ensure_private_directory(path: &Path) -> Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
 fn set_private_file_permissions(path: &Path) -> Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-            .with_context(|| format!("failed to set private permissions on {}", path.display()))?;
-    }
+    use std::os::unix::fs::PermissionsExt as _;
+
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+        .with_context(|| format!("failed to set private permissions on {}", path.display()))?;
     Ok(())
 }
 
+#[cfg(not(unix))]
+fn set_private_file_permissions(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
 fn sync_directory(path: &Path) -> Result<()> {
-    #[cfg(unix)]
-    {
-        File::open(path)
-            .and_then(|directory| directory.sync_all())
-            .with_context(|| format!("failed to sync private directory {}", path.display()))?;
-    }
+    File::open(path)
+        .and_then(|directory| directory.sync_all())
+        .with_context(|| format!("failed to sync private directory {}", path.display()))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn sync_directory(_path: &Path) -> Result<()> {
     Ok(())
 }

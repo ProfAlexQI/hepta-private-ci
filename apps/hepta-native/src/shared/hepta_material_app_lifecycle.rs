@@ -121,6 +121,8 @@ pub struct HeptaV4MaterialLifecycleNode {
     window_focused: bool,
 }
 
+impl ScriptHook for HeptaV4MaterialLifecycleNode {}
+
 impl HeptaV4MaterialLifecycleNode {
     fn activate(&mut self, cx: &mut Cx, event: HeptaMaterialAppLifecycleEvent) {
         let preferences = current_system_preferences();

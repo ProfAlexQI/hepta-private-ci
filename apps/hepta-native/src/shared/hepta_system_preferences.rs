@@ -120,15 +120,18 @@ pub const HEPTA_SYSTEM_PREFERENCE_RELEASE: bool = false;
 pub fn current_system_preferences() -> HeptaSystemPreferenceSnapshot {
     #[cfg(target_os = "windows")]
     {
-        return windows::probe();
+        windows::probe()
     }
 
     #[cfg(target_os = "ios")]
     {
-        return ios::probe();
+        ios::probe()
     }
 
-    HeptaSystemPreferenceSnapshot::fail_closed()
+    #[cfg(not(any(target_os = "windows", target_os = "ios")))]
+    {
+        HeptaSystemPreferenceSnapshot::fail_closed()
+    }
 }
 
 #[cfg(target_os = "windows")]
