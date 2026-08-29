@@ -1,0 +1,19 @@
+name: Cancel superseded Hepta UI v5 remediation v12
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-remediation-v12-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-remediation-v12-cancel.yml
+
+concurrency:
+  group: hepta-ui-v5-remediation-v12
+  cancel-in-progress: true
+
+jobs:
+  cancel-superseded:
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 0
