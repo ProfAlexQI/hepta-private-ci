@@ -54,6 +54,10 @@ master_plan_gate() {
   test "$actual" = "PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_SOURCE_ONLY"
 }
 
+run_gate repository-identity \
+  python3 scripts/verify-hepta-intelligence-repository-identity.py
+run_gate workflow-consolidation \
+  python3 scripts/verify-hepta-intelligence-q0-workflow-consolidation.py
 run_gate master-plan master_plan_gate
 for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
   run_gate "status-$tranche" \

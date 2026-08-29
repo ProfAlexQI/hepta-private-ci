@@ -1,0 +1,26 @@
+{
+  "schema": "hepta.intelligence.repository_identity.v1",
+  "status": "CANONICAL_REPOSITORY_IDENTITY",
+  "canonical": {
+    "repository": "ProfHepta/hepta-private-ci",
+    "repository_id": 1320694176,
+    "owner": "ProfHepta",
+    "owner_id": 102159240
+  },
+  "historical_aliases": [
+    {
+      "repository": "ProfAlexQI/hepta-private-ci",
+      "authority": "HISTORICAL_ALIAS_ONLY"
+    }
+  ],
+  "migration": {
+    "reason": "GitHub repository ownership migration",
+    "rewrites_frozen_master_plan": false
+  },
+  "runtime_wired": false,
+  "external_effects": false,
+  "production_authority": false,
+  "operator_acceptance": false,
+  "promotion": false,
+  "callers_ratchet": false
+}

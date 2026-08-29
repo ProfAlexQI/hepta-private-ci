@@ -1,0 +1,23 @@
+{
+  "schema": "hepta.intelligence.q0.workflow_consolidation.v1",
+  "status": "CANONICAL_PAIRED_WORKFLOW",
+  "canonical_workflow": ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml",
+  "retired_workflows": [
+    ".github/workflows/hepta-intelligence-q0-exact-candidate-v9.yml",
+    ".github/workflows/hepta-intelligence-q0-independent-witness.yml",
+    ".github/workflows/hepta-intelligence-grounding-ledger.yml",
+    ".github/workflows/hepta-intelligence-grounding-gate.yml",
+    ".github/workflows/hepta-intelligence-mutation-state-machine.yml",
+    ".github/workflows/hepta-intelligence-mutation-journal.yml",
+    ".github/workflows/hepta-intelligence-shadow-host.yml"
+  ],
+  "reason": "eliminate runner-holding cross-workflow waits and stale shared-status projections",
+  "e1_e2_same_run": true,
+  "e1_e2_distinct_jobs": true,
+  "e1_e2_distinct_architectures": true,
+  "runtime_wired": false,
+  "production_authority": false,
+  "operator_acceptance": false,
+  "promotion": false,
+  "callers_ratchet": false
+}
