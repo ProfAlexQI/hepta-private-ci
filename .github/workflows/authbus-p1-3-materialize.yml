@@ -1,24 +1,27 @@
-name: AuthBus P1.3 canonical quota registry materialization
+name: AuthBus P1.3 full-stack gap closure
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - integration/vnext-main-full-ci-authbus-p1-3-20260829
+      - codex/authbus-p1-3-gap-closure-20260829
     paths:
       - .github/workflows/authbus-p1-3-materialize.yml
       - scripts/authbus-p1-3-finalize.py
       - scripts/authbus-p1-3-semantic-completion.py
+      - scripts/authbus-p1-3-gap-closure.py
 
 permissions:
   contents: write
+  actions: read
 
 env:
-  EXPECTED_PARENT: 0f211cf355640bd30d6dd6d2c80a7f15096431ed
+  EXPECTED_PARENT: 1ecd55965b975c6821c107c2aad1608b59f92271
   P02_MANIFEST: codex-rs/hepta-authbus-qualification/Cargo.toml
   P03_MANIFEST: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
+  P11_MANIFEST: codex-rs/hepta-authbus-p1-qualification/Cargo.toml
+  P12_MANIFEST: codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
   P13_MANIFEST: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
-  P13_PACKAGE: codex-hepta-authbus-p1-3-qualification
   CARGO_INCREMENTAL: "0"
   CARGO_BUILD_JOBS: "1"
   CARGO_PROFILE_DEV_DEBUG: "0"
@@ -28,8 +31,8 @@ env:
 
 jobs:
   materialize:
-    name: Materialize, qualify, and commit the exact P1.3 source
-    runs-on: ubuntu-slim
+    name: Materialize, repair, qualify, and commit P1.3
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
       - name: Checkout exact seed
@@ -50,18 +53,19 @@ jobs:
             echo "seed=false" >> "${GITHUB_OUTPUT}"
           fi
 
-      - name: Verify exact seed and finalizers
+      - name: Verify exact seed and repair inputs
         if: steps.mode.outputs.seed == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          test "${GITHUB_REF_NAME}" = "integration/vnext-main-full-ci-authbus-p1-3-20260829"
+          test "${GITHUB_REF_NAME}" = "codex/authbus-p1-3-gap-closure-20260829"
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
           test "$(git rev-parse HEAD^)" = "${EXPECTED_PARENT}"
           python3 -m py_compile scripts/authbus-p1-3-finalize.py
           python3 -m py_compile scripts/authbus-p1-3-semantic-completion.py
+          python3 -m py_compile scripts/authbus-p1-3-gap-closure.py
 
-      - name: Materialize canonical registry and adapters
+      - name: Materialize canonical registry and close compile gaps
         if: steps.mode.outputs.seed == 'true'
         shell: bash
         run: |
@@ -75,8 +79,6 @@ jobs:
           test "$(grep -F -c 'request_sha256.to_string()' "${scheduler}")" = "1"
           sed -i 's/request_sha256\.to_string()/request_sha256.as_str().to_owned()/' "${scheduler}"
           ! grep -Fq 'request_sha256.to_string()' "${scheduler}"
-          grep -Fq 'request_sha256.as_str().to_owned()' "${scheduler}"
-          echo 'applied_sha256_digest_text_repairs=1' | tee /tmp/authbus-p1-3-remediation.txt
 
           python3 scripts/authbus-p1-3-semantic-completion.py \
             | tee /tmp/authbus-p1-3-semantic-completion.txt
@@ -89,6 +91,11 @@ jobs:
           grep -q 'closed_source_registry_projection_binding_gap=1' \
             /tmp/authbus-p1-3-semantic-completion.txt
 
+          python3 scripts/authbus-p1-3-gap-closure.py \
+            | tee /tmp/authbus-p1-3-gap-closure.txt
+          grep -q 'closed_authbus_p1_3_materialized_compile_gap=1' \
+            /tmp/authbus-p1-3-gap-closure.txt
+
           python3 scripts/verify-authbus-p1-3.py | tee /tmp/authbus-p1-3-source.json
           grep -q 'PASS_AUTHBUS_P1_3_SOURCE_ONLY' /tmp/authbus-p1-3-source.json
           git diff --check
@@ -100,7 +107,7 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt, clippy
 
-      - name: Generate lock and format affected crates
+      - name: Generate lock and format every affected crate
         if: steps.mode.outputs.seed == 'true'
         shell: bash
         run: |
@@ -110,10 +117,14 @@ jobs:
           cargo fmt --manifest-path codex-rs/Cargo.toml --package codex-hepta-contracts
           cargo fmt --manifest-path "${P02_MANIFEST}" --all
           cargo fmt --manifest-path "${P03_MANIFEST}" --all
+          cargo fmt --manifest-path "${P11_MANIFEST}" --all
+          cargo fmt --manifest-path "${P12_MANIFEST}" --all
           cargo fmt --manifest-path "${P13_MANIFEST}" --all
           cargo fmt --manifest-path codex-rs/Cargo.toml --package codex-hepta-contracts -- --check
           cargo fmt --manifest-path "${P02_MANIFEST}" --all -- --check
           cargo fmt --manifest-path "${P03_MANIFEST}" --all -- --check
+          cargo fmt --manifest-path "${P11_MANIFEST}" --all -- --check
+          cargo fmt --manifest-path "${P12_MANIFEST}" --all -- --check
           cargo fmt --manifest-path "${P13_MANIFEST}" --all -- --check
           test -s codex-rs/hepta-authbus-p1-3-qualification/Cargo.lock
           cargo metadata --manifest-path "${P13_MANIFEST}" --locked \
@@ -122,7 +133,7 @@ jobs:
           grep -q 'PASS_AUTHBUS_P1_3_SOURCE_ONLY' /tmp/authbus-p1-3-formatted.json
           git diff --check
 
-      - name: Run affected default-off and executable matrices
+      - name: Run P0.2 through P1.3 executable matrices
         if: steps.mode.outputs.seed == 'true'
         shell: bash
         run: |
@@ -130,20 +141,33 @@ jobs:
           cargo test --manifest-path codex-rs/Cargo.toml --locked \
             -p codex-hepta-contracts --features authbus-local-qualification \
             --lib -- --nocapture
-          cargo test --manifest-path "${P03_MANIFEST}" --locked \
-            --no-default-features --lib -- --nocapture
-          cargo test --manifest-path "${P03_MANIFEST}" --locked \
-            --features p0-3-qualification --tests -- --nocapture
+
           cargo test --manifest-path "${P02_MANIFEST}" --locked \
             --no-default-features --lib -- --nocapture
           cargo test --manifest-path "${P02_MANIFEST}" --locked \
             --features sqlite-qualification --tests -- --nocapture
+
+          cargo test --manifest-path "${P03_MANIFEST}" --locked \
+            --no-default-features --lib -- --nocapture
+          cargo test --manifest-path "${P03_MANIFEST}" --locked \
+            --features p0-3-qualification --tests -- --nocapture
+
+          cargo test --manifest-path "${P11_MANIFEST}" --locked \
+            --no-default-features --lib -- --nocapture
+          cargo test --manifest-path "${P11_MANIFEST}" --locked \
+            --features p1-qualification --tests -- --nocapture
+
+          cargo test --manifest-path "${P12_MANIFEST}" --locked \
+            --no-default-features --lib -- --nocapture
+          cargo test --manifest-path "${P12_MANIFEST}" --locked \
+            --features p1-2-qualification --tests -- --nocapture
+
           cargo test --manifest-path "${P13_MANIFEST}" --locked \
             --no-default-features --lib -- --nocapture
           cargo test --manifest-path "${P13_MANIFEST}" --locked \
             --features p1-3-qualification --tests -- --nocapture
 
-      - name: Check and lint all affected targets
+      - name: Check and lint P0.2 through P1.3
         if: steps.mode.outputs.seed == 'true'
         shell: bash
         run: |
@@ -154,18 +178,43 @@ jobs:
           cargo clippy --manifest-path codex-rs/Cargo.toml --locked \
             -p codex-hepta-contracts --features authbus-local-qualification \
             --all-targets -- -D warnings
-          cargo check --manifest-path "${P03_MANIFEST}" --locked \
-            --features p0-3-qualification --all-targets
-          cargo clippy --manifest-path "${P03_MANIFEST}" --locked \
-            --features p0-3-qualification --all-targets -- -D warnings
+
           cargo check --manifest-path "${P02_MANIFEST}" --locked \
             --features sqlite-qualification --all-targets
           cargo clippy --manifest-path "${P02_MANIFEST}" --locked \
             --features sqlite-qualification --all-targets -- -D warnings
+
+          cargo check --manifest-path "${P03_MANIFEST}" --locked \
+            --features p0-3-qualification --all-targets
+          cargo clippy --manifest-path "${P03_MANIFEST}" --locked \
+            --features p0-3-qualification --all-targets -- -D warnings
+
+          cargo check --manifest-path "${P11_MANIFEST}" --locked \
+            --features p1-qualification --all-targets
+          cargo clippy --manifest-path "${P11_MANIFEST}" --locked \
+            --features p1-qualification --all-targets -- -D warnings
+
+          cargo check --manifest-path "${P12_MANIFEST}" --locked \
+            --features p1-2-qualification --all-targets
+          cargo clippy --manifest-path "${P12_MANIFEST}" --locked \
+            --features p1-2-qualification --all-targets -- -D warnings
+
           cargo check --manifest-path "${P13_MANIFEST}" --locked \
             --features p1-3-qualification --all-targets
           cargo clippy --manifest-path "${P13_MANIFEST}" --locked \
             --features p1-3-qualification --all-targets -- -D warnings
+
+      - name: Revalidate source contracts after executable gates
+        if: steps.mode.outputs.seed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-authbus-p0-2.py
+          python3 scripts/verify-authbus-p0-3.py
+          python3 scripts/verify-authbus-p1-1.py
+          python3 scripts/verify-authbus-p1-2.py
+          python3 scripts/verify-authbus-p1-3.py
+          git diff --check
 
       - name: Commit only the fully qualified P1.3 source set
         if: steps.mode.outputs.seed == 'true'
@@ -175,6 +224,7 @@ jobs:
           rm -rf scripts/__pycache__
           rm scripts/authbus-p1-3-finalize.py
           rm scripts/authbus-p1-3-semantic-completion.py
+          rm scripts/authbus-p1-3-gap-closure.py
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -185,6 +235,7 @@ jobs:
             codex-rs/hepta-contracts/src/lib.rs
             codex-rs/hepta-contracts/src/quota_registry.rs
             codex-rs/hepta-authbus-qualification/src/model.rs
+            codex-rs/hepta-authbus-qualification/src/store.rs
             codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
             codex-rs/hepta-authbus-p0-3-qualification/tests/p0_3.rs
             codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
@@ -200,7 +251,8 @@ jobs:
           git add -- "${final_paths[@]}"
           git add -u -- \
             scripts/authbus-p1-3-finalize.py \
-            scripts/authbus-p1-3-semantic-completion.py
+            scripts/authbus-p1-3-semantic-completion.py \
+            scripts/authbus-p1-3-gap-closure.py
 
           cat > /tmp/authbus-p1-3-expected-paths.txt <<'EOF'
           codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
@@ -211,6 +263,7 @@ jobs:
           codex-rs/hepta-authbus-p1-3-qualification/src/lib.rs
           codex-rs/hepta-authbus-p1-3-qualification/tests/p1_3.rs
           codex-rs/hepta-authbus-qualification/src/model.rs
+          codex-rs/hepta-authbus-qualification/src/store.rs
           codex-rs/hepta-contracts/src/authbus_b2.rs
           codex-rs/hepta-contracts/src/authbus_b4.rs
           codex-rs/hepta-contracts/src/lib.rs
@@ -219,6 +272,7 @@ jobs:
           docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.json
           docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.md
           scripts/authbus-p1-3-finalize.py
+          scripts/authbus-p1-3-gap-closure.py
           scripts/authbus-p1-3-semantic-completion.py
           scripts/verify-authbus-p1-3.py
           EOF
@@ -231,6 +285,6 @@ jobs:
             /tmp/authbus-p1-3-actual-paths.txt
           git diff --cached --check
 
-          git commit -m "feat(authbus): unify canonical quota registry P1.3"
+          git commit -m "feat(authbus): close full-stack P1.3 gaps"
           git push origin "HEAD:${GITHUB_REF_NAME}" \
             --force-with-lease="refs/heads/${GITHUB_REF_NAME}:${GITHUB_SHA}"
