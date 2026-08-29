@@ -55,8 +55,8 @@ jobs:
           )
           s = replace_once(
               s,
-              '        validate_private_directory(layout.matrix_root())?;\n',
-              '        validate_private_directory(layout.run_root())?;\n        validate_private_directory(layout.matrix_root())?;\n',
+              '            layout.automation_root(),\n        ] {\n            validate_physical_directory(directory)?;\n        }\n        validate_private_directory(layout.matrix_root())?;\n',
+              '            layout.automation_root(),\n        ] {\n            validate_physical_directory(directory)?;\n        }\n        validate_private_directory(layout.run_root())?;\n        validate_private_directory(layout.matrix_root())?;\n',
               "agent run-root reopen validation",
           )
           registry.write_text(s)
