@@ -45,10 +45,19 @@ def load_json(path: pathlib.Path) -> dict[str, Any]:
     return value
 
 
+def compact_source(value: str) -> str:
+    """Return a formatting-insensitive representation for source contracts."""
+    return "".join(value.split())
+
+
+def contains_marker(source: str, marker: str) -> bool:
+    return marker in source or compact_source(marker) in compact_source(source)
+
+
 def require(relative: str, markers: tuple[str, ...]) -> str:
     source = read(relative)
     for marker in markers:
-        if marker not in source:
+        if not contains_marker(source, marker):
             fail(f"{relative} is missing {marker!r}")
     return source
 
@@ -56,7 +65,7 @@ def require(relative: str, markers: tuple[str, ...]) -> str:
 def require_absent(relative: str, markers: tuple[str, ...]) -> None:
     source = read(relative)
     for marker in markers:
-        if marker in source:
+        if contains_marker(source, marker):
             fail(f"{relative} contains forbidden {marker!r}")
 
 
@@ -78,10 +87,10 @@ def verify_contracts() -> None:
             "pub struct RuntimeAuthorityContext",
             "pub trait CapabilityUseVerifier",
             "pub fn verify_capability_use",
-            "runtime authority grant digest drifted",
-            "verifier.verify(&request)",
-            "revocation_is_checked_on_every_capability_use",
-            "stale_runtime_epoch_and_fence_fail_closed",
+            "runtime authority context does not match the local grant",
+            "verifier.verify_use(&CapabilityUseVerificationRequest {",
+            "external_capability_is_reverified_on_every_use_and_revocation_fails_closed",
+            "changed_epoch_fence_and_expiry_are_rejected_before_use_verifier",
         ),
     )
     require(
@@ -91,8 +100,8 @@ def verify_contracts() -> None:
             "pub enum RuntimeServiceRequirement",
             "pub enum RuntimeServiceState",
             "pub fn mark_ready",
-            "optional_service_can_degrade_without_faking_readiness",
-            "qualification_memory_is_required",
+            "local_instance_distinguishes_optional_degradation_from_readiness",
+            "qualification_instance_requires_memory",
         ),
     )
     require(
