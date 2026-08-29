@@ -1,0 +1,102 @@
+name: AuthBus P1.3 clean-replay Windows publisher
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/authbus-p1-3-clean-replay-windows-publisher-20260830
+    paths:
+      - .github/workflows/authbus-p1-3-clean-replay-windows-publisher.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: authbus-p1-3-clean-replay-publisher
+  cancel-in-progress: false
+
+env:
+  BASE_SHA: 6b7aa91d7702a92a50297b1b1bd8170ffb7cb184
+  BASE_TREE: f46fa8c6d541742eaea62d70ea62c0fe316dbaf9
+  HELPER_PARENT: 961ec15338173b8aa565642f1e1a06191d487845
+  P02: codex-rs/hepta-authbus-qualification/Cargo.toml
+  P03: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
+  P11: codex-rs/hepta-authbus-p1-qualification/Cargo.toml
+  P12: codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
+  P13: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
+  CARGO_INCREMENTAL: "0"
+  CARGO_BUILD_JOBS: "1"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_NET_RETRY: "10"
+  CARGO_HTTP_TIMEOUT: "120"
+  CARGO_TARGET_DIR: /tmp/authbus-p1-3-publisher-target
+
+jobs:
+  publish:
+    name: Reuse audited publisher on Windows
+    runs-on: windows-2025
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 3
+          persist-credentials: true
+
+      - name: Materialize and publish exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp /tmp/authbus-seed
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git rev-parse HEAD^)" = "${HELPER_PARENT}"
+          cp .github/workflows/authbus-p1-3-clean-replay-macos-publisher.yml /tmp/publisher.yml
+          for f in scripts/authbus-p1-3-finalize.py scripts/authbus-p1-3-semantic-completion.py scripts/authbus-p1-3-gap-closure.py; do
+            cp "$f" "/tmp/authbus-seed/${f##*/}"
+          done
+          git fetch --no-tags --depth=1 origin "${BASE_SHA}"
+          git checkout --detach "${BASE_SHA}"
+          test "$(git rev-parse 'HEAD^{tree}')" = "${BASE_TREE}"
+          for f in scripts/authbus-p1-3-finalize.py scripts/authbus-p1-3-semantic-completion.py scripts/authbus-p1-3-gap-closure.py; do
+            cp "/tmp/authbus-seed/${f##*/}" "$f"
+          done
+          python3 scripts/authbus-p1-3-finalize.py | tee /tmp/finalize.txt
+          grep -q 'applied_authbus_p1_3_registry_files=9' /tmp/finalize.txt
+          grep -q 'applied_authbus_p1_3_existing_file_patches=5' /tmp/finalize.txt
+          grep -q 'removed_p0_3_canonical_type_copies=2' /tmp/finalize.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs')
+          s=p.read_text(); a='request_sha256.to_string()'
+          assert s.count(a)==1
+          p.write_text(s.replace(a,'request_sha256.as_str().to_owned()'))
+          PY
+          python3 scripts/authbus-p1-3-semantic-completion.py | tee /tmp/semantic.txt
+          grep -q 'applied_authbus_p1_3_semantic_completion=1' /tmp/semantic.txt
+          python3 scripts/authbus-p1-3-gap-closure.py | tee /tmp/gap.txt
+          grep -q 'closed_authbus_p1_3_materialized_compile_gap=1' /tmp/gap.txt
+
+          extract_and_run() {
+            local name="$1"
+            python3 - "$name" > /tmp/publisher-step.sh <<'PY'
+          from pathlib import Path
+          import sys
+          lines=Path('/tmp/publisher.yml').read_text().splitlines()
+          target=f"- name: {sys.argv[1]}"
+          start=next(i for i,l in enumerate(lines) if l.strip()==target)
+          run=next(i for i in range(start+1,len(lines)) if lines[i].strip()=='run: |')
+          indent=len(lines[run])-len(lines[run].lstrip())
+          out=[]
+          for line in lines[run+1:]:
+              if line and len(line)-len(line.lstrip()) <= indent:
+                  break
+              out.append(line[indent+2:] if line else '')
+          print('\n'.join(out))
+          PY
+            bash /tmp/publisher-step.sh
+          }
+          extract_and_run 'Close stable hosted strict-lint diagnostics'
+          rustup toolchain install 1.95.0 --component rustfmt --profile minimal --no-self-update
+          rustup default 1.95.0
+          extract_and_run 'Generate deterministic lockfile and format source'
+          extract_and_run 'Verify exact 28-path source and publish staging ref'
