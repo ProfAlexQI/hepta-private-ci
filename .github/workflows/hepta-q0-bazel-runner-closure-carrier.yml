@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SOURCE_SHA: 830a26b9b086ba22d0ad45b1edca74221d8b5b74
+  SOURCE_SHA: b1c8d35120866ca5e886946e627e9744a2438f77
   TARGET_BRANCH: codex/hepta-intelligence-plan-v3-20260828
   CARRIER_PATH: .github/workflows/hepta-q0-bazel-runner-closure-carrier.yml
   BAZEL_WORKFLOW: .github/workflows/bazel.yml
@@ -103,13 +103,20 @@ jobs:
           ruby -e 'require "yaml"; YAML.parse_file(ARGV.fetch(0))' "$Q0_WORKFLOW"
           git diff --check
 
-          mapfile -t paths < <(git diff --name-only | LC_ALL=C sort)
-          expected=(
-            .github/workflows/bazel.yml
-            .github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml
-            .github/workflows/hepta-q0-bazel-runner-closure-carrier.yml
-          )
-          test "${paths[*]}" = "${expected[*]}"
+          python3 - <<'PY'
+          import subprocess
+
+          expected = [
+              ".github/workflows/bazel.yml",
+              ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml",
+              ".github/workflows/hepta-q0-bazel-runner-closure-carrier.yml",
+          ]
+          actual = subprocess.check_output(
+              ["git", "diff", "--name-only"], text=True
+          ).splitlines()
+          if actual != expected:
+              raise SystemExit({"expected": expected, "actual": actual})
+          PY
 
       - name: Commit and fast-forward the canonical branch
         shell: bash
