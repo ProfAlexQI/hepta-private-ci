@@ -3,6 +3,8 @@ use std::fs::File;
 use std::fs::OpenOptions;
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
@@ -12,6 +14,8 @@ use codex_hepta_paths::HeptaAgentLayout;
 use codex_hepta_paths::HeptaFleetRoot;
 
 use crate::AgentdError;
+use crate::RuntimeBootstrapAdmission;
+use crate::runtime_bootstrap::consume_runtime_bootstrap;
 
 pub const HEPTA_AGENT_ID_ENV: &str = "HEPTA_AGENT_ID";
 pub const HEPTA_AGENT_GENERATION_ENV: &str = "HEPTA_AGENT_GENERATION";
@@ -35,6 +39,7 @@ pub struct AgentdIdentity {
 pub struct AgentdConfig {
     identity: AgentdIdentity,
     registry: FleetRegistry,
+    runtime_bootstrap: RuntimeBootstrapAdmission,
     _writer_lock: File,
 }
 
@@ -109,6 +114,21 @@ impl AgentdConfig {
             )));
         }
 
+        // Bootstrap verification and the durable single-use claim happen
+        // before the writer lock, App Server, memory, automation, Matrix or
+        // provider-facing services can be opened.
+        let executable = std::env::current_exe()?;
+        let observed_at_unix_seconds = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| AgentdError::Invalid("system clock is before the Unix epoch".to_string()))?
+            .as_secs();
+        let runtime_bootstrap = consume_runtime_bootstrap(
+            &registry,
+            &record,
+            &executable,
+            observed_at_unix_seconds,
+        )?;
+
         let writer_lock = OpenOptions::new()
             .create(true)
             .truncate(false)
@@ -138,6 +158,7 @@ impl AgentdConfig {
                 app_server_socket,
             },
             registry,
+            runtime_bootstrap,
             _writer_lock: writer_lock,
         })
     }
@@ -146,8 +167,18 @@ impl AgentdConfig {
         &self.identity
     }
 
+    pub fn runtime_bootstrap(&self) -> &RuntimeBootstrapAdmission {
+        &self.runtime_bootstrap
+    }
+
     pub(crate) fn into_parts(self) -> (AgentdIdentity, FleetRegistry, File) {
-        (self.identity, self.registry, self._writer_lock)
+        let Self {
+            identity,
+            registry,
+            runtime_bootstrap: _,
+            _writer_lock,
+        } = self;
+        (identity, registry, _writer_lock)
     }
 }
 
