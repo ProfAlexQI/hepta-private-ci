@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 60
     env:
       BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
-      EXPECTED_PARENT: 630b38681f87cc0dff05525bb1ee4bc12b7699a4
+      EXPECTED_PARENT: 188aae0c6f3304a1773542d68b3a8e9dcf564a0e
       BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-blocker-remediation-retry-v4.yml
       UPSTREAM_URL: https://github.com/openai/codex.git
       UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
@@ -168,4 +168,4 @@ jobs:
           PY
 
           bash -n "$generated_script"
-          bash "$generated_script"
+          bash -x "$generated_script"
