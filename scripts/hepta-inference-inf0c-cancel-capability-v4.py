@@ -4,6 +4,8 @@
 This qualification-only wrapper preserves the v3 request/receipt contract while
 allowing a bounded, fixed set of non-JSON media types for known unsupported HTTP
 statuses. Successful and unexpected responses remain JSON-only and fail closed.
+The v3 receipt field ``transport_disconnect_used`` remains authoritative and this
+wrapper never promotes a transport close to provider cancellation acknowledgement.
 """
 from __future__ import annotations
 
