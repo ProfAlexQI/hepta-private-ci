@@ -11,12 +11,15 @@ on:
       - "codex-rs/Cargo.lock"
       - "MODULE.bazel.lock"
       - "docs/architecture/**"
+      - "scripts/verify-hepta-selected-architecture-plan.py"
       - "scripts/verify-hepta-architecture-plan-v4.py"
+      - "scripts/verify-hepta-architecture-plan-v5.py"
       - "scripts/verify-hepta-p0-7a-format.py"
       - ".github/workflows/hepta-p0-7a-direct-arm.yml"
   push:
     branches:
       - "codex/hepta-architecture-v4-p0-7a-*"
+      - "codex/hepta-architecture-v5-*"
     paths:
       - "codex-rs/hepta-contracts/**"
       - "codex-rs/hepta-fleet/**"
@@ -25,7 +28,9 @@ on:
       - "codex-rs/Cargo.lock"
       - "MODULE.bazel.lock"
       - "docs/architecture/**"
+      - "scripts/verify-hepta-selected-architecture-plan.py"
       - "scripts/verify-hepta-architecture-plan-v4.py"
+      - "scripts/verify-hepta-architecture-plan-v5.py"
       - "scripts/verify-hepta-p0-7a-format.py"
       - ".github/workflows/hepta-p0-7a-direct-arm.yml"
 
@@ -102,11 +107,11 @@ jobs:
             -p codex-hepta-agentd \
             -- -D warnings
 
-      - name: Verify V4 source truth
+      - name: Verify selected architecture source truth
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/verify-hepta-architecture-plan-v4.py
+          python3 scripts/verify-hepta-selected-architecture-plan.py
           git diff --check
 
       - name: Require clean output
