@@ -1,0 +1,42 @@
+{
+  "01_HEPTA_MULTIMODAL_MEMORY_MASTER_PLAN_EXTENSION_PROPOSAL_V1.md": {
+    "bytes": 25766,
+    "lines": 695,
+    "sha256": "e11f4950d804e1776e21181ef2c64537c12408668355089005fb98da8ea9e346"
+  },
+  "02_HEPTA_MULTIMODAL_MEMORY_EXECUTION_SPEC_V1.md": {
+    "bytes": 16919,
+    "lines": 455,
+    "sha256": "a8d39e49f6d989e597890563ae432141bc68f1ad20716605097f9b27888dde0f"
+  },
+  "03_HEPTA_MULTIMODAL_MEMORY_GAP_LEDGER_PROPOSAL_V1.json": {
+    "bytes": 26437,
+    "lines": 750,
+    "sha256": "0c8812cf0bdf7f7f7b988a9ad0131b3e646e6dd7b24a0607b18498990d42eaef"
+  },
+  "04_MULTIMODAL_EMBEDDING_MODEL_MATRIX_2026-08-30.md": {
+    "bytes": 11835,
+    "lines": 171,
+    "sha256": "e9718b32c025e6580a2971db04fc48cf1e67b44f41a9caff09d43c01ca5fe93b"
+  },
+  "05_MARKET_AGENT_LANDSCAPE_2026-08-30.md": {
+    "bytes": 9789,
+    "lines": 140,
+    "sha256": "424747556ac707b89ac3325a86b12fec798198c34b07a3901b789488e03a7298"
+  },
+  "07_B0_MM0_IMPLEMENTATION_BLUEPRINT.md": {
+    "bytes": 26795,
+    "lines": 745,
+    "sha256": "9b216a5a4d53be865b4742804b5c76fc1dd6140d17f75a581d229dbb8aa00aa3"
+  },
+  "PACKAGE_HANDOFF_RECEIPT_V1.json": {
+    "bytes": 1573,
+    "lines": 42,
+    "sha256": "737e95e3080161f8a4fdca6eea77312310a39d7bfff8f6d7d9391acb90da1d6e"
+  },
+  "README.md": {
+    "bytes": 1849,
+    "lines": 35,
+    "sha256": "5c0d4b52f778ad64e9a37ac59631594db6e7655641c775d3775da38c71520990"
+  }
+}
