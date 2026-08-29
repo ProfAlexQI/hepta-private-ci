@@ -1,0 +1,78 @@
+name: Hepta inference INF-1 sparse Windows source export
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf1-export-windows-sparse-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf1-materialize-export-windows-sparse.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    name: Sparse checkout, materialize, and export INF-1 source
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/hepta-inference-inf1-materialize-export-windows-sparse.yml
+            /scripts/hepta-inference-inf1-materialize.py
+            /scripts/hepta-inference-inf1-bootstrap.py
+            /scripts/hepta-inference-inf1-source-gate.py
+            /scripts/hepta-inference-inf1-payload-*.b85
+            /docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_CONTRACT_V1.md
+
+      - name: Verify exact overlay and materialize digest-bound payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD^) -ne '44704e5a494a4e3fea7cd0177c3323a6f795e7df') { throw 'parent drift' }
+          $changed = git diff --name-only HEAD^ HEAD
+          if ($changed -ne '.github/workflows/hepta-inference-inf1-materialize-export-windows-sparse.yml') { throw "overlay drift: $changed" }
+          py -3 scripts/hepta-inference-inf1-materialize.py
+          py -3 -m py_compile scripts/hepta-inference-inf1-bootstrap.py scripts/hepta-inference-inf1-source-gate.py
+          if (-not (Test-Path codex-rs/hepta-inference-core/Cargo.toml)) { throw 'missing core crate' }
+          if (-not (Test-Path codex-rs/hepta-inference-daemon/Cargo.toml)) { throw 'missing daemon crate' }
+
+      - name: Build deterministic source bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:RUNNER_TEMP 'hepta-inference-inf1-source'
+          New-Item -ItemType Directory -Force -Path (Join-Path $out 'codex-rs') | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $out 'scripts') | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $out 'docs/hepta-vnext/inference') | Out-Null
+          Copy-Item -Recurse codex-rs/hepta-inference-core (Join-Path $out 'codex-rs/hepta-inference-core')
+          Copy-Item -Recurse codex-rs/hepta-inference-daemon (Join-Path $out 'codex-rs/hepta-inference-daemon')
+          Copy-Item scripts/hepta-inference-inf1-bootstrap.py,scripts/hepta-inference-inf1-source-gate.py (Join-Path $out 'scripts')
+          Copy-Item docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_CONTRACT_V1.md (Join-Path $out 'docs/hepta-vnext/inference')
+          $manifest = @{
+            schema = 'hepta.inference.inf1.materialized-source.v2'
+            payload_parent = '44704e5a494a4e3fea7cd0177c3323a6f795e7df'
+            archive_sha256 = '8462cdf4fdf05ae042e8e2b3c66ed5b2056512cd26ebf0f06c250afb367ccb67'
+            active = $false
+            qualified = $false
+            authority = $false
+          } | ConvertTo-Json -Depth 5
+          Set-Content -Path (Join-Path $out 'manifest.json') -Value $manifest -Encoding utf8NoBOM
+          Get-ChildItem -Recurse -File $out | Sort-Object FullName | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            "$hash  $($_.FullName.Substring($out.Length + 1).Replace('\','/'))"
+          } | Set-Content -Path (Join-Path $out 'SHA256SUMS') -Encoding ascii
+
+      - name: Upload materialized INF-1 source
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf1-materialized-windows-sparse-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-inference-inf1-source
+          if-no-files-found: error
+          retention-days: 7
