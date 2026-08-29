@@ -17,8 +17,8 @@ use super::RuntimeBootstrapTrustRoot;
 use super::verify_runtime_bootstrap;
 
 const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
-const SOURCE_COMMIT: &str = "1111111111111111111111111111111111111111";
-const SOURCE_TREE: &str = "2222222222222222222222222222222222222222";
+const SOURCE_COMMIT: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const SOURCE_TREE: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 fn signing_key() -> SigningKey {
     SigningKey::from_bytes(&[7_u8; 32])
