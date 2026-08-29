@@ -1,0 +1,38 @@
+name: Drain stale Hepta Intelligence Q0 exact-head runs
+
+on:
+  push:
+    branches:
+      - codex/q0-stale-exact-head-drain-20260829
+    paths:
+      - .github/workflows/q0-stale-exact-head-drain.yml
+
+permissions:
+  contents: read
+
+jobs:
+  cancel-stale-paired-head:
+    name: Retire stale paired head ${{ matrix.sha }}
+    strategy:
+      fail-fast: false
+      matrix:
+        sha:
+          - 01e97493a1e6403632e8929c7276abeab1cd6192
+          - 06d55dbcd52fb127d041f943aa4ab239eb2ce75d
+          - 8a16900690019ee4d4143365d94f360ff981c34d
+          - c80a153d26d940520a44db79f4502d505ad877f2
+          - 1fe2ea2163e706aa08e48ac348e3e0601caff019
+          - 50cbce5afe2321c35a073097833259f6495bfe75
+          - 756f40f3c87b1ee50f200310d535748556a951df
+          - 7c8ceb415d6d231a737dbcbeed642e9050d3db0c
+          - a54d306cc6cba88044f4d16bc7fff4562454d7dd
+          - 4f74bd4f7f8aed9c399dc3352c907ff3820c64c4
+    concurrency:
+      group: hepta-intelligence-q0-paired-v10-${{ matrix.sha }}
+      cancel-in-progress: true
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - name: Record retired exact head
+        shell: bash
+        run: printf 'retired stale Q0 paired head %s\n' '${{ matrix.sha }}'
