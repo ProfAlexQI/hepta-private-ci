@@ -25,6 +25,10 @@ jobs:
         with:
           rust-version: 1.95.0
           manifest-path: ./codex-rs/Cargo.toml
+          # Docker actions do not inherit defaults.run.working-directory. Bind the
+          # workspace policy explicitly so cargo-deny cannot silently fall back to
+          # its built-in deny.toml defaults from the repository root.
+          arguments: --all-features --config ./codex-rs/deny.toml
 
       - name: Check for a clean worktree
         if: always() && !cancelled()
