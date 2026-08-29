@@ -1,0 +1,48 @@
+name: Hepta inference V4 exact-source export (temporary)
+
+on:
+  push:
+    branches:
+      - ops/hepta-inference-v4-source-export-chatgpt-20260830
+    paths:
+      - .github/workflows/hepta-inference-v4-source-export-chatgpt.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-v4-source-export-chatgpt
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Verify exact parent and export tracked source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = dbf68bfed0a2a034fb519c66a89725e2b74edce3
+          test -z "$(git status --porcelain)"
+          git archive \
+            --format=tar.gz \
+            --output="$RUNNER_TEMP/hepta-private-ci-dbf68bf.tar.gz" \
+            dbf68bfed0a2a034fb519c66a89725e2b74edce3
+          sha256sum "$RUNNER_TEMP/hepta-private-ci-dbf68bf.tar.gz" \
+            > "$RUNNER_TEMP/hepta-private-ci-dbf68bf.tar.gz.sha256"
+
+      - name: Upload exact source archive
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-v4-source-dbf68bf
+          path: |
+            ${{ runner.temp }}/hepta-private-ci-dbf68bf.tar.gz
+            ${{ runner.temp }}/hepta-private-ci-dbf68bf.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 3
