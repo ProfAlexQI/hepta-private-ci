@@ -40,11 +40,11 @@ jobs:
       - name: Install pinned Rust formatter
         uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
         with:
-          toolchain: 1.95.0
           components: rustfmt
 
       - name: Apply deterministic rustfmt
         shell: bash
+        working-directory: codex-rs
         run: |
           set -euo pipefail
           cargo fmt -p codex-hepta-agentd
