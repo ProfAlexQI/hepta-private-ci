@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: hepta-intelligence-q0-paired-v10-${{ github.sha }}
-  cancel-in-progress: false
+  group: hepta-intelligence-q0-paired-v10-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
