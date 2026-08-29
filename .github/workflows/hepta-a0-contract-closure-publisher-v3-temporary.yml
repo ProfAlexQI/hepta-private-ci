@@ -1,0 +1,175 @@
+name: Hepta Intelligence A0 contract-closure publisher v3
+
+on:
+  push:
+    branches:
+      - "automation/hepta-a0-contract-closure-publisher-v2-20260830"
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: hepta-intelligence-a0-contract-closure-publisher-v3
+  cancel-in-progress: true
+
+env:
+  EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+  TARGET_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  EXPECTED_TARGET_HEAD: a1893170f853e716f7e491da1df3424026c621d7
+  QUALIFIED_Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
+  SOURCE_TREE_HEAD: a1893170f853e716f7e491da1df3424026c621d7
+  BASE_PAYLOAD_SHA256: 9a1ba0f3e701b7f2dbbbab5a9016ba25cd27adafa6354edfd6c551948de44824
+  OVERLAY_SHA256: 2e15b14cd2dbc15969fff4e71cf00fd943046fd744d2391e3347902869ec5eb8
+
+jobs:
+  publish:
+    name: Publish exact-parent A0 machine-contract closure
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact publisher carrier
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Reconstruct and verify sealed closure package
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          mkdir -p publisher-work
+          python3 - <<'PY'
+          from pathlib import Path, PurePosixPath
+          import base64, gzip, hashlib, io, os, subprocess, tarfile
+
+          expected = {
+              ".github/workflows/hepta-intelligence-a0-authority.yml": "1eeaed12d6acf3f831d342cf6e4de16e42e3e83d",
+              ".github/workflows/hepta-intelligence-execution-spec.yml": "97893d95a6b87c45faf3f3301f37743d3674404c",
+              ".github/workflows/hepta-intelligence-master-plan.yml": "f0a96b565a8c60b5cccde9fc4eb9f57cce3748e3",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json": "2ff2a67bd831053563ff4c628c6c5042d83f5518",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json": "9fa1df96a97ac337239d153f45c30a7483b84734",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json": "89099d0700b8a863bd2e57d5873bba696dad1808",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json": "3585003ef630a88b2eb59520ea815668d5c6a1ad",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json": "4b7e82f554e20c7c88de3319e2aa43358ae67818",
+              "scripts/hepta-intelligence-current-truth.py": "1d51c20a3b2c8d883fba322973072bbf534b440c",
+              "scripts/verify-hepta-intelligence-a0-authority.py": "deafda1b721b31a608320079cb3dbf5f46919afe",
+              "scripts/verify-hepta-intelligence-document-authority.py": "b76f7bd1ed0ca857d470ed5abf28c7684fd462e1",
+              "scripts/verify-hepta-intelligence-master-plan.py": "83847ae2870fe9c31737eb76aaa27d4b19cd0511",
+          }
+          encoded = "".join(
+              p.read_text(encoding="ascii").replace("\r", "").replace("\n", "")
+              for p in sorted(Path("publisher-payload").glob("payload.part*"))
+          )
+          archive = base64.b64decode(encoded, validate=True)
+          if hashlib.sha256(archive).hexdigest() != os.environ["BASE_PAYLOAD_SHA256"]:
+              raise SystemExit("base payload digest mismatch")
+          root = Path("publisher-work/payload").resolve(); root.mkdir(parents=True)
+          seen = set(); total = 0
+          with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as bundle:
+              members = bundle.getmembers()
+              if len(members) != len(expected): raise SystemExit("payload member count")
+              for member in members:
+                  rel = PurePosixPath(member.name)
+                  name = rel.as_posix().removeprefix("./")
+                  if name not in expected or name in seen: raise SystemExit(f"payload path: {name}")
+                  if not member.isfile() or member.issym() or member.islnk(): raise SystemExit(f"payload type: {name}")
+                  if rel.is_absolute() or any(x in {"", ".", ".."} for x in PurePosixPath(name).parts): raise SystemExit(f"payload traversal: {name}")
+                  total += member.size
+                  if member.size > 2*1024*1024 or total > 8*1024*1024: raise SystemExit("payload size")
+                  source = bundle.extractfile(member)
+                  data = source.read() if source else b""
+                  if len(data) != member.size: raise SystemExit(f"payload truncation: {name}")
+                  target = (root/name).resolve()
+                  if os.path.commonpath([str(root),str(target)]) != str(root): raise SystemExit(f"payload escape: {name}")
+                  target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(data); seen.add(name)
+          overlay_b64 = Path("publisher-payload/overlay-v2.patch.gz.b64").read_text(encoding="ascii")
+          overlay_gz = base64.b64decode("".join(overlay_b64.split()), validate=True)
+          if hashlib.sha256(overlay_gz).hexdigest() != os.environ["OVERLAY_SHA256"]:
+              raise SystemExit("overlay digest mismatch")
+          patch = gzip.decompress(overlay_gz)
+          subprocess.run(["patch", "-p1", "-f", "-d", str(root)], input=patch, check=True)
+          if {p.relative_to(root).as_posix() for p in root.rglob('*') if p.is_file()} != set(expected):
+              raise SystemExit("final payload surface mismatch")
+          for name, wanted in expected.items():
+              data=(root/name).read_bytes()
+              got=hashlib.sha1(f"blob {len(data)}\0".encode()+data).hexdigest()
+              if got != wanted: raise SystemExit(f"final blob mismatch: {name} {got}")
+          PY
+
+      - name: Build and validate exact Q0-child replacement
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          observed="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
+          test "$observed" = "$EXPECTED_TARGET_HEAD"
+          git fetch --no-tags origin "$QUALIFIED_Q0_HEAD" "$SOURCE_TREE_HEAD" "refs/heads/$TARGET_BRANCH"
+          git worktree add --detach publisher-work/candidate "$SOURCE_TREE_HEAD"
+          while IFS= read -r source; do
+            rel="${source#publisher-work/payload/}"
+            mkdir -p "publisher-work/candidate/$(dirname "$rel")"
+            cp "$source" "publisher-work/candidate/$rel"
+            chmod 0644 "publisher-work/candidate/$rel"
+          done < <(find publisher-work/payload -type f | sort)
+          cd publisher-work/candidate
+          git add --all
+          tree="$(git write-tree)"
+          commit="$(printf '%s\n\n%s\n' \
+            'fix(intelligence): close V4.4 A0 machine-contract gaps' \
+            'Seal all eight canonical inputs and legacy compatibility consumers; retain append-only evidence; enforce the complete lifecycle and one 49-gap identity DAG; reject duplicate JSON keys; unify triggers; and keep same-run evidence non-authoritative.' \
+            | git commit-tree "$tree" -p "$QUALIFIED_Q0_HEAD")"
+          git reset --hard "$commit"
+          test "$(git rev-parse HEAD^)" = "$QUALIFIED_Q0_HEAD"
+          python3 - <<'PY'
+          import json, subprocess
+          allowed=json.load(open('plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json'))['allowed_changed_paths']
+          changed=sorted(x for x in subprocess.check_output(['git','diff','--name-only','HEAD^','HEAD'],text=True).splitlines() if x)
+          if changed != allowed or len(changed) != 17: raise SystemExit(f'changed-path mismatch: {changed}')
+          PY
+          git diff --check HEAD^ HEAD
+          python3 -m py_compile scripts/hepta-intelligence-current-truth.py scripts/verify-hepta-intelligence-a0-authority.py scripts/verify-hepta-intelligence-document-authority.py scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/hepta-intelligence-current-truth.py --self-test
+          python3 scripts/verify-hepta-intelligence-a0-authority.py --self-test
+          python3 scripts/verify-hepta-intelligence-document-authority.py --self-test
+          python3 scripts/verify-hepta-intelligence-master-plan.py --self-test
+          python3 scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-document-authority.py
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          GITHUB_REPOSITORY="$EXPECTED_REPOSITORY" GITHUB_HEAD_REF="$TARGET_BRANCH" GITHUB_SHA="$commit" EXPECTED_HEAD_SHA="$commit" python3 scripts/verify-hepta-intelligence-a0-authority.py >/tmp/a0-source-receipt.json
+          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only >/dev/null; done
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+
+      - name: Atomically publish under exact lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          observed="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
+          test "$observed" = "$EXPECTED_TARGET_HEAD"
+          git -C publisher-work/candidate push --force-with-lease="refs/heads/$TARGET_BRANCH:$EXPECTED_TARGET_HEAD" origin "${{ steps.build.outputs.commit }}:refs/heads/$TARGET_BRANCH"
+          test "$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')" = "${{ steps.build.outputs.commit }}"
+
+      - name: Record and upload publisher receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p publisher-work/receipt
+          python3 - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          r={"schema":"hepta_intelligence_a0_contract_closure_publisher_receipt_v2","repository":os.environ['EXPECTED_REPOSITORY'],"target_branch":os.environ['TARGET_BRANCH'],"replaced_head":os.environ['EXPECTED_TARGET_HEAD'],"published_head":"${{ steps.build.outputs.commit }}","published_tree":"${{ steps.build.outputs.tree }}","sole_parent":os.environ['QUALIFIED_Q0_HEAD'],"base_payload_sha256":os.environ['BASE_PAYLOAD_SHA256'],"overlay_sha256":os.environ['OVERLAY_SHA256'],"changed_path_count":17,"candidate_workflow_source_writeback":False,"independent_review":False,"canonical_selection":False,"runtime_authority":False,"production_authority":False,"promotion":False,"release":False,"callers":False}
+          r['receipt_binding_sha256']=hashlib.sha256(json.dumps(r,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+          Path('publisher-work/receipt/publisher-receipt.json').write_text(json.dumps(r,indent=2,sort_keys=True)+'\n')
+          PY
+
+      - name: Upload exact publisher receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-a0-contract-closure-v3-${{ steps.build.outputs.commit }}
+          path: publisher-work/receipt/**
+          if-no-files-found: error
+          retention-days: 30
