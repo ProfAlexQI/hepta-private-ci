@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: hepta-actions-queue-recovery-once
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   prune-stale-ui-queue:
@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
-      PROTECTED_HEAD_SHA: 3f97c81bbec634484a037f77ff5bcf86fd6184ed
+      PROTECTED_BRANCH: codex/ui-v4-executable-final-gap-closure-v3-20260829
       GRACE_SECONDS: "180"
     steps:
       - name: Build and execute bounded cancellation plan
@@ -28,6 +28,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
+          protected_sha="$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/branches/$PROTECTED_BRANCH" \
+            | ruby -rjson -e 'puts JSON.parse(STDIN.read).fetch("commit").fetch("sha")')"
+          test "$protected_sha" = "$(printf '%s' "$protected_sha" | grep -E '^[0-9a-f]{40}$')"
+          export PROTECTED_HEAD_SHA="$protected_sha"
           curl --fail --silent --show-error \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
@@ -38,16 +45,18 @@ jobs:
             now = Time.now.to_i
             cutoff = now - Integer(ENV.fetch("GRACE_SECONDS"))
             protected_sha = ENV.fetch("PROTECTED_HEAD_SHA")
+            protected_branch = ENV.fetch("PROTECTED_BRANCH")
             candidates = payload.fetch("workflow_runs").select do |run|
               branch = run["head_branch"].to_s
               created = Time.parse(run.fetch("created_at")).to_i
               branch.start_with?("codex/ui-v4-") &&
-                run["head_sha"] != protected_sha &&
+                !(branch == protected_branch && run["head_sha"] == protected_sha) &&
                 created <= cutoff
             end
             plan = {
-              "schema" => "hepta.actions.queue-recovery.once.v1",
+              "schema" => "hepta.actions.queue-recovery.once.v2",
               "repository" => ENV.fetch("GITHUB_REPOSITORY"),
+              "protectedBranch" => protected_branch,
               "protectedHeadSha" => protected_sha,
               "cutoffUnix" => cutoff,
               "queuedObserved" => payload.fetch("total_count"),
