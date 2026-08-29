@@ -93,9 +93,9 @@ fn oversized_frame_is_rejected_before_allocation() -> Result<(), Box<dyn Error>>
     let encoded_length = u32::try_from(MAX_FRAME_BYTES + 1)?;
     let mut bytes = Vec::new();
     bytes.extend_from_slice(&encoded_length.to_be_bytes());
-    let error = read_message(&mut Cursor::new(bytes)).err().ok_or_else(|| {
-        std::io::Error::other("oversized frame unexpectedly decoded")
-    })?;
+    let error = read_message(&mut Cursor::new(bytes))
+        .err()
+        .ok_or_else(|| std::io::Error::other("oversized frame unexpectedly decoded"))?;
     assert!(matches!(error, ProtocolError::FrameTooLarge { .. }));
     Ok(())
 }
@@ -224,12 +224,7 @@ fn framed_channel_rejects_a_stale_identity_before_writing() -> Result<(), Box<dy
         source_pin: expected.source_pin,
         authority: AuthorityPosture::qualification_only(),
     };
-    let message = Message::Command(CommandFrame::new(
-        1,
-        stale_identity,
-        1,
-        CommandKind::Ping,
-    )?);
+    let message = Message::Command(CommandFrame::new(1, stale_identity, 1, CommandKind::Ping)?);
     let mut channel = FramedChannel::new(Cursor::new(Vec::<u8>::new()), binding);
     let error = channel
         .send(&message)

@@ -35,7 +35,7 @@ VNEXT_REQUIRED_WORKFLOW_PATH = (
 )
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 
-EXPECTED_REPOSITORY = "ProfAlexQI/hepta-private-ci"
+EXPECTED_REPOSITORY = "ProfHepta/hepta-private-ci"
 EXPECTED_WORKFLOWS = [
     {
         "required_job": "CI required",

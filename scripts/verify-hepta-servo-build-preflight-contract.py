@@ -204,7 +204,7 @@ def verify_workflow() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     for token in (
         "workflow_call:",
-        "pull_request:",
+        "workflow_dispatch:",
         "python3 scripts/tests/test_hepta_servo_build_preflight.py",
         "python3 scripts/tests/test_hepta_servo_build_preflight_v2.py",
         "python3 scripts/verify-hepta-servo-build-preflight-contract.py",
@@ -215,6 +215,12 @@ def verify_workflow() -> None:
     ):
         if token not in text:
             fail(f"build-preflight workflow is missing {token}")
+    for forbidden_trigger in ("\n  pull_request:", "\n  push:"):
+        if forbidden_trigger in text:
+            fail(
+                "build-preflight leaf workflow contains retired trigger "
+                f"{forbidden_trigger.strip()}"
+            )
     if "scripts/hepta-servo-build-preflight-v2.py --source-verification" in text:
         fail("contract workflow must not run a real build preflight")
 

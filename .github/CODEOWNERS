@@ -14,25 +14,25 @@
 /.github/workflows/rust-release.yml @openai/codex-core-agent-team
 
 # Hepta repository-native contracts, qualification, provenance, and authority surfaces.
-/codex-rs/hepta-* @ProfAlexQI
-/codex-rs/ext/hepta-* @ProfAlexQI
-/docs/hepta-vnext/ @ProfAlexQI
-/third_party/servo-patches/ @ProfAlexQI
-/tools/hepta-browser-c1-protocol/ @ProfAlexQI
-/tools/hepta-browser-c1-artifact-gate/ @ProfAlexQI
-/scripts/hepta-servo-*.py @ProfAlexQI
-/scripts/hepta-servo-worker-source-topology-acceptance-v1/ @ProfAlexQI
-/scripts/hepta_servo_*.py @ProfAlexQI
-/scripts/verify-hepta-browser-*.py @ProfAlexQI
-/scripts/verify-hepta-servo-*.py @ProfAlexQI
-/scripts/generate-hepta-servo-provenance.py @ProfAlexQI
-/scripts/test_generate_hepta-servo-provenance.py @ProfAlexQI
-/scripts/tests/test_hepta_servo_*.py @ProfAlexQI
-/scripts/tests/hepta_servo_worker_source_topology_acceptance_v1/ @ProfAlexQI
-/.github/workflows/hepta-*.yml @ProfAlexQI
-/.github/workflows/hepta-browser-ci.yml @ProfAlexQI
-/.github/workflows/hepta-vnext-qualification.yml @ProfAlexQI
-/.github/workflows/blocking-ci.yml @ProfAlexQI
+/codex-rs/hepta-* @ProfHepta
+/codex-rs/ext/hepta-* @ProfHepta
+/docs/hepta-vnext/ @ProfHepta
+/third_party/servo-patches/ @ProfHepta
+/tools/hepta-browser-c1-protocol/ @ProfHepta
+/tools/hepta-browser-c1-artifact-gate/ @ProfHepta
+/scripts/hepta-servo-*.py @ProfHepta
+/scripts/hepta-servo-worker-source-topology-acceptance-v1/ @ProfHepta
+/scripts/hepta_servo_*.py @ProfHepta
+/scripts/verify-hepta-browser-*.py @ProfHepta
+/scripts/verify-hepta-servo-*.py @ProfHepta
+/scripts/generate-hepta-servo-provenance.py @ProfHepta
+/scripts/test_generate_hepta-servo-provenance.py @ProfHepta
+/scripts/tests/test_hepta_servo_*.py @ProfHepta
+/scripts/tests/hepta_servo_worker_source_topology_acceptance_v1/ @ProfHepta
+/.github/workflows/hepta-*.yml @ProfHepta
+/.github/workflows/hepta-browser-ci.yml @ProfHepta
+/.github/workflows/hepta-vnext-qualification.yml @ProfHepta
+/.github/workflows/blocking-ci.yml @ProfHepta
 
 # Keep ownership changes reviewed by the same upstream team and the Hepta owner.
-/.github/CODEOWNERS @openai/codex-core-agent-team @ProfAlexQI
+/.github/CODEOWNERS @openai/codex-core-agent-team @ProfHepta

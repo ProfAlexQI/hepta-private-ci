@@ -48,9 +48,9 @@ fn run_host(mode: HostMode) -> Result<(), Box<dyn Error>> {
     use std::os::fd::OwnedFd;
     use std::os::unix::net::UnixStream;
 
-    let executable = std::env::current_exe()?;
-    let expected_artifact_binding =
-        artifact::binding_for_current_executable(BUILD_MANIFEST, SOURCE_RECEIPT)?;
+    let staged_executable = StagedExecutable::from_current_executable()?;
+    let executable = staged_executable.path();
+    let expected_artifact_binding = artifact_binding_for_path(executable)?;
 
     let mut artifact_challenge = [0_u8; ARTIFACT_CHALLENGE_BYTES];
     let mut capability_bytes = [0_u8; 32];
@@ -87,7 +87,9 @@ fn run_host(mode: HostMode) -> Result<(), Box<dyn Error>> {
     io.flush()?;
     let hello = match artifact::read_message(&mut io)? {
         artifact::Message::WorkerHello(hello) => hello,
-        _ => return Err(artifact::GateError::Invalid("host expected artifact worker hello").into()),
+        _ => {
+            return Err(artifact::GateError::Invalid("host expected artifact worker hello").into());
+        }
     };
     artifact::validate_worker_hello(
         &hello,
@@ -124,7 +126,9 @@ fn run_host(mode: HostMode) -> Result<(), Box<dyn Error>> {
         || browser_binding.source_pin != expected_browser.source_pin
         || browser_binding.authority != browser::AuthorityPosture::qualification_only()
     {
-        return Err(std::io::Error::other("browser handshake binding drifted after artifact gate").into());
+        return Err(
+            std::io::Error::other("browser handshake binding drifted after artifact gate").into(),
+        );
     }
 
     let mut channel = browser::FramedChannel::new(io, browser_binding);
@@ -137,13 +141,7 @@ fn run_host(mode: HostMode) -> Result<(), Box<dyn Error>> {
 
     match mode {
         HostMode::Normal => {
-            require_completed_outcome(
-                channel.receive()?,
-                1,
-                browser_binding.identity,
-                1,
-                "pong",
-            )?;
+            require_completed_outcome(channel.receive()?, 1, browser_binding.identity, 1, "pong")?;
             channel.send(&browser::Message::Command(browser::CommandFrame::new(
                 2,
                 browser_binding.identity,
@@ -174,7 +172,10 @@ fn run_host(mode: HostMode) -> Result<(), Box<dyn Error>> {
                     if matches!(
                         error.kind(),
                         std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
-                    ) => true,
+                    ) =>
+                {
+                    true
+                }
                 Err(error) => return Err(error.into()),
                 Ok(_) => false,
             };
@@ -240,9 +241,7 @@ fn run_worker(hang_after_browser_handshake: bool) -> Result<(), Box<dyn Error>> 
     }
     artifact::write_message(
         &mut io,
-        &artifact::Message::WorkerConfirm(artifact::WorkerConfirm::new(
-            artifact_challenge,
-        )?),
+        &artifact::Message::WorkerConfirm(artifact::WorkerConfirm::new(artifact_challenge)?),
     )?;
     artifact_challenge.fill(0);
 
@@ -262,14 +261,20 @@ fn run_worker(hang_after_browser_handshake: bool) -> Result<(), Box<dyn Error>> 
         || browser_binding.source_pin != expected_browser.source_pin
         || browser_binding.authority != browser::AuthorityPosture::qualification_only()
     {
-        return Err(std::io::Error::other("worker browser binding drifted after artifact gate").into());
+        return Err(
+            std::io::Error::other("worker browser binding drifted after artifact gate").into(),
+        );
     }
 
     let mut channel = browser::FramedChannel::new(io, browser_binding);
     loop {
         let command = match channel.receive()? {
             browser::Message::Command(command) => command,
-            _ => return Err(std::io::Error::other("worker received a non-command browser frame").into()),
+            _ => {
+                return Err(
+                    std::io::Error::other("worker received a non-command browser frame").into(),
+                );
+            }
         };
         if hang_after_browser_handshake && matches!(command.command, browser::CommandKind::Ping) {
             loop {
@@ -345,6 +350,71 @@ fn fill_private_random(output: &mut [u8]) -> Result<(), Box<dyn Error>> {
     let mut random = std::fs::File::open("/dev/urandom")?;
     random.read_exact(output)?;
     Ok(())
+}
+
+#[cfg(unix)]
+fn artifact_binding_for_path(
+    path: &std::path::Path,
+) -> Result<artifact::ArtifactBinding, Box<dyn Error>> {
+    Ok(artifact::ArtifactBinding::new(
+        artifact::hash_file(path)?,
+        artifact::Digest32::new(artifact::sha256(BUILD_MANIFEST))?,
+        artifact::Digest32::new(artifact::sha256(SOURCE_RECEIPT))?,
+    ))
+}
+
+#[cfg(unix)]
+struct StagedExecutable {
+    directory: std::path::PathBuf,
+    path: std::path::PathBuf,
+}
+
+#[cfg(unix)]
+impl StagedExecutable {
+    fn from_current_executable() -> Result<Self, Box<dyn Error>> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let source = std::env::current_exe()?;
+        let mut nonce = [0_u8; 16];
+        fill_private_random(&mut nonce)?;
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let mut suffix = String::with_capacity(nonce.len() * 2);
+        for byte in nonce {
+            suffix.push(char::from(HEX[usize::from(byte >> 4)]));
+            suffix.push(char::from(HEX[usize::from(byte & 0x0f)]));
+        }
+        let directory = std::env::temp_dir().join(format!(
+            "hepta-c1-startup-bridge-{}-{suffix}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&directory)?;
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))?;
+        let path = directory.join("worker");
+        let staged = Self { directory, path };
+        let mut input = std::fs::File::open(source)?;
+        let mut output = std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&staged.path)?;
+        std::io::copy(&mut input, &mut output)?;
+        output.set_permissions(std::fs::Permissions::from_mode(0o700))?;
+        output.sync_all()?;
+        std::fs::File::open(&staged.directory)?.sync_all()?;
+        artifact::hash_file(&staged.path)?;
+        Ok(staged)
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+#[cfg(unix)]
+impl Drop for StagedExecutable {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+        let _ = std::fs::remove_dir(&self.directory);
+    }
 }
 
 struct SplitIo<R, W> {

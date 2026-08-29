@@ -5,8 +5,8 @@ use std::process::Command;
 
 #[test]
 fn artifact_gate_hands_off_to_exact_browser_binding() -> Result<(), Box<dyn Error>> {
-    let output = Command::new(env!("CARGO_BIN_EXE_hepta-browser-c1-startup-bridge-trial"))
-        .output()?;
+    let output =
+        Command::new(env!("CARGO_BIN_EXE_hepta-browser-c1-startup-bridge-trial")).output()?;
     if !output.status.success() {
         return Err(format!(
             "startup bridge trial failed: status={} stderr={}",

@@ -222,7 +222,12 @@ class TreeNode:
 
 
 def safe_member_path(prefix: str, name: str) -> tuple[str, ...]:
-    if not name.startswith(prefix) or "\\" in name or "\0" in name:
+    if "\\" in name or "\0" in name:
+        fail(f"archive path is unsafe: {name!r}")
+    root = prefix.rstrip("/")
+    if name == root:
+        return ()
+    if not name.startswith(prefix):
         fail(f"archive path is outside frozen prefix: {name!r}")
     relative = name[len(prefix) :]
     if not relative:

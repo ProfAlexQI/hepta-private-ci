@@ -271,22 +271,29 @@ def install_ci_verifier(namespace: dict[str, Any]) -> None:
             "pull_request:",
             "integration/vnext-main-20260811",
             "runner-preflight:",
-            "hepta-vnext:",
-            "uses: ./.github/workflows/hepta-vnext-qualification.yml",
-            "- hepta-vnext",
+            "name: CI required",
+            "scripts/verify-hepta-required-contexts.py",
         )
         for token in blocking_tokens:
             if token not in blocking:
                 fail(f"blocking CI is missing {token}")
+        for forbidden in (
+            "uses: ./.github/workflows/hepta-vnext-qualification.yml",
+            "uses: ./.github/workflows/hepta-browser-next-required-v9.yml",
+        ):
+            if forbidden in blocking:
+                fail(f"blocking CI reintroduced nested required graph {forbidden}")
+        if "name: Hepta vNext required" not in hepta:
+            fail("Hepta qualification is missing the independent required context")
 
         owner_patterns = (
-            "/codex-rs/hepta-* @ProfAlexQI",
-            "/docs/hepta-vnext/ @ProfAlexQI",
-            "/third_party/servo-patches/ @ProfAlexQI",
-            "/scripts/generate-hepta-servo-provenance.py @ProfAlexQI",
-            "/.github/workflows/hepta-browser-ci.yml @ProfAlexQI",
-            "/.github/workflows/hepta-vnext-qualification.yml @ProfAlexQI",
-            "/.github/workflows/blocking-ci.yml @ProfAlexQI",
+            "/codex-rs/hepta-* @ProfHepta",
+            "/docs/hepta-vnext/ @ProfHepta",
+            "/third_party/servo-patches/ @ProfHepta",
+            "/scripts/generate-hepta-servo-provenance.py @ProfHepta",
+            "/.github/workflows/hepta-browser-ci.yml @ProfHepta",
+            "/.github/workflows/hepta-vnext-qualification.yml @ProfHepta",
+            "/.github/workflows/blocking-ci.yml @ProfHepta",
         )
         for pattern in owner_patterns:
             if pattern not in owners:

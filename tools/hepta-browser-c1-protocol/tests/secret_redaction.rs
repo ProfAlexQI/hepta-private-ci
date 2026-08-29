@@ -27,11 +27,11 @@ fn startup_capability_and_nonce_debug_output_is_redacted() -> Result<(), Protoco
     let acknowledgement = HostAck::accepted(identity()?, [0x42; 32])?;
     let confirmation = WorkerConfirm::new(identity()?, [0x42; 32])?;
 
-    for rendered in (
+    for rendered in [
         format!("{expected:?}"),
         format!("{acknowledgement:?}"),
         format!("{confirmation:?}"),
-    ) {
+    ] {
         assert!(rendered.contains("<redacted>"));
         assert!(!rendered.contains(capability_pattern));
         assert!(!rendered.contains(nonce_pattern));

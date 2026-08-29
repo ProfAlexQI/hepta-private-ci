@@ -286,7 +286,10 @@ pub struct HostAck {
 
 impl HostAck {
     pub fn accepted(identity: WorkerIdentity, host_nonce: [u8; 32]) -> Result<Self, ProtocolError> {
-        require_nonzero(&host_nonce, "host acknowledgement nonce must not be all zero")?;
+        require_nonzero(
+            &host_nonce,
+            "host acknowledgement nonce must not be all zero",
+        )?;
         Ok(Self {
             identity,
             accepted: true,
@@ -324,7 +327,10 @@ pub struct WorkerConfirm {
 
 impl WorkerConfirm {
     pub fn new(identity: WorkerIdentity, host_nonce: [u8; 32]) -> Result<Self, ProtocolError> {
-        require_nonzero(&host_nonce, "worker confirmation nonce must not be all zero")?;
+        require_nonzero(
+            &host_nonce,
+            "worker confirmation nonce must not be all zero",
+        )?;
         Ok(Self {
             identity,
             host_nonce,
@@ -413,10 +419,7 @@ impl CommandKind {
                 Ok(())
             }
             Self::Click { semantic_ref } => validate_reference(semantic_ref),
-            Self::TypeText {
-                semantic_ref,
-                text,
-            } => {
+            Self::TypeText { semantic_ref, text } => {
                 validate_reference(semantic_ref)?;
                 if text.is_empty() || text.len() > MAX_TEXT_BYTES || text.contains('\0') {
                     return Err(invalid("typed text is empty, oversized, or contains NUL"));
@@ -506,7 +509,9 @@ fn validate_reference(value: &str) -> Result<(), ProtocolError> {
         || value.len() > MAX_REFERENCE_BYTES
         || !value.bytes().all(is_safe_identifier_byte)
     {
-        return Err(invalid("semantic reference is empty, oversized, or noncanonical"));
+        return Err(invalid(
+            "semantic reference is empty, oversized, or noncanonical",
+        ));
     }
     Ok(())
 }

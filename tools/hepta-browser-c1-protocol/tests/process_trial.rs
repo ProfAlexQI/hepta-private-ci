@@ -29,6 +29,8 @@ fn process_trial_rejects_unknown_arguments() -> Result<(), Box<dyn Error>> {
         .output()?;
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("unsupported C1 process-trial arguments"));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("unsupported C1 process-trial arguments")
+    );
     Ok(())
 }

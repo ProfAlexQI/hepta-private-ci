@@ -111,6 +111,7 @@ def verify_recovery_contract(
         "treat runner_id zero as pass",
         "treat empty steps as pass",
         "reuse evidence from another head SHA",
+        "cancel a run created after the queue-hygiene observation started",
         "dispatch exact-source qualification before exact-head required graphs are executable",
         "grant Browser Servo build runtime operator promotion or release authority",
     ]
@@ -145,8 +146,9 @@ def verify_recovery_contract(
             "id": "queue-hygiene",
             "owner": "repository_or_organization_admin",
             "verification": (
-                "obsolete queued runs are cancelled without cancelling the current "
-                "exact-head required runs"
+                "only obsolete queued runs observed before cleanup starts are "
+                "cancelled; the cleanup excludes its exact head and every run created "
+                "after its observation timestamp"
             ),
         },
         {

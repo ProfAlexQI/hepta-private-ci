@@ -71,10 +71,7 @@ pub fn worker_handshake<T: Read + Write>(
 
     write_message(
         io,
-        &Message::WorkerConfirm(WorkerConfirm::new(
-            expected.identity,
-            expected.host_nonce,
-        )?),
+        &Message::WorkerConfirm(WorkerConfirm::new(expected.identity, expected.host_nonce)?),
     )?;
 
     Ok(EstablishedBinding {
