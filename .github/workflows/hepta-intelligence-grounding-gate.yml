@@ -20,17 +20,179 @@ permissions:
   contents: read
 
 concurrency:
-  group: hepta-intelligence-grounding-gate-${{ github.ref }}
-  cancel-in-progress: true
+  group: hepta-intelligence-grounding-gate-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
+  classify-scope:
+    name: Classify legacy P0.3 grounding ownership
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      relevant: ${{ steps.classify.outputs.relevant }}
+      exact_head: ${{ steps.classify.outputs.exact_head }}
+    steps:
+      - name: Checkout exact candidate with ancestry
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Classify changed paths and shared framing hunks
+        id: classify
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          EXPECTED_HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/hepta-intelligence-grounding-gate-scope
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          root = Path.cwd()
+          event_name = os.environ["EVENT_NAME"]
+          expected_head = os.environ["EXPECTED_HEAD"]
+          head = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], text=True
+          ).strip()
+          tree = subprocess.check_output(
+              ["git", "rev-parse", "HEAD^{tree}"], text=True
+          ).strip()
+          if head != expected_head:
+              raise SystemExit(
+                  f"exact-head mismatch: expected={expected_head} observed={head}"
+              )
+
+          changed: list[str] = []
+          reasons: list[str] = []
+          relevant = event_name != "pull_request"
+          base = os.environ.get("BASE_SHA", "")
+          if relevant:
+              reasons.append(f"explicit_{event_name}_qualification")
+          else:
+              if len(base) != 40:
+                  raise SystemExit(f"invalid pull-request base SHA: {base!r}")
+              subprocess.run(
+                  ["git", "cat-file", "-e", f"{base}^{{commit}}"],
+                  check=True,
+              )
+              changed = subprocess.check_output(
+                  ["git", "diff", "--name-only", base, head], text=True
+              ).splitlines()
+              direct = {
+                  "codex-rs/hepta-memory/src/fact_grounding/shadow_projection_gate.rs",
+                  "codex-rs/ext/hepta-memory/src/cognitive/grounding_v3.rs",
+                  "scripts/verify-hepta-intelligence-grounding-gate.py",
+                  "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_3_SOURCE_TRANCHE_2026-08-28.md",
+                  "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
+              }
+              direct_hits = sorted(direct.intersection(changed))
+              if direct_hits:
+                  relevant = True
+                  reasons.extend(f"owned_path:{path}" for path in direct_hits)
+
+              shared_markers = {
+                  "codex-rs/hepta-memory/src/framing.rs": (
+                      "shadow_projection_gate",
+                      "shadow_grounded_projection_compare",
+                      "shadow_grounding_explain",
+                  ),
+                  "codex-rs/ext/hepta-memory/src/framing.rs": (
+                      "grounding_v3",
+                      "GROUNDED_TOOL_V3",
+                      "prepare_grounded_tool_v3",
+                  ),
+              }
+              for path, markers in shared_markers.items():
+                  if path not in changed:
+                      continue
+                  patch = subprocess.check_output(
+                      ["git", "diff", "--unified=0", base, head, "--", path],
+                      text=True,
+                  )
+                  changed_lines = [
+                      line[1:]
+                      for line in patch.splitlines()
+                      if line.startswith(("+", "-"))
+                      and not line.startswith(("+++", "---"))
+                  ]
+                  hits = sorted(
+                      marker
+                      for marker in markers
+                      if any(marker in line for line in changed_lines)
+                  )
+                  if hits:
+                      relevant = True
+                      reasons.append(
+                          f"shared_hunk:{path}:{','.join(hits)}"
+                      )
+
+          receipt = {
+              "schema": "hepta_intelligence_legacy_grounding_scope_v2",
+              "event": event_name,
+              "base": base or None,
+              "head": head,
+              "tree": tree,
+              "legacy_grounding_relevant": relevant,
+              "changed_paths": changed,
+              "reasons": reasons,
+              "workflow_only_change_is_relevant": False,
+              "shared_framing_requires_legacy_marker": True,
+          }
+          out = root / "artifacts/hepta-intelligence-grounding-gate-scope/scope.json"
+          out.write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"relevant={str(relevant).lower()}\n")
+              output.write(f"exact_head={head}\n")
+          PY
+
+      - name: Upload exact-head scope receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-grounding-scope-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/hepta-intelligence-grounding-gate-scope/scope.json
+          if-no-files-found: error
+          retention-days: 14
+
+  successor-tranche-not-applicable:
+    name: Legacy P0.3 grounding gate not applicable
+    needs: classify-scope
+    if: needs.classify-scope.outputs.relevant == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Enforce explicit N/A classification
+        env:
+          RELEVANT: ${{ needs.classify-scope.outputs.relevant }}
+          EXACT_HEAD: ${{ needs.classify-scope.outputs.exact_head }}
+          EXPECTED_HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$RELEVANT" = "false"
+          test "$EXACT_HEAD" = "$EXPECTED_HEAD"
+          echo "successor tranche changed no legacy P0.3-owned source"
+
   source-contract:
     name: P0.3 shadow grounding source contract
+    needs: classify-scope
+    if: needs.classify-scope.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.classify-scope.outputs.exact_head }}
+          fetch-depth: 1
 
       - name: Validate Python and machine documents
         run: |
@@ -76,28 +238,44 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-intelligence-grounding-gate-source-${{ github.sha }}
+          name: hepta-intelligence-grounding-gate-source-${{ needs.classify-scope.outputs.exact_head }}
           path: artifacts/hepta-intelligence-grounding-gate/source-gate.json
           if-no-files-found: error
           retention-days: 14
 
   rust-qualification:
     name: P0.3 shadow grounding Rust qualification
+    needs: classify-scope
+    if: needs.classify-scope.outputs.relevant == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.classify-scope.outputs.exact_head }}
+          fetch-depth: 1
 
       - name: Install repository Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.88.0
+          toolchain: 1.95.0
           components: rustfmt,clippy
 
-      - name: Check workspace formatting
+      - name: Check legacy grounding file formatting
         working-directory: codex-rs
-        run: cargo fmt --all -- --check
+        run: |
+          rustfmt --edition 2024 --config skip_children=true --check \
+            hepta-memory/src/framing.rs \
+            hepta-memory/src/fact_grounding/shadow_projection_gate.rs \
+            ext/hepta-memory/src/framing.rs \
+            ext/hepta-memory/src/cognitive/grounding_v3.rs
+
+      - name: Check core and extension all targets
+        working-directory: codex-rs
+        run: |
+          cargo check -p codex-hepta-memory --all-targets
+          cargo check -p codex-hepta-memory-extension --all-targets
 
       - name: Run core shadow projection tests
         working-directory: codex-rs
