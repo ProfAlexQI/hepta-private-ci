@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      EXPECTED_PARENT: 621fe92492ad1a29f43087cbbe47f65ff9d3f857
+      EXPECTED_PARENT: f13f0753bd4d75bb08a618700a3782161f51f603
       BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
       WORKFLOW_PATH: .github/workflows/hepta-strict-clippy-remediation-once.yml
     steps:
@@ -173,8 +173,19 @@ jobs:
           agentd_path = "codex-rs/hepta-agentd/src/app_runtime.rs"
           replace_once(
               agentd_path,
-              "use crate::composition::authority_for_identity;\n",
-              "#[cfg(test)]\nuse crate::composition::authority_for_identity;\n",
+              lines(
+                  "use crate::AgentdIdentity;",
+                  "use crate::AgentdState;",
+                  "use crate::composition::authority_for_identity;",
+                  "use crate::qualification_writer::qualification_turn_writer_host;",
+              ),
+              lines(
+                  "use crate::AgentdIdentity;",
+                  "use crate::AgentdState;",
+                  "#[cfg(test)]",
+                  "use crate::composition::authority_for_identity;",
+                  "use crate::qualification_writer::qualification_turn_writer_host;",
+              ),
           )
           for signature in (
               "pub(crate) fn app_server_runtime_options(\n",
@@ -455,7 +466,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo "schema=hepta_strict_clippy_remediation_once_v10"
+            echo "schema=hepta_strict_clippy_remediation_once_v11"
             echo "bootstrap_head=$GITHUB_SHA"
             echo "expected_parent=$EXPECTED_PARENT"
             echo "job_status=${{ job.status }}"
