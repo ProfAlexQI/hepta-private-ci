@@ -88,6 +88,7 @@ jobs:
           cargo test --locked -p codex-hepta-memory --lib -- --nocapture
           cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
           cargo test --locked -p codex-hepta-automation --lib -- --nocapture
+          cargo test --locked -p codex-hepta-automation --test automation -- --nocapture
           cargo test --locked -p codex-hepta-agentd --lib -- --nocapture
           cargo test --locked -p codex-hepta-agentd --features qualification-cognitive-write --lib -- --nocapture
           cargo test --locked -p codex-hepta-matrix-store --lib -- --nocapture
@@ -151,6 +152,7 @@ jobs:
             echo "actual_tree=$(git rev-parse 'HEAD^{tree}')"
             echo "job_status=${{ job.status }}"
             echo "same_connection_sqlite_full=true"
+            echo "automation_integration_suite=true"
             echo "source_mutation=false"
             echo "production_authority=false"
             echo "effect_authority=false"
@@ -218,6 +220,7 @@ jobs:
           cargo test --locked -p codex-hepta-contracts --test cross_owner_fault_matrix -- --nocapture
           cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
           cargo test --locked -p codex-hepta-automation --lib -- --nocapture
+          cargo test --locked -p codex-hepta-automation --test automation -- --nocapture
           cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
           cargo test --locked -p codex-hepta-matrix-store --lib -- --nocapture
           cargo test --locked -p codex-hepta-matrix-store --features qualification-fault-injection --test sqlite_full -- --nocapture
@@ -255,6 +258,7 @@ jobs:
             echo "second_parent=$(git rev-parse HEAD^2)"
             echo "job_status=${{ job.status }}"
             echo "same_connection_sqlite_full=true"
+            echo "automation_integration_suite=true"
             echo "source_mutation=false"
             echo "production_authority=false"
             echo "effect_authority=false"
@@ -274,7 +278,7 @@ jobs:
 
   required:
     name: Hepta architecture convergence required
-    if: ${{ always() }}
+    if: ${{ always() && !cancelled() }}
     needs:
       - exact-source-head
       - merge-candidate
