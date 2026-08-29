@@ -14,11 +14,12 @@ concurrency:
   group: c1-hosted-gap-closure-v1-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
-# Exact-head closure epoch 10. Two independently allocated Unix pools run the
+# Exact-head closure epoch 11. Two independently allocated Unix pools run the
 # same producer. Both bind EXPECTED_HEAD and use a final compare-and-swap before
 # a normal push, so at most one lane can update the branch. RUSTUP_TOOLCHAIN
 # binds all child Cargo invocations to the toolchain already installed above;
-# entering codex-rs must not trigger a second network sync.
+# entering codex-rs must not trigger a second network sync. Every lane retains a
+# bounded diagnostic log even when the producer fails before creating a commit.
 jobs:
   close-current-gaps:
     name: Close current hosted qualification gaps (${{ matrix.runner }})
@@ -49,5 +50,54 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Initialize diagnostic directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostic_dir="$RUNNER_TEMP/hepta-c1-gap-closure"
+          mkdir -p "$diagnostic_dir"
+          chmod 700 "$diagnostic_dir"
+          echo "HEPTA_C1_DIAGNOSTIC_DIR=$diagnostic_dir" >> "$GITHUB_ENV"
+
       - name: Execute fail-closed exact-head closure
-        run: python3 scripts/c1_hosted_gap_closure_v2.py
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 scripts/c1_hosted_gap_closure_v2.py \
+            2>&1 | tee "$HEPTA_C1_DIAGNOSTIC_DIR/producer.log"
+
+      - name: Record bounded failure context
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "runner=${{ matrix.runner }}"
+            echo "github_sha=$GITHUB_SHA"
+            echo "expected_head=$EXPECTED_HEAD"
+            echo "head_ref=$HEAD_REF"
+            echo "job_status=${{ job.status }}"
+            echo "local_head=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "status_begin"
+            git status --short
+            echo "status_end"
+            echo "changed_paths_begin"
+            git diff --name-only
+            git diff --cached --name-only
+            echo "changed_paths_end"
+            echo "diff_stat_begin"
+            git diff --stat
+            git diff --cached --stat
+            echo "diff_stat_end"
+          } > "$HEPTA_C1_DIAGNOSTIC_DIR/context.txt"
+          chmod 600 "$HEPTA_C1_DIAGNOSTIC_DIR"/*
+
+      - name: Upload hosted closure diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hepta-c1-gap-closure-${{ matrix.runner }}
+          path: ${{ env.HEPTA_C1_DIAGNOSTIC_DIR }}
+          if-no-files-found: error
+          retention-days: 14
