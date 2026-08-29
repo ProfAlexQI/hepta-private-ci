@@ -37,22 +37,22 @@ jobs:
       - name: Fetch exact locked workspace dependencies
         working-directory: codex-rs
         run: cargo fetch --locked
-      - name: Package portable Linux cache
+      - name: Package and shard portable Linux cache
         shell: bash
         run: |
           set -euo pipefail
           toolchain="$(rustc --print sysroot)"
           cache="$RUNNER_TEMP/hepta-rust-cache"
-          mkdir -p "$cache/toolchain" "$cache/cargo"
-          tar -C "$toolchain" -czf "$cache/toolchain/rust-1.95.0-x86_64-unknown-linux-gnu.tar.gz" .
+          mkdir -p "$cache/raw" "$cache/parts" "$cache/meta"
+          tar -C "$toolchain" -czf "$cache/raw/rust-1.95.0-x86_64-unknown-linux-gnu.tar.gz" .
+          tar -C "$HOME/.cargo" -czf "$cache/raw/cargo-registry-git.tar.gz" \
+            --ignore-failed-read registry git
           for name in just cargo-nextest; do
             command -v "$name" >/dev/null
-            cp "$(command -v "$name")" "$cache/cargo/$name"
+            cp "$(command -v "$name")" "$cache/meta/$name"
           done
-          tar -C "$HOME/.cargo" -czf "$cache/cargo/cargo-registry-git.tar.gz" \
-            --ignore-failed-read registry git
           {
-            echo "schema=hepta.rust-toolchain-cache.v1"
+            echo "schema=hepta.rust-toolchain-cache.v2"
             echo "source_head=$TARGET_SOURCE"
             echo "rustc=$(rustc --version)"
             echo "cargo=$(cargo --version)"
@@ -61,12 +61,83 @@ jobs:
             echo "runner_os=$RUNNER_OS"
             echo "runner_arch=$RUNNER_ARCH"
             echo "source_mutation=false"
-          } > "$cache/identity.txt"
-          sha256sum "$cache"/toolchain/*.tar.gz "$cache"/cargo/* > "$cache/SHA256SUMS"
+          } > "$cache/meta/identity.txt"
+          sha256sum "$cache"/raw/*.tar.gz "$cache"/meta/* > "$cache/meta/SHA256SUMS"
+          split -b 180m -d -a 2 \
+            "$cache/raw/rust-1.95.0-x86_64-unknown-linux-gnu.tar.gz" \
+            "$cache/parts/toolchain.part-"
+          split -b 180m -d -a 2 \
+            "$cache/raw/cargo-registry-git.tar.gz" \
+            "$cache/parts/cargo.part-"
+          rm -rf "$cache/raw"
+          find "$cache" -maxdepth 2 -type f -print -exec ls -lh {} \;
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: hepta-rust-cache-${{ env.TARGET_SOURCE }}
-          path: ${{ runner.temp }}/hepta-rust-cache
+          name: hepta-rust-cache-meta-${{ env.TARGET_SOURCE }}
+          path: ${{ runner.temp }}/hepta-rust-cache/meta
           if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-rust-cache-toolchain-00-${{ env.TARGET_SOURCE }}
+          path: ${{ runner.temp }}/hepta-rust-cache/parts/toolchain.part-00
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-rust-cache-toolchain-01-${{ env.TARGET_SOURCE }}
+          path: ${{ runner.temp }}/hepta-rust-cache/parts/toolchain.part-01
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-rust-cache-toolchain-02-${{ env.TARGET_SOURCE }}
+          path: ${{ runner.temp }}/hepta-rust-cache/parts/toolchain.part-02
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-rust-cache-toolchain-03-${{ env.TARGET_SOURCE }}
+          path: ${{ runner.temp }}/hepta-rust-cache/parts/toolchain.part-03
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-rust-cache-cargo-00-${{ env.TARGET_SOURCE }}
+          path: ${{ runner.temp }}/hepta-rust-cache/parts/cargo.part-00
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-rust-cache-cargo-01-${{ env.TARGET_SOURCE }}
+          path: ${{ runner.temp }}/hepta-rust-cache/parts/cargo.part-01
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-rust-cache-cargo-02-${{ env.TARGET_SOURCE }}
+          path: ${{ runner.temp }}/hepta-rust-cache/parts/cargo.part-02
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-rust-cache-cargo-03-${{ env.TARGET_SOURCE }}
+          path: ${{ runner.temp }}/hepta-rust-cache/parts/cargo.part-03
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-rust-cache-cargo-04-${{ env.TARGET_SOURCE }}
+          path: ${{ runner.temp }}/hepta-rust-cache/parts/cargo.part-04
+          if-no-files-found: ignore
           retention-days: 1
           compression-level: 0
