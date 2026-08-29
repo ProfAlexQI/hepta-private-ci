@@ -206,14 +206,8 @@ pub(crate) async fn run_automation_scheduler(
         identity.spawn_generation,
         Sha256Digest::for_bytes(fence.as_bytes()),
     )?;
-    run_automation_scheduler_with_context(
-        store,
-        operation_context,
-        state,
-        identity,
-        cancellation,
-    )
-    .await
+    run_automation_scheduler_with_context(store, operation_context, state, identity, cancellation)
+        .await
 }
 
 pub(crate) async fn run_automation_scheduler_with_context(
@@ -398,10 +392,9 @@ mod tests {
 
     #[test]
     fn automation_has_only_normal_app_server_queue_admission() {
-        let agent_id =
-            AgentId::parse("018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12").expect("agent id");
-        let task_id = AutomationTaskId::parse("019153a4-3088-7000-a56a-9b1964f75007")
-            .expect("task id");
+        let agent_id = AgentId::parse("018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12").expect("agent id");
+        let task_id =
+            AutomationTaskId::parse("019153a4-3088-7000-a56a-9b1964f75007").expect("task id");
         let operation_context = AutomationOperationContext::new(
             1,
             1,

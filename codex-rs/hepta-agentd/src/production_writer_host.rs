@@ -198,9 +198,7 @@ impl AgentdProductionWriterHost {
         })?;
         let effect_runtime_authority = RuntimeAuthorityContext::from_external_binding(binding)
             .map_err(|error| {
-                AgentdError::Protocol(format!(
-                    "bind production effect runtime authority: {error}"
-                ))
+                AgentdError::Protocol(format!("bind production effect runtime authority: {error}"))
             })?;
         self.external_effect = Some(external_effect);
         self.effect_runtime_authority = Some(effect_runtime_authority);
@@ -247,9 +245,7 @@ impl AgentdProductionWriterHost {
             verifier,
         )
         .map_err(|error| {
-            AgentdError::Protocol(format!(
-                "production external-effect use rejected: {error}"
-            ))
+            AgentdError::Protocol(format!("production external-effect use rejected: {error}"))
         })?;
         let dispatcher = self.dispatcher.as_ref().ok_or_else(|| {
             AgentdError::Protocol(

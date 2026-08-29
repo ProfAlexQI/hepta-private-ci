@@ -27,9 +27,11 @@ impl AgentAutomationService {
         authority: &AuthorityGrant,
         runtime_authority: &RuntimeAuthorityContext,
     ) -> Result<Self, AgentdError> {
-        runtime_authority.validate_grant(authority).map_err(|error| {
-            AgentdError::Protocol(format!("validate Automation runtime authority: {error}"))
-        })?;
+        runtime_authority
+            .validate_grant(authority)
+            .map_err(|error| {
+                AgentdError::Protocol(format!("validate Automation runtime authority: {error}"))
+            })?;
         authority
             .validate_binding(&identity.agent_id, identity.spawn_generation)
             .map_err(|error| {

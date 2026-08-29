@@ -47,15 +47,12 @@ impl AgentRuntimeComposition {
     pub(crate) async fn open(config: AgentdConfig) -> Result<Self, AgentdError> {
         let (identity, registry, writer_lock) = config.into_parts();
         let snapshot = registry.load()?;
-        let record = snapshot
-            .agent(&identity.agent_id)
-            .cloned()
-            .ok_or_else(|| {
-                AgentdError::GenerationFenced(format!(
-                    "agent {} disappeared before product composition",
-                    identity.agent_id
-                ))
-            })?;
+        let record = snapshot.agent(&identity.agent_id).cloned().ok_or_else(|| {
+            AgentdError::GenerationFenced(format!(
+                "agent {} disappeared before product composition",
+                identity.agent_id
+            ))
+        })?;
         let authority = authority_for_identity(&identity)?;
         authority
             .validate_binding(&identity.agent_id, identity.spawn_generation)
@@ -66,9 +63,10 @@ impl AgentRuntimeComposition {
         let product_graph = ProductGraph::agent_local(&authority).map_err(|error| {
             AgentdError::Protocol(format!("validate Agent product graph: {error}"))
         })?;
-        let runtime_profile = RuntimeProfileContract::for_authority(&authority).map_err(|error| {
-            AgentdError::Protocol(format!("validate Agent runtime profile: {error}"))
-        })?;
+        let runtime_profile =
+            RuntimeProfileContract::for_authority(&authority).map_err(|error| {
+                AgentdError::Protocol(format!("validate Agent runtime profile: {error}"))
+            })?;
         runtime_profile
             .validate_product_graph(&product_graph)
             .map_err(|error| {
@@ -94,13 +92,9 @@ impl AgentRuntimeComposition {
             &runtime_authority,
         )
         .await?;
-        let automation_service = AgentAutomationService::open(
-            state.as_ref(),
-            &identity,
-            &authority,
-            &runtime_authority,
-        )
-        .await?;
+        let automation_service =
+            AgentAutomationService::open(state.as_ref(), &identity, &authority, &runtime_authority)
+                .await?;
         runtime_profile
             .validate_composed_services(
                 memory_service.is_available(),
@@ -173,9 +167,7 @@ fn runtime_authority_context(
     {
         return Err(AgentdError::GenerationFenced(format!(
             "runtime authority requires Starting generation {}, found {:?} generation {}",
-            identity.spawn_generation,
-            record.lifecycle.lifecycle,
-            record.lifecycle.generation
+            identity.spawn_generation, record.lifecycle.lifecycle, record.lifecycle.generation
         )));
     }
     let authority_epoch = record
@@ -216,7 +208,10 @@ fn runtime_fencing_token(
         &mut bytes,
         lifecycle_name(record.lifecycle.lifecycle).as_bytes(),
     );
-    frame(&mut bytes, &record.release_state.schema_version.to_be_bytes());
+    frame(
+        &mut bytes,
+        &record.release_state.schema_version.to_be_bytes(),
+    );
     frame(&mut bytes, &record.release_state.generation.to_be_bytes());
     frame(
         &mut bytes,
@@ -338,7 +333,10 @@ mod tests {
             parts.authority.allows(AuthorityAction::WriteCognitiveState)
         );
         assert!(parts.product_graph.validate().is_ok());
-        assert_eq!(runtime_profile.profile(), RuntimeAuthorityProfile::AgentLocal);
+        assert_eq!(
+            runtime_profile.profile(),
+            RuntimeAuthorityProfile::AgentLocal
+        );
         assert_eq!(
             runtime_profile
                 .policy(RuntimeServiceId::MemoryRuntime)

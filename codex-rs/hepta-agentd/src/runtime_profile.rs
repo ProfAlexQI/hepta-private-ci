@@ -96,10 +96,7 @@ impl RuntimeServicePolicy {
         }
     }
 
-    const fn optional(
-        service: RuntimeServiceId,
-        placement: RuntimeServicePlacement,
-    ) -> Self {
+    const fn optional(service: RuntimeServiceId, placement: RuntimeServicePlacement) -> Self {
         Self {
             service,
             placement,
@@ -109,10 +106,7 @@ impl RuntimeServicePolicy {
         }
     }
 
-    const fn disabled(
-        service: RuntimeServiceId,
-        placement: RuntimeServicePlacement,
-    ) -> Self {
+    const fn disabled(service: RuntimeServiceId, placement: RuntimeServicePlacement) -> Self {
         Self {
             service,
             placement,
@@ -308,9 +302,9 @@ impl RuntimeProfileContract {
         available: bool,
     ) -> Result<(), RuntimeProfileContractError> {
         match (self.policy(service)?.requirement, available) {
-            (RuntimeServiceRequirement::Required, false) => {
-                Err(RuntimeProfileContractError::RequiredServiceUnavailable(service))
-            }
+            (RuntimeServiceRequirement::Required, false) => Err(
+                RuntimeProfileContractError::RequiredServiceUnavailable(service),
+            ),
             (RuntimeServiceRequirement::Disabled, true) => {
                 Err(RuntimeProfileContractError::DisabledServiceStarted(service))
             }
@@ -394,17 +388,30 @@ pub(crate) enum RuntimeProfileContractError {
 impl fmt::Display for RuntimeProfileContractError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Authority(error) => write!(formatter, "runtime profile authority failed: {error}"),
+            Self::Authority(error) => {
+                write!(formatter, "runtime profile authority failed: {error}")
+            }
             Self::ProductGraph(error) => write!(formatter, "runtime profile graph failed: {error}"),
-            Self::ActionSetDrift => formatter.write_str("runtime profile authority action set drifted"),
+            Self::ActionSetDrift => {
+                formatter.write_str("runtime profile authority action set drifted")
+            }
             Self::EscapedAuthority(actions) => {
-                write!(formatter, "runtime profile received escaped authority: {actions:?}")
+                write!(
+                    formatter,
+                    "runtime profile received escaped authority: {actions:?}"
+                )
             }
             Self::DuplicateService => formatter.write_str("runtime profile has duplicate services"),
             Self::MissingService(service) => {
-                write!(formatter, "runtime profile is missing service {}", service.as_str())
+                write!(
+                    formatter,
+                    "runtime profile is missing service {}",
+                    service.as_str()
+                )
             }
-            Self::InvalidPolicy(reason) => write!(formatter, "runtime profile policy is invalid: {reason}"),
+            Self::InvalidPolicy(reason) => {
+                write!(formatter, "runtime profile policy is invalid: {reason}")
+            }
             Self::AuthorityDigestDrift => {
                 formatter.write_str("runtime profile authority digest drifted from product graph")
             }
@@ -423,8 +430,9 @@ impl fmt::Display for RuntimeProfileContractError {
                 "disabled runtime service {} was started",
                 service.as_str()
             ),
-            Self::SnapshotDoesNotHostProductGraph => formatter
-                .write_str("snapshot_read_only does not host the Agent product graph"),
+            Self::SnapshotDoesNotHostProductGraph => {
+                formatter.write_str("snapshot_read_only does not host the Agent product graph")
+            }
         }
     }
 }
@@ -433,9 +441,9 @@ impl std::error::Error for RuntimeProfileContractError {}
 
 fn validate_action_set(authority: &AuthorityGrant) -> Result<(), RuntimeProfileContractError> {
     let expected = match authority.profile() {
-        RuntimeAuthorityProfile::SnapshotReadOnly => {
-            [AuthorityAction::ReadMemory].into_iter().collect::<BTreeSet<_>>()
-        }
+        RuntimeAuthorityProfile::SnapshotReadOnly => [AuthorityAction::ReadMemory]
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
         RuntimeAuthorityProfile::AgentLocal => [
             AuthorityAction::ServeSession,
             AuthorityAction::ReadMemory,
@@ -487,8 +495,7 @@ mod tests {
     const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 
     fn agent_id() -> AgentId {
-        AgentId::parse(AGENT_ID)
-            .unwrap_or_else(|error| panic!("test AgentId must parse: {error}"))
+        AgentId::parse(AGENT_ID).unwrap_or_else(|error| panic!("test AgentId must parse: {error}"))
     }
 
     #[test]
