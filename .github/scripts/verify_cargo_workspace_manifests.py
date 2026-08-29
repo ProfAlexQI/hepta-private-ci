@@ -25,12 +25,53 @@ TOP_LEVEL_NAME_EXCEPTIONS = {
 UTILITY_NAME_EXCEPTIONS = {
     "path-utils": "codex-utils-path",
 }
+# Keep exceptions exact and self-expiring. These Hepta feature gates are
+# deliberately qualification- or authority-only while Bazel feature parity is
+# completed; changing either a feature name or its members fails this check.
 MANIFEST_FEATURE_EXCEPTIONS = {
-    "codex-rs/code-mode/Cargo.toml": {"sandbox": ("v8/v8_enable_sandbox",)},
+    "codex-rs/hepta-agentd/Cargo.toml": {
+        "default": (),
+        "qualification-cognitive-write": (),
+    },
+    "codex-rs/hepta-automation/Cargo.toml": {
+        "default": (),
+        "taskflow-structural-qualification": (),
+    },
+    "codex-rs/hepta-contracts/Cargo.toml": {
+        "default": (),
+        "authbus-local-qualification": ("dep:zeroize",),
+    },
+    "codex-rs/hepta-matrix-sdk/Cargo.toml": {
+        "default": (),
+        "qualification-failpoints": (),
+    },
+    "codex-rs/hepta-matrix-store/Cargo.toml": {
+        "default": (),
+        "qualification-fault-injection": (),
+    },
+    "codex-rs/hepta-matrixd/Cargo.toml": {
+        "default": (),
+        "real-synapse-e2e": (
+            "codex-hepta-matrix-sdk/qualification-failpoints",
+        ),
+    },
+    "codex-rs/hepta-supervisor/Cargo.toml": {
+        "default": (),
+        "production-authority": (),
+    },
     "codex-rs/v8-poc/Cargo.toml": {"sandbox": ("v8/v8_enable_sandbox",)},
 }
-OPTIONAL_DEPENDENCY_EXCEPTIONS = set()
+OPTIONAL_DEPENDENCY_EXCEPTIONS = {
+    ("codex-rs/hepta-contracts/Cargo.toml", "dependencies", "zeroize"),
+}
 INTERNAL_DEPENDENCY_FEATURE_EXCEPTIONS = {}
+
+# This is Cargo's normalized upstream package, retained byte-for-byte except
+# for the separately reviewed rusqlite constraint patch. It is not a Codex
+# workspace crate and must not be rewritten to inherit Codex package policy.
+MANIFEST_POLICY_EXCLUSIONS = {
+    "codex-rs/third_party/matrix-sdk-sqlite-0.18.0/Cargo.toml",
+}
 
 
 def main() -> int:
@@ -376,11 +417,22 @@ def load_manifest(path: Path) -> dict:
 
 
 def cargo_manifests() -> list[Path]:
-    return sorted(
+    manifests = sorted(
         path
         for path in CARGO_RS_ROOT.rglob("Cargo.toml")
         if path != CARGO_RS_ROOT / "Cargo.toml"
+        and manifest_key(path) not in MANIFEST_POLICY_EXCLUSIONS
     )
+    missing_exclusions = sorted(
+        path_key
+        for path_key in MANIFEST_POLICY_EXCLUSIONS
+        if not (ROOT / path_key).is_file()
+    )
+    if missing_exclusions:
+        raise RuntimeError(
+            "remove stale manifest policy exclusions: " + ", ".join(missing_exclusions)
+        )
+    return manifests
 
 
 def manifests_to_verify() -> list[Path]:
