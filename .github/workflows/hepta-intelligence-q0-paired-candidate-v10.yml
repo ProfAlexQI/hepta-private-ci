@@ -1,3 +1,4 @@
+# Human-authored exact-candidate trigger; no runtime or authority semantics changed.
 name: Hepta Intelligence Q0 paired candidate v10
 
 on:
