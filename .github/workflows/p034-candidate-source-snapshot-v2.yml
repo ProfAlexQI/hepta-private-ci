@@ -53,6 +53,9 @@ jobs:
           test "$(cat recovered/autofix/candidate-head.txt)" = "${P033_HEAD}"
           git -C target apply --index --check ../recovered/autofix/candidate-after-autofix.patch
           git -C target apply --index ../recovered/autofix/candidate-after-autofix.patch
+          sed -i 's/[[:space:]]\+$//' target/codex-rs/hepta-memory/src/intuition_shadow.rs
+          sed -i 's/[[:space:]]\+$//' target/plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_DEVELOPMENT_PLAN_V3_15_2026-08-29.md
+          git -C target add -A
           git -C target diff --cached --check
           git -C target diff --cached --name-status "${P033_HEAD}" > artifacts/p034-source-snapshot/candidate-files.txt
           sha256sum recovered/autofix/candidate-after-autofix.patch > artifacts/p034-source-snapshot/candidate-patch.sha256
