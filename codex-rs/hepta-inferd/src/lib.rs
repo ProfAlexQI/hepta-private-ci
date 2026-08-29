@@ -108,8 +108,8 @@ impl DaemonConfig {
         if self.max_frame_bytes == 0 || self.max_frame_bytes > MAX_FRAME_BYTES {
             return Err(invalid_input("INF_DAEMON_FRAME_BOUND_INVALID"));
         }
-        let minimum_receipt_bytes =
-            u64::try_from(self.max_frame_bytes).map_err(|_| invalid_input("INF_DAEMON_FRAME_BOUND_INVALID"))?;
+        let minimum_receipt_bytes = u64::try_from(self.max_frame_bytes)
+            .map_err(|_| invalid_input("INF_DAEMON_FRAME_BOUND_INVALID"))?;
         if self.max_connections == 0
             || self.max_receipt_files == 0
             || self.max_receipt_bytes < minimum_receipt_bytes
@@ -241,13 +241,7 @@ async fn handle_connection(
     .map_err(|_| ConnectionTaskError::Peer)?;
     let creates_terminal_receipt = request.creates_terminal_receipt();
     let now_unix_ms = unix_time_ms().map_err(ConnectionTaskError::Infrastructure)?;
-    let response = process_public_request(
-        &controller,
-        &receipt_store,
-        request,
-        now_unix_ms,
-    )
-    .await;
+    let response = process_public_request(&controller, &receipt_store, request, now_unix_ms).await;
     if creates_terminal_receipt {
         persist_created_terminal_responses(&receipt_store, &controller, &response)
             .await
@@ -316,11 +310,7 @@ async fn process_public_request(
                 return infer_error_response(InferError::DuplicateRequest);
             }
             let mut controller = controller.lock().await;
-            dispatch_public(
-                &mut controller,
-                ClientMessage::Admit(request),
-                now_unix_ms,
-            )
+            dispatch_public(&mut controller, ClientMessage::Admit(request), now_unix_ms)
         }
         other => {
             let mut controller = controller.lock().await;
@@ -474,10 +464,11 @@ impl ReceiptStore {
                 return Err(invalid_data("INF_RECEIPT_STORE_BUDGET_EXCEEDED"));
             }
             let bytes = fs::read(entry.path()).await?;
-            let receipt = match ServerMessage::decode_canonical(&bytes).map_err(infer_error_to_io)? {
-                ServerMessage::Receipt(receipt) => receipt,
-                _ => return Err(invalid_data("INF_RECEIPT_STORE_INVALID_MESSAGE")),
-            };
+            let receipt =
+                match ServerMessage::decode_canonical(&bytes).map_err(infer_error_to_io)? {
+                    ServerMessage::Receipt(receipt) => receipt,
+                    _ => return Err(invalid_data("INF_RECEIPT_STORE_INVALID_MESSAGE")),
+                };
             receipt
                 .authority
                 .validate_closed()
@@ -530,11 +521,9 @@ impl ReceiptStore {
             }
             return Ok(receipt.clone());
         }
-        if state
-            .receipts
-            .values()
-            .any(|receipt| receipt.request_id == *request_id && receipt.request_generation != request_generation)
-        {
+        if state.receipts.values().any(|receipt| {
+            receipt.request_id == *request_id && receipt.request_generation != request_generation
+        }) {
             return Err(InferError::StaleRequestGeneration);
         }
         if state.receipts.values().any(|receipt| {
@@ -555,8 +544,8 @@ impl ReceiptStore {
             .map_err(infer_error_to_io)?;
         let message = ServerMessage::Receipt(receipt.clone());
         let bytes = message.encode_canonical().map_err(infer_error_to_io)?;
-        let length = u64::try_from(bytes.len())
-            .map_err(|_| invalid_data("INF_RECEIPT_LENGTH_OVERFLOW"))?;
+        let length =
+            u64::try_from(bytes.len()).map_err(|_| invalid_data("INF_RECEIPT_LENGTH_OVERFLOW"))?;
         let key = ReceiptKey::from(receipt);
         {
             let state = self.state.read().await;
@@ -680,8 +669,7 @@ async fn write_frame(
     if bytes.is_empty() || bytes.len() > max_frame_bytes {
         return Err(invalid_data("INF_FRAME_OUT_OF_BOUNDS"));
     }
-    let length = u32::try_from(bytes.len())
-        .map_err(|_| invalid_data("INF_FRAME_TOO_LARGE"))?;
+    let length = u32::try_from(bytes.len()).map_err(|_| invalid_data("INF_FRAME_TOO_LARGE"))?;
     stream.write_all(&length.to_be_bytes()).await?;
     stream.write_all(bytes).await?;
     stream.flush().await
@@ -777,8 +765,7 @@ fn unix_time_ms() -> io::Result<u64> {
     let duration = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| io::Error::other("INF_SYSTEM_TIME_BEFORE_EPOCH"))?;
-    u64::try_from(duration.as_millis())
-        .map_err(|_| io::Error::other("INF_SYSTEM_TIME_OVERFLOW"))
+    u64::try_from(duration.as_millis()).map_err(|_| io::Error::other("INF_SYSTEM_TIME_OVERFLOW"))
 }
 
 fn infer_error_response(error: InferError) -> ServerMessage {

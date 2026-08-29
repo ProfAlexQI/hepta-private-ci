@@ -25,9 +25,7 @@ impl ClientMessage {
             | Self::Cancel { .. }
             | Self::GetReceipt { .. }
             | Self::Snapshot => MessageRole::PublicClient,
-            Self::Start { .. } | Self::Token { .. } | Self::Complete { .. } => {
-                MessageRole::Worker
-            }
+            Self::Start { .. } | Self::Token { .. } | Self::Complete { .. } => MessageRole::Worker,
             Self::RestartBackend { .. } => MessageRole::Operator,
         }
     }

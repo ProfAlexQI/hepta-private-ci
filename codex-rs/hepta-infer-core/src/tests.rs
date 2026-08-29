@@ -82,25 +82,21 @@ fn protocol_messages_have_explicit_roles() {
         .required_role(),
         MessageRole::Operator
     );
-    assert!(ClientMessage::GetReceipt {
-        request_id,
-        request_generation: 1,
-        backend_generation: 7,
-        minimum_sequence: 1,
-    }
-    .is_public_client_operation());
+    assert!(
+        ClientMessage::GetReceipt {
+            request_id,
+            request_generation: 1,
+            backend_generation: 7,
+            minimum_sequence: 1,
+        }
+        .is_public_client_operation()
+    );
 }
 
 #[test]
 fn canonical_protocol_round_trip_preserves_digest_only_request() {
     let tuple = digest('a');
-    let message = ClientMessage::Admit(request(
-        tuple,
-        "request-protocol",
-        "tenant-a",
-        8,
-        u64::MAX,
-    ));
+    let message = ClientMessage::Admit(request(tuple, "request-protocol", "tenant-a", 8, u64::MAX));
     let encoded = must(message.encode_canonical());
     assert!(encoded.len() <= MAX_FRAME_BYTES);
     assert_eq!(must(ClientMessage::decode_canonical(&encoded)), message);
@@ -237,7 +233,13 @@ fn running_cancel_requires_worker_acknowledgement_path() {
 fn queued_cancel_releases_accounting_and_terminal_can_be_forgotten() {
     let tuple = digest('a');
     let mut controller = controller(tuple.clone(), 1, 1);
-    let request = request(tuple.clone(), "request-queued-cancel", "tenant-a", 4, u64::MAX);
+    let request = request(
+        tuple.clone(),
+        "request-queued-cancel",
+        "tenant-a",
+        4,
+        u64::MAX,
+    );
     let request_id = request.identity.request_id.clone();
     must(controller.admit(request, 1));
     let receipt = must(controller.cancel(&request_id, 1, 1, 7));
@@ -318,13 +320,7 @@ fn unknown_tuple_and_open_authority_fail_closed() {
         Err(InferError::UnknownModelTuple)
     );
 
-    let mut open = request(
-        digest('a'),
-        "request-authority",
-        "tenant-a",
-        2,
-        u64::MAX,
-    );
+    let mut open = request(digest('a'), "request-authority", "tenant-a", 2, u64::MAX);
     open.authority.production_listener = true;
     assert_eq!(
         controller.admit(open, 1),

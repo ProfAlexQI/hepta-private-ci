@@ -81,7 +81,9 @@ const ROUND_CONSTANTS: [u32; 64] = [
 
 pub(crate) fn sha256(parts: &[&[u8]]) -> Result<[u8; 32]> {
     let total_length = parts.iter().try_fold(0usize, |total, part| {
-        total.checked_add(part.len()).ok_or(InferError::InvalidDigest)
+        total
+            .checked_add(part.len())
+            .ok_or(InferError::InvalidDigest)
     })?;
     let bit_length = u64::try_from(total_length)
         .map_err(|_| InferError::InvalidDigest)?

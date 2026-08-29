@@ -207,13 +207,7 @@ async fn same_uid_public_peer_cannot_publish_worker_or_operator_messages() {
         );
     }
     assert!(matches!(
-        must(
-            raw_exchange(
-                &config.socket_path,
-                ClientMessage::Ping { nonce: 91 },
-            )
-            .await
-        ),
+        must(raw_exchange(&config.socket_path, ClientMessage::Ping { nonce: 91 },).await),
         ServerMessage::Pong { nonce: 91 }
     ));
     daemon.stop().await;
@@ -278,7 +272,7 @@ async fn receipt_is_memory_bounded_and_recovered_across_restart() {
                 &config.socket_path,
                 ClientMessage::Admit(request(digest('a'), request_id.as_str(), u64::MAX)),
             )
-            .await
+            .await,
         ),
         "INF_DUPLICATE_REQUEST",
     );
@@ -316,13 +310,7 @@ async fn partial_frame_times_out_and_releases_connection_permit() {
     sleep(Duration::from_millis(150)).await;
     drop(stalled);
     assert!(matches!(
-        must(
-            raw_exchange(
-                &config.socket_path,
-                ClientMessage::Ping { nonce: 73 },
-            )
-            .await
-        ),
+        must(raw_exchange(&config.socket_path, ClientMessage::Ping { nonce: 73 },).await),
         ServerMessage::Pong { nonce: 73 }
     ));
     daemon.stop().await;
@@ -383,11 +371,7 @@ async fn deadline_sweep_persists_failure_and_releases_capacity() {
         must(
             raw_exchange(
                 &config.socket_path,
-                ClientMessage::Admit(request(
-                    digest('a'),
-                    "request-after-deadline",
-                    u64::MAX,
-                )),
+                ClientMessage::Admit(request(digest('a'), "request-after-deadline", u64::MAX,)),
             )
             .await
         ),

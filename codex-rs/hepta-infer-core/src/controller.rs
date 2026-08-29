@@ -94,10 +94,7 @@ impl ControllerConfig {
 
     pub fn validate(&self) -> Result<()> {
         self.authority.validate_closed()?;
-        if self.max_queue == 0
-            || self.max_per_tenant == 0
-            || self.registered_tuples.is_empty()
-        {
+        if self.max_queue == 0 || self.max_per_tenant == 0 || self.registered_tuples.is_empty() {
             return Err(InferError::InvalidControllerConfig);
         }
         Ok(())
@@ -329,7 +326,9 @@ impl Controller {
         request_id: &RequestId,
         request_generation: u64,
     ) -> Result<&Digest> {
-        Ok(&self.record(request_id, request_generation)?.token_chain_digest)
+        Ok(&self
+            .record(request_id, request_generation)?
+            .token_chain_digest)
     }
 
     pub fn current_token_metrics(
@@ -461,9 +460,15 @@ impl Controller {
         let mut receipts = Vec::with_capacity(expired.len());
         for request_id in expired {
             let (request_generation, tenant, queued, running, next_sequence, cancel_generation) = {
-                let record = self.records.get(&request_id).ok_or(InferError::QueueInvariant)?;
+                let record = self
+                    .records
+                    .get(&request_id)
+                    .ok_or(InferError::QueueInvariant)?;
                 let queued = record.state == LifecycleState::Queued;
-                let running = matches!(record.state, LifecycleState::Running | LifecycleState::Draining);
+                let running = matches!(
+                    record.state,
+                    LifecycleState::Running | LifecycleState::Draining
+                );
                 self.ensure_active_accounting(&record.request.identity.tenant_id, running)?;
                 (
                     record.request.request_generation,
@@ -529,8 +534,10 @@ impl Controller {
             if record.state.is_terminal() {
                 continue;
             }
-            let forced_worker_termination =
-                matches!(record.state, LifecycleState::Running | LifecycleState::Draining);
+            let forced_worker_termination = matches!(
+                record.state,
+                LifecycleState::Running | LifecycleState::Draining
+            );
             let next_sequence = record
                 .last_sequence
                 .checked_add(1)
