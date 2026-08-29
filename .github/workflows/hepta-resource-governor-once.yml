@@ -149,7 +149,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git rm \
+          git rm -f \
             .github/workflows/hepta-resource-governor-once.yml \
             scripts/hepta-resource-governor-once.py
 
