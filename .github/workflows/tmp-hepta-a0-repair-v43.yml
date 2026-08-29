@@ -1,0 +1,155 @@
+name: Temporary Hepta A0 v4.3 source-repair generator
+
+on:
+  push:
+    branches:
+      - tmp/hepta-a0-source-repair-probe-20260830
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tmp-hepta-a0-source-repair-v43-${{ github.sha }}
+  cancel-in-progress: false
+
+env:
+  SOURCE_HEAD: 0b80caff91010f40a79c795c20487ff9d773d229
+  Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
+  CANONICAL_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout temporary generator branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Apply fail-closed V4.3 repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/tmp-hepta-a0-repair-v43.py
+
+      - name: Build one-parent local replacement tree
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/hepta-a0-repair"
+          patched="$RUNNER_TEMP/hepta-a0-patched"
+          mkdir -p "$artifact/files" "$patched"
+          paths=(
+            .github/workflows/hepta-intelligence-a0-authority.yml
+            .github/workflows/hepta-intelligence-execution-spec.yml
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json
+            scripts/hepta-intelligence-current-truth.py
+            scripts/verify-hepta-intelligence-a0-authority.py
+            scripts/verify-hepta-intelligence-document-authority.py
+            scripts/verify-hepta-intelligence-master-plan.py
+          )
+          for path in "${paths[@]}"; do
+            mkdir -p "$patched/$(dirname "$path")"
+            cp "$path" "$patched/$path"
+          done
+
+          git reset --hard "$SOURCE_HEAD"
+          for path in "${paths[@]}"; do
+            cp "$patched/$path" "$path"
+          done
+          git add -- "${paths[@]}"
+          export GIT_AUTHOR_NAME='Hepta A0 repair verifier'
+          export GIT_AUTHOR_EMAIL='hepta-a0-repair@users.noreply.github.com'
+          export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
+          export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+          tree="$(git write-tree)"
+          commit="$(printf '%s\n' 'fix(intelligence): align V4.3 source contracts' | git commit-tree "$tree" -p "$Q0_HEAD")"
+          git checkout --detach "$commit"
+          test "$(git rev-parse HEAD^)" = "$Q0_HEAD"
+          test "$(git rev-parse HEAD^{tree})" = "$tree"
+          test "$(git rev-list --count "$Q0_HEAD..HEAD")" = 1
+          test "$(git diff --name-only HEAD^ HEAD | wc -l | tr -d ' ')" = 17
+          git diff --check HEAD^ HEAD
+
+          printf '%s\n' "$commit" > "$artifact/local-commit.txt"
+          printf '%s\n' "$tree" > "$artifact/tree.txt"
+          printf '%s\n' "$Q0_HEAD" > "$artifact/parent.txt"
+          for path in "${paths[@]}"; do
+            mkdir -p "$artifact/files/$(dirname "$path")"
+            cp "$path" "$artifact/files/$path"
+          done
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+
+      - name: Run exact source verifiers on local replacement
+        shell: bash
+        env:
+          GITHUB_HEAD_REF: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+        run: |
+          set -euo pipefail
+          local_commit="${{ steps.candidate.outputs.commit }}"
+          python3 -m py_compile \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-document-authority.py
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          GITHUB_SHA="$local_commit" \
+            python3 scripts/verify-hepta-intelligence-a0-authority.py \
+            > "$RUNNER_TEMP/hepta-a0-repair/a0-source-receipt.json"
+          python3 -m json.tool "$RUNNER_TEMP/hepta-a0-repair/a0-source-receipt.json" >/dev/null
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Seal generated files and verification manifest
+        shell: python
+        run: |
+          from __future__ import annotations
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "hepta-a0-repair"
+          entries = []
+          for path in sorted((root / "files").rglob("*")):
+              if path.is_file():
+                  entries.append({
+                      "path": path.relative_to(root / "files").as_posix(),
+                      "bytes": path.stat().st_size,
+                      "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                  })
+          manifest = {
+              "schema": "hepta_a0_v4_3_source_repair_bundle_v1",
+              "source_head": os.environ["SOURCE_HEAD"],
+              "parent": os.environ["Q0_HEAD"],
+              "local_commit": (root / "local-commit.txt").read_text().strip(),
+              "tree": (root / "tree.txt").read_text().strip(),
+              "changed_path_count_from_q0": 17,
+              "modified_file_count": len(entries),
+              "files": entries,
+              "source_verifiers_passed": True,
+              "authority_granted": False,
+          }
+          (root / "manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print("PASS_HEPTA_A0_V4_3_REPAIR_BUNDLE")
+
+      - name: Upload source-repair bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-a0-v4-3-source-repair-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-a0-repair/**
+          if-no-files-found: error
+          retention-days: 7
