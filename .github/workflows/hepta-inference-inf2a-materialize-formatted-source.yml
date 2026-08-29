@@ -1,0 +1,63 @@
+name: Hepta inference INF-2A materialize qualified source blobs
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf2a-adapter-contract-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf2a-materialize-formatted-source.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    name: Commit only qualified adapter source and lockfile
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      BRANCH: codex/hepta-inference-inf2a-adapter-contract-20260829
+      EXPECTED_PARENT: e23f02dc1136a633de63b03e9e03480c47842234
+      SELF: .github/workflows/hepta-inference-inf2a-materialize-formatted-source.yml
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Verify exact one-file trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+      - name: Repair and re-execute exact qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf2a-adapter-contract-repair.py
+          cargo fmt --manifest-path codex-rs/hepta-infer-adapter/Cargo.toml
+          cargo generate-lockfile --manifest-path codex-rs/hepta-infer-adapter/Cargo.toml
+          python3 scripts/hepta-inference-inf2a-adapter-contract-source-gate.py
+          cargo fmt --manifest-path codex-rs/hepta-infer-adapter/Cargo.toml -- --check
+          cargo test --manifest-path codex-rs/hepta-infer-adapter/Cargo.toml --locked
+          cargo clippy --manifest-path codex-rs/hepta-infer-adapter/Cargo.toml \
+            --all-targets --locked -- -D warnings
+          changed="$(git status --porcelain | awk '{print $2}' | sort)"
+          expected="$(printf '%s\n' codex-rs/hepta-infer-adapter/Cargo.lock codex-rs/hepta-infer-adapter/src/lib.rs | sort)"
+          test "$changed" = "$expected"
+      - name: Commit qualified source blobs and fast-forward
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add codex-rs/hepta-infer-adapter/Cargo.lock codex-rs/hepta-infer-adapter/src/lib.rs
+          git commit -m "fix(inference): materialize qualified INF-2A adapter source"
+          git fetch --no-tags origin "$BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          git push origin HEAD:"$BRANCH"
