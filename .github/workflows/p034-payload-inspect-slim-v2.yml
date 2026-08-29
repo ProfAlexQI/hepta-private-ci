@@ -1,4 +1,4 @@
-name: p034-payload-inspect-windows-v6
+name: p034-payload-inspect-direct-windows-v7
 
 on:
   push:
@@ -11,25 +11,18 @@ permissions:
   contents: read
 
 concurrency:
-  group: p034-payload-inspect-windows-v6-${{ github.sha }}
+  group: p034-payload-inspect-direct-windows-v7-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
   inspect:
-    runs-on: windows-2025
-    timeout-minutes: 30
+    runs-on: windows-2022
+    timeout-minutes: 20
     env:
+      PAYLOAD_REF: 9a90531ba6aa3fe2b700c9a8ab4a1c282502a596
       PAYLOAD_SHA256: 0a3c110310edaf463bd7fd4a31148e3cb8dcbdbebc9f38700d94bfcdd5059373
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 1
-          sparse-checkout: |
-            ci/p034-payload
-          sparse-checkout-cone-mode: false
-
-      - name: Decode, verify, and safely extract exact payload
+      - name: Fetch one exact blob, verify, and safely extract
         shell: bash
         run: |
           set -euo pipefail
@@ -39,15 +32,19 @@ jobs:
           import json
           import os
           import tarfile
+          import urllib.request
           from pathlib import Path, PurePosixPath
 
-          root = Path.cwd()
-          out = root / "artifacts/p034-payload"
+          out = Path("artifacts/p034-payload")
           tree = out / "tree"
           tree.mkdir(parents=True, exist_ok=True)
-          encoded = (root / "ci/p034-payload/part-00.b64").read_text(
-              encoding="ascii"
+          ref = os.environ["PAYLOAD_REF"]
+          url = (
+              "https://raw.githubusercontent.com/ProfHepta/hepta-private-ci/"
+              f"{ref}/ci/p034-payload/part-00.b64"
           )
+          with urllib.request.urlopen(url, timeout=60) as response:
+              encoded = response.read().decode("ascii")
           payload = base64.b64decode("".join(encoded.split()), validate=True)
           actual = hashlib.sha256(payload).hexdigest()
           expected = os.environ["PAYLOAD_SHA256"]
@@ -90,8 +87,11 @@ jobs:
                           "sha256": hashlib.sha256(data).hexdigest(),
                       }
                   )
+          if not files:
+              raise SystemExit("payload contains no files")
           receipt = {
-              "schema": "hepta_intelligence_p0_3_4_payload_inspection_v6",
+              "schema": "hepta_intelligence_p0_3_4_payload_inspection_v7",
+              "payload_ref": ref,
               "payload_sha256": actual,
               "member_count": len(members),
               "file_count": len(files),
@@ -121,7 +121,7 @@ jobs:
       - name: Upload exact P0.3.4 payload evidence
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-p0-3-4-payload-${{ github.sha }}-windows
+          name: hepta-p0-3-4-payload-${{ github.sha }}-direct-windows
           path: artifacts/p034-payload
           if-no-files-found: error
           retention-days: 7
