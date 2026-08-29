@@ -1,0 +1,308 @@
+name: Hepta Intelligence A0 authority registry
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-a0-authority-gap-closure-*"
+  pull_request:
+    paths:
+      - ".github/workflows/hepta-intelligence-a0-authority.yml"
+      - ".github/workflows/hepta-intelligence-execution-spec.yml"
+      - ".github/workflows/hepta-intelligence-master-plan.yml"
+      - "plans/hepta-intelligence/AGENTS.md"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json"
+      - "scripts/hepta-intelligence-current-truth.py"
+      - "scripts/verify-hepta-intelligence-a0-authority.py"
+      - "scripts/verify-hepta-intelligence-document-authority.py"
+      - "scripts/verify-hepta-intelligence-master-plan.py"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-a0-authority-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+  EXPECTED_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  EXPECTED_PARENT: c768bcbeb4c1168088d2499828c24da521a2a73a
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  SOURCE_ARTIFACT_NAME: hepta-intelligence-a0-source-${{ github.event.pull_request.head.sha || github.sha }}
+  PRODUCER_ARTIFACT_NAME: hepta-intelligence-a0-producer-${{ github.event.pull_request.head.sha || github.sha }}
+  QUALIFICATION_ARTIFACT_NAME: hepta-intelligence-a0-executable-${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  source-authority:
+    name: A0 canonical authority source gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      ARTIFACT_DIR: artifacts/hepta-intelligence-a0
+    steps:
+      - name: Checkout exact source candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify repository, branch, head, tree and parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" = "$EXPECTED_BRANCH"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test -n "$(git rev-parse HEAD^{tree})"
+          test "$(git rev-parse HEAD:.github/workflows/hepta-intelligence-a0-authority.yml)" = \
+            "$(git hash-object .github/workflows/hepta-intelligence-a0-authority.yml)"
+
+      - name: Compile A0 Python tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+
+      - name: Parse registered machine inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json; do
+            python3 -m json.tool "$path" >/dev/null
+          done
+
+      - name: Verify canonical master plan
+        run: python3 scripts/verify-hepta-intelligence-master-plan.py
+
+      - name: Verify document authority and compatibility
+        run: python3 scripts/verify-hepta-intelligence-document-authority.py
+
+      - name: Verify deterministic current truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          python3 scripts/hepta-intelligence-current-truth.py --compact \
+            >"$ARTIFACT_DIR/current-truth-1.json"
+          python3 scripts/hepta-intelligence-current-truth.py --compact \
+            >"$ARTIFACT_DIR/current-truth-2.json"
+          cmp "$ARTIFACT_DIR/current-truth-1.json" "$ARTIFACT_DIR/current-truth-2.json"
+          cp "$ARTIFACT_DIR/current-truth-1.json" "$ARTIFACT_DIR/current-truth.json"
+
+      - name: Run exact-parent A0 source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          GITHUB_SHA="$EXPECTED_HEAD_SHA" \
+            python3 scripts/verify-hepta-intelligence-a0-authority.py \
+            | tee "$ARTIFACT_DIR/a0-source-gate-receipt.json"
+
+      - name: Enforce negative authority source receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$ARTIFACT_DIR/a0-source-gate-receipt.json" <<'PY'
+          import json
+          import re
+          import sys
+
+          receipt = json.load(open(sys.argv[1], encoding="utf-8"))
+          assert receipt["status"] == "PASS_HEPTA_INTELLIGENCE_A0_SOURCE_ONLY"
+          assert receipt["q0_base"]["qualified_candidate"] is True
+          assert receipt["multimodal_gap_count"] == 42
+          assert receipt["a0_candidate_qualified"] is False
+          assert receipt["full_repository_merge_green"] is False
+          assert receipt["runtime_source_changed"] is False
+          assert receipt["sql_migration_changed"] is False
+          assert receipt["product_caller_changed"] is False
+          assert receipt["source_writeback"] is False
+          assert re.fullmatch(r"[0-9a-f]{40}", receipt["workflow"]["git_blob_sha"])
+          assert re.fullmatch(r"[0-9a-f]{64}", receipt["workflow"]["content_sha256"])
+          assert receipt["authority"]
+          assert all(value is False for value in receipt["authority"].values())
+          PY
+
+      - name: Prove clean tracked source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check HEAD^ HEAD
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Upload exact-head A0 source evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ env.SOURCE_ARTIFACT_NAME }}
+          path: artifacts/hepta-intelligence-a0/**
+          if-no-files-found: error
+          retention-days: 30
+
+  evidence-producer:
+    name: A0 exact-head executable evidence producer
+    needs: source-authority
+    if: ${{ always() && needs.source-authority.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      OUTPUT_ROOT: artifacts/hepta-intelligence-a0-producer-work
+    steps:
+      - name: Checkout exact source candidate for evidence production
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify evidence producer identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" = "$EXPECTED_BRANCH"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git rev-parse HEAD:.github/workflows/hepta-intelligence-a0-authority.yml)" = \
+            "$(git hash-object .github/workflows/hepta-intelligence-a0-authority.yml)"
+          python3 -m py_compile scripts/verify-hepta-intelligence-a0-authority.py
+
+      - name: Produce digest-verified executable evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-intelligence-a0-authority.py \
+            --produce-executable-evidence "$OUTPUT_ROOT"
+
+      - name: Prove producer left tracked source clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check HEAD^ HEAD
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Upload exact-head A0 executable producer evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ env.PRODUCER_ARTIFACT_NAME }}
+          path: |
+            artifacts/hepta-intelligence-a0-producer-work/producer/**
+            artifacts/hepta-intelligence-a0-producer-work/api/run.json
+            artifacts/hepta-intelligence-a0-producer-work/api/jobs.json
+            artifacts/hepta-intelligence-a0-producer-work/api/artifacts.json
+            artifacts/hepta-intelligence-a0-producer-work/api/source-archive-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
+  executable-receipt:
+    name: A0 exact-head executable evidence receipt
+    needs: evidence-producer
+    if: ${{ always() && needs.evidence-producer.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      OUTPUT_ROOT: artifacts/hepta-intelligence-a0-terminal-work
+    steps:
+      - name: Checkout exact source candidate for terminal attestation
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify terminal attestor identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" = "$EXPECTED_BRANCH"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git rev-parse HEAD:.github/workflows/hepta-intelligence-a0-authority.yml)" = \
+            "$(git hash-object .github/workflows/hepta-intelligence-a0-authority.yml)"
+          python3 -m py_compile scripts/verify-hepta-intelligence-a0-authority.py
+
+      - name: Attest completed predecessor evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-intelligence-a0-authority.py \
+            --attest-executable-evidence "$OUTPUT_ROOT"
+
+      - name: Enforce qualification receipt boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$OUTPUT_ROOT/final/a0-executable-qualification-receipt.json" <<'PY'
+          import hashlib
+          import json
+          import sys
+
+          receipt = json.load(open(sys.argv[1], encoding="utf-8"))
+          binding = receipt.pop("receipt_binding_sha256")
+          encoded = json.dumps(
+              receipt,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+          ).encode()
+          assert binding == hashlib.sha256(encoded).hexdigest()
+          assert receipt["status"] == "PASS_HEPTA_INTELLIGENCE_A0_EXECUTABLE_QUALIFICATION"
+          assert receipt["conclusion"]["a0_candidate_qualified"] is True
+          assert receipt["conclusion"]["runtime_capability_qualified"] is False
+          assert receipt["conclusion"]["full_repository_merge_green"] is False
+          assert receipt["conclusion"]["qualification_artifact_requires_external_integrity_revalidation"] is True
+          assert len(receipt["qualified_predecessor_jobs"]) == 2
+          assert len(receipt["qualified_artifacts"]) == 2
+          assert receipt["authority"]
+          assert all(value is False for value in receipt["authority"].values())
+          print("PASS_HEPTA_INTELLIGENCE_A0_EXECUTABLE_QUALIFICATION")
+          PY
+
+      - name: Prove terminal attestor left tracked source clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check HEAD^ HEAD
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Upload exact-head A0 executable qualification receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ env.QUALIFICATION_ARTIFACT_NAME }}
+          path: |
+            artifacts/hepta-intelligence-a0-terminal-work/final/**
+            artifacts/hepta-intelligence-a0-terminal-work/api/run.json
+            artifacts/hepta-intelligence-a0-terminal-work/api/jobs.json
+            artifacts/hepta-intelligence-a0-terminal-work/api/artifacts.json
+            artifacts/hepta-intelligence-a0-terminal-work/api/source-archive-manifest.json
+            artifacts/hepta-intelligence-a0-terminal-work/api/producer-archive-manifest.json
+          if-no-files-found: error
+          retention-days: 30

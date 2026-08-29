@@ -3,21 +3,28 @@ name: Hepta Intelligence canonical master plan
 on:
   pull_request:
     paths:
+      - .github/workflows/hepta-intelligence-a0-authority.yml
+      - .github/workflows/hepta-intelligence-master-plan.yml
       - plans/hepta-intelligence/AGENTS.md
-      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md
-      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json
-      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json
-      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json
       - plans/hepta-intelligence/HEPTA_INTELLIGENCE_CLAIM_LADDER_V1.json
-      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json
-      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V3.json
-      - plans/hepta-intelligence/status-snapshots/**
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json
       - plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V2_2026-08-28.md
       - plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28.md
-      - scripts/verify-hepta-intelligence-master-plan.py
-      - scripts/verify-hepta-intelligence-document-authority.py
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V3.json
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json
+      - plans/hepta-intelligence/status-snapshots/**
+      - scripts/hepta-intelligence-current-truth.py
       - scripts/hepta-intelligence-status-compat.py
-      - .github/workflows/hepta-intelligence-master-plan.yml
+      - scripts/verify-hepta-intelligence-a0-authority.py
+      - scripts/verify-hepta-intelligence-document-authority.py
+      - scripts/verify-hepta-intelligence-master-plan.py
   workflow_dispatch:
 
 permissions:
@@ -30,37 +37,43 @@ concurrency:
 jobs:
   canonical-plan-source:
     name: Canonical plan and document authority source-only gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Checkout explicit candidate identity
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ env.EXPECTED_SHA }}
-          fetch-depth: 0
+          fetch-depth: 2
           persist-credentials: false
 
       - name: Prove checked-out commit and tree
+        shell: bash
         run: |
           set -euo pipefail
-          actual_sha=$(git rev-parse HEAD)
-          actual_tree=$(git rev-parse HEAD^{tree})
+          actual_sha="$(git rev-parse HEAD)"
+          actual_tree="$(git rev-parse HEAD^{tree})"
           test "$actual_sha" = "$EXPECTED_SHA"
+          test -n "$actual_tree"
           printf 'PASS_EXPLICIT_CHECKOUT sha=%s tree=%s\n' "$actual_sha" "$actual_tree"
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
 
-      - name: Compile plan, authority, and compatibility verifiers
+      - name: Compile plan, authority, current-truth, A0, and compatibility verifiers
+        shell: bash
         run: |
+          set -euo pipefail
           python3 -m py_compile \
-            scripts/verify-hepta-intelligence-master-plan.py \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/hepta-intelligence-status-compat.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
             scripts/verify-hepta-intelligence-document-authority.py \
-            scripts/hepta-intelligence-status-compat.py
+            scripts/verify-hepta-intelligence-master-plan.py
 
       - name: Verify sole canonical plan and fail-closed claims
         run: python3 scripts/verify-hepta-intelligence-master-plan.py
@@ -69,19 +82,41 @@ jobs:
         run: python3 scripts/verify-hepta-intelligence-document-authority.py
 
       - name: Validate all immutable tranche snapshots without materialization
+        shell: bash
         run: |
           set -euo pipefail
           for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
             python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
           done
 
-      - name: Parse machine registries
+      - name: Parse all registered A0 machine inputs
+        shell: bash
         run: |
-          python3 -m json.tool plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json >/dev/null
-          python3 -m json.tool plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json >/dev/null
-          python3 -m json.tool plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json >/dev/null
+          set -euo pipefail
+          for path in \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json; do
+            python3 -m json.tool "$path" >/dev/null
+          done
 
-      - name: Assert plan-only authority boundary
+      - name: Verify deterministic A0 current truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          first="$(mktemp)"
+          second="$(mktemp)"
+          trap 'rm -f "$first" "$second"' EXIT
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          python3 scripts/hepta-intelligence-current-truth.py --compact >"$first"
+          python3 scripts/hepta-intelligence-current-truth.py --compact >"$second"
+          cmp "$first" "$second"
+
+      - name: Assert A0 plan-only authority boundary
         shell: python
         run: |
           import json
@@ -91,13 +126,28 @@ jobs:
               Path("plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json")
               .read_text(encoding="utf-8")
           )
-          assert all(value is False for value in data["authority"].values())
-          assert data["active_phase"]["id"] == "Q0"
-          assert data["active_phase"]["active_task"] == "DOC-Q0.1_RESTORE_FROZEN_QUALIFICATION_COMPATIBILITY"
+          assert data["active_phase"]["id"] == "A0"
+          assert (
+              data["active_phase"]["allowed_change_class"]
+              == "DOCUMENTATION_REGISTRY_VERIFIER_WORKFLOW_ONLY"
+          )
           assert data["stack_budget"]["runtime_source_freeze"] is True
           assert data["session_bootstrap"]["legacy_machine_contracts_are_current_authority"] is False
           assert data["session_bootstrap"]["legacy_machine_contracts_must_remain_compatible_until_migrated"] is True
-          print("PASS_PLAN_ONLY_NO_RUNTIME_AUTHORITY")
+          assert data["authority"]
+          assert all(value is False for value in data["authority"].values())
+          print("PASS_A0_PLAN_ONLY_NO_RUNTIME_AUTHORITY")
+
+      - name: Run exact-parent A0 cross-verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          GITHUB_SHA="$EXPECTED_SHA" \
+            python3 scripts/verify-hepta-intelligence-a0-authority.py
 
       - name: Assert read-only clean worktree
-        run: git diff --exit-code
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check HEAD^ HEAD
+          test -z "$(git status --porcelain --untracked-files=no)"
