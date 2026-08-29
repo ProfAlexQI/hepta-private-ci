@@ -1,0 +1,142 @@
+name: Hepta inference INF-2A adapter contract repair
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf2a-adapter-contract-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf2a-adapter-contract-repair.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    name: Format, test and export corrected adapter contract
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    env:
+      EXPECTED_PARENT: 4a7d724da784f134cc22f363e7caabaaac0acb2b
+      SELF: .github/workflows/hepta-inference-inf2a-adapter-contract-repair.yml
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+
+      - name: Verify isolated repair commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply duplicate-registration atomicity repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path=Path('codex-rs/hepta-infer-adapter/src/lib.rs')
+          text=path.read_text(encoding='utf-8')
+          old='''        let key = adapter.profile().model_tuple_digest.clone();
+        if self.adapters.insert(key, adapter).is_some() {
+            return Err(AdapterError::DuplicateTuple);
+        }
+        Ok(())
+'''
+          new='''        let key = adapter.profile().model_tuple_digest.clone();
+        if self.adapters.contains_key(&key) {
+            return Err(AdapterError::DuplicateTuple);
+        }
+        self.adapters.insert(key, adapter);
+        Ok(())
+'''
+          if old not in text:
+              raise SystemExit('duplicate registration repair anchor missing')
+          text=text.replace(old,new,1)
+          anchor='''    #[test]
+    fn unsafe_profiles_are_rejected() {
+'''
+          test='''    #[tokio::test]
+    async fn duplicate_registration_preserves_original_adapter() {
+        let original = Arc::new(DeterministicAdapter::new(matrix(
+            QUALIFIED,
+            UNSUPPORTED,
+            UNSUPPORTED,
+        )));
+        let replacement = Arc::new(DeterministicAdapter::new(matrix(
+            QUALIFIED,
+            UNSUPPORTED,
+            UNSUPPORTED,
+        )));
+        let mut registry = AdapterRegistry::default();
+        if let Err(error) = registry.register(original.clone()) {
+            panic!("unexpected registration error: {error}");
+        }
+        assert_eq!(
+            registry.register(replacement.clone()),
+            Err(AdapterError::DuplicateTuple)
+        );
+        if let Err(error) = registry
+            .execute(&request(QualificationFixture::SemanticHeptaOk))
+            .await
+        {
+            panic!("unexpected execution error: {error}");
+        }
+        assert_eq!(original.executions.load(Ordering::SeqCst), 1);
+        assert_eq!(replacement.executions.load(Ordering::SeqCst), 0);
+    }
+
+'''
+          if anchor not in text:
+              raise SystemExit('test insertion anchor missing')
+          text=text.replace(anchor,test+anchor,1)
+          path.write_text(text,encoding='utf-8')
+          PY
+          cargo fmt --manifest-path codex-rs/hepta-infer-adapter/Cargo.toml
+          cargo generate-lockfile --manifest-path codex-rs/hepta-infer-adapter/Cargo.toml
+
+      - name: Execute exact source, Rust and Clippy gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf2a-adapter-contract-source-gate.py
+          cargo fmt --manifest-path codex-rs/hepta-infer-adapter/Cargo.toml -- --check
+          cargo test --manifest-path codex-rs/hepta-infer-adapter/Cargo.toml --locked
+          cargo clippy --manifest-path codex-rs/hepta-infer-adapter/Cargo.toml \
+            --all-targets --locked -- -D warnings
+
+      - name: Export exact corrected source
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/hepta-inference-inf2a-adapter-contract-repair"
+          mkdir -p "$out/codex-rs/hepta-infer-adapter/src"
+          cp codex-rs/hepta-infer-adapter/Cargo.toml "$out/codex-rs/hepta-infer-adapter/"
+          cp codex-rs/hepta-infer-adapter/Cargo.lock "$out/codex-rs/hepta-infer-adapter/"
+          cp codex-rs/hepta-infer-adapter/src/lib.rs "$out/codex-rs/hepta-infer-adapter/src/"
+          {
+            echo "parent=$EXPECTED_PARENT"
+            echo "source_gate=PASS"
+            echo "cargo_fmt=PASS"
+            echo "cargo_test=PASS"
+            echo "strict_clippy=PASS"
+            echo "duplicate_registration_preserves_original=PASS"
+            echo "qualified=false"
+            echo "product_wiring=false"
+          } > "$out/receipt.txt"
+          find "$out" -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > "$out/SHA256SUMS"
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf2a-adapter-contract-repair-${{ env.EXPECTED_PARENT }}
+          path: ${{ runner.temp }}/hepta-inference-inf2a-adapter-contract-repair
+          if-no-files-found: error
+          retention-days: 14
