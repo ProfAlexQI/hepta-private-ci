@@ -1,0 +1,230 @@
+name: hepta-ui-v4-repository-closure-qualification
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-ui-v4-repository-closure-20260829"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: hepta-ui-v4-repository-closure-qualification
+  cancel-in-progress: true
+
+env:
+  HEPTA_CANDIDATE_SHA: 092dbcacff7ae6c3e4cbfa7c8268db9ed87bd5f1
+  HEPTA_CANDIDATE_TREE: b9d779e04136edaae05d3ae88581fb2bb3f5c146
+  HEPTA_RUST_TOOLCHAIN: "1.95.0"
+
+jobs:
+  source-native:
+    name: Exact candidate source and Native contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$HEPTA_CANDIDATE_TREE"
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.HEPTA_RUST_TOOLCHAIN }}
+          components: rustfmt
+      - name: Install Linux Native dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential pkg-config clang ca-certificates libssl-dev \
+            libx11-dev libxcursor-dev libxkbcommon-dev libxrandr-dev \
+            libxi-dev libxinerama-dev libasound2-dev libpulse-dev \
+            libwayland-dev wayland-protocols libegl1-mesa-dev \
+            libgl1-mesa-dev libgles2-mesa-dev libglx-dev libdrm-dev libgbm-dev
+      - name: Execute source and Native closure
+        shell: bash
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          set -euo pipefail
+          ruby -c scripts/hepta-ui-v4-final-gap-closure-index-v3
+          ruby -c scripts/hepta-ui-v4-executable-final-gap-closure-v3-gate
+          ruby scripts/hepta-ui-v4-final-gap-closure-index-v3 --self-test
+          ruby scripts/hepta-ui-v4-executable-final-gap-closure-v3-gate
+          cargo check --manifest-path codex-rs/Cargo.toml -p hepta-core
+          cargo check --manifest-path codex-rs/Cargo.toml -p hepta-native-gateway
+          cargo test --manifest-path codex-rs/Cargo.toml -p hepta-core --test control_ui_v4_bundle
+          cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib \
+            shared::hepta_v4::tests::v4_contract_is_fail_closed_and_readable -- --exact
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib \
+            shared::hepta_platform_material::tests::platform_profiles_are_bounded_and_fail_closed -- --exact
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib \
+            shared::hepta_platform_material_runtime::tests::runtime_material_resolution_is_bounded_and_fail_closed -- --exact
+      - name: Write source and Native receipt
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts/source-native
+          printf '{"schema":"hepta.ui.v4.repository-closure.source-native.v1","candidate":{"commit":"%s","tree":"%s"},"auditor":{"commit":"%s"},"rustToolchain":"%s","productBound":false,"systemMaterialBound":false,"authority":{"network":false,"mutation":false,"effect":false,"liveAdapter":false,"production":false,"operatorAcceptance":false,"promotion":false,"release":false}}\n' \
+            "$HEPTA_CANDIDATE_SHA" "$HEPTA_CANDIDATE_TREE" "$GITHUB_SHA" "$HEPTA_RUST_TOOLCHAIN" \
+            > artifacts/source-native/receipt.json
+      - name: Upload source and Native receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-repository-source-native-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: artifacts/source-native/receipt.json
+          if-no-files-found: error
+          retention-days: 14
+
+  platform:
+    name: Exact candidate platform contracts (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Enable Windows long paths
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global core.longpaths true
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$HEPTA_CANDIDATE_TREE"
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.HEPTA_RUST_TOOLCHAIN }}
+          components: rustfmt
+      - name: Execute platform and safety contracts
+        shell: bash
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          set -euo pipefail
+          global=tools/hepta-ui-global-platform-source-closure/Cargo.toml
+          safety=tools/hepta-ui-windows-product-host-safety/Cargo.toml
+          device=tools/hepta-ui-windows-product-host-device-drill/Cargo.toml
+          cargo fmt --manifest-path "$global" -- --check
+          cargo check --manifest-path "$global" --all-targets
+          cargo test --manifest-path "$global" -- --nocapture
+          cargo fmt --manifest-path "$safety" -- --check
+          cargo check --manifest-path "$safety" --all-targets --no-default-features
+          cargo test --manifest-path "$safety" --no-default-features -- --nocapture
+          cargo check --manifest-path "$safety" --all-targets \
+            --no-default-features --features hepta_ui_windows_system_material_v4
+          cargo test --manifest-path "$safety" \
+            --no-default-features --features hepta_ui_windows_system_material_v4 -- --nocapture
+          cargo fmt --manifest-path "$device" -- --check
+          cargo check --manifest-path "$device" --all-targets --no-default-features
+          cargo check --manifest-path "$device" --all-targets \
+            --no-default-features --features hepta_ui_windows_system_material_v4
+      - name: Compile iOS target contract
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup target add aarch64-apple-ios --toolchain "$HEPTA_RUST_TOOLCHAIN"
+          cargo check --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml \
+            --lib --target aarch64-apple-ios
+      - name: Compile Android target contract
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup target add aarch64-linux-android --toolchain "$HEPTA_RUST_TOOLCHAIN"
+          cargo check --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml \
+            --lib --target aarch64-linux-android
+      - name: Write platform receipt
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts/platform
+          printf '{"schema":"hepta.ui.v4.repository-closure.platform.v1","candidate":{"commit":"%s","tree":"%s"},"auditor":{"commit":"%s"},"platform":"%s","rustToolchain":"%s","productBound":false,"systemMaterialBound":false,"authority":{"network":false,"mutation":false,"effect":false,"liveAdapter":false,"production":false,"operatorAcceptance":false,"promotion":false,"release":false}}\n' \
+            "$HEPTA_CANDIDATE_SHA" "$HEPTA_CANDIDATE_TREE" "$GITHUB_SHA" "${{ matrix.os }}" "$HEPTA_RUST_TOOLCHAIN" \
+            > artifacts/platform/receipt.json
+      - name: Upload platform receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-repository-platform-${{ matrix.os }}-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: artifacts/platform/receipt.json
+          if-no-files-found: error
+          retention-days: 14
+
+  closure:
+    name: Exact candidate repository-controlled closure
+    if: always()
+    needs: [source-native, platform]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Produce repository-controlled closure receipt
+        shell: bash
+        env:
+          SOURCE_NATIVE_RESULT: ${{ needs.source-native.result }}
+          PLATFORM_RESULT: ${{ needs.platform.result }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$HEPTA_CANDIDATE_TREE"
+          mkdir -p artifacts/closure
+          ruby -rjson -e '
+            checks={
+              "sourceNative"=>ENV.fetch("SOURCE_NATIVE_RESULT"),
+              "platformMatrix"=>ENV.fetch("PLATFORM_RESULT")
+            }
+            pass=checks.values.all?{|value| value=="success"}
+            payload={
+              "schema"=>"hepta.ui.v4.repository-controlled-closure.v1",
+              "status"=>pass ? "PASS_EXACT_HEAD_REPOSITORY_CONTROLLED_UI_CLOSURE" : "FAIL_EXACT_HEAD_REPOSITORY_CONTROLLED_UI_CLOSURE",
+              "candidate"=>{"commit"=>ENV.fetch("HEPTA_CANDIDATE_SHA"),"tree"=>ENV.fetch("HEPTA_CANDIDATE_TREE")},
+              "auditor"=>{"commit"=>ENV.fetch("GITHUB_SHA")},
+              "checks"=>checks,
+              "sourceControllableGapsClosed"=>pass,
+              "externalEvidenceComplete"=>false,
+              "allGapsClosed"=>false,
+              "boundary"=>{"productWired"=>false,"productCargoFeatureDeclared"=>false,"productModuleRegistered"=>false,"productLifecycleWired"=>false,"automaticBindingAllowed"=>false,"productHostMayBind"=>false,"productBound"=>false,"systemMaterialBound"=>false,"nativeProductRuntime"=>false,"deviceValidation"=>false},
+              "authority"=>{"network"=>false,"mutation"=>false,"effect"=>false,"liveAdapter"=>false,"production"=>false,"operatorAcceptance"=>false,"promotion"=>false,"release"=>false},
+              "failures"=>pass ? [] : ["one or more repository-controlled execution lanes failed"]
+            }
+            File.write("artifacts/closure/receipt.json",JSON.pretty_generate(payload)+"\n")
+            abort "repository-controlled closure failed" unless pass
+          '
+      - name: Upload closure receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-repository-closure-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: artifacts/closure/receipt.json
+          if-no-files-found: error
+          retention-days: 14
