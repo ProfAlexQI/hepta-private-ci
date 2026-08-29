@@ -1,0 +1,129 @@
+{
+  "schema": "hepta.inference.hardware_performance_classification.v1",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
+  "stage": "INF-4",
+  "classification": "KNOWN_GAP_NOT_ROUTED",
+  "source_evidence": {
+    "real_service_run_id": 33235893994,
+    "artifact_id": 9710068720,
+    "artifact_sha256": "53d60bb1f990cb6c982d41e8d4597300dabedb5df3b838aa1d91dceecf170d01",
+    "candidate_receipt": "cd3344d767667b177d6d21c7198bade228d010bb",
+    "candidate_source": "a45d0b6b1591ed67f6f580879a706849a81c6fe9",
+    "candidate_tree": "eb415339159aff6bdf39a2030b55432d89321f2d"
+  },
+  "device_profile": {
+    "runner_os": "Linux",
+    "runner_arch": "ARM64",
+    "hosted_runner_label": "ubuntu-24.04-arm",
+    "hardware_identity": "HOSTED_EPHEMERAL_NOT_STABLE",
+    "device_profile_digest": "UNAVAILABLE"
+  },
+  "providers": {
+    "ollama": {
+      "runtime": "ollama",
+      "runtime_version": "0.33.2",
+      "model_id": "granite4:1b",
+      "capabilities": {
+        "semantic_text": "QUALIFIED",
+        "native_tool_call": "QUALIFIED",
+        "strict_sse": "UNSUPPORTED_FAIL_CLOSED",
+        "direct_cancel_ack": "UNSUPPORTED_FAIL_CLOSED"
+      },
+      "sample_count": 5,
+      "cold_elapsed_ms": 12600,
+      "warm_elapsed_ms": [
+        2025,
+        2032,
+        2047,
+        2026
+      ],
+      "warm_mean_ms": 2032.5,
+      "warm_median_ms": 2029.0,
+      "warm_p95_nearest_rank_ms": 2047,
+      "warm_min_ms": 2025,
+      "warm_max_ms": 2047,
+      "semantic_digest": "c5714a713d1274c8b51993bb98acdd0464b12d1820990835ad46dad4460615e7",
+      "semantic_byte_length": 14,
+      "all_semantic_outputs_verified": true,
+      "raw_prompt_persisted": false,
+      "raw_output_persisted": false,
+      "runtime_version_evidence": "ollama client binary version; service version was verified by the real-service harness"
+    },
+    "lmstudio": {
+      "runtime": "lmstudio",
+      "runtime_version": "llmster 0.0.23+1",
+      "model_id": "ibm/granite-4-micro",
+      "model_artifact": "ibm/granite-4-micro@q4_k_m",
+      "capabilities": {
+        "semantic_text": "QUALIFIED",
+        "native_tool_call": "UNSUPPORTED_FAIL_CLOSED",
+        "strict_sse": "UNSUPPORTED_FAIL_CLOSED",
+        "direct_cancel_ack": "UNSUPPORTED_FAIL_CLOSED"
+      },
+      "sample_count": 5,
+      "cold_elapsed_ms": 3075,
+      "warm_elapsed_ms": [
+        1140,
+        1150,
+        1146,
+        1143
+      ],
+      "warm_mean_ms": 1144.75,
+      "warm_median_ms": 1144.5,
+      "warm_p95_nearest_rank_ms": 1150,
+      "warm_min_ms": 1140,
+      "warm_max_ms": 1150,
+      "semantic_digest": "c5714a713d1274c8b51993bb98acdd0464b12d1820990835ad46dad4460615e7",
+      "semantic_byte_length": 14,
+      "all_semantic_outputs_verified": true,
+      "raw_prompt_persisted": false,
+      "raw_output_persisted": false,
+      "cli_commit": "07b7252",
+      "runtime_backend": "llama.cpp-mac-arm64-apple-metal-advsimd@1.65.0"
+    }
+  },
+  "gates": {
+    "correctness_digest": "PASS",
+    "five_sample_semantic_repeatability": "PASS",
+    "cold_warm_latency_separated": "PASS",
+    "direct_native_baseline": "NOT_MEASURED",
+    "ttft": "NOT_MEASURED",
+    "prefill_tokens_per_second": "NOT_MEASURED",
+    "decode_tokens_per_second": "NOT_MEASURED",
+    "rss_vram": "NOT_MEASURDD",
+    "power_temperature": "NOT_MEASURED",
+    "concurrency_degradation": "NOT_MEASURED",
+    "sidecar_overhead_gate": "NOT_EVALUABLE",
+    "throughput_parity_gate": "NOT_EVALUABLE"
+  },
+  "router_disposition": {
+    "default_router_eligible": false,
+    "experimental_router_eligible": false,
+    "unknown_device_policy": "REJECT_FAIL_CLOSED",
+    "reason": "No stable device fingerprint, direct-native baseline, resource, power, thermal, or concurrency receipt."
+  },
+  "gap_closure": {
+    "performance_gap_recorded": true,
+    "production_performance_qualification": false,
+    "closure_mode": "KNOWN_GAP_REMOVED_FROM_DEFAULT_ROUTER",
+    "technical_gap_closed_by_classification": true,
+    "promotion_blocking": false,
+    "explanation": "The exact hosted-ephemeral tuple is explicitly ineligible for routing; no unmeasured performance claim is inherited by any stable device."
+  },
+  "authority": {
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
