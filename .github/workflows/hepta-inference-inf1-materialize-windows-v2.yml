@@ -1,0 +1,106 @@
+name: Hepta inference INF-1 sparse Windows materialization v2
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf1-source-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf1-materialize-windows-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-inf1-materialize-windows-v2-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    name: Sparse-checkout and materialize exact INF-1 source
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          path: r
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/hepta-inference-inf1-materialize-windows-v2.yml
+            /scripts/hepta-inference-inf1-*
+            /docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_*
+            /codex-rs/Cargo.toml
+
+      - name: Verify isolated sparse workflow commit
+        shell: pwsh
+        working-directory: r
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $changed = git diff --name-only HEAD^ HEAD
+          if ($changed -ne '.github/workflows/hepta-inference-inf1-materialize-windows-v2.yml') {
+            throw "unexpected workflow commit delta: $changed"
+          }
+
+      - name: Materialize and verify digest-bound source
+        shell: pwsh
+        working-directory: r
+        run: |
+          $ErrorActionPreference = 'Stop'
+          py -3 scripts/hepta-inference-inf1-materialize.py
+          py -3 -m py_compile scripts/hepta-inference-inf1-bootstrap.py scripts/hepta-inference-inf1-source-gate.py
+          if (-not (Test-Path codex-rs/hepta-infer-core/Cargo.toml)) { throw 'missing hepta-infer-core' }
+          if (-not (Test-Path codex-rs/hepta-inferd/Cargo.toml)) { throw 'missing hepta-inferd' }
+          py -3 scripts/hepta-inference-inf1-bootstrap.py --apply
+          py -3 scripts/hepta-inference-inf1-bootstrap.py --verify
+
+      - name: Build deterministic source bundle
+        shell: pwsh
+        working-directory: r
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:RUNNER_TEMP 'hepta-inference-inf1-materialized'
+          New-Item -ItemType Directory -Force -Path (Join-Path $out 'codex-rs') | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $out 'docs/hepta-vnext/inference') | Out-Null
+          New-Item -ItemType Directory -Force -Path (Join-Path $out 'scripts') | Out-Null
+          Copy-Item codex-rs/Cargo.toml (Join-Path $out 'codex-rs/Cargo.toml')
+          Copy-Item -Recurse codex-rs/hepta-infer-core (Join-Path $out 'codex-rs/hepta-infer-core')
+          Copy-Item -Recurse codex-rs/hepta-inferd (Join-Path $out 'codex-rs/hepta-inferd')
+          Copy-Item docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_CONTRACT_V1.md (Join-Path $out 'docs/hepta-vnext/inference/')
+          Copy-Item docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_STATUS_V1.json (Join-Path $out 'docs/hepta-vnext/inference/')
+          Copy-Item scripts/hepta-inference-inf1-bootstrap.py (Join-Path $out 'scripts/')
+          Copy-Item scripts/hepta-inference-inf1-source-gate.py (Join-Path $out 'scripts/')
+          $files = @()
+          Get-ChildItem -Recurse -File $out | Sort-Object FullName | ForEach-Object {
+            $relative = $_.FullName.Substring($out.Length + 1).Replace('\','/')
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            $files += @{ path = $relative; byte_length = $_.Length; sha256 = $hash }
+          }
+          $manifest = @{
+            schema = 'hepta.inference.inf1.materialized-source.v3'
+            input_head = $env:GITHUB_SHA
+            runner_os = $env:RUNNER_OS
+            runner_arch = $env:RUNNER_ARCH
+            sparse_checkout = $true
+            payload_digest_verified = $true
+            workspace_integration_verified = $true
+            files = $files
+            qualified = $false
+            inf1 = 'SOURCE_PRESENT_NOT_RUN'
+            production_authority = $false
+          } | ConvertTo-Json -Depth 10
+          Set-Content -Path (Join-Path $out 'manifest.json') -Value $manifest -Encoding utf8NoBOM
+          Get-ChildItem -Recurse -File $out | Where-Object Name -ne 'SHA256SUMS' | Sort-Object FullName | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            "$hash  $($_.FullName.Substring($out.Length + 1).Replace('\','/'))"
+          } | Set-Content -Path (Join-Path $out 'SHA256SUMS') -Encoding ascii
+
+      - name: Upload exact materialized source
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf1-materialized-windows-v2-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-inference-inf1-materialized
+          if-no-files-found: error
+          retention-days: 14
