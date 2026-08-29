@@ -1,0 +1,71 @@
+name: Hepta inference INF-1 materialize and repair v4 macOS
+on:
+  push:
+    branches: [codex/hepta-inference-inf1-source-20260829]
+    paths: [".github/workflows/hepta-inference-inf1-materialize-repair-v4-macos.yml"]
+permissions:
+  contents: write
+concurrency:
+  group: hepta-inference-inf1-materialize-repair-v4-macos
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: macos-15-intel
+    timeout-minutes: 120
+    env:
+      BRANCH: codex/hepta-inference-inf1-source-20260829
+      SELF: .github/workflows/hepta-inference-inf1-materialize-repair-v4-macos.yml
+      EXPECTED_PARENT: 7c4de8eefdfb0f4ffc3d2bc12a03b9c371ec2786
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Verify exact trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+      - name: Materialize and repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-materialize.py
+          python3 scripts/hepta-inference-inf1-connection-isolation-repair-v4.py
+          python3 -m py_compile scripts/hepta-inference-inf1-{bootstrap,source-gate,connection-isolation-repair-v4}.py
+          ! grep -R -F "OpenOptionsExt" codex-rs/hepta-inferd/src
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+      - name: Integrate and qualify exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-bootstrap.py --apply
+          python3 scripts/hepta-inference-inf1-bootstrap.py --verify
+          cd codex-rs
+          cargo generate-lockfile
+          cargo fmt -p codex-hepta-infer-core -p codex-hepta-inferd
+          cargo fmt -p codex-hepta-infer-core -p codex-hepta-inferd -- --check
+          cargo check --locked -p codex-hepta-infer-core -p codex-hepta-inferd
+          cargo test --locked -p codex-hepta-infer-core
+          cargo test --locked -p codex-hepta-inferd -- --test-threads=1
+          cargo clippy --locked --all-targets --no-deps -p codex-hepta-infer-core -p codex-hepta-inferd -- -D warnings
+      - name: Verify source and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-source-gate.py
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add codex-rs/Cargo.toml codex-rs/Cargo.lock codex-rs/hepta-infer-core codex-rs/hepta-inferd scripts/hepta-inference-inf1-source-gate.py docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_STATUS_V1.json
+          git commit -m "feat(inference): materialize minimal INF-1 UDS controller"
+          git fetch --no-tags origin "$BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          git push origin HEAD:"$BRANCH"
+          echo "PASS_HEPTA_INFERENCE_INF1_MATERIALIZED_SOURCE" >> "$GITHUB_STEP_SUMMARY"
