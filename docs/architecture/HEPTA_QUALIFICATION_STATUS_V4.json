@@ -15,165 +15,67 @@
   },
   "sourceClosure": {
     "state": "source_in_progress",
-    "completedTranches": [
-      "p0.5",
-      "p0.6"
-    ],
+    "completedTranches": ["p0.5", "p0.6"],
     "currentTranches": [
-      "v5_document_authority",
-      "p0.7a_normalization"
+      "p0.7a_source_implemented_pending_execution",
+      "p0.7b_B0_verified_use_kernel",
+      "p0.7e_E0_dependency_policy_source_implemented"
     ],
     "sourceImplementedPendingExecution": [
+      "A-SCOPE-01",
       "A-LOCK-01",
       "A-TRANSPORT-01",
-      "A-RECOVERY-01"
+      "A-RECOVERY-01",
+      "P0.7e.E0"
     ],
     "sourceOpen": [
-      "A-SCOPE-01",
-      "P0.7b",
+      "P0.7b.B0-B4",
       "P0.7c",
       "P0.7d",
-      "P0.7e",
+      "P0.7e.E1-E4",
       "P0.8a",
       "P0.8b",
       "P0.8c",
       "P0.8d"
     ],
-    "blockedExternal": [
-      "A-CI-01"
-    ]
+    "blockedExternal": ["A-CI-01"]
   },
   "qualification": {
-    "v5SourceVerifier": {
-      "state": "not_run",
-      "runId": null,
-      "jobId": null,
-      "runnerId": null,
-      "stepCount": null
-    },
-    "dependencyPolicyVerifier": {
-      "state": "not_run",
-      "runId": null,
-      "jobId": null,
-      "runnerId": null,
-      "stepCount": null
-    },
-    "lockedMetadata": {
-      "state": "not_run",
-      "runId": null,
-      "jobId": null,
-      "runnerId": null,
-      "stepCount": null
-    },
-    "bazelLock": {
-      "state": "not_run",
-      "runId": null,
-      "jobId": null,
-      "runnerId": null,
-      "stepCount": null
-    },
-    "format": {
-      "state": "not_run",
-      "runId": null,
-      "jobId": null,
-      "runnerId": null,
-      "stepCount": null
-    },
-    "packageTests": {
-      "state": "not_run",
-      "runId": null,
-      "jobId": null,
-      "runnerId": null,
-      "stepCount": null
-    },
-    "cargoCheck": {
-      "state": "not_run",
-      "runId": null,
-      "jobId": null,
-      "runnerId": null,
-      "stepCount": null
-    },
-    "strictClippy": {
-      "state": "not_run",
-      "runId": null,
-      "jobId": null,
-      "runnerId": null,
-      "stepCount": null
-    },
-    "physicalFaultRows": {
-      "state": "not_run",
-      "runId": null,
-      "jobId": null,
-      "runnerId": null,
-      "stepCount": null
-    },
-    "exactSourceHead": {
-      "state": "not_run",
-      "runId": null,
-      "jobId": null,
-      "runnerId": null,
-      "stepCount": null
-    },
-    "mergeCandidate": {
-      "state": "not_run",
-      "runId": null,
-      "jobId": null,
-      "runnerId": null,
-      "stepCount": null
-    }
+    "v5SourceVerifier": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "dependencyPolicyVerifier": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "lockedMetadata": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "bazelLock": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "format": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "packageTests": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "cargoCheck": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "strictClippy": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "physicalFaultRows": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "exactSourceHead": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "mergeCandidate": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null}
   },
   "observedParentExecution": {
     "state": "not_run",
     "parentHead": "b1bdd44ee6cbedbcc249150968448e25f5ce859c",
     "runs": [
-      {
-        "name": "Hepta V4 architecture plan",
-        "runId": 33268712970,
-        "rawState": "queued"
-      },
+      {"name": "Hepta V4 architecture plan", "runId": 33268712970, "rawState": "queued"},
       {
         "name": "Hepta P0.7a runtime bootstrap",
         "runId": 33268712986,
         "rawState": "queued",
         "jobs": [
-          {
-            "jobId": 99143487170,
-            "name": "P0.7a committed lock coherence",
-            "runnerId": 0,
-            "steps": []
-          },
-          {
-            "jobId": 99143487291,
-            "name": "P0.7a source qualification",
-            "runnerId": 0,
-            "steps": []
-          }
+          {"jobId": 99143487170, "name": "P0.7a committed lock coherence", "runnerId": 0, "steps": []},
+          {"jobId": 99143487291, "name": "P0.7a source qualification", "runnerId": 0, "steps": []}
         ]
       }
     ],
     "qualificationClaim": "not_run"
   },
   "externalDecisions": {
-    "liveRepositoryRuleset": {
-      "state": "not_issued",
-      "receipt": null
-    },
-    "independentCodeOwnerReview": {
-      "state": "not_issued",
-      "receipt": null
-    },
-    "operatorAcceptance": {
-      "state": "not_issued",
-      "receipt": null
-    },
-    "promotion": {
-      "state": "not_issued",
-      "receipt": null
-    },
-    "release": {
-      "state": "not_issued",
-      "receipt": null
-    }
+    "liveRepositoryRuleset": {"state": "not_issued", "receipt": null},
+    "independentCodeOwnerReview": {"state": "not_issued", "receipt": null},
+    "operatorAcceptance": {"state": "not_issued", "receipt": null},
+    "promotion": {"state": "not_issued", "receipt": null},
+    "release": {"state": "not_issued", "receipt": null}
   },
   "authorityBoundary": {
     "runtime": false,

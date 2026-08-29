@@ -34,12 +34,14 @@ fn qualification_admission_identity_requires_one_client_bound_user_input() {
         content: content.clone(),
         client_id: Some("client-1".to_string()),
     }];
-    let identity = qualification_admission_identity("thread-1", &input).expect("durable identity");
+    let identity =
+        qualification_admission_identity("thread-1", &input).expect("durable identity");
     assert_eq!(identity.thread_scope_key, "thread-1");
     assert_eq!(identity.client_user_message_id, "client-1");
     assert_eq!(
         identity.payload_sha256,
-        codex_protocol::user_input::user_input_payload_sha256(&content).expect("payload digest")
+        codex_protocol::user_input::user_input_payload_sha256(&content)
+            .expect("payload digest")
     );
 
     let without_client = vec![TurnInput::UserInput {

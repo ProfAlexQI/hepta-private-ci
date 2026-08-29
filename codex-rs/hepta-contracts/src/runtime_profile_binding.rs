@@ -30,14 +30,9 @@ pub enum RuntimeProfileBindingError {
 impl fmt::Display for RuntimeProfileBindingError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Authority(error) => {
-                write!(formatter, "runtime profile authority failed: {error}")
-            }
+            Self::Authority(error) => write!(formatter, "runtime profile authority failed: {error}"),
             Self::EscapedAuthority(actions) => {
-                write!(
-                    formatter,
-                    "runtime profile contains escaped authority: {actions:?}"
-                )
+                write!(formatter, "runtime profile contains escaped authority: {actions:?}")
             }
         }
     }
@@ -52,7 +47,9 @@ impl From<AuthorityError> for RuntimeProfileBindingError {
 }
 
 impl RuntimeProfileBinding {
-    pub fn for_authority(authority: &AuthorityGrant) -> Result<Self, RuntimeProfileBindingError> {
+    pub fn for_authority(
+        authority: &AuthorityGrant,
+    ) -> Result<Self, RuntimeProfileBindingError> {
         authority.validate_binding(authority.subject_agent_id(), authority.generation())?;
         let escaped = authority.dangerous_actions();
         if !escaped.is_empty() {

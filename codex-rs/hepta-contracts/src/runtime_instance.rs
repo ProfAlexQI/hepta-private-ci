@@ -214,18 +214,16 @@ impl RuntimeInstanceGraph {
     }
 
     pub fn ready(&self) -> bool {
-        self.components
-            .iter()
-            .all(|status| match status.requirement {
-                RuntimeServiceRequirement::Required => status.state == RuntimeServiceState::Ready,
-                RuntimeServiceRequirement::Optional => matches!(
-                    status.state,
-                    RuntimeServiceState::Ready | RuntimeServiceState::Degraded
-                ),
-                RuntimeServiceRequirement::Disabled => {
-                    status.state == RuntimeServiceState::Disabled
-                }
-            })
+        self.components.iter().all(|status| match status.requirement {
+            RuntimeServiceRequirement::Required => status.state == RuntimeServiceState::Ready,
+            RuntimeServiceRequirement::Optional => matches!(
+                status.state,
+                RuntimeServiceState::Ready | RuntimeServiceState::Degraded
+            ),
+            RuntimeServiceRequirement::Disabled => {
+                status.state == RuntimeServiceState::Disabled
+            }
+        })
     }
 
     pub fn validate_against(
@@ -267,7 +265,10 @@ impl RuntimeInstanceGraph {
                     RuntimeServiceRequirement::Optional,
                     RuntimeServiceState::Ready | RuntimeServiceState::Degraded,
                 )
-                | (RuntimeServiceRequirement::Disabled, RuntimeServiceState::Disabled) => {}
+                | (
+                    RuntimeServiceRequirement::Disabled,
+                    RuntimeServiceState::Disabled,
+                ) => {}
                 (RuntimeServiceRequirement::Required, _) => {
                     return Err(RuntimeInstanceGraphError::RequiredUnavailable(
                         status.component,
@@ -362,7 +363,9 @@ fn profile_name(profile: RuntimeAuthorityProfile) -> &'static str {
     match profile {
         RuntimeAuthorityProfile::SnapshotReadOnly => "snapshot_read_only",
         RuntimeAuthorityProfile::AgentLocal => "agent_local",
-        RuntimeAuthorityProfile::QualificationCognitiveWrite => "qualification_cognitive_write",
+        RuntimeAuthorityProfile::QualificationCognitiveWrite => {
+            "qualification_cognitive_write"
+        }
     }
 }
 
@@ -408,9 +411,13 @@ mod tests {
             .unwrap_or_else(|error| panic!("authority must build: {error}"));
         let product_graph = ProductGraph::agent_local(&authority)
             .unwrap_or_else(|error| panic!("product graph must build: {error}"));
-        let mut instance =
-            RuntimeInstanceGraph::agent_composed(&authority, &product_graph, false, false)
-                .unwrap_or_else(|error| panic!("instance must build: {error}"));
+        let mut instance = RuntimeInstanceGraph::agent_composed(
+            &authority,
+            &product_graph,
+            false,
+            false,
+        )
+        .unwrap_or_else(|error| panic!("instance must build: {error}"));
         assert!(!instance.ready());
         assert_eq!(
             instance
@@ -450,9 +457,13 @@ mod tests {
             .unwrap_or_else(|error| panic!("authority must build: {error}"));
         let product_graph = ProductGraph::agent_local(&authority)
             .unwrap_or_else(|error| panic!("product graph must build: {error}"));
-        let mut instance =
-            RuntimeInstanceGraph::agent_composed(&authority, &product_graph, true, true)
-                .unwrap_or_else(|error| panic!("instance must build: {error}"));
+        let mut instance = RuntimeInstanceGraph::agent_composed(
+            &authority,
+            &product_graph,
+            true,
+            true,
+        )
+        .unwrap_or_else(|error| panic!("instance must build: {error}"));
         assert_eq!(
             instance.mark_ready(ProductComponentId::ProviderEffectAdapter),
             Err(RuntimeInstanceGraphError::DisabledComponentActivated(

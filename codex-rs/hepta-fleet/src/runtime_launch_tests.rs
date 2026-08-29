@@ -1,6 +1,6 @@
 use codex_hepta_contracts::AgentId;
-use codex_hepta_contracts::AuthorityAction;
 use codex_hepta_contracts::AuthorityGrant;
+use codex_hepta_contracts::AuthorityAction;
 
 use crate::AgentLifecycle;
 use crate::AgentManifest;

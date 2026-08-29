@@ -42,48 +42,45 @@
     "promotion": false,
     "release": false
   },
-  "currentPackage": "V5_document_authority_then_P0.7a_normalization",
-  "auditedParentFacts": {
+  "currentPackage": "P0.7b.B0_verified_use_kernel",
+  "auditedCurrentFacts": {
     "locksCommitted": true,
     "transportSourcePresent": true,
     "recoverySourcePresent": true,
-    "temporarySourceMutatingWorkflowPresent": true,
+    "temporarySourceMutatingWorkflowPresent": false,
+    "formatterSpillRestoredFrom": "094d076132cfa0fa3ddf9145b2caae1560ec0e28",
+    "dependencyPolicyPresent": true,
     "assignedQualificationRunnerObserved": false,
     "nonEmptyQualificationStepsObserved": false
   },
   "directGaps": {
     "A-SCOPE-01": {
-      "plane": "source",
-      "state": "open",
+      "plane": "source_and_executable",
+      "state": "source_implemented",
       "owner": "architecture_ci",
-      "problem": "The parent contains a temporary contents:write workflow that commits and pushes source, plus formatter spill outside the intended package.",
-      "closureCriteria": [
-        "temporary source-mutating workflow is deleted",
-        "active qualification workflows have contents:read only",
-        "unrelated formatter spill is restored or explicitly retained by reviewed scope",
-        "candidate-clean verification is read-only"
+      "sourceEvidence": [
+        "temporary source-mutating workflow deleted",
+        "31 enumerated formatter-spill files restored to 094d076132cfa0fa3ddf9145b2caae1560ec0e28",
+        ".github/workflows/hepta-architecture-plan-v5.yml is read-only",
+        "scripts/verify-hepta-architecture-plan-v5.py rejects source-mutating qualification"
       ],
-      "touchedPaths": [
-        ".github/workflows/hepta-p0-7a-scope-repair.yml",
-        ".github/workflows/hepta-architecture-plan-v5.yml",
-        "docs/architecture/**",
-        "scripts/verify-hepta-*.py"
+      "remainingEvidence": [
+        "exact source-head verifier execution",
+        "merge-candidate clean-tree execution"
       ]
     },
     "A-LOCK-01": {
       "plane": "source_and_executable",
       "state": "source_implemented",
       "owner": "build_lock_owners",
-      "problem": "Cargo and Bazel lock changes are present but have not received exact-head locked-metadata/regeneration evidence.",
       "sourceEvidence": [
         "codex-rs/Cargo.lock",
         "MODULE.bazel.lock"
       ],
-      "executableCriteria": [
-        "cargo metadata --locked succeeds",
-        "Bazel lock check succeeds",
-        "regeneration produces no diff",
-        "exact source and merge candidate identities are bound"
+      "remainingEvidence": [
+        "cargo metadata --locked",
+        "just bazel-lock-check",
+        "regeneration produces no diff"
       ]
     },
     "A-TRANSPORT-01": {
@@ -113,30 +110,27 @@
       ],
       "remainingEvidence": [
         "real filesystem/process crash execution",
-        "fresh-generation recovery on assigned runner",
-        "no replay after retained claim"
+        "fresh-generation recovery",
+        "retained-claim replay rejection"
       ]
     },
     "A-CI-01": {
       "plane": "executable_external",
       "state": "blocked_external",
       "owner": "hosted_runner",
-      "problem": "Observed jobs remain queued with no assigned runner and empty steps.",
+      "problem": "Observed jobs have no assigned runner and no executable steps.",
       "closureCriteria": [
         "runner_id is non-zero",
-        "step list is non-empty",
-        "exact source and synthetic merge checks pass",
-        "raw evidence is bound to commit/tree"
+        "steps are non-empty and successful",
+        "exact source and synthetic merge identities are bound"
       ]
     }
   },
   "sourcePackages": {
     "P0.7a_signedRuntimeBootstrapClosure": {
-      "state": "source_in_progress",
+      "state": "source_implemented",
       "owner": "supervisor_agentd_contracts_fleet",
-      "prerequisites": [
-        "P0.6_runtime_authority_context"
-      ],
+      "prerequisites": ["P0.6_runtime_authority_context"],
       "subpackages": [
         "A0_scope_normalization",
         "A1_lock_coherence",
@@ -152,22 +146,16 @@
         ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml"
       ],
       "exitCriteria": [
-        "A-SCOPE-01 closed",
-        "A-LOCK-01/A-TRANSPORT-01/A-RECOVERY-01 source_verified",
+        "all A gaps source_verified",
         "exact and merge-candidate qualification"
       ],
-      "blockedBy": [
-        "A-SCOPE-01",
-        "A-CI-01"
-      ],
+      "blockedBy": ["A-CI-01"],
       "authorityDelta": "none"
     },
     "P0.7b_verifiedUsePhysicalBoundaries": {
       "state": "open",
       "owner": "contracts_and_physical_adapters",
-      "prerequisites": [
-        "P0.7a_signedRuntimeBootstrapClosure"
-      ],
+      "prerequisites": ["P0.7a_signedRuntimeBootstrapClosure"],
       "subpackages": [
         "B0_verified_use_kernel",
         "B1_model_provider",
@@ -185,9 +173,9 @@
         "codex-rs/hepta-supervisor/**"
       ],
       "exitCriteria": [
-        "one-use token is non-clone/non-serializable",
-        "all matrix rows have constructor/verifier/consumer/revocation/reconcile tests",
-        "only named adapters consume tokens"
+        "one-use token is non-clone and non-serializable",
+        "all boundary rows have verifier, consumer, revocation and reconciliation tests",
+        "only declared physical adapters consume tokens"
       ],
       "blockedBy": [],
       "authorityDelta": "none"
@@ -195,19 +183,10 @@
     "P0.7c_memoryBoundedContextExtraction": {
       "state": "open",
       "owner": "memory_architecture",
-      "prerequisites": [
-        "P0.7b_verifiedUsePhysicalBoundaries.B0"
-      ],
+      "prerequisites": ["P0.7b_verifiedUsePhysicalBoundaries.B0"],
       "subpackages": [
-        "C0_inventory",
-        "C1_types",
-        "C2_store",
-        "C3_retrieval",
-        "C4_federation",
-        "C5_compact",
-        "C6_trajectory",
-        "C7_learning_shadow",
-        "C8_production_writer",
+        "C0_inventory", "C1_types", "C2_store", "C3_retrieval", "C4_federation",
+        "C5_compact", "C6_trajectory", "C7_learning_shadow", "C8_production_writer",
         "C9_runtime_facade"
       ],
       "touchedPathFamilies": [
@@ -218,7 +197,7 @@
       ],
       "exitCriteria": [
         "one migration owner",
-        "no writer dependency on shadow/test signer",
+        "no writer dependency on shadow or test signer",
         "old/new reopen and backup/restore pass",
         "compatibility facade is thin"
       ],
@@ -228,17 +207,10 @@
     "P0.7d_commonDurableFaultMatrix": {
       "state": "open",
       "owner": "durable_store_owners",
-      "prerequisites": [
-        "P0.7b_verifiedUsePhysicalBoundaries.B0"
-      ],
+      "prerequisites": ["P0.7b_verifiedUsePhysicalBoundaries.B0"],
       "subpackages": [
-        "D0_fault_harness",
-        "D1_memory",
-        "D2_automation_taskflow",
-        "D3_matrix",
-        "D4_evidence",
-        "D5_fleet",
-        "D6_aggregate"
+        "D0_fault_harness", "D1_memory", "D2_automation_taskflow", "D3_matrix",
+        "D4_evidence", "D5_fleet", "D6_aggregate"
       ],
       "touchedPathFamilies": [
         "codex-rs/hepta-*/tests/**",
@@ -246,21 +218,19 @@
         "scripts/verify-hepta-durable-fault-matrix.py"
       ],
       "exitCriteria": [
-        "every applicable owner/F01-F18 cell is passed",
-        "no omitted row",
-        "no duplicate effect/false success/stale mutation/partial projection"
+        "every applicable owner/F01-F18 cell passed",
+        "no omitted fault row",
+        "no duplicate effect, false success, stale mutation or partial projection"
       ],
       "blockedBy": [],
       "authorityDelta": "none"
     },
     "P0.7e_dependencyInversionAndWireIsolation": {
-      "state": "open",
+      "state": "source_in_progress",
       "owner": "architecture_ports_and_protocol",
-      "prerequisites": [
-        "P0.7c_memoryBoundedContextExtraction"
-      ],
+      "prerequisites": ["P0.7c_memoryBoundedContextExtraction"],
       "subpackages": [
-        "E0_dependency_policy",
+        "E0_dependency_policy_source_implemented",
         "E1_codex_ports",
         "E2_wire_domain_split",
         "E3_distinct_product_roots",
@@ -275,8 +245,8 @@
       ],
       "exitCriteria": [
         "zero forbidden unwaived Cargo edges",
-        "wire has pure DTO dependencies only",
-        "codex and hepta have distinct mains",
+        "wire dependencies are pure DTO/value only",
+        "Codex and Hepta have distinct main roots",
         "no binary implementation dependency"
       ],
       "blockedBy": [],
@@ -289,19 +259,14 @@
         "P0.7b_verifiedUsePhysicalBoundaries",
         "P0.7e_dependencyInversionAndWireIsolation"
       ],
-      "subpackages": [
-        "R0_symbol_inventory",
-        "R1_rust_aware_analyzer",
-        "R2_compile_fail",
-        "R3_exact_candidate_receipt"
-      ],
+      "subpackages": ["R0_symbol_inventory", "R1_rust_aware_analyzer", "R2_compile_fail", "R3_exact_candidate_receipt"],
       "touchedPathFamilies": [
         "docs/architecture/HEPTA_AUTHORITY_CALLERS_*.json",
         "tools/**",
         "scripts/verify-hepta-authority-callers.py"
       ],
       "exitCriteria": [
-        "constructors/reexports/aliases/wrappers/macro-expanded calls resolved",
+        "constructors, reexports, aliases, wrappers and macro-expanded calls resolved",
         "inventory has no unknown caller",
         "denied callers fail compilation"
       ],
@@ -311,15 +276,8 @@
     "P0.8b_fleetRuntimeInstanceProjection": {
       "state": "open",
       "owner": "supervisor_agentd",
-      "prerequisites": [
-        "P0.7a_signedRuntimeBootstrapClosure"
-      ],
-      "subpackages": [
-        "I0_projection_contract",
-        "I1_signed_observation",
-        "I2_supervisor_aggregate",
-        "I3_stale_conflict_tests"
-      ],
+      "prerequisites": ["P0.7a_signedRuntimeBootstrapClosure"],
+      "subpackages": ["I0_projection_contract", "I1_signed_observation", "I2_supervisor_aggregate", "I3_stale_conflict_tests"],
       "touchedPathFamilies": [
         "codex-rs/hepta-contracts/**",
         "codex-rs/hepta-fleet/**",
@@ -327,7 +285,7 @@
         "codex-rs/hepta-supervisor/**"
       ],
       "exitCriteria": [
-        "desired/observed/readiness graph bound",
+        "desired, observed and readiness graph bound",
         "stale or missing never ready",
         "projection cannot mutate lifecycle"
       ],
@@ -342,20 +300,14 @@
         "P0.7d_commonDurableFaultMatrix",
         "P0.8b_fleetRuntimeInstanceProjection"
       ],
-      "subpackages": [
-        "Q0_budget_contract",
-        "Q1_transactional_reservation",
-        "Q2_exact_release",
-        "Q3_reopen_reconstruction",
-        "Q4_N_plus_one_and_pressure"
-      ],
+      "subpackages": ["Q0_budget_contract", "Q1_transactional_reservation", "Q2_exact_release", "Q3_reopen_reconstruction", "Q4_N_plus_one_and_pressure"],
       "touchedPathFamilies": [
         "codex-rs/hepta-*/**",
         "docs/architecture/HEPTA_RESOURCE_BUDGETS_V1.md"
       ],
       "exitCriteria": [
         "every budget row has owner enforcement",
-        "reservation/release exactly once",
+        "reservation and release are exactly once",
         "reopen reconstructs counts",
         "N+1 and pressure tests pass"
       ],
@@ -370,14 +322,7 @@
         "P0.8b_fleetRuntimeInstanceProjection",
         "P0.8c_runtimeResourceBudgetEnforcement"
       ],
-      "subpackages": [
-        "V0_binary_materialization",
-        "V1_signed_bootstrap",
-        "V2_session_automation_memory",
-        "V3_physical_boundary",
-        "V4_kill_restart_reconcile",
-        "V5_evidence_bundle"
-      ],
+      "subpackages": ["V0_binary_materialization", "V1_signed_bootstrap", "V2_session_automation_memory", "V3_physical_boundary", "V4_kill_restart_reconcile", "V5_evidence_bundle"],
       "touchedPathFamilies": [
         "codex-rs/hepta-agentd/tests/**",
         "codex-rs/hepta-supervisor/tests/**",
@@ -385,8 +330,8 @@
         ".github/workflows/hepta-real-process-v1.yml"
       ],
       "exitCriteria": [
-        "real Supervisor/Agentd/App Server/ingress processes",
-        "new generation recovery",
+        "real Supervisor, Agentd, App Server and ingress processes",
+        "new-generation recovery",
         "no duplicate effect or stale write",
         "candidate-bound evidence"
       ],
@@ -428,7 +373,7 @@
     "release": {
       "state": "blocked_external",
       "owner": "release_signer",
-      "closureCriteria": "signed manifest, provenance, SBOM, immutable inventory and rollback evidence"
+      "closureCriteria": "signed provenance, SBOM, immutable inventory and rollback evidence"
     }
   },
   "completion": {

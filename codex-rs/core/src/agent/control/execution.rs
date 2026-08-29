@@ -35,7 +35,9 @@ impl AgentControl {
         if active.is_some() {
             return Ok(());
         }
-        if thread.session.shutdown_started() || thread.session.has_pending_task_terminalization() {
+        if thread.session.shutdown_started()
+            || thread.session.has_pending_task_terminalization()
+        {
             return Err(CodexErr::InvalidRequest(
                 "turn start is fenced while the session is terminalizing or shutting down"
                     .to_string(),
