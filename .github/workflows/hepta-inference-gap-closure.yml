@@ -5,8 +5,6 @@ on:
     paths:
       - "codex-rs/hepta-infer-core/**"
       - "codex-rs/hepta-inferd/**"
-      - "codex-rs/hepta-infer-client/**"
-      - "codex-rs/hepta-infer-adapters/**"
       - "docs/hepta-vnext/inference/**"
       - "scripts/hepta-inference-inf0-source-gate.py"
       - "scripts/hepta-inference-inf0c-cancel-reclassifier.py"
@@ -45,8 +43,8 @@ jobs:
             --self-test \
             --receipt docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_RECEIPT_2026-08-29.json
 
-  inf1-rust:
-    name: INF-1 exact-head Rust qualification
+  runtime-rust:
+    name: INF-1 and INF-2A exact-head Rust qualification
     needs: evidence-contract
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -65,9 +63,9 @@ jobs:
       - name: Formatting
         run: cargo fmt -p codex-hepta-infer-core -p codex-hepta-inferd -- --check
       - name: Locked check
-        run: cargo check --locked -p codex-hepta-infer-core -p codex-hepta-inferd
-      - name: Tests
-        run: cargo test --locked -p codex-hepta-infer-core -p codex-hepta-inferd
+        run: cargo check --locked -p codex-hepta-infer-core -p codex-hepta-inferd --all-targets
+      - name: All-target tests
+        run: cargo test --locked -p codex-hepta-infer-core -p codex-hepta-inferd --all-targets
       - name: Strict Clippy
         run: |
           cargo clippy --locked --all-targets --no-deps \
@@ -76,7 +74,7 @@ jobs:
   aggregate:
     name: Gap closure aggregate
     if: always()
-    needs: [evidence-contract, inf1-rust]
+    needs: [evidence-contract, runtime-rust]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -84,9 +82,9 @@ jobs:
         shell: bash
         env:
           EVIDENCE: ${{ needs.evidence-contract.result }}
-          RUST: ${{ needs.inf1-rust.result }}
+          RUST: ${{ needs.runtime-rust.result }}
         run: |
           set -euo pipefail
           test "$EVIDENCE" = success
           test "$RUST" = success
-          echo PASS_HEPTA_INFERENCE_GAP_CLOSURE_BASELINE
+          echo PASS_HEPTA_INFERENCE_GAP_CLOSURE_INF2A_SOURCE

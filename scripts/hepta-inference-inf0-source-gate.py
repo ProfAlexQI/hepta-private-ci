@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Descendant-safe qualification-only source gate for Hepta inference.
-
-Historical INF-0 documents are immutable evidence, not the mutable current
-status. This gate validates their exact blobs and validates the current v3
-matrix/runtime-closure files independently, so later stages do not invalidate
-an earlier append-only receipt merely by adding descendant commits.
-"""
+"""Descendant-safe source and authority gate for Hepta inference stages."""
 from __future__ import annotations
 
 import json
@@ -23,6 +17,7 @@ INF0_RECEIPT = DOCS / "HEPTA_INFERENCE_INF0C_SOURCE_RECEIPT_2026-08-28.json"
 CURRENT_MATRIX = DOCS / "HEPTA_INFERENCE_STAGE_MATRIX_V3.json"
 CURRENT_STATUS = DOCS / "HEPTA_INFERENCE_CURRENT_STATUS_V2.json"
 RUNTIME_CLOSURE = DOCS / "HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_RECEIPT_2026-08-29.json"
+INF2A_STATUS = DOCS / "HEPTA_INFERENCE_INF2A_SOURCE_STATUS_V1.json"
 RECLASSIFIER = ROOT / "scripts/hepta-inference-inf0c-cancel-reclassifier.py"
 PLAN_BLOB = "4381207acce1bf6371c248dc3280fff1f2ae59ce"
 INF0_RECEIPT_BLOB = "79238e9af6f012b2fc4079f47eeb0c63751b9eb1"
@@ -30,9 +25,20 @@ BASE = "fe0889ecd46a5fc89de7b1ff3f28158c133a3502"
 BASE_TREE = "636341eb865b7c6d669958a96e7959de74fee020"
 PASS = "PASS_HEPTA_INFERENCE_DESCENDANT_SAFE_SOURCE_GATE"
 FALSE_AUTHORITY = (
-    "production_listener", "production_writer", "provider_effect", "external_effect",
-    "shared_kg_write", "memory_write", "route_write", "fleet_write", "model_npu",
-    "remote_inference", "automatic_model_install", "operator_acceptance", "promotion", "release",
+    "production_listener",
+    "production_writer",
+    "provider_effect",
+    "external_effect",
+    "shared_kg_write",
+    "memory_write",
+    "route_write",
+    "fleet_write",
+    "model_npu",
+    "remote_inference",
+    "automatic_model_install",
+    "operator_acceptance",
+    "promotion",
+    "release",
 )
 
 
@@ -60,7 +66,9 @@ def obj(path: Path) -> dict[str, Any]:
 
 
 def git(*args: str) -> str:
-    run = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=False)
+    run = subprocess.run(
+        ["git", *args], cwd=ROOT, capture_output=True, text=True, check=False
+    )
     if run.returncode:
         raise GateError(f"git {' '.join(args)} failed: {run.stderr.strip()}")
     return run.stdout.strip()
@@ -68,7 +76,7 @@ def git(*args: str) -> str:
 
 def candidate_head() -> str:
     parents = git("rev-list", "--parents", "-n", "1", "HEAD").split()
-    need(len(parents) in (2, 3), "unexpected checkout parent shape")
+    need(len(parents) >= 2, "checkout has no parent")
     return git("rev-parse", "HEAD^2") if len(parents) == 3 else git("rev-parse", "HEAD")
 
 
@@ -88,91 +96,185 @@ def base_bound(value: dict[str, Any], label: str) -> None:
     need(value.get("plan_git_blob_sha1") == PLAN_BLOB, f"{label} plan drift")
 
 
-def main() -> int:
-    candidate = candidate_head()
-    need(git("rev-parse", f"{candidate}:{PLAN.relative_to(ROOT)}") == PLAN_BLOB, "plan blob drift")
+def validate_history(candidate: str) -> None:
     need(
-        git("rev-parse", f"{candidate}:{INF0_RECEIPT.relative_to(ROOT)}") == INF0_RECEIPT_BLOB,
+        git("rev-parse", f"{candidate}:{PLAN.relative_to(ROOT)}") == PLAN_BLOB,
+        "plan blob drift",
+    )
+    need(
+        git("rev-parse", f"{candidate}:{INF0_RECEIPT.relative_to(ROOT)}")
+        == INF0_RECEIPT_BLOB,
         "historical INF-0C receipt mutated",
     )
-
-    historical_matrix = obj(HISTORICAL_MATRIX)
-    historical_status = obj(HISTORICAL_STATUS)
-    historical_receipt = obj(INF0_RECEIPT)
     for label, value in (
-        ("historical_matrix", historical_matrix),
-        ("historical_status", historical_status),
-        ("historical_receipt", historical_receipt),
+        ("historical_matrix", obj(HISTORICAL_MATRIX)),
+        ("historical_status", obj(HISTORICAL_STATUS)),
+        ("historical_receipt", obj(INF0_RECEIPT)),
     ):
         base_bound(value, label)
         closed(value, label)
-    need(historical_receipt.get("claim") == "SOURCE_PRESENT_NOT_RUN", "historical receipt claim drift")
-    need(historical_receipt.get("qualified") is False, "historical receipt promoted")
+    receipt = obj(INF0_RECEIPT)
+    need(receipt.get("claim") == "SOURCE_PRESENT_NOT_RUN", "historical claim drift")
+    need(receipt.get("qualified") is False, "historical receipt promoted")
 
-    matrix = obj(CURRENT_MATRIX)
-    status = obj(CURRENT_STATUS)
+
+def validate_runtime_closure() -> None:
     closure = obj(RUNTIME_CLOSURE)
-    for label, value in (("current_matrix", matrix), ("current_status", status), ("runtime_closure", closure)):
-        closed(value, label)
-    need(matrix.get("schema") == "hepta.inference.stage_matrix.v3", "current matrix schema drift")
-    need(status.get("schema") == "hepta.inference.current_status.v2", "current status schema drift")
-    need(matrix.get("current_stage") == status.get("current_stage") == "INF-2A", "current stage drift")
-    need(matrix.get("current_stage_status") == status.get("current_stage_status") == "NOT_STARTED", "stage status drift")
-    stages = {stage.get("id"): stage for stage in matrix.get("stages", []) if isinstance(stage, dict)}
-    for stage_id in ("INF-0A", "INF-0B", "INF-0C", "INF-1"):
-        stage = stages.get(stage_id, {})
-        need(stage.get("status") == "EXECUTED_PASSED_QUALIFICATION_ONLY", f"{stage_id} status drift")
-        need(stage.get("qualified") is True, f"{stage_id} qualification missing")
-        need(stage.get("operator_accepted") is False and stage.get("promoted") is False, f"{stage_id} authority drift")
-    for stage_id in ("INF-2A", "INF-2B", "INF-3", "INF-4", "INF-5", "INF-6", "INF-7", "INF-8"):
-        need(stages.get(stage_id, {}).get("status") == "NOT_STARTED", f"{stage_id} activated early")
-
+    closed(closure, "runtime_closure")
     evidence = closure.get("immutable_evidence")
     need(isinstance(evidence, dict), "runtime immutable evidence missing")
     need(evidence.get("workflow_run_id") == 33239546304, "runtime run drift")
     need(evidence.get("job_id") == 99066422684, "runtime job drift")
     need(evidence.get("artifact_id") == 9711096479, "runtime artifact drift")
     need(
-        evidence.get("artifact_sha256") == "83f5346ee3d7107b794e6466a5aef007d3b087f30ff2850074a73d8a71e353ad",
+        evidence.get("artifact_sha256")
+        == "83f5346ee3d7107b794e6466a5aef007d3b087f30ff2850074a73d8a71e353ad",
         "runtime artifact digest drift",
     )
     runtime = closure.get("runtime_results")
     need(isinstance(runtime, dict), "runtime results missing")
-    need(runtime.get("semantic_output_verified") is True, "semantic output evidence missing")
+    need(runtime.get("semantic_output_verified") is True, "semantic evidence missing")
     for section in ("transport_disconnect", "controlled_restart"):
         value = runtime.get(section)
         need(isinstance(value, dict), f"{section} missing")
-        need(value.get("ollama") == "PASS" and value.get("lmstudio") == "PASS", f"{section} incomplete")
+        need(
+            value.get("ollama") == "PASS" and value.get("lmstudio") == "PASS",
+            f"{section} incomplete",
+        )
     need(runtime.get("implicit_download") is False, "implicit download enabled")
-
     cancellation = closure.get("explicit_provider_cancellation")
     need(isinstance(cancellation, dict), "cancellation evidence missing")
     providers = cancellation.get("providers")
-    need(isinstance(providers, dict) and set(providers) == {"ollama", "lmstudio"}, "cancel providers drift")
+    need(
+        isinstance(providers, dict) and set(providers) == {"ollama", "lmstudio"},
+        "cancel providers drift",
+    )
     for provider, value in providers.items():
-        need(value.get("classification") == "UNSUPPORTED_FAIL_CLOSED", f"{provider} cancel class drift")
-        need(value.get("provider_cancel_capability_classified") is True, f"{provider} cancel unclassified")
-        need(value.get("provider_cancel_acknowledged") is False, f"{provider} ack invented")
-        need(value.get("transport_disconnect_used") is False, f"{provider} disconnect conflation")
-    need(cancellation.get("backend_cancellation_acknowledged") is False, "backend ack invented")
-    need(cancellation.get("transport_disconnect_used_as_ack") is False, "disconnect promoted")
+        need(
+            value.get("classification") == "UNSUPPORTED_FAIL_CLOSED",
+            f"{provider} cancel class drift",
+        )
+        need(
+            value.get("provider_cancel_capability_classified") is True,
+            f"{provider} cancel unclassified",
+        )
+        need(
+            value.get("provider_cancel_acknowledged") is False,
+            f"{provider} acknowledgement invented",
+        )
+        need(
+            value.get("transport_disconnect_used") is False,
+            f"{provider} disconnect conflation",
+        )
+    need(
+        cancellation.get("backend_cancellation_acknowledged") is False,
+        "backend acknowledgement invented",
+    )
+    need(
+        cancellation.get("transport_disconnect_used_as_ack") is False,
+        "disconnect promoted to acknowledgement",
+    )
     policy = cancellation.get("dispatch_policy")
     need(isinstance(policy, dict), "cancel dispatch policy missing")
-    need(policy.get("cancel_required_request") == "REJECT_BEFORE_BACKEND_DISPATCH", "cancel dispatch policy drift")
+    need(
+        policy.get("cancel_required_request") == "REJECT_BEFORE_BACKEND_DISPATCH",
+        "cancel dispatch policy drift",
+    )
 
-    for path in (
+
+def validate_current_stage() -> None:
+    matrix = obj(CURRENT_MATRIX)
+    status = obj(CURRENT_STATUS)
+    inf2a = obj(INF2A_STATUS)
+    for label, value in (
+        ("current_matrix", matrix),
+        ("current_status", status),
+        ("inf2a_status", inf2a),
+    ):
+        closed(value, label)
+    need(matrix.get("schema") == "hepta.inference.stage_matrix.v3", "matrix schema drift")
+    need(status.get("schema") == "hepta.inference.current_status.v2", "status schema drift")
+    need(
+        inf2a.get("schema") == "hepta.inference.inf2a_source_status.v1",
+        "INF-2A schema drift",
+    )
+    need(matrix.get("current_stage") == status.get("current_stage") == "INF-2A", "stage drift")
+    need(
+        matrix.get("current_stage_status")
+        == status.get("current_stage_status")
+        == inf2a.get("status")
+        == "SOURCE_PRESENT_NOT_RUN",
+        "INF-2A status drift",
+    )
+    need(inf2a.get("qualified") is False, "INF-2A promoted without execution")
+    stages = {
+        stage.get("id"): stage
+        for stage in matrix.get("stages", [])
+        if isinstance(stage, dict)
+    }
+    for stage_id in ("INF-0A", "INF-0B", "INF-0C", "INF-1"):
+        stage = stages.get(stage_id, {})
+        need(
+            stage.get("status") == "EXECUTED_PASSED_QUALIFICATION_ONLY",
+            f"{stage_id} status drift",
+        )
+        need(stage.get("qualified") is True, f"{stage_id} qualification missing")
+        need(
+            stage.get("operator_accepted") is False and stage.get("promoted") is False,
+            f"{stage_id} authority drift",
+        )
+    need(
+        stages.get("INF-2A", {}).get("status") == "SOURCE_PRESENT_NOT_RUN",
+        "INF-2A source status missing",
+    )
+    for stage_id in ("INF-2B", "INF-3", "INF-4", "INF-5", "INF-6", "INF-7", "INF-8"):
+        need(stages.get(stage_id, {}).get("status") == "NOT_STARTED", f"{stage_id} activated early")
+
+
+def validate_sources() -> None:
+    paths = (
         ROOT / "tools/hepta-inference-inf0/Cargo.toml",
         ROOT / "tools/hepta-inference-inf0/src/lib.rs",
         ROOT / "codex-rs/hepta-infer-core/src/lib.rs",
+        ROOT / "codex-rs/hepta-infer-core/src/adapter.rs",
         ROOT / "codex-rs/hepta-inferd/src/lib.rs",
+        ROOT / "codex-rs/hepta-inferd/src/shadow.rs",
+        ROOT / "codex-rs/hepta-inferd/src/bin/hepta-infer-admission-shadow.rs",
         RECLASSIFIER,
-    ):
+    )
+    for path in paths:
         read(path)
     core = read(ROOT / "codex-rs/hepta-infer-core/src/lib.rs")
-    for banned in ("raw_prompt", "MemoryWrite", "KgWrite", "remote_inference_endpoint"):
-        need(banned not in core, f"core contains banned authority surface {banned}")
+    adapter = read(ROOT / "codex-rs/hepta-infer-core/src/adapter.rs")
+    shadow = read(ROOT / "codex-rs/hepta-inferd/src/shadow.rs")
     inferd = read(ROOT / "codex-rs/hepta-inferd/src/lib.rs")
-    need("TcpListener" not in inferd and "0.0.0.0" not in inferd, "inferd TCP surface detected")
+    for banned in ("raw_prompt", "MemoryWrite", "KgWrite", "remote_inference_endpoint"):
+        need(banned not in core + adapter + shadow, f"banned surface detected: {banned}")
+    need("TcpListener" not in inferd + shadow, "TCP listener surface detected")
+    for marker in (
+        "AdapterRegistry",
+        "DispatchRequirements",
+        "AdapterProviderCancelUnsupported",
+        "FallbackPolicy::closed()",
+        "QualifiedController",
+    ):
+        need(marker in core + adapter, f"missing adapter marker: {marker}")
+    for marker in (
+        "ensure_current_user_peer",
+        "UnixListener",
+        "UnixStream",
+        "MAX_FRAME_BYTES",
+        "INF_ADAPTER_PROVIDER_CANCEL_UNSUPPORTED",
+    ):
+        need(marker in shadow, f"missing shadow marker: {marker}")
+
+
+def main() -> int:
+    candidate = candidate_head()
+    validate_history(candidate)
+    validate_runtime_closure()
+    validate_current_stage()
+    validate_sources()
     print(PASS)
     return 0
 

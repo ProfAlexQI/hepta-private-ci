@@ -4,13 +4,17 @@
   "repository": "ProfHepta/hepta-private-ci",
   "development_branch": "codex/hepta-inference-gap-closure-20260829",
   "base_commit": "6f3286f99f5576b4cc545003889437bf388bb28a",
+  "latest_completed_commit": "14a7dede792e9aeefb14fb74b873051ff84fcbb0",
   "current_stage": "INF-2A",
-  "current_stage_status": "NOT_STARTED",
+  "current_stage_status": "SOURCE_PRESENT_NOT_RUN",
   "completed_qualification_only": {
     "INF-0A": true,
     "INF-0B": true,
     "INF-0C": true,
     "INF-1": true
+  },
+  "source_present_not_run": {
+    "INF-2A": true
   },
   "evidence": {
     "inf0c_runtime_closure_receipt": "HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_RECEIPT_2026-08-29.json",
@@ -21,13 +25,14 @@
     "inf1_linux_arm64_run_id": 33236053088,
     "inf1_linux_arm64_job_id": 99057123440,
     "inf1_macos_x86_64_run_id": 33236101161,
-    "inf1_macos_x86_64_job_id": 99057250960
+    "inf1_macos_x86_64_job_id": 99057250960,
+    "inf2a_source_status": "HEPTA_INFERENCE_INF2A_SOURCE_STATUS_V1.json"
   },
   "runtime_activation": false,
   "product_wired": false,
   "production_qualified": false,
   "known_open_work": [
-    "INF-2A adapter/client shadow path",
+    "INF-2A exact-head source qualification and live local-provider execution",
     "INF-2B isolated native worker and locked llama.cpp tuple",
     "INF-3 scheduler cache and resource control",
     "INF-4 per-device measured qualification receipts",

@@ -3,6 +3,7 @@
 //! The crate deliberately contains no model backend, network client, raw prompt field,
 //! production listener authority, Memory/KG writer, or remote inference path.
 
+mod adapter;
 mod controller;
 mod identity;
 mod model;
@@ -10,6 +11,16 @@ mod protocol;
 
 use std::fmt;
 
+pub use adapter::AdapterAdmission;
+pub use adapter::AdapterCapabilities;
+pub use adapter::AdapterId;
+pub use adapter::AdapterRegistry;
+pub use adapter::CapabilityEvidence;
+pub use adapter::DispatchRequirements;
+pub use adapter::ExactAdapterTuple;
+pub use adapter::FallbackPolicy;
+pub use adapter::PolicyProfile;
+pub use adapter::QualifiedController;
 pub use controller::AcceptedEvent;
 pub use controller::Controller;
 pub use controller::ControllerConfig;
@@ -38,6 +49,13 @@ pub type Result<T> = std::result::Result<T, InferError>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InferError {
+    AdapterConfigInvalid,
+    AdapterFallbackEnabled,
+    AdapterPolicyUnknown,
+    AdapterProviderCancelUnsupported,
+    AdapterSemanticTextUnsupported,
+    AdapterStrictSseUnsupported,
+    AdapterToolCallUnsupported,
     AuthorityEscalation,
     DeadlineExpired,
     DuplicateRequest,
@@ -75,6 +93,13 @@ pub enum InferError {
 impl InferError {
     pub const fn code(&self) -> &'static str {
         match self {
+            Self::AdapterConfigInvalid => "INF_ADAPTER_CONFIG_INVALID",
+            Self::AdapterFallbackEnabled => "INF_ADAPTER_FALLBACK_ENABLED",
+            Self::AdapterPolicyUnknown => "INF_ADAPTER_POLICY_UNKNOWN",
+            Self::AdapterProviderCancelUnsupported => "INF_ADAPTER_PROVIDER_CANCEL_UNSUPPORTED",
+            Self::AdapterSemanticTextUnsupported => "INF_ADAPTER_SEMANTIC_TEXT_UNSUPPORTED",
+            Self::AdapterStrictSseUnsupported => "INF_ADAPTER_STRICT_SSE_UNSUPPORTED",
+            Self::AdapterToolCallUnsupported => "INF_ADAPTER_TOOL_CALL_UNSUPPORTED",
             Self::AuthorityEscalation => "INF_AUTHORITY_ESCALATION",
             Self::DeadlineExpired => "INF_DEADLINE_EXPIRED",
             Self::DuplicateRequest => "INF_DUPLICATE_REQUEST",

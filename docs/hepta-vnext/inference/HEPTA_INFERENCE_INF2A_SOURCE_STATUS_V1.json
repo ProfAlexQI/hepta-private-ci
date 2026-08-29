@@ -1,0 +1,63 @@
+{
+  "schema": "hepta.inference.inf2a_source_status.v1",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
+  "stage": "INF-2A",
+  "status": "SOURCE_PRESENT_NOT_RUN",
+  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "base_commit": "14a7dede792e9aeefb14fb74b873051ff84fcbb0",
+  "implemented": {
+    "exact_model_tuple_registry": true,
+    "exact_policy_digest_registry": true,
+    "fixed_tuple_capability_matrix": true,
+    "unsupported_capability_reject_before_backend_dispatch": true,
+    "provider_cancel_required_reject_before_backend_dispatch": true,
+    "strict_sse_required_reject_before_backend_dispatch": true,
+    "lmstudio_native_tool_call_required_reject_before_backend_dispatch": true,
+    "no_text_fallback": true,
+    "no_remote_fallback": true,
+    "no_implicit_model_switch": true,
+    "no_implicit_model_install": true,
+    "owner_local_uds_shadow_daemon": true,
+    "same_user_server_and_client_peer_gate": true,
+    "canonical_bounded_cbor": true,
+    "generation_fenced_controller_composition": true,
+    "digest_only_terminal_receipt": true,
+    "product_default_route": false,
+    "runtime_activation": false,
+    "local_provider_http_execution": false
+  },
+  "required_exact_head_gates": [
+    "rustfmt",
+    "locked_cargo_check",
+    "core_and_daemon_all_target_tests",
+    "strict_all_target_clippy",
+    "source_and_negative_authority_gate"
+  ],
+  "known_gaps": [
+    "exact source head has not yet produced non-empty assigned-runner qualification evidence",
+    "the shadow daemon currently qualifies admission and lifecycle control; live provider HTTP execution remains a separate qualification step",
+    "no product caller is routed to the shadow daemon",
+    "production activation and promotion remain closed"
+  ],
+  "qualified": false,
+  "operator_accepted": false,
+  "promoted": false,
+  "released": false,
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
