@@ -1,0 +1,84 @@
+name: P0.3.4 candidate source snapshot v2
+
+on:
+  push:
+    branches:
+      - codex/p034-rebuild-v2-20260829
+    paths:
+      - .github/workflows/p034-candidate-source-snapshot-v2.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: p034-candidate-source-snapshot-v2
+  cancel-in-progress: true
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      P033_HEAD: eddcb59ca43a76ac83b64507983bd908f406ff48
+      AUTOFIX_ARTIFACT_ID: "9712230794"
+      AUTOFIX_PATCH_SHA256: d9fe46d4be7f8395101879ab1f638a0d8ea4f0730e8a6c18de77a52765aa3339
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout exact helper head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          path: helper
+          persist-credentials: false
+
+      - name: Checkout exact qualified P0.3.3 predecessor
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.P033_HEAD }}
+          fetch-depth: 1
+          path: target
+          persist-credentials: false
+
+      - name: Recover and verify complete candidate patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovered artifacts/p034-source-snapshot
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${AUTOFIX_ARTIFACT_ID}/zip" > recovered/autofix.zip
+          unzip -q recovered/autofix.zip -d recovered/autofix
+          echo "${AUTOFIX_PATCH_SHA256}  recovered/autofix/candidate-after-autofix.patch" | sha256sum -c -
+          test "$(cat recovered/autofix/candidate-head.txt)" = "${P033_HEAD}"
+          git -C target apply --index --check ../recovered/autofix/candidate-after-autofix.patch
+          git -C target apply --index ../recovered/autofix/candidate-after-autofix.patch
+          git -C target diff --cached --check
+          git -C target diff --cached --name-status "${P033_HEAD}" > artifacts/p034-source-snapshot/candidate-files.txt
+          sha256sum recovered/autofix/candidate-after-autofix.patch > artifacts/p034-source-snapshot/candidate-patch.sha256
+
+      - name: Package reconstructed candidate source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -C target -czf artifacts/p034-source-snapshot/p034-candidate-source.tar.gz \
+            .github/workflows/hepta-intelligence-legacy-grounding-governance-v2.yml \
+            codex-rs/hepta-memory/Cargo.toml \
+            codex-rs/hepta-memory/src \
+            codex-rs/hepta-memory/grounding-migrations \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_DEVELOPMENT_PLAN_V3_15_2026-08-29.md \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_15.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_3_4_LEGACY_GOVERNANCE_V2_2026-08-29.md \
+            scripts/run-hepta-intelligence-legacy-grounding-governance-v2.py \
+            scripts/verify-hepta-intelligence-legacy-grounding-governance-v2.py
+          sha256sum artifacts/p034-source-snapshot/p034-candidate-source.tar.gz > artifacts/p034-source-snapshot/p034-candidate-source.tar.gz.sha256
+          printf '%s\n' "${P033_HEAD}" > artifacts/p034-source-snapshot/predecessor-head.txt
+          printf '%s\n' "${GITHUB_SHA}" > artifacts/p034-source-snapshot/helper-head.txt
+
+      - name: Upload reconstructed source snapshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: p034-candidate-source-snapshot-${{ github.sha }}
+          path: artifacts/p034-source-snapshot
+          if-no-files-found: error
+          retention-days: 14
