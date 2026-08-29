@@ -162,24 +162,31 @@ def verify_absorbed_compile_repair() -> None:
         )
 
 
-def run_manual_repair_idempotently() -> None:
-    """Execute the frozen v7 repair with idempotent, fail-closed helpers.
+def rewrite_one_function(
+    source: str,
+    *,
+    name: str,
+    following_name: str,
+    replacement: str,
+) -> str:
+    pattern = re.compile(
+        rf'(?ms)^def {re.escape(name)}\(.*?(?=^def {re.escape(following_name)}\(|\Z)'
+    )
+    source, count = pattern.subn(lambda _: replacement.rstrip() + '\n\n', source, count=1)
+    if count != 1:
+        raise RuntimeError(f'frozen v7 helper boundary drifted: {name}')
+    return source
 
-    The v7 repair remains the governed transformation. Only its two generic
-    mutation helpers are replaced in-memory so exact pre-repair inputs are
-    transformed, exact post-repair inputs are accepted, and partial states are
-    rejected. The repository copy of v7 is never modified.
-    """
+
+def run_manual_repair_idempotently() -> None:
+    """Execute frozen v7 with idempotent, fail-closed mutation helpers."""
 
     source = MANUAL.read_text(encoding='utf-8')
-    old_replace = '''def replace_exact(path: str, old: str, new: str, *, expected: int = 1) -> None:
-    file_path, text = load(path)
-    count = text.count(old)
-    if count != expected:
-        raise AssertionError(f'{path}: expected {expected} copies, found {count}: {old[:100]!r}')
-    save(file_path, text.replace(old, new, expected))
-'''
-    new_replace = '''def replace_exact(path: str, old: str, new: str, *, expected: int = 1) -> None:
+    source = rewrite_one_function(
+        source,
+        name='replace_exact',
+        following_name='expect_function',
+        replacement='''def replace_exact(path: str, old: str, new: str, *, expected: int = 1) -> None:
     file_path, text = load(path)
     old_count = text.count(old)
     if old_count == expected:
@@ -191,34 +198,13 @@ def run_manual_repair_idempotently() -> None:
     raise AssertionError(
         f'{path}: replacement is partial or drifted; '
         f'old={old_count}, new={text.count(new) if new else "removed"}: {old[:100]!r}'
+    )''',
     )
-'''
-    if source.count(old_replace) != 1:
-        raise RuntimeError('frozen v7 replace_exact helper drifted')
-    source = source.replace(old_replace, new_replace, 1)
-
-    old_expect = '''def expect_function(path: str, name: str, lint: str, reason: str) -> None:
-    file_path, text = load(path)
-    pattern = re.compile(
-        r'(?m)^(?P<indent>[ \\t]*)(?P<signature>'
-        rf'(?:(?:pub(?:\\([^\\)]*\\))?)[ \\t]+)?'
-        rf'(?:async[ \\t]+)?fn[ \\t]+{re.escape(name)}[ \\t]*\\('
-    )
-    matches = list(pattern.finditer(text))
-    if len(matches) != 1:
-        raise AssertionError(f'{path}: expected one function {name}, found {len(matches)}')
-    match = matches[0]
-    indent = match.group('indent')
-    attribute = (
-        f'{indent}#[expect(\\n'
-        f'{indent}    clippy::{lint},\\n'
-        f'{indent}    reason = "{reason}"\\n'
-        f'{indent})]\\n'
-    )
-    text = text[: match.start()] + attribute + text[match.start() :]
-    save(file_path, text)
-'''
-    new_expect = '''def expect_function(path: str, name: str, lint: str, reason: str) -> None:
+    source = rewrite_one_function(
+        source,
+        name='expect_function',
+        following_name='__NO_NEXT_FUNCTION__',
+        replacement='''def expect_function(path: str, name: str, lint: str, reason: str) -> None:
     file_path, text = load(path)
     pattern = re.compile(
         r'(?m)^(?P<indent>[ \\t]*)(?P<signature>'
@@ -252,13 +238,18 @@ def run_manual_repair_idempotently() -> None:
     ):
         prefix = ''.join(lines[:-1])
     save(file_path, prefix + attribute + text[match.start() :])
-'''
-    if source.count(old_expect) != 1:
-        raise RuntimeError('frozen v7 expect_function helper drifted')
-    source = source.replace(old_expect, new_expect, 1)
 
-    # Normalize the one source-closure spelling that is semantically the old
-    # large-enum suppression but does not match v7's original replacement.
+
+TOO_MANY_ARGUMENTS =''',
+    )
+    # The second replacement intentionally supplies the following top-level
+    # assignment because the frozen script has no third helper function.
+    source = source.replace(
+        'TOO_MANY_ARGUMENTS =\nTOO_MANY_ARGUMENTS =',
+        'TOO_MANY_ARGUMENTS =',
+        1,
+    )
+
     reservation = Path('codex-rs/hepta-memory/src/logical_turn_registry.rs')
     reservation_text = reservation.read_text(encoding='utf-8')
     alternative = (
@@ -288,15 +279,10 @@ def run_manual_repair_idempotently() -> None:
     elif states not in {(0, 1, 0), (0, 0, 1)}:
         raise RuntimeError(f'logical-turn reservation repair is partial or drifted: {states}')
 
-    namespace = {
-        '__name__': '__main__',
-        '__file__': str(MANUAL),
-    }
+    namespace = {'__name__': '__main__', '__file__': str(MANUAL)}
     exec(compile(source, str(MANUAL), 'exec'), namespace)
 
 
-# Apply the historical patch only when the exact pre-repair source is present.
-# Otherwise require every semantic postcondition and every old-marker absence.
 if patch_applies():
     subprocess.run(['git', 'apply', str(PATCH)], check=True)
 else:
