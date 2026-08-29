@@ -105,6 +105,7 @@ jobs:
               "--repo_contents_cache=$env:RUNNER_TEMP/bazel-repo-contents-cache"
           )
           $targets = @(
+              "--",
               "//...",
               "-//third_party/v8:all",
               "-//codex-rs/v8-poc:v8-poc-unit-tests"
