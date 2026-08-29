@@ -1,0 +1,58 @@
+name: Hepta V4 exact source export (temporary)
+
+on:
+  push:
+    branches:
+      - "agent/hepta-v4-source-export-20260830"
+    paths:
+      - ".github/workflows/hepta-v4-source-export.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-v4-source-export-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  export:
+    if: >-
+      github.repository == 'ProfHepta/hepta-private-ci' &&
+      github.ref == 'refs/heads/agent/hepta-v4-source-export-20260830'
+    runs-on:
+      group: ${{ github.event.repository.name }}-runners
+      labels: ${{ github.event.repository.name }}-windows-x64
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact source identity
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify and export exact tracked tree
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $head = (git rev-parse HEAD).Trim()
+          if ($head -ne $env:GITHUB_SHA) {
+            throw "checkout mismatch: expected $env:GITHUB_SHA, got $head"
+          }
+          git diff --exit-code
+          git diff --cached --exit-code
+          $archive = Join-Path $env:RUNNER_TEMP 'hepta-v4-exact-source.zip'
+          git archive --format=zip --output=$archive HEAD
+          $digest = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          "$digest  hepta-v4-exact-source.zip" | Out-File -FilePath (Join-Path $env:RUNNER_TEMP 'hepta-v4-exact-source.sha256') -Encoding ascii
+          "source_sha=$head" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "archive_sha256=$digest" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Upload exact source archive
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-v4-exact-source-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/hepta-v4-exact-source.zip
+            ${{ runner.temp }}/hepta-v4-exact-source.sha256
+          if-no-files-found: error
+          retention-days: 3
