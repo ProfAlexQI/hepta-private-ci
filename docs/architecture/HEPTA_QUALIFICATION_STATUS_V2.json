@@ -21,32 +21,51 @@
   "subject": {
     "repository": "ProfHepta/hepta-private-ci",
     "parentBranch": "codex/hepta-architecture-convergence-p0-2-20260828",
-    "parentCommit": "5e6cc0d84a33920e99c9b1adaf7abcba91fddda1",
-    "sourceBranch": "codex/hepta-gap-closure-p0-5-20260829",
+    "parentCommit": "58ef2df827b6dcf83ddf1fffa3139339cf73eb1f",
+    "sourceBranch": "codex/hepta-gap-closure-p0-6-20260829",
     "sourceCommit": "resolved_by_exact_head_workflow",
     "sourceTree": "resolved_by_exact_head_workflow",
     "mergeCandidate": "resolved_by_pull_request_workflow"
   },
   "sourceClosure": {
     "state": "source_present_unqualified",
+    "tranches": ["p0.5", "p0.6"],
     "artifacts": [
       "docs/architecture/HEPTA_ARCHITECTURE_MODEL_V2.json",
       "scripts/generate-hepta-architecture-projections.py",
       "codex-rs/hepta-agentd/src/runtime_profile.rs",
+      "codex-rs/hepta-contracts/src/runtime_authority.rs",
+      "codex-rs/hepta-contracts/src/runtime_instance.rs",
+      "codex-rs/hepta-contracts/src/checked_provider_operation.rs",
+      "codex-rs/hepta-agentd/src/composition.rs",
+      "codex-rs/hepta-agentd/src/memory_service.rs",
+      "codex-rs/hepta-agentd/src/automation_service.rs",
+      "codex-rs/hepta-agentd/src/production_writer_host.rs",
+      "README.md",
+      "SECURITY.md",
+      ".github/CODEOWNERS",
+      "docs/governance/HEPTA_REPOSITORY_RULESET_REQUIRED_V1.json",
       "scripts/verify-hepta-p0-5-gap-closure.py",
-      ".github/workflows/hepta-gap-closure-p0-5.yml"
+      "scripts/verify-hepta-p0-6-runtime-authority.py",
+      ".github/workflows/hepta-gap-closure-p0-5.yml",
+      ".github/workflows/hepta-gap-closure-p0-6.yml"
     ]
   },
   "qualification": {
-    "sourceProjectionCheck": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
-    "exactSourceHead": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
-    "mergeCandidate": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
-    "agentdRuntimeProfileTests": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
-    "cargoCheck": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
-    "strictClippy": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null}
+    "p05SourceProjectionCheck": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "p05ExactSourceHead": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "p05MergeCandidate": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "p06SourceVerifier": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "p06ExactSourceHead": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "p06MergeCandidate": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "p06RuntimeAuthorityTests": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "p06RuntimeInstanceTests": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "p06CargoCheck": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "p06StrictClippy": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null}
   },
   "externalDecisions": {
     "repositoryRulesetEnforcement": {"state": "not_issued", "receipt": null},
+    "independentCodeOwnerReview": {"state": "not_issued", "receipt": null},
     "operatorAcceptance": {"state": "not_issued", "receipt": null},
     "promotion": {"state": "not_issued", "receipt": null},
     "release": {"state": "not_issued", "receipt": null}
