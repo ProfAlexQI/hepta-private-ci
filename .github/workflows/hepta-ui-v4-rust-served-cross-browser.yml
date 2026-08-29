@@ -1,0 +1,305 @@
+name: hepta-ui-v4-rust-served-cross-browser
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-ui-v4-browser-runtime-20260829"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: hepta-ui-v4-rust-served-cross-browser-${{ github.sha }}
+  cancel-in-progress: true
+
+env:
+  HEPTA_CANDIDATE_SHA: 092dbcacff7ae6c3e4cbfa7c8268db9ed87bd5f1
+  HEPTA_CANDIDATE_TREE: b9d779e04136edaae05d3ae88581fb2bb3f5c146
+  HEPTA_RUST_TOOLCHAIN: "1.95.0"
+  PLAYWRIGHT_VERSION: "1.55.0"
+
+jobs:
+  browser-engine:
+    name: Rust-served browser engine (${{ matrix.key }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, engine: chromium, key: chromium}
+          - {os: ubuntu-latest, engine: firefox, key: firefox}
+          - {os: ubuntu-latest, engine: webkit, key: webkitLinux}
+          - {os: windows-latest, engine: edge, key: edge}
+          - {os: macos-latest, engine: webkit, key: webkitMacos}
+    steps:
+      - name: Enable Windows long paths
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global core.longpaths true
+
+      - name: Checkout auditor source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify candidate and bounded auditor delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git fetch --no-tags --depth=1 origin "$HEPTA_CANDIDATE_SHA"
+          test "$(git rev-parse "$HEPTA_CANDIDATE_SHA^{tree}")" = "$HEPTA_CANDIDATE_TREE"
+          git diff --name-only "$HEPTA_CANDIDATE_SHA" HEAD > "$RUNNER_TEMP/auditor-paths.txt"
+          ruby -e '
+            paths=File.readlines(ARGV.fetch(0),chomp:true).reject(&:empty?)
+            allowed=paths.all? do |path|
+              path.start_with?("tools/hepta-ui-rust-served-browser-probe/") ||
+                path == "scripts/hepta-ui-v4-rust-served-browser-engine.cjs" ||
+                path == ".github/workflows/hepta-ui-v4-rust-served-cross-browser.yml"
+            end
+            abort "auditor delta escaped allowlist: #{paths.inspect}" unless allowed
+            abort "browser auditor missing source" unless paths.any? { |path| path.start_with?("tools/hepta-ui-rust-served-browser-probe/") }
+          ' "$RUNNER_TEMP/auditor-paths.txt"
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.HEPTA_RUST_TOOLCHAIN }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install pinned Playwright runtime
+        shell: bash
+        env:
+          ENGINE: ${{ matrix.engine }}
+        run: |
+          set -euo pipefail
+          prefix="$RUNNER_TEMP/hepta-playwright"
+          mkdir -p "$prefix"
+          npm install --prefix "$prefix" --no-save --no-audit --no-fund "playwright@$PLAYWRIGHT_VERSION"
+          if [[ "$ENGINE" == edge ]]; then
+            echo "Using the Microsoft Edge channel installed on the Windows runner"
+          elif [[ "$RUNNER_OS" == Linux ]]; then
+            node "$prefix/node_modules/playwright/cli.js" install --with-deps "$ENGINE"
+          else
+            node "$prefix/node_modules/playwright/cli.js" install "$ENGINE"
+          fi
+
+      - name: Build and start exact Rust-served UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/hepta-browser-target"
+          cargo build --manifest-path tools/hepta-ui-rust-served-browser-probe/Cargo.toml
+          mkdir -p artifacts/server
+          suffix=""
+          [[ "$RUNNER_OS" == Windows ]] && suffix=".exe"
+          binary="$CARGO_TARGET_DIR/debug/hepta-ui-rust-served-browser-probe$suffix"
+          "$binary" --port-file artifacts/server/ready.json > artifacts/server/server.log 2>&1 &
+          echo "$!" > artifacts/server/server.pid
+          for _ in $(seq 1 100); do
+            [[ -s artifacts/server/ready.json ]] && break
+            sleep 0.1
+          done
+          test -s artifacts/server/ready.json
+          base_url="$(node -e 'const value=require("./artifacts/server/ready.json"); process.stdout.write(`http://${value.host}:${value.port}`)')"
+          echo "HEPTA_UI_BASE_URL=$base_url" >> "$GITHUB_ENV"
+          echo "HEPTA_SERVER_PID=$(cat artifacts/server/server.pid)" >> "$GITHUB_ENV"
+          curl --fail --silent --show-error "$base_url/" > "$RUNNER_TEMP/rust-served-index.html"
+          grep -q 'data-rust-frontend-renderer="hepta-core::control_ui"' "$RUNNER_TEMP/rust-served-index.html"
+
+      - name: Execute real browser engine
+        id: probe
+        continue-on-error: true
+        shell: bash
+        env:
+          NODE_PATH: ${{ runner.temp }}/hepta-playwright/node_modules
+          HEPTA_BROWSER_ENGINE: ${{ matrix.engine }}
+          HEPTA_BROWSER_ENGINE_KEY: ${{ matrix.key }}
+          HEPTA_BROWSER_RECEIPT: artifacts/browser/receipt.json
+          HEPTA_BROWSER_SCREENSHOT: artifacts/browser/${{ matrix.key }}.png
+        run: |
+          set -euo pipefail
+          node scripts/hepta-ui-v4-rust-served-browser-engine.cjs
+
+      - name: Stop Rust server
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${HEPTA_SERVER_PID:-}" ]]; then
+            kill "$HEPTA_SERVER_PID" 2>/dev/null || true
+          fi
+
+      - name: Upload engine evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-browser-engine-${{ matrix.key }}-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: |
+            artifacts/browser
+            artifacts/server/ready.json
+            artifacts/server/server.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce engine result
+        if: always()
+        shell: bash
+        env:
+          PROBE_OUTCOME: ${{ steps.probe.outcome }}
+        run: |
+          set -euo pipefail
+          test "$PROBE_OUTCOME" = success
+          node -e 'const r=require("./artifacts/browser/receipt.json"); if(r.status!=="PASS_RUST_SERVED_BROWSER_ENGINE"||r.failures.length!==0) process.exit(1)'
+
+  aggregate:
+    name: Rust-served cross-browser matrix
+    if: always()
+    needs: browser-engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout auditor source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download same-run browser receipts
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: hepta-ui-browser-engine-*-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: artifacts/input
+
+      - name: Aggregate exact candidate browser matrix
+        id: aggregate
+        continue-on-error: true
+        shell: bash
+        env:
+          DOWNLOAD_OUTCOME: ${{ steps.download.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/output
+          ruby -rjson -rdigest -e '
+            expected=%w[chromium edge firefox webkitLinux webkitMacos]
+            commit=ENV.fetch("HEPTA_CANDIDATE_SHA")
+            tree=ENV.fetch("HEPTA_CANDIDATE_TREE")
+            files=Dir.glob("artifacts/input/**/receipt.json").sort
+            failures=[]
+            failures << "artifact download failed" unless ENV.fetch("DOWNLOAD_OUTCOME")=="success"
+            receipts={}
+            files.each do |path|
+              begin
+                receipt=JSON.parse(File.read(path))
+                key=receipt["engine"]
+                if receipts.key?(key)
+                  failures << "duplicate engine #{key}"
+                else
+                  receipts[key]=receipt
+                end
+              rescue StandardError => error
+                failures << "#{path}: #{error.message.byteslice(0,256)}"
+              end
+            end
+            failures << "engine set mismatch: #{receipts.keys.sort.inspect}" unless receipts.keys.sort==expected.sort
+            js_hashes=[]
+            screenshots={}
+            totals={"console"=>0,"page"=>0,"crossOrigin"=>0,"nonGet"=>0}
+            expected.each do |key|
+              receipt=receipts[key]
+              next failures << "missing #{key}" unless receipt
+              valid=receipt["status"]=="PASS_RUST_SERVED_BROWSER_ENGINE" &&
+                receipt.dig("candidate","commit")==commit &&
+                receipt.dig("candidate","tree")==tree &&
+                receipt["candidateBound"]==true && receipt["synthetic"]==false && receipt["fixture"]==false &&
+                receipt["rustServedRuntime"]==true && receipt["networkAuditPassed"]==true &&
+                receipt["consoleErrorCount"]==0 && receipt["pageErrorCount"]==0 &&
+                receipt["crossOriginRequestCount"]==0 && receipt["nonGetRequestCount"]==0 &&
+                receipt["screenshotSha256"].to_s.match?(/\A[0-9a-f]{64}\z/) &&
+                receipt["servedJavascriptSha256"].to_s.match?(/\A[0-9a-f]{64}\z/) &&
+                Array(receipt["failures"]).empty? &&
+                receipt.fetch("authority",{}).values.all?{|value| value==false} &&
+                receipt.fetch("boundary",{}).values.all?{|value| value==false}
+              failures << "#{key}: receipt rejected" unless valid
+              screenshots[key]=receipt["screenshotSha256"]
+              js_hashes << receipt["servedJavascriptSha256"]
+              totals["console"] += receipt["consoleErrorCount"].to_i
+              totals["page"] += receipt["pageErrorCount"].to_i
+              totals["crossOrigin"] += receipt["crossOriginRequestCount"].to_i
+              totals["nonGet"] += receipt["nonGetRequestCount"].to_i
+            end
+            failures << "Rust-served JavaScript digest drift" unless js_hashes.uniq.length==1
+            pass=failures.empty?
+            q={
+              "rustServedRuntime"=>pass,
+              "chromiumRuntime"=>pass,
+              "edgeRuntime"=>pass,
+              "firefoxRuntime"=>pass,
+              "webkitLinuxRuntime"=>pass,
+              "webkitMacosRuntime"=>pass,
+              "crossBrowserEngineMatrix"=>pass,
+              "networkAuditPassed"=>pass,
+              "physicalBrowserAcceptance"=>false,
+              "safariProductValidation"=>false,
+              "deviceValidation"=>false,
+              "productWired"=>false,
+              "productCargoFeatureDeclared"=>false,
+              "productModuleRegistered"=>false,
+              "productLifecycleWired"=>false,
+              "automaticBindingAllowed"=>false,
+              "productHostMayBind"=>false,
+              "productBound"=>false,
+              "systemMaterialBound"=>false,
+              "nativeProductRuntime"=>false,
+              "productionAuthority"=>false
+            }
+            payload={
+              "schema"=>"hepta.ui.v4.rust-served-cross-browser-matrix.v1",
+              "status"=>pass ? "PASS_RUST_SERVED_CROSS_BROWSER_MATRIX" : "FAIL_RUST_SERVED_CROSS_BROWSER_MATRIX",
+              "candidate"=>{"commit"=>commit,"tree"=>tree},
+              "auditor"=>{"commit"=>ENV.fetch("GITHUB_SHA")},
+              "candidateBound"=>true,
+              "synthetic"=>false,
+              "fixture"=>false,
+              "qualification"=>q,
+              "consoleErrorCount"=>totals["console"],
+              "pageErrorCount"=>totals["page"],
+              "crossOriginRequestCount"=>totals["crossOrigin"],
+              "nonGetRequestCount"=>totals["nonGet"],
+              "screenshotSha256"=>screenshots,
+              "servedJavascriptSha256"=>js_hashes.uniq.first,
+              "authority"=>{"network"=>false,"mutation"=>false,"effect"=>false,"liveAdapter"=>false,"production"=>false,"operatorAcceptance"=>false,"promotion"=>false,"release"=>false},
+              "failures"=>failures.uniq.first(64)
+            }
+            File.write("artifacts/output/receipt.json",JSON.pretty_generate(payload)+"\n")
+            abort failures.join("; ") unless pass
+          '
+
+      - name: Upload cross-browser runtime receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-rust-served-cross-browser-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: artifacts/output/receipt.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce aggregate result
+        if: always()
+        shell: bash
+        env:
+          AGGREGATE_OUTCOME: ${{ steps.aggregate.outcome }}
+        run: |
+          set -euo pipefail
+          test "$AGGREGATE_OUTCOME" = success
+          ruby -rjson -e 'r=JSON.parse(File.read("artifacts/output/receipt.json")); abort unless r["status"]=="PASS_RUST_SERVED_CROSS_BROWSER_MATRIX" && r["failures"].empty?'
