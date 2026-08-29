@@ -1,0 +1,86 @@
+name: P0.3.4 structural helper audit export
+
+on:
+  push:
+    branches:
+      - codex/p034-rebuild-v2-20260829
+    paths:
+      - .github/workflows/p034-structural-helper-audit-export.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p034-structural-helper-audit-export
+  cancel-in-progress: true
+
+env:
+  P033_HEAD: eddcb59ca43a76ac83b64507983bd908f406ff48
+  STRICT_HELPER_B64_SHA256: 37daa582d5e359cd43acc2150aacd175b6698494137aaf9268053444f1cfa7fc
+  STRICT_HELPER_TAR_SHA256: 936f5ae5ab697cad67b6163fbccde442b0dc2b86d9831d747daf8472bb86ab95
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact helper head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          path: helper
+          persist-credentials: false
+
+      - name: Checkout exact qualified predecessor
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.P033_HEAD }}
+          fetch-depth: 1
+          path: predecessor
+          persist-credentials: false
+
+      - name: Decode and audit immutable structural helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/p034-structural-helper"
+          mkdir -p "${out}" artifacts/p034-structural-helper-audit
+          echo "${STRICT_HELPER_B64_SHA256}  helper/ci/p034-rebuild/p034-strict-helper.bundle.b64" | sha256sum -c -
+          base64 -d helper/ci/p034-rebuild/p034-strict-helper.bundle.b64 > "${out}.tar.gz"
+          echo "${STRICT_HELPER_TAR_SHA256}  ${out}.tar.gz" | sha256sum -c -
+          tar -C "${out}" -xzf "${out}.tar.gz"
+          cp -a "${out}/." artifacts/p034-structural-helper-audit/
+          find "${out}" -type f -print0 | sort -z | xargs -0 sha256sum > artifacts/p034-structural-helper-audit/files.sha256
+          grep -RInE '#!?\[allow\(clippy::(too_many_arguments|large_enum_variant|expect_used|assertions_on_constants|redundant_clone)' "${out}" > artifacts/p034-structural-helper-audit/forbidden-suppressions.txt || true
+          grep -RInE 'too_many_arguments|large_enum_variant|expect_used|assertions_on_constants|redundant_clone' "${out}" > artifacts/p034-structural-helper-audit/lint-references.txt || true
+          printf '%s\n' "${GITHUB_SHA}" > artifacts/p034-structural-helper-audit/helper-head.txt
+          printf '%s\n' "$(git -C predecessor rev-parse HEAD)" > artifacts/p034-structural-helper-audit/predecessor-head.txt
+          test "$(git -C predecessor rev-parse HEAD)" = "${P033_HEAD}"
+
+      - name: Archive exact predecessor source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/p034-predecessor-source
+          git -C predecessor archive --format=tar.gz --prefix=hepta-p033/ HEAD > artifacts/p034-predecessor-source/hepta-p033.tar.gz
+          sha256sum artifacts/p034-predecessor-source/hepta-p033.tar.gz > artifacts/p034-predecessor-source/hepta-p033.tar.gz.sha256
+          printf '%s\n' "$(git -C predecessor rev-parse HEAD)" > artifacts/p034-predecessor-source/predecessor-head.txt
+          printf '%s\n' "$(git -C predecessor rev-parse HEAD^{tree})" > artifacts/p034-predecessor-source/predecessor-tree.txt
+
+      - name: Upload helper audit
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: p034-structural-helper-audit-${{ github.sha }}
+          path: artifacts/p034-structural-helper-audit
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload exact predecessor source
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: p034-exact-predecessor-source-${{ github.sha }}
+          path: artifacts/p034-predecessor-source
+          if-no-files-found: error
+          retention-days: 3
