@@ -1,4 +1,4 @@
-name: p034-qualified-publisher-arm-v5
+name: p034-qualified-publisher-x64-v6
 
 on:
   push:
@@ -11,12 +11,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: p034-qualified-publisher-arm-v5
+  group: p034-qualified-publisher-x64-v6
   cancel-in-progress: false
 
 jobs:
   qualify-and-publish:
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
       TARGET_BRANCH: codex/hepta-intelligence-legacy-governance-v2-20260829
@@ -84,6 +84,12 @@ jobs:
           python3 /tmp/p034-payload/p034_apply_patch.py
           git diff --check
 
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
       - name: Format exact governed Rust files
         shell: bash
         run: |
@@ -95,12 +101,6 @@ jobs:
             hepta-memory/src/fact_grounding/durable.rs \
             hepta-memory/src/framing.rs \
             hepta-memory/src/lib.rs
-
-      - name: Install repository Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.95.0
-          components: rustfmt,clippy
 
       - name: Execute P0.3.4 source, SQLite, test, and Clippy gates
         shell: bash
