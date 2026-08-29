@@ -56,10 +56,35 @@ fn run() -> Result<(), Box<dyn Error>> {
 }
 
 fn validate_sha256_implementation() -> Result<(), Box<dyn Error>> {
+    if canonicalize_text_bytes(b"a\r\nb\rc\n").as_slice() != b"a\nb\nc\n" {
+        return Err("Control UI line-ending canonicalization failed".into());
+    }
     if sha256_hex(b"abc") != SHA256_ABC {
         return Err("embedded SHA-256 implementation failed its known-answer test".into());
     }
     Ok(())
+}
+
+fn canonicalize_text_bytes(input: &[u8]) -> Vec<u8> {
+    let mut output = Vec::with_capacity(input.len());
+    let mut index = 0;
+    while index < input.len() {
+        match input[index] {
+            b'\r' if input.get(index + 1) == Some(&b'\n') => {
+                output.push(b'\n');
+                index += 2;
+            }
+            b'\r' => {
+                output.push(b'\n');
+                index += 1;
+            }
+            byte => {
+                output.push(byte);
+                index += 1;
+            }
+        }
+    }
+    output
 }
 
 fn generate_control_ui_bundle(
@@ -67,8 +92,8 @@ fn generate_control_ui_bundle(
     runtime_js_path: &Path,
     out_dir: &Path,
 ) -> Result<(), Box<dyn Error>> {
-    let base_js = fs::read(base_js_path)?;
-    let runtime_js = fs::read(runtime_js_path)?;
+    let base_js = canonicalize_text_bytes(&fs::read(base_js_path)?);
+    let runtime_js = canonicalize_text_bytes(&fs::read(runtime_js_path)?);
     if base_js.is_empty() {
         return Err("Control UI base JavaScript is empty".into());
     }

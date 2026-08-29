@@ -15,8 +15,13 @@ FILES = {
   cargo: ROOT.join("codex-rs/hepta-core/Cargo.toml"),
   build: ROOT.join("codex-rs/hepta-core/build.rs"),
   core_assets: ROOT.join("codex-rs/hepta-core/src/control_ui_static_assets.rs"),
-  gateway_assets: ROOT.join("codex-rs/hepta-native-gateway/src/ui_domain/generated_control_ui_assets.rs")
+  gateway_assets: ROOT.join("codex-rs/hepta-native-gateway/src/ui_domain/generated_control_ui_assets.rs"),
+  attributes: ROOT.join(".gitattributes")
 }.freeze
+
+def canonicalize_text_bytes(bytes)
+  bytes.gsub("\r\n", "\n").gsub("\r", "\n")
+end
 
 checks = {}
 FILES.each { |name, path| checks["file.#{name}"] = path.file? }
@@ -40,14 +45,22 @@ unless checks.values.all?
   exit 1
 end
 
-base_js = FILES.fetch(:base_js).binread
-runtime_js = FILES.fetch(:runtime_js).binread
+base_js = canonicalize_text_bytes(FILES.fetch(:base_js).binread)
+runtime_js = canonicalize_text_bytes(FILES.fetch(:runtime_js).binread)
 cargo = FILES.fetch(:cargo).read
 build = FILES.fetch(:build).read
 core_assets = FILES.fetch(:core_assets).read
 gateway_assets = FILES.fetch(:gateway_assets).read
+attributes = FILES.fetch(:attributes).read
 bundle = base_js + BOUNDARY + runtime_js
 
+checks["bundle.line_endings_canonicalized"] =
+  build.include?("fn canonicalize_text_bytes") &&
+  build.include?("canonicalize_text_bytes(&fs::read(base_js_path)?)") &&
+  build.include?("canonicalize_text_bytes(&fs::read(runtime_js_path)?)")
+checks["bundle.checkout_lf_pinned"] =
+  attributes.include?("apps/hepta-control-ui/control-ui.js text eol=lf") &&
+  attributes.include?("apps/hepta-control-ui/control-ui-v4-runtime.js text eol=lf")
 checks["bundle.base_non_empty"] = !base_js.empty?
 checks["bundle.runtime_non_empty"] = !runtime_js.empty?
 checks["bundle.order"] = build.index("control-ui.js") && build.index("control-ui-v4-runtime.js") && build.index("control-ui.js") < build.index("control-ui-v4-runtime.js")

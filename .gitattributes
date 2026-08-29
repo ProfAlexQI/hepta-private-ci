@@ -1,3 +1,5 @@
 codex-rs/app-server-protocol/schema/** linguist-generated
 codex-rs/hooks/schema/generated/** linguist-generated
 apps/hepta-native/third_party/** whitespace=-trailing-space
+apps/hepta-control-ui/control-ui.js text eol=lf
+apps/hepta-control-ui/control-ui-v4-runtime.js text eol=lf

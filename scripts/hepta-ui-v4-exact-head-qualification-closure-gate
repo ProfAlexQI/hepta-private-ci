@@ -84,7 +84,7 @@ checks["workflow.runtime_receipt_validation"] =
 checks["workflow.failure_artifacts_preserved"] =
   workflow.include?("continue-on-error: true") &&
   workflow.scan("if-no-files-found: warn").length >= 3 &&
-  workflow.include?("set -o pipefail")
+  (workflow.include?("set -euo pipefail") || workflow.include?("set -o pipefail"))
 checks["workflow.read_only_no_release"] =
   workflow.include?("permissions:") && workflow.include?("contents: read") &&
   !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)

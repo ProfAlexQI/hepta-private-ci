@@ -23,6 +23,9 @@ on:
 permissions:
   contents: read
 
+env:
+  HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 concurrency:
   group: hepta-ui-v4-windows-material-profile-runtime-${{ github.ref }}
   cancel-in-progress: true
@@ -35,6 +38,16 @@ jobs:
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact checkout identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
 
       - name: Validate formats and fail-closed source contracts
         run: |
@@ -72,7 +85,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-ui-v4-windows-profile-runtime-source-${{ github.sha }}
+          name: hepta-ui-v4-windows-profile-runtime-source-${{ env.HEPTA_CANDIDATE_SHA }}
           path: artifacts/ui-v4-windows-profile-runtime
           if-no-files-found: error
           retention-days: 14
@@ -85,6 +98,16 @@ jobs:
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact checkout identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
 
       - name: Materialize exact patched checkout
         run: |
@@ -110,7 +133,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-ui-v4-windows-profile-runtime-patch-${{ github.sha }}
+          name: hepta-ui-v4-windows-profile-runtime-patch-${{ env.HEPTA_CANDIDATE_SHA }}
           path: |
             artifacts/ui-v4-windows-profile-runtime/materialization.json
             artifacts/ui-v4-windows-profile-runtime/materialization.patch.json
@@ -131,13 +154,57 @@ jobs:
           - windows-latest
           - macos-latest
     steps:
+      - name: Enable Windows long paths before checkout
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global core.longpaths true
+
       - name: Checkout exact candidate
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact checkout identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+
+      - name: Install Linux Native build dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential \
+            pkg-config \
+            clang \
+            ca-certificates \
+            libssl-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxkbcommon-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxinerama-dev \
+            libasound2-dev \
+            libpulse-dev \
+            libwayland-dev \
+            wayland-protocols \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev \
+            libgles2-mesa-dev \
+            libglx-dev \
+            libdrm-dev \
+            libgbm-dev
 
       - name: Install repository Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.88.0
+          toolchain: 1.95.0
           components: rustfmt
 
       - name: Materialize patched Makepad and Cargo override
@@ -195,13 +262,28 @@ jobs:
     env:
       RUSTFLAGS: "--cfg hepta_makepad_windows_ack_hook --check-cfg=cfg(hepta_makepad_windows_ack_hook)"
     steps:
+      - name: Enable Windows long paths before checkout
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global core.longpaths true
+
       - name: Checkout exact candidate
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact checkout identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
 
       - name: Install repository Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.88.0
+          toolchain: 1.95.0
 
       - name: Materialize patched Makepad and Cargo override
         shell: bash
@@ -216,7 +298,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts/ui-v4-windows-profile-runtime | Out-Null
-          $env:HEPTA_CANDIDATE_COMMIT = $env:GITHUB_SHA
+          $env:HEPTA_CANDIDATE_COMMIT = $env:HEPTA_CANDIDATE_SHA
           $env:HEPTA_CANDIDATE_TREE = (git rev-parse 'HEAD^{tree}').Trim()
           $env:HEPTA_WINDOWS_PROFILE_RECEIPT_PATH = "$PWD/artifacts/ui-v4-windows-profile-runtime/windows-material-profile.json"
           $process = Start-Process cargo -ArgumentList @(
@@ -243,7 +325,7 @@ jobs:
           if ($receipt.status -ne 'PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE') {
             throw "aggregate did not pass: $($receipt.failures -join '; ')"
           }
-          if ($receipt.candidate.commit -ne $env:GITHUB_SHA) { throw 'commit drift' }
+          if ($receipt.candidate.commit -ne $env:HEPTA_CANDIDATE_SHA) { throw 'commit drift' }
           $tree = (git rev-parse 'HEAD^{tree}').Trim()
           if ($receipt.candidate.tree -ne $tree) { throw 'tree drift' }
           if ($receipt.makepad.revision -ne 'c4335cee10b22aca768510c9d072b0ca1bba15c8') { throw 'Makepad drift' }
@@ -270,7 +352,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-ui-v4-windows-material-profile-runtime-${{ github.sha }}
+          name: hepta-ui-v4-windows-material-profile-runtime-${{ env.HEPTA_CANDIDATE_SHA }}
           path: |
             artifacts/ui-v4-windows-profile-runtime/windows-material-profile.json
             hepta-patched-makepad-materialization.json
