@@ -1,0 +1,238 @@
+name: Hepta UI v5 remediation v12
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-remediation-v12-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-remediation-v12.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-remediation-v12
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_PARENT: 3e0cf14de1d3a441295d1825a0299e48c8bbfb14
+      BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-remediation-v12.yml
+      UPSTREAM_URL: https://github.com/openai/codex.git
+      UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
+      UPSTREAM_ROLE: current_r12
+      UPSTREAM_FROZEN_REF: refs/remotes/upstream/hepta-intake-20260830-r12
+      UPSTREAM_INTAKE_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R12.json
+      UPSTREAM_RECORD_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+    steps:
+      - name: Check out exact v12 driver commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install deterministic remediation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes jq ripgrep ruby patch
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+
+      - name: Extend, verify, and publish the exact remediation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source_driver=.github/workflows/hepta-ui-v5-remediation-v6.yml
+          generated_driver="$RUNNER_TEMP/hepta-ui-v5-remediate-v12-driver.sh"
+          test -f "$source_driver"
+          awk '
+            /      - name: Generate, verify, and publish the exact remediation/ { found=1; next }
+            found && /        shell: bash/ { next }
+            found && /        run: \|/ { in_run=1; next }
+            in_run { sub(/^          /, ""); print }
+          ' "$source_driver" > "$generated_driver"
+
+          export GENERATED_DRIVER="$generated_driver"
+          python3 <<'PY'
+          from __future__ import annotations
+
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["GENERATED_DRIVER"])
+          text = path.read_text(encoding="utf-8")
+          anchor = 'bash -x "$generated_script"\n'
+          if text.count(anchor) != 1:
+              raise SystemExit(
+                  f"v12 execution anchor: expected 1 match, found {text.count(anchor)}"
+              )
+          extension = r'''export GENERATED_REMEDIATION_SCRIPT="$generated_script"
+          python3 <<'PATCH'
+          from __future__ import annotations
+
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["GENERATED_REMEDIATION_SCRIPT"])
+          text = path.read_text(encoding="utf-8")
+
+          write_marker = 'dep_contract_path.write_text(\n'
+          if text.count(write_marker) != 1:
+              raise SystemExit(
+                  f"dependency contract write marker: expected 1 match, found {text.count(write_marker)}"
+              )
+          dependency_rebind = (
+              'previous_input_hashes = {}\n'
+              'for input_id, input_entry in dep_contract["inputs"].items():\n'
+              '    if input_id == "cargo_locks":\n'
+              '        continue\n'
+              '    if not isinstance(input_entry, dict):\n'
+              '        continue\n'
+              '    input_path = input_entry.get("path")\n'
+              '    if not isinstance(input_path, str) or "sha256" not in input_entry:\n'
+              '        continue\n'
+              '    old_hash = input_entry["sha256"]\n'
+              '    new_hash = sha256_path(root / input_path)\n'
+              '    previous_input_hashes[input_id] = (old_hash, new_hash)\n'
+              '    input_entry["sha256"] = new_hash\n'
+              'old_expected_findings_hash = dep_contract["scans"]["expected_raw_findings_sha256"]\n'
+              'expected_findings = dep_contract["scans"]["audit"]["expected_raw_findings"]\n'
+              'expected_findings_bytes = (\n'
+              '    json.dumps(expected_findings, sort_keys=True, separators=(",", ":")) + "\\n"\n'
+              ').encode("utf-8")\n'
+              'new_expected_findings_hash = hashlib.sha256(expected_findings_bytes).hexdigest()\n'
+              'dep_contract["scans"]["expected_raw_findings_sha256"] = new_expected_findings_hash\n'
+              'dep_gate_path = root / "scripts/hepta-dependency-security"\n'
+              'dep_gate = dep_gate_path.read_text(encoding="utf-8")\n'
+              'for input_id, (old_hash, new_hash) in previous_input_hashes.items():\n'
+              '    if old_hash == new_hash:\n'
+              '        continue\n'
+              '    dep_gate = replace_exact(\n'
+              '        dep_gate,\n'
+              '        f\'sha256:"{old_hash}"\',\n'
+              '        f\'sha256:"{new_hash}"\',\n'
+              '        label=f\'dependency-security {input_id} input hash\',\n'
+              '    )\n'
+              'if old_expected_findings_hash != new_expected_findings_hash:\n'
+              '    dep_gate = replace_exact(\n'
+              '        dep_gate,\n'
+              '        f\'.scans.expected_raw_findings_sha256 == "{old_expected_findings_hash}"\',\n'
+              '        f\'.scans.expected_raw_findings_sha256 == "{new_expected_findings_hash}"\',\n'
+              '        label="dependency-security expected-findings digest",\n'
+              '    )\n'
+              'dep_gate_path.write_text(dep_gate, encoding="utf-8")\n'
+          )
+          text = text.replace(write_marker, dependency_rebind + write_marker, 1)
+
+          architecture_anchor = 'architecture_path = "scripts/hepta-architecture-budget"\n'
+          if text.count(architecture_anchor) != 1:
+              raise SystemExit(
+                  f"sliding-sync architecture anchor: expected 1 match, found {text.count(architecture_anchor)}"
+              )
+          sliding_split = (
+              'sliding_path = "apps/hepta-native/src/sliding_sync.rs"\n'
+              'sliding = read(sliding_path)\n'
+              'worker_start_marker = (\n'
+              '    "/// The entry point for the worker task that runs Matrix-related operations.\\n"\n'
+              ')\n'
+              'worker_end_marker = (\n'
+              '    "\\n/// Returns the global Tokio runtime, creating it on first use.\\n"\n'
+              ')\n'
+              'if sliding.count(worker_start_marker) != 1 or sliding.count(worker_end_marker) != 1:\n'
+              '    raise SystemExit("sliding-sync worker extraction markers are not exact")\n'
+              'worker_start = sliding.index(worker_start_marker)\n'
+              'worker_end = sliding.index(worker_end_marker, worker_start)\n'
+              'worker = sliding[worker_start:worker_end].rstrip() + "\\n"\n'
+              'worker_lines = worker.count("\\n")\n'
+              'if worker_lines < 1500 or worker_lines > 2200:\n'
+              '    raise SystemExit(f"sliding-sync worker extraction size is invalid: {worker_lines}")\n'
+              'if not worker.endswith(\n'
+              '    "bail!(\\\"matrix_worker_task task ended unexpectedly\\\")\\n}\\n"\n'
+              '):\n'
+              '    raise SystemExit("sliding-sync worker extraction boundary is invalid")\n'
+              'worker_path = "apps/hepta-native/src/sliding_sync/matrix_worker_task.rs"\n'
+              'write(worker_path, worker)\n'
+              'sliding = (\n'
+              '    sliding[:worker_start]\n'
+              '    + \'include!("sliding_sync/matrix_worker_task.rs");\\n\'\n'
+              '    + sliding[worker_end:]\n'
+              ')\n'
+              'write(sliding_path, sliding)\n\n'
+          )
+          text = text.replace(architecture_anchor, sliding_split + architecture_anchor, 1)
+
+          architecture_write_anchor = 'write(architecture_path, architecture)\n'
+          if text.count(architecture_write_anchor) != 1:
+              raise SystemExit(
+                  f"architecture write anchor: expected 1 match, found {text.count(architecture_write_anchor)}"
+              )
+          architecture_budget_patch = (
+              'architecture = replace_exact(\n'
+              '    architecture,\n'
+              '    "  verify_file_max apps/hepta-native/src/sliding_sync.rs 4500\\n",\n'
+              '    "  verify_file_max apps/hepta-native/src/sliding_sync.rs 4500\\n"\n'
+              '    "  verify_file_max apps/hepta-native/src/sliding_sync/matrix_worker_task.rs 2200\\n",\n'
+              '    label="sliding-sync worker architecture budget",\n'
+              ')\n'
+          )
+          text = text.replace(
+              architecture_write_anchor,
+              architecture_budget_patch + architecture_write_anchor,
+              1,
+          )
+
+          validation_anchor = (
+              'test "$(wc -l < apps/hepta-native/src/home/room_screen/live_design.rs)" -le 900\n'
+          )
+          if text.count(validation_anchor) != 1:
+              raise SystemExit(
+                  f"sliding-sync validation anchor: expected 1 match, found {text.count(validation_anchor)}"
+              )
+          validation_patch = (
+              'test "$(wc -l < apps/hepta-native/src/sliding_sync.rs)" -le 4500\n'
+              'test "$(wc -l < apps/hepta-native/src/sliding_sync/matrix_worker_task.rs)" -le 2200\n'
+          )
+          text = text.replace(validation_anchor, validation_anchor + validation_patch, 1)
+
+          verify_marker = 'scripts/hepta-dependency-security verify >/dev/null\n'
+          if text.count(verify_marker) != 1:
+              raise SystemExit(
+                  f"dependency verification marker: expected 1 match, found {text.count(verify_marker)}"
+              )
+          text = text.replace(
+              verify_marker,
+              'bash -x scripts/hepta-dependency-security verify\n',
+              1,
+          )
+
+          cleanup_marker = '  .github/workflows/hepta-ui-v5-blocker-remediation-bootstrap.yml\n'
+          if text.count(cleanup_marker) != 1:
+              raise SystemExit(
+                  f"remediation helper cleanup marker: expected 1 match, found {text.count(cleanup_marker)}"
+              )
+          cleanup_replacement = (
+              '  .github/workflows/hepta-ui-v5-blocker-remediation-bootstrap.yml '
+              + chr(92)
+              + '\n'
+              + '  .github/workflows/hepta-ui-v5-remediation-v6.yml\n'
+          )
+          text = text.replace(cleanup_marker, cleanup_replacement, 1)
+          path.write_text(text, encoding="utf-8")
+          PATCH
+          bash -n "$generated_script"
+          bash -x "$generated_script"
+          '''
+          text = text.replace(anchor, extension)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          bash -n "$generated_driver"
+          bash -x "$generated_driver"
