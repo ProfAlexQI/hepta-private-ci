@@ -1,0 +1,158 @@
+name: Hepta inference V4 INF-R3 product shadow closure
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-v4-r3-shadow-bridge-chatgpt-20260830
+    paths:
+      - .github/workflows/hepta-inference-v4-r3-shadow-bridge-chatgpt.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-v4-r3-shadow-bridge-chatgpt
+  cancel-in-progress: false
+
+jobs:
+  integrate-and-qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 2
+
+      - name: Guard exact package parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = codex/hepta-inference-v4-r3-shadow-bridge-chatgpt-20260830
+          test "$(git rev-parse HEAD^)" = c5fcc36b0ff93a768fc2fc02ac2e74a447367c9a
+          test -z "$(git status --porcelain)"
+          test -f codex-rs/hepta-infer-client/src/shadow_bridge.rs
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Export the typed product shadow boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-infer-client/src/lib.rs")
+          source = path.read_text(encoding="utf-8")
+          import_marker = "use std::fmt;\n"
+          if source.count(import_marker) != 1:
+              raise SystemExit("unexpected shadow bridge module marker")
+          source = source.replace(
+              import_marker,
+              "mod shadow_bridge;\n\n" + import_marker,
+              1,
+          )
+          result_marker = "pub type Result<T> = std::result::Result<T, ClientError>;\n"
+          exports = """pub use shadow_bridge::PrimaryDecision;
+          pub use shadow_bridge::ProductShadowBridge;
+          pub use shadow_bridge::ShadowBridgeConfig;
+          pub use shadow_bridge::ShadowBridgeError;
+          pub use shadow_bridge::ShadowBridgeOutcome;
+          pub use shadow_bridge::ShadowBridgeResult;
+          pub use shadow_bridge::ShadowComparisonDisposition;
+          pub use shadow_bridge::ShadowComparisonSignal;
+          pub use shadow_bridge::ShadowExecutionError;
+          pub use shadow_bridge::ShadowInputProjection;
+          pub use shadow_bridge::ShadowKillSwitch;
+          pub use shadow_bridge::ShadowProposal;
+          pub use shadow_bridge::ShadowProposalKind;
+
+          """
+          if source.count(result_marker) != 1:
+              raise SystemExit("unexpected shadow bridge export marker")
+          source = source.replace(result_marker, exports + result_marker, 1)
+          path.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Reject raw-content and authority-bearing fields
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path(
+              "codex-rs/hepta-infer-client/src/shadow_bridge.rs"
+          ).read_text(encoding="utf-8")
+          forbidden_fields = (
+              "raw_prompt",
+              "prompt_text",
+              "raw_output",
+              "output_text",
+              "memory_writer",
+              "kg_writer",
+              "effect_executor",
+              "route_writer",
+              "fleet_writer",
+          )
+          for field in forbidden_fields:
+              if field in source:
+                  raise SystemExit(f"forbidden shadow bridge field: {field}")
+          required = (
+              "RouteMode::ShadowCompareOnly",
+              "primary_output_authoritative: true",
+              "shadow_output_authoritative: false",
+              "memory_write: false",
+              "shared_kg_write: false",
+              "effect_write: false",
+              "route_write: false",
+              "fleet_write: false",
+          )
+          for marker in required:
+              if marker not in source:
+                  raise SystemExit(f"missing shadow safety marker: {marker}")
+          PY
+
+      - name: Format and qualify product shadow source
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-infer-client
+          cargo check --locked --all-targets -p codex-hepta-infer-client
+          cargo test --locked --all-targets \
+            -p codex-hepta-infer-client -- --test-threads=1
+          cargo clippy --locked --all-targets --no-deps \
+            -p codex-hepta-infer-client -- -D warnings
+
+      - name: Enforce exact package scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git diff --name-only | LC_ALL=C sort)"
+          expected="$(cat <<'EOF' | LC_ALL=C sort
+          codex-rs/hepta-infer-client/src/lib.rs
+          codex-rs/hepta-infer-client/src/shadow_bridge.rs
+          EOF
+          )"
+          test "$actual" = "$expected"
+          git diff --check
+          cargo metadata --locked --manifest-path codex-rs/Cargo.toml --no-deps --format-version 1 >/dev/null
+          test -z "$(git status --porcelain -- codex-rs/Cargo.lock)"
+
+      - name: Commit qualified source and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/hepta-inference-v4-r3-shadow-bridge-chatgpt.yml
+          git add -A \
+            .github/workflows/hepta-inference-v4-r3-shadow-bridge-chatgpt.yml \
+            codex-rs/hepta-infer-client/src/lib.rs \
+            codex-rs/hepta-infer-client/src/shadow_bridge.rs
+          git diff --cached --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "feat(inference): close INF-R3 product shadow source"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
