@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Make the legacy P0.2 source gate monotonic across fail-closed successors."""
+"""Make legacy P0.2 gates monotonic across fail-closed successors."""
 
 from __future__ import annotations
 
@@ -8,12 +8,13 @@ from pathlib import Path
 
 ROOT = Path.cwd()
 VERIFIER = ROOT / "scripts/verify-hepta-intelligence-grounding-ledger.py"
+WORKFLOW = ROOT / ".github/workflows/hepta-intelligence-grounding-ledger.yml"
 STATUS = ROOT / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json"
 P033_HEAD = "eddcb59ca43a76ac83b64507983bd908f406ff48"
 P033_RUN = 33226392404
 P033_ARTIFACT = 9707307831
 
-OLD = '''    checks["status.p0_2"] = (
+OLD_STATUS_CHECKS = '''    checks["status.p0_2"] = (
         status.get("current_tranche", {}).get("id") == "P0.2"
         and status.get("current_tranche", {}).get("qualified") is False
     )
@@ -26,7 +27,7 @@ OLD = '''    checks["status.p0_2"] = (
         and status.get("next_tranche", {}).get("activation") == "blocked"
     )
 '''
-NEW = '''    capabilities = {
+NEW_STATUS_CHECKS = '''    capabilities = {
         capability.get("id"): capability
         for capability in status.get("capabilities", [])
         if isinstance(capability, dict)
@@ -62,15 +63,115 @@ NEW = '''    capabilities = {
         original_boundary or fail_closed_successor
     )
 '''
+OLD_FILES_END = '''    "tranche": ROOT
+    / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_2_IMPLEMENTATION_2026-08-28.md",
+}
+'''
+NEW_FILES_END = '''    "tranche": ROOT
+    / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_2_IMPLEMENTATION_2026-08-28.md",
+    "workflow": ROOT
+    / ".github/workflows/hepta-intelligence-grounding-ledger.yml",
+}
+'''
+OLD_READS = '''    tranche = FILES["tranche"].read_text(encoding="utf-8")
+    status = json.loads(FILES["status"].read_text(encoding="utf-8"))
+'''
+NEW_READS = '''    tranche = FILES["tranche"].read_text(encoding="utf-8")
+    workflow = FILES["workflow"].read_text(encoding="utf-8")
+    status = json.loads(FILES["status"].read_text(encoding="utf-8"))
+'''
+OLD_BAZEL_CHECK = '''    checks["bazel.component_data"] = '"grounding-migrations/**"' in bazel
+'''
+NEW_BAZEL_CHECK = '''    checks["bazel.component_data"] = '"grounding-migrations/**"' in bazel
+    checks["ci.p0_2_governed_formatter"] = (
+        "cargo fmt --all -- --check" not in workflow
+        and "toolchain: 1.95.0" in workflow
+        and "rustfmt --edition 2024 --config skip_children=true --check" in workflow
+        and all(
+            path in workflow
+            for path in (
+                "hepta-memory/src/framing.rs",
+                "hepta-memory/src/fact_grounding/durable.rs",
+                "hepta-memory/src/fact_grounding/durable/schema.rs",
+                "hepta-memory/src/fact_grounding/durable/grounding.rs",
+                "hepta-memory/src/fact_grounding/durable/grounding/prepare.rs",
+                "hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
+                "hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
+                "hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs",
+                "hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs",
+                "hepta-memory/src/fact_grounding/durable/tests.rs",
+            )
+        )
+    )
+'''
+OLD_FORMAT_STEP = '''      - name: Check workspace formatting
+        working-directory: codex-rs
+        run: cargo fmt --all -- --check
+'''
+NEW_FORMAT_STEP = '''      - name: Check P0.2 governed Rust formatting
+        working-directory: codex-rs
+        run: |
+          rustfmt --edition 2024 --config skip_children=true --check \\
+            hepta-memory/src/framing.rs \\
+            hepta-memory/src/fact_grounding/durable.rs \\
+            hepta-memory/src/fact_grounding/durable/schema.rs \\
+            hepta-memory/src/fact_grounding/durable/grounding.rs \\
+            hepta-memory/src/fact_grounding/durable/grounding/prepare.rs \\
+            hepta-memory/src/fact_grounding/durable/grounding/ledger.rs \\
+            hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs \\
+            hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs \\
+            hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs \\
+            hepta-memory/src/fact_grounding/durable/tests.rs
+'''
+
+
+def replace_once(path: Path, old: str, new: str, label: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    if new in text:
+        return
+    if text.count(old) != 1:
+        raise SystemExit(f"{label} drifted")
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
 def patch_verifier() -> None:
-    text = VERIFIER.read_text(encoding="utf-8")
-    if NEW in text:
-        return
-    if text.count(OLD) != 1:
-        raise SystemExit("legacy P0.2 status assertion block drifted")
-    VERIFIER.write_text(text.replace(OLD, NEW, 1), encoding="utf-8")
+    replace_once(
+        VERIFIER,
+        OLD_FILES_END,
+        NEW_FILES_END,
+        "legacy P0.2 verifier file inventory",
+    )
+    replace_once(
+        VERIFIER,
+        OLD_READS,
+        NEW_READS,
+        "legacy P0.2 verifier workflow read",
+    )
+    replace_once(
+        VERIFIER,
+        OLD_BAZEL_CHECK,
+        NEW_BAZEL_CHECK,
+        "legacy P0.2 verifier CI contract",
+    )
+    replace_once(
+        VERIFIER,
+        OLD_STATUS_CHECKS,
+        NEW_STATUS_CHECKS,
+        "legacy P0.2 status assertion block",
+    )
+
+
+def patch_workflow() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    if "toolchain: 1.95.0" not in text:
+        if text.count("toolchain: 1.88.0") != 1:
+            raise SystemExit("legacy P0.2 workflow toolchain drifted")
+        text = text.replace("toolchain: 1.88.0", "toolchain: 1.95.0", 1)
+    if NEW_FORMAT_STEP not in text:
+        if text.count(OLD_FORMAT_STEP) != 1:
+            raise SystemExit("legacy P0.2 workspace formatter step drifted")
+        text = text.replace(OLD_FORMAT_STEP, NEW_FORMAT_STEP, 1)
+    WORKFLOW.write_text(text, encoding="utf-8")
 
 
 def patch_status() -> None:
@@ -82,6 +183,7 @@ def patch_status() -> None:
         "p0_2_durable_grounding_ledger": {
             "independent_branch_qualified": False,
             "source_contract_monotonic": True,
+            "formatter_scope": "p0_2_governed_rust_files",
             "revalidated_by_descendant_exact_head": P033_HEAD,
             "revalidated_by_descendant_run": P033_RUN,
             "revalidated_by_descendant_artifact": P033_ARTIFACT,
@@ -114,6 +216,7 @@ def patch_status() -> None:
 
 
 def main() -> int:
+    patch_workflow()
     patch_verifier()
     patch_status()
     return 0
