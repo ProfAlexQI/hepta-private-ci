@@ -1,81 +1,79 @@
-name: Hepta P0.7a candidate gate ARM (temporary)
+name: Hepta P0.7a atomic repair and restack ARM (temporary)
 
 on:
   push:
-    branches:
-      - "tmp/hepta-p0-7a-compiler-diagnostic-x64-20260830"
-    paths:
-      - ".github/workflows/hepta-p0-7a-candidate-gate-arm.yml"
+    branches: ["tmp/hepta-p0-7a-compiler-diagnostic-x64-20260830"]
+    paths: [".github/workflows/hepta-p0-7a-candidate-gate-arm.yml"]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: hepta-p0-7a-candidate-gate-arm
   cancel-in-progress: true
 
 jobs:
-  gate:
-    if: >-
-      github.repository == 'ProfHepta/hepta-private-ci' &&
-      github.ref == 'refs/heads/tmp/hepta-p0-7a-compiler-diagnostic-x64-20260830'
+  qualify-and-restack:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
+    env:
+      BASE_BRANCH: codex/hepta-architecture-v4-p0-7a-source-closure-arm-20260830
+      BASE: cbc0fed26d5b1a38f131ddfb5b7864fe6eeb4992
+      SOURCE: a7b4a1316e6d2131c865cd1a562dc305035a99fd
+      TARGET: codex/hepta-architecture-v4-p0-7a-executable-closure-20260830
+      TARGET_HEAD: 7b7c5795965f59b4294f507f8414b10dd682f49c
     steps:
-      - name: Checkout exact candidate
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          persist-credentials: false
-          fetch-depth: 1
+          persist-credentials: true
+          fetch-depth: 0
 
-      - name: Verify staged source blobs
+      - name: Reconstruct exact candidate
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git hash-object codex-rs/hepta-agentd/src/lib.rs)" = \
-            "44eb98fa6a89bac6b21ca41afe7ad7d31ffd082c"
-          test "$(git hash-object codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs)" = \
-            "74abd3aa3ece1fc63f36a09acfe719b5a6f9528f"
-          git diff --exit-code
-          git diff --cached --exit-code
-
-      - name: Apply inode publication repair
-        shell: bash
-        run: |
-          set -euo pipefail
+          test "$(git hash-object codex-rs/hepta-agentd/src/lib.rs)" = 44eb98fa6a89bac6b21ca41afe7ad7d31ffd082c
+          cp codex-rs/hepta-agentd/src/lib.rs "$RUNNER_TEMP/agentd-lib.rs"
+          git fetch --no-tags origin \
+            "refs/heads/$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH" \
+            "refs/heads/$TARGET:refs/remotes/origin/$TARGET"
+          test "$(git rev-parse refs/remotes/origin/$BASE_BRANCH)" = "$BASE"
+          test "$(git rev-parse refs/remotes/origin/$TARGET)" = "$TARGET_HEAD"
+          expected_source=$'.github/workflows/hepta-p0-7a-direct-arm.yml\n.github/workflows/hepta-runtime-bootstrap-p0-7a.yml\ncodex-rs/hepta-contracts/src/runtime_bootstrap_tests.rs'
+          test "$(git diff --name-only "$BASE" "$SOURCE")" = "$expected_source"
+          git checkout --detach "$BASE"
+          git checkout "$SOURCE" -- \
+            .github/workflows/hepta-p0-7a-direct-arm.yml \
+            .github/workflows/hepta-runtime-bootstrap-p0-7a.yml \
+            codex-rs/hepta-contracts/src/runtime_bootstrap_tests.rs
+          test "$(git hash-object codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs)" = 74abd3aa3ece1fc63f36a09acfe719b5a6f9528f
+          test "$(git hash-object scripts/verify-hepta-p0-7a-format.py)" = 60ea9815f20194818fb1e3e7409104287f37d580
+          cp "$RUNNER_TEMP/agentd-lib.rs" codex-rs/hepta-agentd/src/lib.rs
           python3 - <<'PY'
           from pathlib import Path
-
-          path = Path("codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs")
-          text = path.read_text()
-          replacements = (
-              (
-                  "    let linked = std::fs::symlink_metadata(path)?;\n",
-                  "    let held_linked = file.metadata()?;\n"
-                  "    validate_registry_metadata(&temp, &held_linked, &parent_metadata, 2)?;\n"
-                  "    let linked = std::fs::symlink_metadata(path)?;\n",
-              ),
-              (
-                  "    if metadata_identity(&held) != metadata_identity(&linked) {\n",
-                  "    if metadata_identity(&held_linked) != metadata_identity(&linked) {\n",
-              ),
-              (
-                  "    let published = std::fs::symlink_metadata(path)?;\n",
-                  "    let held_published = file.metadata()?;\n"
-                  "    validate_registry_metadata(path, &held_published, &parent_metadata, 1)?;\n"
-                  "    let published = std::fs::symlink_metadata(path)?;\n",
-              ),
-              (
-                  "    if metadata_identity(&held) != metadata_identity(&published) {\n",
-                  "    if metadata_identity(&held_published) != metadata_identity(&published) {\n",
-              ),
+          p = Path("codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs")
+          s = p.read_text()
+          pairs = (
+              ("    let linked = std::fs::symlink_metadata(path)?;\n", "    let held_linked = file.metadata()?;\n    validate_registry_metadata(&temp, &held_linked, &parent_metadata, 2)?;\n    let linked = std::fs::symlink_metadata(path)?;\n"),
+              ("    if metadata_identity(&held) != metadata_identity(&linked) {\n", "    if metadata_identity(&held_linked) != metadata_identity(&linked) {\n"),
+              ("    let published = std::fs::symlink_metadata(path)?;\n", "    let held_published = file.metadata()?;\n    validate_registry_metadata(path, &held_published, &parent_metadata, 1)?;\n    let published = std::fs::symlink_metadata(path)?;\n"),
+              ("    if metadata_identity(&held) != metadata_identity(&published) {\n", "    if metadata_identity(&held_published) != metadata_identity(&published) {\n"),
           )
-          for old, new in replacements:
-              if text.count(old) != 1:
-                  raise SystemExit(f"expected registry repair anchor exactly once: {old!r}")
-              text = text.replace(old, new, 1)
-          path.write_text(text)
+          for old, new in pairs:
+              if s.count(old) != 1:
+                  raise SystemExit(f"registry anchor mismatch: {old!r}")
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          p = Path("scripts/verify-hepta-p0-7a-format.py")
+          s = p.read_text()
+          old = '    "codex-rs/hepta-agentd/src/runtime_bootstrap.rs",\n'
+          if s.count(old) != 1:
+              raise SystemExit("format anchor mismatch")
+          p.write_text(s.replace(old, '    "codex-rs/hepta-agentd/src/lib.rs",\n' + old, 1))
           PY
+          test "$(git hash-object codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs)" = 6f6ea309d6de9da5af65c0ba3f3cb3d90acaaa09
+          test "$(git hash-object scripts/verify-hepta-p0-7a-format.py)" = 6c55f0b9f8cd382b4cc7799d53d8b2502e853964
 
       - uses: ./.github/actions/setup-ci
 
@@ -83,40 +81,35 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
         with:
           tool: cargo-nextest@0.9.143
 
-      - name: Run exact P0.7a gates
-        working-directory: codex-rs
+      - name: Qualify and atomically update PR 83
         shell: bash
         run: |
           set -euo pipefail
-          cargo fmt --package codex-hepta-agentd
-          cargo fmt --package codex-hepta-fleet
-          cargo fmt --package codex-hepta-agentd --package codex-hepta-fleet -- --check
+          cargo metadata --manifest-path codex-rs/Cargo.toml --locked --no-deps --format-version 1 >/dev/null
+          python3 scripts/verify-hepta-p0-7a-format.py
+          python3 scripts/verify-hepta-p0-7a-format.py --check
+          just bazel-lock-check
+          cd codex-rs
           just test -p codex-hepta-contracts
           just test -p codex-hepta-fleet
           just test -p codex-hepta-supervisor
           just test -p codex-hepta-agentd
-          cargo check --locked --all-targets \
-            -p codex-hepta-contracts \
-            -p codex-hepta-fleet \
-            -p codex-hepta-supervisor \
-            -p codex-hepta-agentd
-          cargo clippy --locked --all-targets \
-            -p codex-hepta-contracts \
-            -p codex-hepta-fleet \
-            -p codex-hepta-supervisor \
-            -p codex-hepta-agentd \
-            -- -D warnings
-
-      - name: Verify minimal candidate diff
-        shell: bash
-        run: |
-          set -euo pipefail
+          cargo check --locked --all-targets -p codex-hepta-contracts -p codex-hepta-fleet -p codex-hepta-supervisor -p codex-hepta-agentd
+          cargo clippy --locked --all-targets -p codex-hepta-contracts -p codex-hepta-fleet -p codex-hepta-supervisor -p codex-hepta-agentd -- -D warnings
+          cd ..
+          python3 scripts/verify-hepta-architecture-plan-v4.py
           git diff --check
-          test "$(git diff --name-only)" = \
-            "codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs"
+          expected=$'.github/workflows/hepta-p0-7a-direct-arm.yml\n.github/workflows/hepta-runtime-bootstrap-p0-7a.yml\ncodex-rs/hepta-agentd/src/lib.rs\ncodex-rs/hepta-contracts/src/runtime_bootstrap_tests.rs\ncodex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs\nscripts/verify-hepta-p0-7a-format.py'
+          test "$(git diff --name-only "$BASE")" = "$expected"
           test -z "$(git ls-files --others --exclude-standard)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ${expected//$'\n'/ }
+          git commit -m "fix(hepta): close P0.7a executable source blockers"
+          test "$(git rev-parse HEAD^)" = "$BASE"
+          test -z "$(git status --porcelain=v1 --untracked-files=normal)"
+          git push origin "HEAD:refs/heads/$TARGET" "--force-with-lease=refs/heads/$TARGET:$TARGET_HEAD"
