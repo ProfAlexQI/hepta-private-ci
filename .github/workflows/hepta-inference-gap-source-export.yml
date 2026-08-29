@@ -1,0 +1,63 @@
+name: Hepta inference gap source export
+
+on:
+  push:
+    branches:
+      - ops/hepta-inference-gap-source-export-20260829
+    paths:
+      - ".github/workflows/hepta-inference-gap-source-export.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXACT_SOURCE: 83f675720bee198f7e2524a447ab1177fcb99ef6
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ env.EXACT_SOURCE }}
+          fetch-depth: 0
+
+      - name: Verify and stage exact source subtree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXACT_SOURCE"
+          root="$RUNNER_TEMP/hepta-inference-gap-source"
+          mkdir -p "$root"
+          cp --parents \
+            codex-rs/Cargo.toml \
+            codex-rs/Cargo.lock \
+            codex-rs/hepta-infer-core/Cargo.toml \
+            codex-rs/hepta-infer-core/src/*.rs \
+            codex-rs/hepta-infer-client/Cargo.toml \
+            codex-rs/hepta-infer-client/src/*.rs \
+            codex-rs/hepta-inferd/Cargo.toml \
+            codex-rs/hepta-inferd/src/*.rs \
+            codex-rs/hepta-inferd/src/bin/*.rs \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V2.md \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_STAGE_MATRIX_V3.json \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_CURRENT_STATUS_V2.json \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_RECEIPT_2026-08-29.json \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_INF2A_SOURCE_STATUS_V1.json \
+            scripts/hepta-inference-inf0-source-gate.py \
+            scripts/hepta-inference-inf0c-cancel-reclassifier.py \
+            .github/workflows/hepta-inference-gap-closure.yml \
+            "$root"
+          find "$root" -type f -print0 | sort -z | xargs -0 sha256sum > "$root/SHA256SUMS"
+          printf '%s\n' "$EXACT_SOURCE" > "$root/EXACT_SOURCE"
+          git rev-parse 'HEAD^{tree}' > "$root/EXACT_TREE"
+
+      - name: Upload exact source subtree
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-gap-source-${{ env.EXACT_SOURCE }}
+          path: ${{ runner.temp }}/hepta-inference-gap-source
+          if-no-files-found: error
+          retention-days: 7
