@@ -1,0 +1,19 @@
+name: Cancel stale v8-canary PR 79 run
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-remediation-v14-20260830
+    paths:
+      - .github/workflows/cancel-stale-v8-pr79.yml
+
+concurrency:
+  group: v8-canary::pr-79
+  cancel-in-progress: true
+
+jobs:
+  cancel-stale-run:
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 0
