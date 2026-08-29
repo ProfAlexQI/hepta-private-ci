@@ -1,4 +1,5 @@
 use std::io;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::time::Duration;
 use std::time::SystemTime;
@@ -151,20 +152,17 @@ fn current_time_ms() -> u64 {
 }
 
 #[test]
-fn daemon_configuration_rejects_unbounded_or_invalid_resources() {
+fn daemon_configuration_rejects_invalid_resource_bounds() {
     let temp = must(TempDir::new());
     let mut invalid = config(&temp);
     invalid.max_connections = 0;
     assert!(invalid.validate().is_err());
-
     let mut invalid = config(&temp);
     invalid.max_receipt_files = 0;
     assert!(invalid.validate().is_err());
-
     let mut invalid = config(&temp);
     invalid.max_receipt_bytes = 1;
     assert!(invalid.validate().is_err());
-
     let mut invalid = config(&temp);
     invalid.frame_read_timeout = Duration::ZERO;
     assert!(invalid.validate().is_err());
@@ -176,7 +174,6 @@ async fn same_uid_public_peer_cannot_publish_worker_or_operator_messages() {
     let config = config(&temp);
     let mut daemon = RunningDaemon::start(config.clone()).await;
     let request_id = must(RequestId::parse("request-role-denial"));
-
     let privileged = [
         ClientMessage::Start {
             request_id: request_id.clone(),
@@ -223,7 +220,7 @@ async fn same_uid_public_peer_cannot_publish_worker_or_operator_messages() {
 }
 
 #[tokio::test]
-async fn receipt_is_atomic_memory_bounded_and_recovered_across_restart() {
+async fn receipt_is_memory_bounded_and_recovered_across_restart() {
     let temp = must(TempDir::new());
     let config = config(&temp);
     let mut first = RunningDaemon::start(config.clone()).await;
@@ -255,10 +252,7 @@ async fn receipt_is_atomic_memory_bounded_and_recovered_across_restart() {
         other => panic!("unexpected cancel response: {other:?}"),
     };
     assert_eq!(receipt.terminal_state, LifecycleState::Cancelled);
-    let snapshot = must(
-        raw_exchange(&config.socket_path, ClientMessage::Snapshot).await,
-    );
-    match snapshot {
+    match must(raw_exchange(&config.socket_path, ClientMessage::Snapshot).await) {
         ServerMessage::Snapshot(snapshot) => assert_eq!(snapshot.terminal_receipts, 0),
         other => panic!("unexpected snapshot response: {other:?}"),
     }
@@ -277,7 +271,7 @@ async fn receipt_is_atomic_memory_bounded_and_recovered_across_restart() {
         )
         .await,
     );
-    assert_eq!(recovered, ServerMessage::Receipt(receipt.clone()));
+    assert_eq!(recovered, ServerMessage::Receipt(receipt));
     assert_error(
         must(
             raw_exchange(
@@ -311,18 +305,16 @@ async fn corrupt_receipt_store_fails_closed_on_startup() {
 }
 
 #[tokio::test]
-async fn partial_frame_times_out_and_releases_the_connection_permit() {
+async fn partial_frame_times_out_and_releases_connection_permit() {
     let temp = must(TempDir::new());
     let mut config = config(&temp);
     config.max_connections = 1;
     config.frame_read_timeout = Duration::from_millis(50);
     let mut daemon = RunningDaemon::start(config.clone()).await;
-
     let mut stalled = must(UnixStream::connect(&config.socket_path).await);
     must(stalled.write_all(&[0]).await);
     sleep(Duration::from_millis(150)).await;
     drop(stalled);
-
     assert!(matches!(
         must(
             raw_exchange(
@@ -337,7 +329,7 @@ async fn partial_frame_times_out_and_releases_the_connection_permit() {
 }
 
 #[tokio::test]
-async fn deadline_sweep_persists_queued_failure_and_releases_capacity() {
+async fn deadline_sweep_persists_failure_and_releases_capacity() {
     let temp = must(TempDir::new());
     let mut config = config(&temp);
     config.controller.max_queue = 1;
@@ -360,11 +352,10 @@ async fn deadline_sweep_persists_queued_failure_and_releases_capacity() {
         ServerMessage::Accepted(event) => event.backend_generation,
         other => panic!("unexpected admission response: {other:?}"),
     };
-
     let mut terminal = None;
     for _ in 0..50 {
         sleep(Duration::from_millis(10)).await;
-        let response = must(
+        match must(
             raw_exchange(
                 &config.socket_path,
                 ClientMessage::GetReceipt {
@@ -375,8 +366,7 @@ async fn deadline_sweep_persists_queued_failure_and_releases_capacity() {
                 },
             )
             .await,
-        );
-        match response {
+        ) {
             ServerMessage::Receipt(receipt) => {
                 terminal = Some(receipt);
                 break;
@@ -389,7 +379,6 @@ async fn deadline_sweep_persists_queued_failure_and_releases_capacity() {
     let receipt = terminal.expect("deadline sweep must create a terminal receipt");
     assert_eq!(receipt.terminal_state, LifecycleState::FailedClosed);
     assert!(!receipt.forced_worker_termination);
-
     assert!(matches!(
         must(
             raw_exchange(
@@ -408,12 +397,11 @@ async fn deadline_sweep_persists_queued_failure_and_releases_capacity() {
 }
 
 #[tokio::test]
-async fn receipt_store_budget_is_enforced_before_second_terminal_write() {
+async fn receipt_store_budget_exhaustion_stops_daemon_fail_closed() {
     let temp = must(TempDir::new());
     let mut config = config(&temp);
     config.max_receipt_files = 1;
     let mut daemon = RunningDaemon::start(config.clone()).await;
-
     for index in 0..2 {
         let request_id = must(RequestId::parse(&format!("request-budget-{index}")));
         let admitted = must(
@@ -444,9 +432,16 @@ async fn receipt_store_budget_is_enforced_before_second_terminal_write() {
         }
     }
 
-    let task = daemon.task.take().expect("daemon task must be present");
+    let task = match daemon.task.take() {
+        Some(task) => task,
+        None => panic!("daemon task must be present"),
+    };
     let joined = must(timeout(Duration::from_secs(5), task).await);
-    let error = must(joined).expect_err("receipt budget exhaustion must stop the daemon");
+    let daemon_result = must(joined);
+    let error = match daemon_result {
+        Ok(()) => panic!("receipt budget exhaustion must stop the daemon"),
+        Err(error) => error,
+    };
     assert_eq!(error.kind(), ErrorKind::Other);
-    daemon.shutdown.take();
+    let _ = daemon.shutdown.take();
 }
