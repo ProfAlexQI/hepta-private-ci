@@ -21,12 +21,25 @@ TARGET_BRANCH = os.environ["TARGET_BRANCH"]
 PAYLOAD_SHA256 = os.environ["PAYLOAD_SHA256"]
 HELPER_ROOT = Path(__file__).resolve().parent.parent
 PAYLOAD = HELPER_ROOT / "ci/p034-payload/part-00.b64"
+STAGING_MARKER = ".p034-staging-head-v2"
 RUST_FILES = (
     "hepta-memory/src/fact_grounding/legacy_governance.rs",
     "hepta-memory/src/fact_grounding/durable/backfill.rs",
     "hepta-memory/src/fact_grounding/durable.rs",
     "hepta-memory/src/framing.rs",
     "hepta-memory/src/lib.rs",
+)
+P02_RUST_FILES = (
+    "hepta-memory/src/framing.rs",
+    "hepta-memory/src/fact_grounding/durable.rs",
+    "hepta-memory/src/fact_grounding/durable/schema.rs",
+    "hepta-memory/src/fact_grounding/durable/grounding.rs",
+    "hepta-memory/src/fact_grounding/durable/grounding/prepare.rs",
+    "hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
+    "hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
+    "hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs",
+    "hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs",
+    "hepta-memory/src/fact_grounding/durable/tests.rs",
 )
 FALSE_AUTHORITY_FLAGS = (
     "wired",
@@ -86,6 +99,24 @@ def is_single_successor(root: Path, head: str) -> bool:
         return False
 
 
+def is_staging_descendant(root: Path, head: str) -> bool:
+    result = run(
+        ("git", "merge-base", "--is-ancestor", P033_HEAD, head),
+        cwd=root,
+        check=False,
+    )
+    if result.returncode != 0:
+        return False
+    count = git(
+        root,
+        "rev-list",
+        "--count",
+        f"{P033_HEAD}..{head}",
+        capture=True,
+    )
+    return count.isdigit() and int(count) >= 1
+
+
 def decode_payload(destination: Path) -> Path:
     encoded = PAYLOAD.read_text(encoding="ascii")
     payload = base64.b64decode("".join(encoded.split()), validate=True)
@@ -121,15 +152,19 @@ def decode_payload(destination: Path) -> Path:
     return apply_script
 
 
-def enforce_receipt(root: Path) -> None:
-    receipt_path = (
+def receipt_path(root: Path) -> Path:
+    return (
         root
         / "artifacts/hepta-intelligence-legacy-grounding-governance-v1"
         / "qualification-receipt.json"
     )
-    if not receipt_path.is_file():
+
+
+def enforce_receipt(root: Path) -> None:
+    path = receipt_path(root)
+    if not path.is_file():
         raise RuntimeError("P0.3.4 qualification receipt was not produced")
-    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt = json.loads(path.read_text(encoding="utf-8"))
     checks = receipt.get("checks")
     if not isinstance(checks, list) or not checks:
         raise RuntimeError("P0.3.4 qualification receipt has no executable checks")
@@ -150,20 +185,76 @@ def enforce_receipt(root: Path) -> None:
             raise RuntimeError(f"P0.3.4 authority boundary drifted: {key}")
 
 
+def run_predecessor_admission(root: Path) -> None:
+    run(
+        (sys.executable, "scripts/verify-hepta-intelligence-grounding-ledger.py"),
+        cwd=root,
+    )
+    run(
+        (
+            "rustfmt",
+            "--edition",
+            "2024",
+            "--config",
+            "skip_children=true",
+            "--check",
+            *P02_RUST_FILES,
+        ),
+        cwd=root / "codex-rs",
+    )
+
+
+def run_p034_admission(root: Path) -> None:
+    qualification = run(
+        (
+            sys.executable,
+            "scripts/run-hepta-intelligence-legacy-grounding-governance-v1.py",
+        ),
+        cwd=root,
+        check=False,
+    )
+    enforce_receipt(root)
+    if qualification.returncode != 0:
+        raise RuntimeError(
+            f"P0.3.4 qualification runner exited {qualification.returncode}"
+        )
+
+
+def clean_receipt(root: Path) -> None:
+    shutil.rmtree(
+        root / "artifacts/hepta-intelligence-legacy-grounding-governance-v1",
+        ignore_errors=True,
+    )
+
+
+def requalify_existing(root: Path, head: str) -> str:
+    if not is_single_successor(root, head):
+        raise RuntimeError(
+            f"P0.3.4 target drifted to a non-canonical head: {head}"
+        )
+    if git(root, "status", "--porcelain", capture=True):
+        raise RuntimeError("existing P0.3.4 candidate checkout is not clean")
+    if (root / STAGING_MARKER).exists():
+        raise RuntimeError("canonical P0.3.4 candidate retained the staging marker")
+    run_predecessor_admission(root)
+    run_p034_admission(root)
+    clean_receipt(root)
+    if git(root, "status", "--porcelain", capture=True):
+        raise RuntimeError("existing P0.3.4 requalification dirtied the source tree")
+    print(f"P0.3.4 existing canonical candidate requalified at {head}")
+    return head
+
+
 def publish(root: Path) -> str:
     head = git(root, "rev-parse", "HEAD", capture=True)
     if head != EXPECTED_TARGET:
-        if is_single_successor(root, head):
-            print(f"P0.3.4 already published at {head}")
-            return head
-        raise RuntimeError(
-            f"P0.3.4 staging head drifted: expected {EXPECTED_TARGET}, got {head}"
-        )
-    if git(root, "rev-parse", "HEAD^", capture=True) != P033_HEAD:
-        raise RuntimeError("P0.3.4 staging parent is not the qualified P0.3.3 head")
+        return requalify_existing(root, head)
+    if not is_staging_descendant(root, head):
+        raise RuntimeError("P0.3.4 staging head is not based on qualified P0.3.3")
     if git(root, "status", "--porcelain", capture=True):
         raise RuntimeError("P0.3.4 staging checkout is not clean")
 
+    (root / STAGING_MARKER).unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(prefix="p034-payload-") as temporary:
         apply_script = decode_payload(Path(temporary))
         run((sys.executable, str(apply_script)), cwd=root)
@@ -182,25 +273,10 @@ def publish(root: Path) -> str:
         cwd=workspace,
     )
     git(root, "diff", "--check")
+    run_predecessor_admission(root)
+    run_p034_admission(root)
 
-    qualification = run(
-        (
-            sys.executable,
-            "scripts/run-hepta-intelligence-legacy-grounding-governance-v1.py",
-        ),
-        cwd=root,
-        check=False,
-    )
-    enforce_receipt(root)
-    if qualification.returncode != 0:
-        raise RuntimeError(
-            f"P0.3.4 qualification runner exited {qualification.returncode}"
-        )
-
-    shutil.rmtree(
-        root / "artifacts/hepta-intelligence-legacy-grounding-governance-v1",
-        ignore_errors=True,
-    )
+    clean_receipt(root)
     git(root, "reset", "--soft", P033_HEAD)
     git(root, "add", "-A")
     git(root, "diff", "--cached", "--check")
@@ -210,7 +286,8 @@ def publish(root: Path) -> str:
     forbidden = [
         path
         for path in changed
-        if path.startswith("ci/p034-payload/")
+        if path == STAGING_MARKER
+        or path.startswith("ci/p034-payload/")
         or path.startswith(".github/workflows/p034-")
     ]
     if forbidden:
