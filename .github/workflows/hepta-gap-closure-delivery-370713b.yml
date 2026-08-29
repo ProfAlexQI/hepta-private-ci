@@ -1,0 +1,270 @@
+name: Hepta gap closure delivery 370713b
+
+on:
+  push:
+    branches:
+      - codex/hepta-gap-closure-delivery-6cd9ff0-20260829
+    paths:
+      - .github/workflows/hepta-gap-closure-delivery-370713b.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-gap-closure-delivery-370713b
+  cancel-in-progress: false
+
+env:
+  DELIVERY_BRANCH: codex/hepta-gap-closure-delivery-6cd9ff0-20260829
+  TARGET_BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
+  EXPECTED_TARGET_HEAD: 370713b6bc5471b5239bf2d960dee074c9007d62
+  PAYLOAD_ROOT: delivery/hepta-gap-closure-6cd9ff0
+  PATCH_B64_SHA256: 651617e01e4bfacc519a5076fb1dc3364a28b7a01e4a69a36678ffd1d8f20c97
+  PATCH_GZ_SHA256: ec47d855c19f3f1c0c4eba35cfdac5a213fe5d63c50d2c5c6a8282fbc358f24a
+  PATCH_SHA256: 3141f02aef4abb509649c3eb31d8ae9fb57c3ce22bd7b8d9d1743be374709149
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_BUILD_JOBS: 2
+
+jobs:
+  deliver:
+    name: Validate and publish exact gap closure
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout exact delivery head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify delivery identity and reconstruct immutable patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$DELIVERY_BRANCH"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+          mapfile -t parts < <(find "$PAYLOAD_ROOT" -maxdepth 1 -type f \
+            -name 'gap-closure.patch.gz.b64.part-*' | sort)
+          test "${#parts[@]}" -eq 10
+
+          b64="$RUNNER_TEMP/gap-closure.patch.gz.b64"
+          gz="$RUNNER_TEMP/gap-closure.patch.gz"
+          patch="$RUNNER_TEMP/gap-closure.patch"
+          cat "${parts[@]}" | tr -d '\r\n' > "$b64"
+          printf '%s  %s\n' "$PATCH_B64_SHA256" "$b64" | sha256sum -c -
+          base64 --decode "$b64" > "$gz"
+          printf '%s  %s\n' "$PATCH_GZ_SHA256" "$gz" | sha256sum -c -
+          gzip --decompress --stdout "$gz" > "$patch"
+          printf '%s  %s\n' "$PATCH_SHA256" "$patch" | sha256sum -c -
+          echo "PATCH_PATH=$patch" >> "$GITHUB_ENV"
+
+      - name: Lock exact target head and apply source closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin \
+            "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          actual="$(git rev-parse "refs/remotes/origin/$TARGET_BRANCH")"
+          test "$actual" = "$EXPECTED_TARGET_HEAD"
+          git checkout --detach "$EXPECTED_TARGET_HEAD"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+          # The target head already contains the independently qualified H7
+          # expiry fix, so do not replay the identical file patch.
+          git apply --index --3way \
+            --exclude=codex-rs/hepta-memory/src/h7_trajectory_store_tests.rs \
+            "$PATCH_PATH"
+
+          test ! -e .github/workflows/hepta-architecture-product-test-diagnostic.yml
+          test ! -e .github/workflows/hepta-architecture-h7-expiry-remediation.yml
+          grep -q 'wait_until_after_unix_second' \
+            codex-rs/hepta-memory/src/h7_trajectory_store_tests.rs
+          grep -q 'prepared_with_ttl(10).await' \
+            codex-rs/hepta-memory/src/h7_trajectory_store_tests.rs
+          test -z "$(git diff --cached --name-only | grep '^delivery/' || true)"
+          git diff --cached --check
+
+      - name: Verify all architecture and governance source ratchets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/generate-hepta-architecture-projections.py --check
+          python3 scripts/generate-hepta-data-authority.py --check
+          python3 scripts/verify-hepta-data-authority.py
+          python3 scripts/verify-hepta-status-model.py
+          python3 scripts/verify-hepta-repository-governance.py
+          python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python3 scripts/verify-hepta-authority-callers-p0-1.py
+          python3 scripts/verify-hepta-cross-owner-operation-wiring.py
+          python3 scripts/verify-hepta-architecture-gap-ledger.py
+          python3 scripts/verify-hepta-p0-5-gap-closure.py
+          python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+          git diff --cached --check
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Check formatting for every affected Rust package
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt \
+            -p codex-app-server \
+            -p codex-hepta-agent-protocol \
+            -p codex-hepta-contracts \
+            -p codex-hepta-memory \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-evidence \
+            -p codex-hepta-automation \
+            -p codex-hepta-agentd \
+            -p codex-hepta-supervisor \
+            -- --check
+
+      - name: Execute authority and external-use safety tests
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-contracts authority::tests -- --nocapture
+          cargo test --locked -p codex-hepta-contracts provider_operation::tests -- --nocapture
+          cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
+          cargo test --locked -p codex-hepta-agentd production_authority_adapter -- --nocapture
+          cargo test --locked -p codex-hepta-agentd production_writer_host -- --nocapture
+
+      - name: Execute runtime profile and composition tests
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-agentd runtime_profile::tests -- --nocapture
+          cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
+          cargo test --locked -p codex-hepta-agentd --features qualification-cognitive-write runtime_profile::tests -- --nocapture
+          cargo test --locked -p codex-hepta-supervisor --lib -- --nocapture
+
+      - name: Execute resource-governor and H7 expiry tests
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-app-server runtime_resource_governor -- --nocapture
+          cargo test --locked -p codex-app-server terminal_before_bind_drops_turn_permit_without_leak -- --nocapture
+          cargo test --locked -p codex-app-server listener_clear_releases_bound_turn_permit -- --nocapture
+          cargo test --locked -p codex-hepta-memory \
+            recovery_read_observes_expired_terminal_without_appending_h7_rows \
+            -- --nocapture
+          cargo test --locked -p codex-hepta-memory \
+            head_scoped_expired_terminal_gate_survives_store_reopen \
+            -- --nocapture
+
+      - name: Execute real SQLite full and reopen qualification
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-memory \
+            --features qualification-fault-injection --test sqlite_full -- --nocapture
+          cargo test --locked -p codex-hepta-evidence \
+            --features qualification-fault-injection --test sqlite_full -- --nocapture
+          cargo test --locked -p codex-hepta-automation \
+            --features qualification-fault-injection --test sqlite_full -- --nocapture
+          cargo test --locked -p codex-hepta-matrix-store \
+            --features qualification-fault-injection --test sqlite_full -- --nocapture
+
+      - name: Compile complete affected product graph
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets \
+            -p codex-app-server \
+            -p codex-hepta-agent-protocol \
+            -p codex-hepta-contracts \
+            -p codex-hepta-memory \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-evidence \
+            -p codex-hepta-automation \
+            -p codex-hepta-agentd \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-matrix-store \
+            -p codex-hepta-matrixd \
+            -p codex-hepta-native-gateway
+          cargo check --locked --all-targets \
+            -p codex-hepta-memory --features qualification-fault-injection
+          cargo check --locked --all-targets \
+            -p codex-hepta-evidence --features qualification-fault-injection
+          cargo check --locked --all-targets \
+            -p codex-hepta-automation --features qualification-fault-injection
+          cargo check --locked --all-targets --no-default-features \
+            -p codex-hepta-agentd --features qualification-cognitive-write
+
+      - name: Run strict Clippy across affected authority and runtime packages
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --all-targets \
+            -p codex-app-server \
+            -p codex-hepta-agent-protocol \
+            -p codex-hepta-contracts \
+            -p codex-hepta-memory \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-evidence \
+            -p codex-hepta-automation \
+            -p codex-hepta-agentd \
+            -p codex-hepta-supervisor \
+            -- -D warnings
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-memory --features qualification-fault-injection -- -D warnings
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-evidence --features qualification-fault-injection -- -D warnings
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-automation --features qualification-fault-injection -- -D warnings
+          cargo clippy --locked --all-targets --no-default-features \
+            -p codex-hepta-agentd --features qualification-cognitive-write -- -D warnings
+
+      - name: Commit only the validated target-tree mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --cached --check
+          git diff --exit-code
+          test -z "$(git diff --cached --name-only | grep '^delivery/' || true)"
+          test -z "$(git diff --cached --name-only | grep 'hepta-gap-closure-delivery' || true)"
+
+          git fetch --no-tags origin \
+            "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          actual="$(git rev-parse "refs/remotes/origin/$TARGET_BRANCH")"
+          test "$actual" = "$EXPECTED_TARGET_HEAD"
+
+          git config user.name 'Hepta gap closure delivery'
+          git config user.email '102159240+ProfHepta@users.noreply.github.com'
+          git commit -m 'feat(hepta): close remaining architecture source blockers'
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+
+      - name: Record delivery receipt
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "schema=hepta_gap_closure_delivery_v1"
+            echo "delivery_head=$GITHUB_SHA"
+            echo "expected_target_head=$EXPECTED_TARGET_HEAD"
+            echo "patch_sha256=$PATCH_SHA256"
+            echo "job_status=${{ job.status }}"
+            echo "source_mutation_by_qualification=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release=false"
+          } >> "$GITHUB_STEP_SUMMARY"
