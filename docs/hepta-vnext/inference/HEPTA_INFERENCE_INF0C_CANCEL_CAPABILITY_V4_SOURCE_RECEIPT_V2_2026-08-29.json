@@ -1,0 +1,48 @@
+{
+  "schema": "hepta.inference.inf0c.cancel_capability_v4_source_receipt.v2",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
+  "plan_git_blob_sha1": "4381207acce1bf6371c248dc3280fff1f2ae59ce",
+  "branch": "codex/hepta-inference-inf0c-cancel-capability-v3-20260828",
+  "parent_receipt": "b252fcc22f45f4151ecec7a82e5f5fb99a28d0fb",
+  "previous_source": "8ff6dcf797309ca9966bc6bf2f8fa84c9784fee0",
+  "source_candidate_commit": "1448c6293f9c2f2fed850338b10c81c156860b80",
+  "source_candidate_tree": "3039a278f523e30fa077a3cc63d76c5689da9913",
+  "source_components": {
+    "v3_request_and_receipt_contract_preserved": true,
+    "known_unsupported_non_json_http_classification": true,
+    "unsupported_media_type_allowlist": true,
+    "successful_response_json_only": true,
+    "unexpected_error_media_type_fail_closed": true,
+    "transport_disconnect_invariant_explicit": true,
+    "bounded_body_and_digest_only_receipt": true,
+    "hermetic_http_fixture": true
+  },
+  "validation": {
+    "python_syntax": "PASS_FOR_PREVIOUS_EXACT_LOGIC",
+    "hermetic_http_fixture": "PASS_ON_MACOS_ARM64_RUN_33241071620",
+    "source_gate_previous_attempt": "FAILED_MARKER_ONLY_TRANSPORT_DISCONNECT_INVARIANT",
+    "hosted_source_gate": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
+    "real_provider_cancel_capability": "NOT_RUN_FOR_NEW_RECEIPT_HEAD"
+  },
+  "claim": "SOURCE_PRESENT_NOT_RUN",
+  "qualified": false,
+  "provider_cancel_capability_classified": false,
+  "backend_cancellation_acknowledged": false,
+  "controlled_worker_termination_required": true,
+  "authority": {
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
