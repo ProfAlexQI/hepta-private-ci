@@ -194,8 +194,8 @@ def run_manual_repair_idempotently() -> None:
     def expect_function(path: str, name: str, lint: str, reason: str) -> None:
         file_path, text = load(path)
         pattern = re.compile(
-            r'(?m)^(?P<indent>[ \t]*)(?P<signature>'
-            rf'(?:(?:pub(?:\([^\)]*\))?)[ \t]+)?'
+            r'(?m)^(?P<indent>[ \t]*)'
+            rf'(?:(?:pub(?:\([^)]*\))?)[ \t]+)?'
             rf'(?:async[ \t]+)?fn[ \t]+{re.escape(name)}[ \t]*\('
         )
         matches = list(pattern.finditer(text))
