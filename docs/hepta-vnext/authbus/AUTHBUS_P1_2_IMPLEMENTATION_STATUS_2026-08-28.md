@@ -10,17 +10,18 @@ The branch contains an isolated Rust 1.95 nested workspace, SQLite WAL schema,
 purpose-inclusive verification-key identity across primary/foreign keys, Rust
 APIs, receipts and GC, persistent nonce replay claims, provider/manual evidence
 ledgers, terminal tombstones, writer-generation fencing, bounded CAS GC,
-row-digest integrity verification and crash-window regressions. Heavy inherited
-and P1.2 Rust gates use `ubuntu-24.04`; only the lightweight source job remains
-on `ubuntu-slim`.
+row-digest integrity verification and crash-window regressions. All three exact
+qualification jobs use the same `ubuntu-24.04` hosted runner class so a separate
+short-job runner pool cannot strand the dependency chain.
 
 The purpose-identity correction was published as
 `480045d333da16ef002d18c83ee5c9aefa466603`. The final Clippy remediation was
 published as `b7e2e53ead3dd8300f26b9cfd92c4235f5cdb832`: qualification-only database
 inspection now also enters through the canonical `codex-state` SQLite shim, and
 the source verifier rejects any reintroduction of direct SQLx pool construction
-in the P1.2 integration tests. Temporary publication/remediation workflows have
-been removed before this exact-head requalification.
+in the P1.2 integration tests. Temporary publication/remediation workflows and
+all source-seed/gap-closure payload fragments are required absent by the exact
+source cleanup gate.
 
 This status is deliberately not `qualified` until the exact final branch head
 has a committed lockfile and non-empty hosted runner steps passing source,

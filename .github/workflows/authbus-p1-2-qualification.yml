@@ -36,8 +36,10 @@ env:
 jobs:
   source:
     name: Exact source, cleanup, receipt, and negative-authority contracts
-    runs-on: ubuntu-slim
-    timeout-minutes: 15
+    # Use the same standard hosted runner class as the Rust gates so runner-class
+    # scarcity cannot indefinitely strand the qualification chain at source.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -63,6 +65,10 @@ jobs:
             .github/workflows/authbus-p1-2-finalize.yml \
             .github/workflows/authbus-p1-2-remediation.yml \
             .github/workflows/authbus-p1-2-source-seed.yml \
+            .github/workflows/authbus-p1-2-gap-source.yml \
+            .github/workflows/authbus-p1-2-clippy-remediation.yml \
+            .github/workflows/authbus-p1-2-clippy-race.yml \
+            .github/workflows/authbus-p1-2-clippy-macos.yml \
             scripts/authbus-p1-2-finalize.py \
             scripts/authbus-p1-2-explicit-rollback-repair.py \
             scripts/authbus-p1-2-source-seed.part-00.b64 \
@@ -73,6 +79,15 @@ jobs:
             scripts/authbus-p1-2-source-seed.part-05.b64 \
             scripts/authbus-p1-2-source-seed.part-06.b64 \
             scripts/authbus-p1-2-source-seed.part-07.b64 \
+            scripts/authbus-p1-2-gap-closure.part-00.b64 \
+            scripts/authbus-p1-2-gap-closure.part-01.b64 \
+            scripts/authbus-p1-2-gap-closure.part-02.b64 \
+            scripts/authbus-p1-2-gap-closure.part-03a.b64 \
+            scripts/authbus-p1-2-gap-closure.part-03b.b64 \
+            scripts/authbus-p1-2-gap-closure.part-03c.b64 \
+            scripts/authbus-p1-2-gap-closure.part-04.b64 \
+            scripts/authbus-p1-2-gap-closure.part-05.b64 \
+            scripts/authbus-p1-2-gap-closure.part-06.b64 \
             docs/hepta-vnext/authbus/AUTHBUS_P1_2_TEST_FAILURE_2026-08-28.txt
           do
             test ! -e "${path}"
