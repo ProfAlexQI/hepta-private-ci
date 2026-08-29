@@ -1,0 +1,779 @@
+name: Hepta inference V4 INF-S1 private control closure
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-v4-s1-private-channels-chatgpt-20260830
+    paths:
+      - .github/workflows/hepta-inference-v4-s1-private-channels-chatgpt.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-v4-s1-private-control-chatgpt
+  cancel-in-progress: false
+
+jobs:
+  implement-and-qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 2
+
+      - name: Guard exact package parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = codex/hepta-inference-v4-s1-private-channels-chatgpt-20260830
+          test "$(git rev-parse HEAD^)" = dbf68bfed0a2a034fb519c66a89725e2b74edce3
+          test -z "$(git status --porcelain)"
+          test -f codex-rs/hepta-infer-core/src/capability.rs
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Integrate capability primitives into the core API
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-infer-core/src/lib.rs")
+          source = path.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str) -> None:
+              global source
+              if source.count(old) != 1:
+                  raise SystemExit(f"expected exactly one core marker: {old!r}")
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              "mod adapter;\nmod controller;",
+              "mod adapter;\nmod capability;\nmod controller;",
+          )
+          replace_once(
+              "pub use adapter::QualifiedController;\npub use controller::AcceptedEvent;",
+              "pub use adapter::QualifiedController;\n"
+              "pub use capability::CAPABILITY_KEY_BYTES;\n"
+              "pub use capability::CapabilityKey;\n"
+              "pub use capability::PRIVATE_AUTH_TAG_BYTES;\n"
+              "pub use capability::RequestGrant;\n"
+              "pub use capability::RequestGrantFence;\n"
+              "pub use capability::WorkerAuthenticationTag;\n"
+              "pub use capability::WorkerHandshakeFence;\n"
+              "pub use controller::AcceptedEvent;",
+          )
+          replace_once(
+              "    AuthorityEscalation,\n    DeadlineExpired,",
+              "    AuthorityEscalation,\n"
+              "    InvalidCapability,\n"
+              "    InvalidCapabilityKey,\n"
+              "    DeadlineExpired,",
+          )
+          replace_once(
+              "            Self::AuthorityEscalation => \"INF_AUTHORITY_ESCALATION\",\n"
+              "            Self::DeadlineExpired => \"INF_DEADLINE_EXPIRED\",",
+              "            Self::AuthorityEscalation => \"INF_AUTHORITY_ESCALATION\",\n"
+              "            Self::InvalidCapability => \"INF_INVALID_CAPABILITY\",\n"
+              "            Self::InvalidCapabilityKey => \"INF_INVALID_CAPABILITY_KEY\",\n"
+              "            Self::DeadlineExpired => \"INF_DEADLINE_EXPIRED\",",
+          )
+          path.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Add daemon-owned private worker and operator control plane
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > codex-rs/hepta-inferd/src/private_control.rs <<'RS'
+          //! Daemon-owned capability boundary for private worker and operator lanes.
+          //!
+          //! This module deliberately exposes no listener. A worker bootstrap or operator
+          //! capability can only be handed over through a caller-owned inherited handle.
+          //! The public UDS remains limited to `MessageRole::PublicClient` operations.
+
+          use std::collections::HashMap;
+          use std::collections::HashSet;
+          use std::sync::atomic::Ordering;
+          use std::sync::atomic::compiler_fence;
+
+          use codex_hepta_infer_core::CAPABILITY_KEY_BYTES;
+          use codex_hepta_infer_core::CapabilityKey;
+          use codex_hepta_infer_core::Digest;
+          use codex_hepta_infer_core::InferError;
+          use codex_hepta_infer_core::InferenceRequest;
+          use codex_hepta_infer_core::PRIVATE_AUTH_TAG_BYTES;
+          use codex_hepta_infer_core::RequestGrant;
+          use codex_hepta_infer_core::RequestGrantFence;
+          use codex_hepta_infer_core::RequestId;
+          use codex_hepta_infer_core::Result;
+          use codex_hepta_infer_core::WorkerAuthenticationTag;
+          use codex_hepta_infer_core::WorkerHandshakeFence;
+
+          #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+          pub enum PrivateWorkerEventKind {
+              StartAck,
+              Token,
+              Complete,
+              Failure,
+              CancelAck,
+              Health,
+          }
+
+          pub struct WorkerBootstrap {
+              worker_pid: u32,
+              backend_generation: u64,
+              worker_nonce_digest: Digest,
+              daemon_challenge_digest: Digest,
+              authentication: WorkerAuthenticationTag,
+              session_digest: Digest,
+          }
+
+          pub struct WorkerSessionHandle {
+              worker_pid: u32,
+              backend_generation: u64,
+              session_digest: Digest,
+          }
+
+          pub struct OperatorCapability([u8; PRIVATE_AUTH_TAG_BYTES]);
+
+          struct OperatorSecret([u8; PRIVATE_AUTH_TAG_BYTES]);
+
+          #[derive(Clone)]
+          struct SessionRecord {
+              worker_pid: u32,
+              backend_generation: u64,
+          }
+
+          #[derive(Clone)]
+          struct GrantBinding {
+              request_generation: u64,
+              backend_generation: u64,
+              session_digest: Digest,
+              grant_digest: Digest,
+          }
+
+          pub struct PrivateControlPlane {
+              epoch_key: CapabilityKey,
+              backend_generation: u64,
+              pending_challenges: HashSet<Digest>,
+              sessions: HashMap<Digest, SessionRecord>,
+              grants: HashMap<RequestId, GrantBinding>,
+              operator_secret: Option<OperatorSecret>,
+          }
+
+          impl PrivateControlPlane {
+              pub fn new(backend_generation: u64) -> Result<Self> {
+                  if backend_generation == 0 {
+                      return Err(InferError::InvalidGeneration);
+                  }
+                  Ok(Self {
+                      epoch_key: random_capability_key()?,
+                      backend_generation,
+                      pending_challenges: HashSet::new(),
+                      sessions: HashMap::new(),
+                      grants: HashMap::new(),
+                      operator_secret: None,
+                  })
+              }
+
+              pub const fn backend_generation(&self) -> u64 {
+                  self.backend_generation
+              }
+
+              pub fn mint_worker_bootstrap(
+                  &mut self,
+                  worker_pid: u32,
+                  worker_nonce_digest: Digest,
+              ) -> Result<WorkerBootstrap> {
+                  if worker_pid == 0 {
+                      return Err(InferError::InvalidCapability);
+                  }
+                  let daemon_challenge_digest = random_digest()?;
+                  if !self
+                      .pending_challenges
+                      .insert(daemon_challenge_digest.clone())
+                  {
+                      return Err(InferError::InvalidCapability);
+                  }
+                  let fence = WorkerHandshakeFence {
+                      worker_pid,
+                      backend_generation: self.backend_generation,
+                      worker_nonce_digest: &worker_nonce_digest,
+                      daemon_challenge_digest: &daemon_challenge_digest,
+                  };
+                  let authentication = self.epoch_key.derive_worker_authentication(fence)?;
+                  let session_digest = self.epoch_key.worker_session_digest(fence)?;
+                  Ok(WorkerBootstrap {
+                      worker_pid,
+                      backend_generation: self.backend_generation,
+                      worker_nonce_digest,
+                      daemon_challenge_digest,
+                      authentication,
+                      session_digest,
+                  })
+              }
+
+              pub fn activate_worker(
+                  &mut self,
+                  bootstrap: WorkerBootstrap,
+              ) -> Result<WorkerSessionHandle> {
+                  if bootstrap.backend_generation != self.backend_generation {
+                      return Err(InferError::StaleBackendGeneration);
+                  }
+                  if !self
+                      .pending_challenges
+                      .contains(&bootstrap.daemon_challenge_digest)
+                  {
+                      return Err(InferError::InvalidCapability);
+                  }
+                  let fence = WorkerHandshakeFence {
+                      worker_pid: bootstrap.worker_pid,
+                      backend_generation: bootstrap.backend_generation,
+                      worker_nonce_digest: &bootstrap.worker_nonce_digest,
+                      daemon_challenge_digest: &bootstrap.daemon_challenge_digest,
+                  };
+                  if !self
+                      .epoch_key
+                      .verify_worker_authentication(fence, &bootstrap.authentication)
+                  {
+                      return Err(InferError::InvalidCapability);
+                  }
+                  let expected_session = self.epoch_key.worker_session_digest(fence)?;
+                  if expected_session != bootstrap.session_digest
+                      || self.sessions.contains_key(&expected_session)
+                  {
+                      return Err(InferError::InvalidCapability);
+                  }
+                  if !self
+                      .pending_challenges
+                      .remove(&bootstrap.daemon_challenge_digest)
+                  {
+                      return Err(InferError::InvalidCapability);
+                  }
+                  self.sessions.insert(
+                      expected_session.clone(),
+                      SessionRecord {
+                          worker_pid: bootstrap.worker_pid,
+                          backend_generation: bootstrap.backend_generation,
+                      },
+                  );
+                  Ok(WorkerSessionHandle {
+                      worker_pid: bootstrap.worker_pid,
+                      backend_generation: bootstrap.backend_generation,
+                      session_digest: expected_session,
+                  })
+              }
+
+              pub fn mint_request_grant(
+                  &mut self,
+                  session: &WorkerSessionHandle,
+                  request: &InferenceRequest,
+              ) -> Result<RequestGrant> {
+                  self.require_session(session)?;
+                  request.validate_shape()?;
+                  if request.request_generation == 0 {
+                      return Err(InferError::InvalidGeneration);
+                  }
+                  if self.grants.contains_key(&request.identity.request_id) {
+                      return Err(InferError::DuplicateRequest);
+                  }
+                  let fence = RequestGrantFence {
+                      request,
+                      backend_generation: self.backend_generation,
+                      worker_session_digest: &session.session_digest,
+                  };
+                  let grant = self.epoch_key.derive_request_grant(fence)?;
+                  self.grants.insert(
+                      request.identity.request_id.clone(),
+                      GrantBinding {
+                          request_generation: request.request_generation,
+                          backend_generation: self.backend_generation,
+                          session_digest: session.session_digest.clone(),
+                          grant_digest: grant.digest()?,
+                      },
+                  );
+                  Ok(grant)
+              }
+
+              pub fn authorize_worker_event(
+                  &self,
+                  session: &WorkerSessionHandle,
+                  request: &InferenceRequest,
+                  grant: &RequestGrant,
+                  kind: PrivateWorkerEventKind,
+                  sequence: u64,
+              ) -> Result<()> {
+                  self.require_session(session)?;
+                  if sequence == 0 || matches!(kind, PrivateWorkerEventKind::Health) {
+                      return Err(InferError::InvalidCapability);
+                  }
+                  let binding = self
+                      .grants
+                      .get(&request.identity.request_id)
+                      .ok_or(InferError::UnknownRequest)?;
+                  if binding.request_generation != request.request_generation {
+                      return Err(InferError::StaleRequestGeneration);
+                  }
+                  if binding.backend_generation != self.backend_generation
+                      || session.backend_generation != self.backend_generation
+                  {
+                      return Err(InferError::StaleBackendGeneration);
+                  }
+                  if binding.session_digest != session.session_digest
+                      || binding.grant_digest != grant.digest()?
+                  {
+                      return Err(InferError::InvalidCapability);
+                  }
+                  let fence = RequestGrantFence {
+                      request,
+                      backend_generation: self.backend_generation,
+                      worker_session_digest: &session.session_digest,
+                  };
+                  if !self.epoch_key.verify_request_grant(fence, grant) {
+                      return Err(InferError::InvalidCapability);
+                  }
+                  Ok(())
+              }
+
+              pub fn retire_request_grant(
+                  &mut self,
+                  request_id: &RequestId,
+                  request_generation: u64,
+              ) -> Result<()> {
+                  let binding = self
+                      .grants
+                      .get(request_id)
+                      .ok_or(InferError::UnknownRequest)?;
+                  if binding.request_generation != request_generation {
+                      return Err(InferError::StaleRequestGeneration);
+                  }
+                  self.grants.remove(request_id);
+                  Ok(())
+              }
+
+              pub fn provision_operator_inherited_handle(
+                  &mut self,
+              ) -> Result<OperatorCapability> {
+                  if self.operator_secret.is_some() {
+                      return Err(InferError::InvalidCapability);
+                  }
+                  let bytes = random_nonzero_bytes();
+                  self.operator_secret = Some(OperatorSecret(bytes));
+                  Ok(OperatorCapability(bytes))
+              }
+
+              pub fn authorize_operator(
+                  &self,
+                  capability: &OperatorCapability,
+                  expected_generation: u64,
+              ) -> Result<()> {
+                  if expected_generation != self.backend_generation {
+                      return Err(InferError::StaleBackendGeneration);
+                  }
+                  let secret = self
+                      .operator_secret
+                      .as_ref()
+                      .ok_or(InferError::RoleNotAuthorized)?;
+                  if !constant_time_equal(&secret.0, &capability.0) {
+                      return Err(InferError::RoleNotAuthorized);
+                  }
+                  Ok(())
+              }
+
+              pub fn disable_operator_endpoint(&mut self) {
+                  self.operator_secret = None;
+              }
+
+              pub fn rollover_generation(&mut self, next_generation: u64) -> Result<()> {
+                  if next_generation <= self.backend_generation {
+                      return Err(InferError::InvalidGeneration);
+                  }
+                  self.epoch_key = random_capability_key()?;
+                  self.backend_generation = next_generation;
+                  self.pending_challenges.clear();
+                  self.sessions.clear();
+                  self.grants.clear();
+                  if self.operator_secret.is_some() {
+                      self.operator_secret = Some(OperatorSecret(random_nonzero_bytes()));
+                  }
+                  Ok(())
+              }
+
+              fn require_session(&self, session: &WorkerSessionHandle) -> Result<()> {
+                  if session.backend_generation != self.backend_generation {
+                      return Err(InferError::StaleBackendGeneration);
+                  }
+                  let record = self
+                      .sessions
+                      .get(&session.session_digest)
+                      .ok_or(InferError::InvalidCapability)?;
+                  if record.worker_pid != session.worker_pid
+                      || record.backend_generation != session.backend_generation
+                  {
+                      return Err(InferError::InvalidCapability);
+                  }
+                  Ok(())
+              }
+          }
+
+          impl WorkerSessionHandle {
+              pub const fn worker_pid(&self) -> u32 {
+                  self.worker_pid
+              }
+
+              pub const fn backend_generation(&self) -> u64 {
+                  self.backend_generation
+              }
+
+              pub fn session_digest(&self) -> &Digest {
+                  &self.session_digest
+              }
+          }
+
+          impl Drop for OperatorCapability {
+              fn drop(&mut self) {
+                  zeroize(&mut self.0);
+              }
+          }
+
+          impl Drop for OperatorSecret {
+              fn drop(&mut self) {
+                  zeroize(&mut self.0);
+              }
+          }
+
+          fn random_capability_key() -> Result<CapabilityKey> {
+              CapabilityKey::from_private_bytes(random_nonzero_key_bytes())
+          }
+
+          fn random_nonzero_key_bytes() -> [u8; CAPABILITY_KEY_BYTES] {
+              loop {
+                  let bytes: [u8; CAPABILITY_KEY_BYTES] = rand::random();
+                  if bytes.iter().any(|byte| *byte != 0) {
+                      return bytes;
+                  }
+              }
+          }
+
+          fn random_nonzero_bytes() -> [u8; PRIVATE_AUTH_TAG_BYTES] {
+              loop {
+                  let bytes: [u8; PRIVATE_AUTH_TAG_BYTES] = rand::random();
+                  if bytes.iter().any(|byte| *byte != 0) {
+                      return bytes;
+                  }
+              }
+          }
+
+          fn random_digest() -> Result<Digest> {
+              digest_from_bytes(random_nonzero_bytes())
+          }
+
+          fn digest_from_bytes(bytes: [u8; 32]) -> Result<Digest> {
+              const HEX: &[u8; 16] = b"0123456789abcdef";
+              let mut encoded = String::with_capacity(71);
+              encoded.push_str("sha256:");
+              for byte in bytes {
+                  encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+                  encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+              }
+              Digest::parse(&encoded)
+          }
+
+          fn constant_time_equal(
+              left: &[u8; PRIVATE_AUTH_TAG_BYTES],
+              right: &[u8; PRIVATE_AUTH_TAG_BYTES],
+          ) -> bool {
+              let mut difference = 0u8;
+              for index in 0..PRIVATE_AUTH_TAG_BYTES {
+                  difference |= left[index] ^ right[index];
+              }
+              difference == 0
+          }
+
+          fn zeroize(bytes: &mut [u8; PRIVATE_AUTH_TAG_BYTES]) {
+              for byte in bytes {
+                  // SAFETY: each pointer comes from a unique mutable slice element and is
+                  // valid for one byte. Volatile writes prevent dead-store elimination.
+                  unsafe {
+                      std::ptr::write_volatile(byte, 0);
+                  }
+              }
+              compiler_fence(Ordering::SeqCst);
+          }
+
+          #[cfg(test)]
+          mod tests {
+              use super::*;
+              use codex_hepta_infer_core::AgentId;
+              use codex_hepta_infer_core::AuthoritySnapshot;
+              use codex_hepta_infer_core::RequestIdentity;
+              use codex_hepta_infer_core::ResourceBudgetId;
+              use codex_hepta_infer_core::TaskId;
+              use codex_hepta_infer_core::TenantId;
+              use codex_hepta_infer_core::WorkspaceId;
+
+              fn must<T, E: std::fmt::Display>(result: std::result::Result<T, E>) -> T {
+                  match result {
+                      Ok(value) => value,
+                      Err(error) => panic!("unexpected error: {error}"),
+                  }
+              }
+
+              fn digest(fill: char) -> Digest {
+                  must(Digest::parse(&format!(
+                      "sha256:{}",
+                      fill.to_string().repeat(64)
+                  )))
+              }
+
+              fn request(id: &str) -> InferenceRequest {
+                  InferenceRequest {
+                      identity: RequestIdentity {
+                          tenant_id: must(TenantId::parse("tenant-a")),
+                          workspace_id: must(WorkspaceId::parse("workspace-a")),
+                          agent_id: must(AgentId::parse("agent-a")),
+                          task_id: must(TaskId::parse("task-a")),
+                          request_id: must(RequestId::parse(id)),
+                      },
+                      agent_generation: 1,
+                      request_generation: 2,
+                      cancel_generation: 3,
+                      deadline_unix_ms: u64::MAX,
+                      model_tuple_digest: digest('a'),
+                      policy_digest: digest('b'),
+                      resource_budget_id: must(ResourceBudgetId::parse("budget-a")),
+                      prompt_digest: digest('c'),
+                      prompt_byte_length: 12,
+                      output_token_limit: 32,
+                      authority: AuthoritySnapshot::qualification_only_closed(),
+                  }
+              }
+
+              fn expect_error<T>(result: Result<T>, expected: InferError) {
+                  match result {
+                      Ok(_) => panic!("expected error {}", expected.code()),
+                      Err(error) => assert_eq!(error, expected),
+                  }
+              }
+
+              #[test]
+              fn worker_bootstrap_and_request_grant_are_session_bound() {
+                  let mut plane = must(PrivateControlPlane::new(7));
+                  let session = must(plane.activate_worker(must(
+                      plane.mint_worker_bootstrap(42, digest('d')),
+                  )));
+                  assert_eq!(session.worker_pid(), 42);
+                  assert_eq!(session.backend_generation(), 7);
+                  let request = request("request-private-grant");
+                  let grant = must(plane.mint_request_grant(&session, &request));
+                  must(plane.authorize_worker_event(
+                      &session,
+                      &request,
+                      &grant,
+                      PrivateWorkerEventKind::Token,
+                      3,
+                  ));
+
+                  let forged = must(RequestGrant::from_private_bytes([5u8; PRIVATE_AUTH_TAG_BYTES]));
+                  expect_error(
+                      plane.authorize_worker_event(
+                          &session,
+                          &request,
+                          &forged,
+                          PrivateWorkerEventKind::Complete,
+                          4,
+                      ),
+                      InferError::InvalidCapability,
+                  );
+                  must(plane.retire_request_grant(&request.identity.request_id, 2));
+                  expect_error(
+                      plane.authorize_worker_event(
+                          &session,
+                          &request,
+                          &grant,
+                          PrivateWorkerEventKind::Complete,
+                          4,
+                      ),
+                      InferError::UnknownRequest,
+                  );
+              }
+
+              #[test]
+              fn wrong_authentication_and_bootstrap_replay_fail_closed() {
+                  let mut plane = must(PrivateControlPlane::new(3));
+                  let mut bootstrap = must(plane.mint_worker_bootstrap(9, digest('a')));
+                  let copied_fence = WorkerHandshakeFence {
+                      worker_pid: bootstrap.worker_pid,
+                      backend_generation: bootstrap.backend_generation,
+                      worker_nonce_digest: &bootstrap.worker_nonce_digest,
+                      daemon_challenge_digest: &bootstrap.daemon_challenge_digest,
+                  };
+                  let wrong_key = must(CapabilityKey::from_private_bytes([
+                      17u8;
+                      CAPABILITY_KEY_BYTES
+                  ]));
+                  bootstrap.authentication =
+                      must(wrong_key.derive_worker_authentication(copied_fence));
+                  expect_error(
+                      plane.activate_worker(bootstrap),
+                      InferError::InvalidCapability,
+                  );
+
+                  let valid = must(plane.mint_worker_bootstrap(9, digest('b')));
+                  let replay = WorkerBootstrap {
+                      worker_pid: valid.worker_pid,
+                      backend_generation: valid.backend_generation,
+                      worker_nonce_digest: valid.worker_nonce_digest.clone(),
+                      daemon_challenge_digest: valid.daemon_challenge_digest.clone(),
+                      authentication: must(WorkerAuthenticationTag::from_private_bytes(
+                          *valid.authentication.private_bytes(),
+                      )),
+                      session_digest: valid.session_digest.clone(),
+                  };
+                  let _session = must(plane.activate_worker(valid));
+                  expect_error(
+                      plane.activate_worker(replay),
+                      InferError::InvalidCapability,
+                  );
+              }
+
+              #[test]
+              fn generation_rollover_invalidates_sessions_grants_and_operator_handle() {
+                  let mut plane = must(PrivateControlPlane::new(11));
+                  let session = must(plane.activate_worker(must(
+                      plane.mint_worker_bootstrap(77, digest('d')),
+                  )));
+                  let request = request("request-rollover");
+                  let grant = must(plane.mint_request_grant(&session, &request));
+                  let operator = must(plane.provision_operator_inherited_handle());
+                  must(plane.authorize_operator(&operator, 11));
+                  must(plane.rollover_generation(12));
+
+                  expect_error(
+                      plane.authorize_worker_event(
+                          &session,
+                          &request,
+                          &grant,
+                          PrivateWorkerEventKind::Token,
+                          3,
+                      ),
+                      InferError::StaleBackendGeneration,
+                  );
+                  expect_error(
+                      plane.authorize_operator(&operator, 12),
+                      InferError::RoleNotAuthorized,
+                  );
+              }
+
+              #[test]
+              fn operator_endpoint_is_disabled_until_explicit_inherited_handle_provisioning() {
+                  let mut plane = must(PrivateControlPlane::new(5));
+                  let forged = OperatorCapability([9u8; PRIVATE_AUTH_TAG_BYTES]);
+                  expect_error(
+                      plane.authorize_operator(&forged, 5),
+                      InferError::RoleNotAuthorized,
+                  );
+                  let capability = must(plane.provision_operator_inherited_handle());
+                  must(plane.authorize_operator(&capability, 5));
+                  expect_error(
+                      plane.authorize_operator(&capability, 4),
+                      InferError::StaleBackendGeneration,
+                  );
+                  plane.disable_operator_endpoint();
+                  expect_error(
+                      plane.authorize_operator(&capability, 5),
+                      InferError::RoleNotAuthorized,
+                  );
+              }
+          }
+          RS
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lib = Path("codex-rs/hepta-inferd/src/lib.rs")
+          source = lib.read_text(encoding="utf-8")
+          marker = "use std::collections::HashMap;"
+          replacement = (
+              "mod private_control;\n\n"
+              "pub use private_control::OperatorCapability;\n"
+              "pub use private_control::PrivateControlPlane;\n"
+              "pub use private_control::PrivateWorkerEventKind;\n"
+              "pub use private_control::WorkerBootstrap;\n"
+              "pub use private_control::WorkerSessionHandle;\n\n"
+              + marker
+          )
+          if source.count(marker) != 1:
+              raise SystemExit("unexpected inferd lib marker")
+          source = source.replace(marker, replacement, 1)
+          lib.write_text(source, encoding="utf-8")
+
+          cargo = Path("codex-rs/hepta-inferd/Cargo.toml")
+          source = cargo.read_text(encoding="utf-8")
+          marker = "codex-uds = { workspace = true }\n"
+          if source.count(marker) != 1:
+              raise SystemExit("unexpected inferd Cargo marker")
+          source = source.replace(marker, marker + "rand = { workspace = true }\n", 1)
+          cargo.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Format and qualify INF-S1 source
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-inferd
+          cargo check --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-inferd
+          cargo test --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-inferd
+          cargo clippy --locked --all-targets --no-deps \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-inferd -- -D warnings
+
+      - name: Enforce package source change set
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git diff --name-only | LC_ALL=C sort)"
+          expected="$(cat <<'EOF' | LC_ALL=C sort
+          codex-rs/hepta-infer-core/src/lib.rs
+          codex-rs/hepta-inferd/Cargo.toml
+          codex-rs/hepta-inferd/src/lib.rs
+          codex-rs/hepta-inferd/src/private_control.rs
+          EOF
+          )"
+          test "$actual" = "$expected"
+          git diff --check
+          cargo metadata --locked --manifest-path codex-rs/Cargo.toml --no-deps --format-version 1 >/dev/null
+          test -z "$(git status --porcelain -- codex-rs/Cargo.lock)"
+
+      - name: Commit qualified package source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/hepta-inference-v4-s1-private-channels-chatgpt.yml
+          rm .github/workflows/hepta-inference-v4-one-shot-s1-capability.yml
+          git add -A \
+            .github/workflows/hepta-inference-v4-s1-private-channels-chatgpt.yml \
+            .github/workflows/hepta-inference-v4-one-shot-s1-capability.yml \
+            codex-rs/hepta-infer-core/src/lib.rs \
+            codex-rs/hepta-inferd/Cargo.toml \
+            codex-rs/hepta-inferd/src/lib.rs \
+            codex-rs/hepta-inferd/src/private_control.rs
+          git diff --cached --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "feat(inference): close INF-S1 private capability boundary"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
