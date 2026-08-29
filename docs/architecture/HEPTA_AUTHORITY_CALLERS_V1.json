@@ -24,6 +24,9 @@
     "codex-rs/hepta-agentd/src/composition.rs": [
       "agent_process_composition_root"
     ],
+    "codex-rs/hepta-agentd/src/runtime_profile.rs": [
+      "runtime_profile_contract_unit_tests"
+    ],
     "codex-rs/hepta-contracts/src/provider_operation.rs": [
       "provider_operation_unit_tests"
     ]
