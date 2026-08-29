@@ -1,0 +1,199 @@
+name: Hepta Q0 E1 residue repair
+
+on:
+  push:
+    branches:
+      - codex/hepta-intelligence-plan-v3-20260828
+    paths:
+      - .github/workflows/hepta-q0-e1-residue-repair.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-q0-e1-residue-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Close exact E1 verifier and agentd lint residue
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact repair carrier
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Assert exact carrier identity
+        shell: bash
+        env:
+          EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+          EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
+          EXPECTED_PARENT: 4baa859e826179fc63c4fa742c17dbd9c2143db1
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "$GITHUB_REF_NAME" = "$EXPECTED_BRANCH"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Apply exact fail-closed repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise AssertionError(
+                      f"{path}: expected exactly one match, found {count}: {old!r}"
+                  )
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_exact(
+              "codex-rs/hepta-agentd/src/app_runtime.rs",
+              '''#[expect(
+              dead_code,
+              reason = "the read-only constructor remains a qualification and regression seam"
+          )]
+          ''',
+              '''#[allow(dead_code)]
+          ''',
+          )
+
+          old_clippy = (
+              '"cargo clippy --locked -p codex-hepta-memory '
+              '--all-targets -- -D warnings",'
+          )
+          new_clippy = (
+              '"cargo clippy --locked -p codex-hepta-memory '
+              '--all-targets --no-deps -- -D warnings",'
+          )
+          for path in (
+              "scripts/verify-hepta-intelligence-mutation-state.py",
+              "scripts/verify-hepta-intelligence-mutation-journal.py",
+          ):
+              replace_exact(path, old_clippy, new_clippy)
+          PY
+
+          (cd codex-rs && cargo fmt --all -- --check)
+          git diff --check
+
+      - name: Verify source gates and both agentd profiles
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/hepta-q0-e1-residue"
+          rm -rf "$artifact_dir"
+          mkdir -p "$artifact_dir/gates"
+          ARTIFACT_DIR="$artifact_dir" bash scripts/q0-qualification/10-source-gates.sh
+
+          python3 - "$artifact_dir/gates" <<'PY'
+          from pathlib import Path
+          import sys
+
+          root = Path(sys.argv[1])
+          exits = sorted(root.glob("*.exit"))
+          if not exits:
+              raise AssertionError("source gate emitted no exit records")
+          failed = {
+              path.name: path.read_text(encoding="utf-8").strip()
+              for path in exits
+              if path.read_text(encoding="utf-8").strip() != "0"
+          }
+          if failed:
+              raise AssertionError(f"source gates failed: {failed}")
+          print(f"verified_source_gate_count={len(exits)}")
+          PY
+
+          (
+            cd codex-rs
+            cargo test --locked -p codex-hepta-agentd
+            cargo test --locked -p codex-hepta-agentd \
+              --features qualification-intelligence-mutation-shadow
+            cargo clippy --locked -p codex-hepta-agentd \
+              --all-targets --no-deps -- -D warnings
+            cargo clippy --locked -p codex-hepta-agentd \
+              --features qualification-intelligence-mutation-shadow \
+              --all-targets --no-deps -- -D warnings
+          )
+
+          rm -rf scripts/__pycache__ .github/scripts/__pycache__
+          git diff --check
+
+      - name: Commit verified repair, bind final candidate, and retire carrier
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/hepta-q0-e1-residue-repair.yml
+          rm -rf scripts/__pycache__ .github/scripts/__pycache__
+
+          python3 - <<'PY'
+          import subprocess
+
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only"], text=True
+          ).splitlines()
+          expected = sorted(
+              [
+                  ".github/workflows/hepta-q0-e1-residue-repair.yml",
+                  "codex-rs/hepta-agentd/src/app_runtime.rs",
+                  "scripts/verify-hepta-intelligence-mutation-journal.py",
+                  "scripts/verify-hepta-intelligence-mutation-state.py",
+              ]
+          )
+          if sorted(changed) != expected:
+              raise AssertionError(
+                  f"unexpected repair paths: actual={sorted(changed)} expected={expected}"
+              )
+          PY
+
+          remote_head="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1)"
+          test "$remote_head" = "$GITHUB_SHA"
+
+          git config user.name "hepta-q0-bot"
+          git config user.email "hepta-q0-bot@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(intelligence): close exact E1 verifier and agentd lint residue"
+          repair_sha="$(git rev-parse HEAD)"
+
+          REPAIR_SHA="$repair_sha" python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path(
+              ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml"
+          )
+          text = path.read_text(encoding="utf-8")
+          old = "  EXPECTED_PARENT: b445bfbfd22efb5ba81ed66b1b68b27934ccc701\n"
+          new = f"  EXPECTED_PARENT: {os.environ['REPAIR_SHA']}\n"
+          if text.count(old) != 1:
+              raise AssertionError("paired workflow parent binding drifted")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
+          test "$(git diff --name-only)" = ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml"
+          git diff --check
+          python3 scripts/verify-hepta-intelligence-q0-workflow-consolidation.py
+          git add .github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml
+          git diff --cached --check
+          git commit -m "ci(q0): bind paired candidate to E1 residue repair"
+
+          test "$(git rev-parse HEAD^)" = "$repair_sha"
+          remote_head="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1)"
+          test "$remote_head" = "$GITHUB_SHA"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
