@@ -1,4 +1,4 @@
-name: Hepta automation operation repair once
+name: Hepta operation safety repair once
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-automation-operation-repair-once
+  group: hepta-operation-safety-repair-once
   cancel-in-progress: true
 
 env:
@@ -19,8 +19,8 @@ env:
 
 jobs:
   repair-verify-retire:
-    name: Repair Automation operation boundary and retire write lane
-    if: ${{ !contains(github.event.head_commit.message || '', '[hepta-automation-repair]') }}
+    name: Repair operation boundaries and retire write lane
+    if: ${{ !contains(github.event.head_commit.message || '', '[hepta-operation-safety-repair]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
@@ -56,22 +56,225 @@ jobs:
           sed -i 's/occurrrence/occurrence/g' scripts/hepta-automation-model-v4.rs
           python3 scripts/hepta-automation-operation-repair-once.py
 
+      - name: Enforce single-winner Matrix and Provider delivery claims
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          matrix = Path("codex-rs/hepta-matrix-store/src/operation.rs")
+          replace_once(
+              matrix,
+              """            OperationPhase::DeliveryClaimed
+              | OperationPhase::Indeterminate
+              | OperationPhase::Acknowledged
+              | OperationPhase::ReconciledApplied
+              | OperationPhase::ReconciledNotApplied
+              | OperationPhase::Quarantined => Ok(current),
+              _ => Err(MatrixDurableError::Corrupt),
+          """,
+              """            // HEPTA_MATRIX_SINGLE_WINNER_CLAIM_V1: once the durable
+              // boundary is claimed, all re-entry is lookup/reconcile only.
+              OperationPhase::DeliveryClaimed
+              | OperationPhase::Indeterminate
+              | OperationPhase::Acknowledged
+              | OperationPhase::ReconciledApplied
+              | OperationPhase::ReconciledNotApplied
+              | OperationPhase::Quarantined => Err(MatrixDurableError::Conflict),
+              _ => Err(MatrixDurableError::Corrupt),
+          """,
+              "Matrix claim state",
+          )
+          replace_once(
+              matrix,
+              """        let claimed = journal
+              .claim_delivery(&event_id, &begun.record.envelope, 5)
+              .await
+              .expect("claim");
+          assert_eq!(claimed.phase, OperationPhase::DeliveryClaimed);
+          """,
+              """        let (first_claim, second_claim) = tokio::join!(
+              journal.claim_delivery(&event_id, &begun.record.envelope, 5),
+              journal.claim_delivery(&event_id, &begun.record.envelope, 5),
+          );
+          let claimed = match (first_claim, second_claim) {
+              (Ok(claimed), Err(MatrixDurableError::Conflict)) => claimed,
+              (Err(MatrixDurableError::Conflict), Ok(claimed)) => claimed,
+              other => panic!("two concurrent Matrix delivery claims must have one winner: {other:?}"),
+          };
+          assert_eq!(claimed.phase, OperationPhase::DeliveryClaimed);
+          """,
+              "Matrix concurrent claim test",
+          )
+
+          provider = Path("codex-rs/hepta-contracts/src/provider_operation.rs")
+          replace_once(
+              provider,
+              """            OperationPhase::DeliveryClaimed
+              | OperationPhase::Indeterminate
+              | OperationPhase::Acknowledged
+              | OperationPhase::ReconciledApplied
+              | OperationPhase::ReconciledNotApplied
+              | OperationPhase::Quarantined => Ok(()),
+              _ => Err(ProviderOperationError::BindingDrift),
+          """,
+              """            // HEPTA_PROVIDER_SINGLE_WINNER_CLAIM_V1: a claimed or
+              // settled provider operation may only use status lookup/reconcile.
+              OperationPhase::DeliveryClaimed
+              | OperationPhase::Indeterminate
+              | OperationPhase::Acknowledged
+              | OperationPhase::ReconciledApplied
+              | OperationPhase::ReconciledNotApplied
+              | OperationPhase::Quarantined => {
+                  Err(ProviderOperationError::DeliveryAlreadyClaimed)
+              }
+              _ => Err(ProviderOperationError::BindingDrift),
+          """,
+              "Provider claim state",
+          )
+          replace_once(
+              provider,
+              """    ExternalAuthorityRequired,
+              LookupBeforeBoundary,
+          """,
+              """    ExternalAuthorityRequired,
+              DeliveryAlreadyClaimed,
+              LookupBeforeBoundary,
+          """,
+              "Provider error variant",
+          )
+          replace_once(
+              provider,
+              """            Self::ExternalAuthorityRequired => formatter.write_str(
+                  "provider operation requires externally verified effect authority",
+              ),
+              Self::LookupBeforeBoundary => formatter.write_str(
+          """,
+              """            Self::ExternalAuthorityRequired => formatter.write_str(
+                  "provider operation requires externally verified effect authority",
+              ),
+              Self::DeliveryAlreadyClaimed => formatter.write_str(
+                  "provider delivery boundary was already claimed; reconcile instead",
+              ),
+              Self::LookupBeforeBoundary => formatter.write_str(
+          """,
+              "Provider display variant",
+          )
+          replace_once(
+              provider,
+              """    if binding.is_expired_at(observed_at_unix_seconds) {
+          """,
+              """    if binding.authority_epoch() != operation.envelope.binding.authority_epoch
+              || binding.owner_epoch() != operation.envelope.binding.owner_epoch
+              || binding.fencing_token_sha256()
+                  != &operation.envelope.binding.fencing_token_sha256
+          {
+              return Err(ProviderOperationError::ExternalAuthorityRequired);
+          }
+              if binding.is_expired_at(observed_at_unix_seconds) {
+          """,
+              "Provider exact lease binding",
+          )
+          replace_once(
+              provider,
+              "Sha256Digest::for_bytes(b\"provider-fence\")",
+              "Sha256Digest::for_bytes(b\"effect-fence\")",
+              "Provider test fence",
+          )
+          replace_once(
+              provider,
+              """        let receipt = coordinator
+              .dispatch_once(intent, 101)
+              .await
+              .unwrap_or_else(|error| panic!("dispatch must settle: {error}"));
+          assert!(receipt.provider.physical_dispatch_attempted);
+          assert_eq!(receipt.provider.state, ProviderEffectState::Completed);
+          assert_eq!(receipt.operation_phase, OperationPhase::Acknowledged);
+          assert_eq!(coordinator.operation().recovery_decision(), RecoveryDecision::Terminal);
+          """,
+              """        let receipt = coordinator
+              .dispatch_once(intent.clone(), 101)
+              .await
+              .unwrap_or_else(|error| panic!("dispatch must settle: {error}"));
+          assert!(receipt.provider.physical_dispatch_attempted);
+          assert_eq!(receipt.provider.state, ProviderEffectState::Completed);
+          assert_eq!(receipt.operation_phase, OperationPhase::Acknowledged);
+          assert_eq!(coordinator.operation().recovery_decision(), RecoveryDecision::Terminal);
+          assert_eq!(
+              coordinator.dispatch_once(intent, 102).await,
+              Err(ProviderOperationError::DeliveryAlreadyClaimed),
+          );
+          """,
+              "Provider duplicate dispatch test",
+          )
+
+          verifier = Path("scripts/verify-hepta-cross-owner-operation-wiring.py")
+          replace_once(
+              verifier,
+              """            "pub async fn claim_delivery",
+              "pub async fn mark_indeterminate",
+          """,
+              """            "pub async fn claim_delivery",
+              "HEPTA_MATRIX_SINGLE_WINNER_CLAIM_V1",
+              "two concurrent Matrix delivery claims must have one winner",
+              "pub async fn mark_indeterminate",
+          """,
+              "Matrix verifier markers",
+          )
+          replace_once(
+              verifier,
+              """            "external_effect.is_external()",
+              "binding.is_expired_at(observed_at_unix_seconds)",
+          """,
+              """            "external_effect.is_external()",
+              "HEPTA_PROVIDER_SINGLE_WINNER_CLAIM_V1",
+              "DeliveryAlreadyClaimed",
+              "binding.authority_epoch()",
+              "binding.owner_epoch()",
+              "binding.fencing_token_sha256()",
+              "binding.is_expired_at(observed_at_unix_seconds)",
+          """,
+              "Provider verifier markers",
+          )
+          PY
+
       - name: Format owned Rust packages
         working-directory: codex-rs
         run: |
           set -euo pipefail
-          cargo fmt -p codex-hepta-automation -p codex-hepta-agentd
+          cargo fmt \
+            -p codex-hepta-contracts \
+            -p codex-hepta-automation \
+            -p codex-hepta-agentd \
+            -p codex-hepta-matrix-store
 
       - name: Materialize and compile the product graph
         working-directory: codex-rs
         run: |
           set -euo pipefail
           cargo metadata --format-version 1 --no-deps > "$RUNNER_TEMP/workspace-metadata.json"
-          cargo check -p codex-hepta-agentd
+          cargo test -p codex-hepta-contracts provider_operation::tests -- --nocapture
+          cargo test -p codex-hepta-matrix-store operation::tests -- --nocapture
           cargo test -p codex-hepta-automation --lib
-          cargo clippy -p codex-hepta-automation -p codex-hepta-agentd --lib -- -D warnings
+          cargo check -p codex-hepta-agentd
+          cargo check -p codex-hepta-matrixd
+          cargo clippy \
+            -p codex-hepta-contracts \
+            -p codex-hepta-automation \
+            -p codex-hepta-agentd \
+            -p codex-hepta-matrix-store \
+            -p codex-hepta-matrixd \
+            --all-targets -- -D warnings
           cargo metadata --locked --format-version 1 --no-deps > /dev/null
-          cargo check --locked -p codex-hepta-agentd
+          cargo check --locked -p codex-hepta-agentd -p codex-hepta-matrixd
 
       - name: Verify architecture source ratchets
         run: |
@@ -97,11 +300,14 @@ jobs:
               "scripts/hepta-automation-operation-repair-once.py.part-02",
               "scripts/hepta-automation-operation-repair-once.py.part-03",
               "scripts/hepta-automation-model-v4.rs",
+              "scripts/verify-hepta-cross-owner-operation-wiring.py",
               "codex-rs/Cargo.lock",
               "codex-rs/hepta-automation/src/model.rs",
               "codex-rs/hepta-automation/src/store.rs",
               "codex-rs/hepta-automation/migrations/0004_operation_identity.sql",
               "codex-rs/hepta-agentd/src/automation.rs",
+              "codex-rs/hepta-matrix-store/src/operation.rs",
+              "codex-rs/hepta-contracts/src/provider_operation.rs",
           }
           tracked = set(
               subprocess.check_output(
@@ -124,6 +330,9 @@ jobs:
               "codex-rs/hepta-automation/src/store.rs",
               "codex-rs/hepta-automation/migrations/0004_operation_identity.sql",
               "codex-rs/hepta-agentd/src/automation.rs",
+              "codex-rs/hepta-matrix-store/src/operation.rs",
+              "codex-rs/hepta-contracts/src/provider_operation.rs",
+              "scripts/verify-hepta-cross-owner-operation-wiring.py",
           }
           missing = sorted(required - changed)
           if missing:
@@ -145,16 +354,19 @@ jobs:
             scripts/hepta-automation-operation-repair-once.py.part-03 \
             scripts/hepta-automation-model-v4.rs
           git add \
+            scripts/verify-hepta-cross-owner-operation-wiring.py \
             codex-rs/Cargo.lock \
             codex-rs/hepta-automation/src/model.rs \
             codex-rs/hepta-automation/src/store.rs \
             codex-rs/hepta-automation/migrations/0004_operation_identity.sql \
-            codex-rs/hepta-agentd/src/automation.rs
+            codex-rs/hepta-agentd/src/automation.rs \
+            codex-rs/hepta-matrix-store/src/operation.rs \
+            codex-rs/hepta-contracts/src/provider_operation.rs
           git diff --cached --check
           git fetch --no-tags origin \
             "refs/heads/$BRANCH_NAME:refs/remotes/origin/$BRANCH_NAME"
           test "$(git rev-parse refs/remotes/origin/$BRANCH_NAME)" = "$SOURCE_HEAD"
-          git config user.name "Hepta Automation repair"
+          git config user.name "Hepta operation safety repair"
           git config user.email "102159240+ProfHepta@users.noreply.github.com"
-          git commit -m "fix(hepta): close Automation operation and lock blockers [hepta-automation-repair]"
+          git commit -m "fix(hepta): close operation safety blockers [hepta-operation-safety-repair]"
           git push origin "HEAD:refs/heads/$BRANCH_NAME"
