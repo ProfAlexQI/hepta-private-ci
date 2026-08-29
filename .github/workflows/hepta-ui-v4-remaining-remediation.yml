@@ -1,0 +1,102 @@
+name: Hepta UI Remaining Blocker Remediation
+
+on:
+  push:
+    branches:
+      - codex/ui-v4-executable-final-gap-closure-v3-20260829
+    paths:
+      - .github/workflows/hepta-ui-v4-remaining-remediation.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v4-remaining-remediation
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    name: Apply Rustfmt and Windows checkout remediation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HEPTA_REMEDIATION_SHA: ${{ github.sha }}
+      HEPTA_BRANCH: codex/ui-v4-executable-final-gap-closure-v3-20260829
+    steps:
+      - name: Checkout exact remediation head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.HEPTA_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install Rust 1.95 rustfmt
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+
+      - name: Apply bounded remediation and self-delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_REMEDIATION_SHA"
+
+          ruby <<'RUBY'
+          path = ".github/workflows/hepta-ui-v4-final-gap-closure-v3.yml"
+          text = File.read(path)
+          marker = "Enable Windows long paths before checkout"
+          unless text.include?(marker)
+            needle = "      - name: Checkout exact candidate\n        uses: actions/checkout@v4\n"
+            replacement = <<~YAML.lines.map { |line| "      #{line}" }.join
+              - name: Enable Windows long paths before checkout
+                if: runner.os == 'Windows'
+                shell: pwsh
+                run: git config --global core.longpaths true
+              - name: Checkout exact candidate
+                uses: actions/checkout@v4
+            YAML
+            count = text.scan(needle).length
+            abort "unexpected exact-checkout count #{count}" unless count >= 4
+            text = text.gsub(needle, replacement)
+            File.write(path, text)
+          end
+          RUBY
+
+          cargo fmt --manifest-path apps/hepta-native/Cargo.toml
+          cargo fmt --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml
+          cargo fmt --manifest-path tools/hepta-ui-windows-product-host-safety/Cargo.toml
+          cargo fmt --manifest-path tools/hepta-ui-windows-product-host-device-drill/Cargo.toml
+
+          git rm -- .github/workflows/hepta-ui-v4-remaining-remediation.yml
+          if [[ -f .github/workflows/hepta-ui-v4-rustfmt-remediation.yml ]]; then
+            git rm -- .github/workflows/hepta-ui-v4-rustfmt-remediation.yml
+          fi
+
+          ruby <<'RUBY'
+          allowed = [
+            %r{\Aapps/hepta-native/.+\.rs\z},
+            %r{\Atools/hepta-ui-global-platform-source-closure/.+\.rs\z},
+            %r{\Atools/hepta-ui-windows-product-host-safety/.+\.rs\z},
+            %r{\Atools/hepta-ui-windows-product-host-device-drill/.+\.rs\z},
+            %r{\A\.github/workflows/hepta-ui-v4-final-gap-closure-v3\.yml\z},
+            %r{\A\.github/workflows/hepta-ui-v4-rustfmt-remediation\.yml\z},
+            %r{\A\.github/workflows/hepta-ui-v4-remaining-remediation\.yml\z}
+          ]
+          changed = `git diff --name-only`.lines(chomp: true)
+          unexpected = changed.reject { |path| allowed.any? { |rule| rule.match?(path) } }
+          abort "unexpected remediation paths: #{unexpected.join(', ')}" unless unexpected.empty?
+          abort "remediation produced no changes" if changed.empty?
+          RUBY
+
+          git diff --check
+          cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
+          cargo fmt --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml -- --check
+          cargo fmt --manifest-path tools/hepta-ui-windows-product-host-safety/Cargo.toml -- --check
+          cargo fmt --manifest-path tools/hepta-ui-windows-product-host-device-drill/Cargo.toml -- --check
+
+          git config user.name "hepta-ci"
+          git config user.email "hepta-ci@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(ui): close formatting, iOS harness, and Windows checkout blockers"
+          git push origin "HEAD:refs/heads/$HEPTA_BRANCH"
