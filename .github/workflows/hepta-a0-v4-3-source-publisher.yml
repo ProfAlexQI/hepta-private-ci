@@ -1,0 +1,725 @@
+name: Hepta A0 v4.3 governed source publisher
+
+on:
+  push:
+    branches:
+      - "automation/hepta-a0-v4-3-rv-fix-20260829-2249"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-a0-v4-3-source-publisher-20260829-2249
+  cancel-in-progress: false
+
+env:
+  REPOSITORY: ProfHepta/hepta-private-ci
+  TARGET_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  TARGET_HEAD: 0b80caff91010f40a79c795c20487ff9d773d229
+  TARGET_TREE: 9f67a4892a3474e7f424327ecc46d81a98421cc4
+  Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
+  Q0_TREE: ca455a9ef797cd95164c880c7b8faba80b305589
+  STAGING_BRANCH: staging/hepta-a0-v4-3-rv-fix-20260829-2249
+  REPORT_DIR: artifacts/hepta-a0-v4-3-source-publisher
+
+jobs:
+  publish:
+    name: Build one Q0-single-parent A0 replacement
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact predecessor candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.TARGET_HEAD }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Verify immutable input identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$REPOSITORY"
+          test "$(git rev-parse HEAD)" = "$TARGET_HEAD"
+          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+          test "$(git rev-parse HEAD^)" = "$Q0_HEAD"
+          remote_head="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
+          test "$remote_head" = "$TARGET_HEAD"
+
+      - name: Apply all current repository-controlled review dispositions
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export SOURCE_TIME
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          from datetime import datetime
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          from typing import Any
+
+          ROOT = Path.cwd()
+          PLAN = ROOT / "plans" / "hepta-intelligence"
+          SOURCE_TIME = os.environ["SOURCE_TIME"]
+          datetime.fromisoformat(SOURCE_TIME.replace("Z", "+00:00"))
+
+          CURRENT = PLAN / "HEPTA_INTELLIGENCE_CURRENT_PLAN.json"
+          DOCUMENT = PLAN / "HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json"
+          CAPABILITIES = PLAN / "HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json"
+          INTEGRATION = PLAN / "HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json"
+          EVIDENCE = PLAN / "HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json"
+          PR_STACK = PLAN / "HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json"
+          SPEC = PLAN / "HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md"
+          MASTER = PLAN / "HEPTA_INTELLIGENCE_MASTER_PLAN.md"
+          TRUTH = ROOT / "scripts" / "hepta-intelligence-current-truth.py"
+          VERIFY_DOC = ROOT / "scripts" / "verify-hepta-intelligence-document-authority.py"
+          VERIFY_MASTER = ROOT / "scripts" / "verify-hepta-intelligence-master-plan.py"
+          VERIFY_A0 = ROOT / "scripts" / "verify-hepta-intelligence-a0-authority.py"
+          EXEC_WORKFLOW = ROOT / ".github" / "workflows" / "hepta-intelligence-execution-spec.yml"
+          A0_WORKFLOW = ROOT / ".github" / "workflows" / "hepta-intelligence-a0-authority.yml"
+
+          SPEC_REL = "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md"
+          READ_ORDER = [
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
+              SPEC_REL,
+          ]
+          LIFECYCLE = [
+              "implemented",
+              "candidate_qualified",
+              "selected",
+              "wired",
+              "runtime_qualified",
+              "efficacy_proven",
+              "operator_accepted",
+              "promoted",
+          ]
+          CLASSIFICATIONS = [
+              "PASS",
+              "INTRODUCED_BY_CANDIDATE",
+              "PRE_EXISTING_ON_BASE",
+              "MERGE_INTERACTION",
+              "RUNNER_OR_PLATFORM_INFRA",
+              "CANCELLED_OR_SUPERSEDED",
+              "NOT_REQUIRED_BY_SELECTED_POLICY",
+              "UNKNOWN_FAIL_CLOSED",
+          ]
+          OLD_CLASSIFICATIONS = [
+              "FAIL_INTRODUCED_BY_CANDIDATE",
+              "FAIL_PRESENT_IN_BASE",
+              "INFRASTRUCTURE_BLOCKED",
+              "CANCELLED_SUPERSEDED",
+              "NOT_REQUIRED_FOR_SELECTED_TARGET",
+          ]
+
+          def load(path: Path) -> dict[str, Any]:
+              value = json.loads(path.read_text(encoding="utf-8"))
+              if not isinstance(value, dict):
+                  raise RuntimeError(f"{path} is not an object")
+              return value
+
+          def dump(path: Path, value: dict[str, Any]) -> None:
+              path.write_text(
+                  json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+                  encoding="utf-8",
+              )
+
+          def sha(path: Path) -> str:
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          def replace_all_strings(value: Any, replacements: dict[str, str]) -> Any:
+              if isinstance(value, dict):
+                  return {key: replace_all_strings(item, replacements) for key, item in value.items()}
+              if isinstance(value, list):
+                  return [replace_all_strings(item, replacements) for item in value]
+              if isinstance(value, str):
+                  for old, new in replacements.items():
+                      value = value.replace(old, new)
+                  return value
+              return value
+
+          # A0-RV-002: make the subordinate specification describe V4.3 exactly.
+          spec = SPEC.read_text(encoding="utf-8")
+          spec = replace_once(
+              spec,
+              "Canonical parent plan: `HEPTA_INTELLIGENCE_MASTER_PLAN_V4` version `4.2.0`",
+              "Canonical parent plan: `HEPTA_INTELLIGENCE_MASTER_PLAN_V4` version `4.3.0`",
+              "spec parent version",
+          )
+          spec = spec.replace(
+              "PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_2_SOURCE_ONLY",
+              "PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_3_SOURCE_ONLY",
+          )
+          spec = spec.replace("Master Plan V4.2.0", "Master Plan V4.3.0")
+          old_block = (
+              "Merge attribution uses `RepositoryCheckAttributionReceiptV1` and classifies each\n"
+              "required check as PASS, FAIL_INTRODUCED_BY_CANDIDATE, FAIL_PRESENT_IN_BASE,\n"
+              "INFRASTRUCTURE_BLOCKED, CANCELLED_SUPERSEDED or NOT_REQUIRED_FOR_SELECTED_TARGET.\n"
+              "Only PASS or independently policy-approved target exclusion can yield merge\n"
+              "eligibility."
+          )
+          new_block = (
+              "Merge attribution uses `RepositoryCheckAttributionReceiptV1` and classifies each\n"
+              "required check as PASS, INTRODUCED_BY_CANDIDATE, PRE_EXISTING_ON_BASE,\n"
+              "MERGE_INTERACTION, RUNNER_OR_PLATFORM_INFRA, CANCELLED_OR_SUPERSEDED,\n"
+              "NOT_REQUIRED_BY_SELECTED_POLICY or UNKNOWN_FAIL_CLOSED. UNKNOWN_FAIL_CLOSED\n"
+              "blocks merge. Only PASS or an independently policy-approved target exclusion can\n"
+              "yield merge eligibility."
+          )
+          spec = replace_once(spec, old_block, new_block, "classification block")
+          for stale in OLD_CLASSIFICATIONS:
+              if stale in spec:
+                  raise RuntimeError(f"stale specification classification remains: {stale}")
+          for required in CLASSIFICATIONS:
+              if required not in spec:
+                  raise RuntimeError(f"missing V4.3 classification: {required}")
+          SPEC.write_text(spec, encoding="utf-8")
+          spec_digest = sha(SPEC)
+
+          current = load(CURRENT)
+          current["generated_at_utc"] = SOURCE_TIME
+          current["session_bootstrap"]["read_order"] = READ_ORDER
+          current["current_truth"]["selected"] = False
+          current["source_snapshot_policy"]["future_dated_source_snapshot_allowed"] = False
+          current["source_snapshot_provenance"] = {
+              "basis": "SOURCE_PUBLISHER_WORKFLOW_OBSERVATION",
+              "observed_at_utc": SOURCE_TIME,
+              "predecessor_head": os.environ["TARGET_HEAD"],
+              "future_timestamp_rejected": True,
+          }
+          current["operational_execution"]["execution_spec_sha256"] = spec_digest
+          dump(CURRENT, current)
+
+          document = load(DOCUMENT)
+          document["generated_at_utc"] = SOURCE_TIME
+          document["registered_operational_documents"][0]["content_sha256"] = spec_digest
+          document["source_snapshot_policy"]["future_dated_source_snapshot_allowed"] = False
+          document["source_snapshot_policy"]["source_snapshot_observed_at_utc"] = SOURCE_TIME
+          dump(DOCUMENT, document)
+
+          integration = load(INTEGRATION)
+          integration = replace_all_strings(
+              integration,
+              {
+                  "HEPTA_INTELLIGENCE_MASTER_PLAN.md version 4.2.0":
+                      "HEPTA_INTELLIGENCE_MASTER_PLAN.md version 4.3.0",
+                  "Master Plan V4.2.0": "Master Plan V4.3.0",
+              },
+          )
+          integration["gap_closure_ledger"]["as_of_utc"] = SOURCE_TIME
+          for item in integration.get("operational_documents", []):
+              if item.get("path") == SPEC_REL:
+                  item["content_sha256"] = spec_digest
+          integration["source_snapshot_provenance"] = {
+              "basis": "SOURCE_PUBLISHER_WORKFLOW_OBSERVATION",
+              "observed_at_utc": SOURCE_TIME,
+              "predecessor_head": os.environ["TARGET_HEAD"],
+              "future_timestamp_rejected": True,
+          }
+          dump(INTEGRATION, integration)
+
+          capabilities = load(CAPABILITIES)
+          capabilities["as_of_utc"] = SOURCE_TIME
+          capabilities["lifecycle"] = LIFECYCLE
+          capabilities.setdefault("invariants", {})["selected_requires_candidate_qualified"] = True
+          capabilities["invariants"]["wired_requires_selected"] = True
+          for entry in capabilities["capabilities"]:
+              entry["selected"] = False
+          dump(CAPABILITIES, capabilities)
+
+          # Refresh exact specification digest in all allowed machine registries that bind it.
+          for path in (CURRENT, DOCUMENT, INTEGRATION, EVIDENCE, PR_STACK):
+              value = load(path)
+              value = replace_all_strings(
+                  value,
+                  {"7e4caaf7ea096e826617e993a669a68a3f05629297dfa13a645bd4e4afa4df01": spec_digest},
+              )
+              if "as_of_utc" in value and path in (EVIDENCE, PR_STACK):
+                  value["as_of_utc"] = SOURCE_TIME
+              dump(path, value)
+
+          # A0-RV-003/A0-RV-005/A0-RV-006: strengthen current-truth validation/output.
+          text = TRUTH.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              "import argparse\nimport hashlib\nimport json\nfrom pathlib import Path\nimport sys",
+              "import argparse\nfrom datetime import datetime\nimport hashlib\nimport json\nfrom pathlib import Path\nimport subprocess\nimport sys",
+              "truth imports",
+          )
+          text = replace_once(
+              text,
+              'EXPECTED_A0_BRANCH = "codex/hepta-intelligence-a0-authority-gap-closure-20260829"\n',
+              'EXPECTED_A0_BRANCH = "codex/hepta-intelligence-a0-authority-gap-closure-20260829"\n'
+              f'EXPECTED_READ_ORDER = {READ_ORDER!r}\n'
+              f'EXPECTED_LIFECYCLE = {LIFECYCLE!r}\n',
+              "truth constants",
+          )
+          text = replace_once(
+              text,
+              "def canonical(value: Any) -> bytes:\n",
+              "def parse_utc(value: Any, label: str) -> datetime:\n"
+              "    require(isinstance(value, str) and value.endswith(\"Z\"), f\"{label} timestamp\")\n"
+              "    try:\n"
+              "        parsed = datetime.fromisoformat(value.replace(\"Z\", \"+00:00\"))\n"
+              "    except ValueError as exc:\n"
+              "        fail(f\"{label} timestamp: {exc}\")\n"
+              "    return parsed\n\n\n"
+              "def canonical(value: Any) -> bytes:\n",
+              "truth timestamp helper",
+          )
+          text = replace_once(
+              text,
+              '    require(all_false(current.get("authority")), "current authority")\n',
+              '    require(all_false(current.get("authority")), "current authority")\n'
+              '    require(current.get("session_bootstrap", {}).get("read_order") == EXPECTED_READ_ORDER, "read order")\n'
+              '    require(current.get("current_truth", {}).get("selected") is False, "selection fabricated")\n'
+              '    snapshot_time = parse_utc(current.get("generated_at_utc"), "current")\n',
+              "truth current invariants",
+          )
+          text = replace_once(
+              text,
+              '    require(all_false(document.get("authority")), "document authority")\n',
+              '    require(all_false(document.get("authority")), "document authority")\n'
+              '    require(parse_utc(document.get("generated_at_utc"), "document") == snapshot_time, "document timestamp drift")\n',
+              "truth document timestamp",
+          )
+          text = replace_once(
+              text,
+              '    require(len(by_id) == len(entries), "duplicate capability")\n',
+              '    require(len(by_id) == len(entries), "duplicate capability")\n'
+              '    require(capabilities.get("lifecycle") == EXPECTED_LIFECYCLE, "capability lifecycle")\n'
+              '    for capability_id, entry in by_id.items():\n'
+              '        require(entry.get("selected") is False, f"{capability_id} selected")\n'
+              '        if entry.get("wired") is True:\n'
+              '            require(entry.get("selected") is True, f"{capability_id} wired without selection")\n',
+              "truth lifecycle",
+          )
+          text = replace_once(
+              text,
+              '    require(all_false(integration.get("authority")), "integration authority")\n',
+              '    require(all_false(integration.get("authority")), "integration authority")\n'
+              '    require(parse_utc(integration.get("gap_closure_ledger", {}).get("as_of_utc"), "integration") == snapshot_time, "integration timestamp drift")\n'
+              '    if (ROOT / ".git").exists():\n'
+              '        commit_time = datetime.fromisoformat(subprocess.check_output(["git", "show", "-s", "--format=%cI", "HEAD"], cwd=ROOT, text=True).strip())\n'
+              '        require(snapshot_time <= commit_time, "future-dated source snapshot")\n',
+              "truth integration timestamp",
+          )
+          text = replace_once(
+              text,
+              '        "active_phase": current["active_phase"],\n',
+              '        "active_phase": current["active_phase"],\n'
+              '        "capability_lifecycle": capabilities["lifecycle"],\n'
+              '        "selection": {"selected": False, "canonical_selection_receipt_present": False},\n',
+              "truth selection output",
+          )
+          TRUTH.write_text(text, encoding="utf-8")
+
+          # Document-authority verifier: exact eight-item read order and temporal/spec checks.
+          text = VERIFY_DOC.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              "import hashlib\nimport json\nfrom pathlib import Path\nimport sys",
+              "from datetime import datetime\nimport hashlib\nimport json\nfrom pathlib import Path\nimport subprocess\nimport sys",
+              "document verifier imports",
+          )
+          text = replace_once(
+              text,
+              'STATUS_V3 = PLAN / "HEPTA_INTELLIGENCE_EXECUTION_STATUS_V3.json"\n',
+              'STATUS_V3 = PLAN / "HEPTA_INTELLIGENCE_EXECUTION_STATUS_V3.json"\n'
+              f'EXPECTED_READ_ORDER = {READ_ORDER!r}\n'
+              f'EXPECTED_LIFECYCLE = {LIFECYCLE!r}\n',
+              "document verifier constants",
+          )
+          text = replace_once(
+              text,
+              '    document = load(DOCUMENT)\n',
+              '    document = load(DOCUMENT)\n    capabilities = load(CAPABILITIES)\n',
+              "document verifier capability load",
+          )
+          old_read = '''    require(current.get("session_bootstrap", {}).get("read_order") == [
+        CURRENT.relative_to(ROOT).as_posix(),
+        DOCUMENT.relative_to(ROOT).as_posix(),
+        EVIDENCE.relative_to(ROOT).as_posix(),
+        CAPABILITIES.relative_to(ROOT).as_posix(),
+        PR_STACK.relative_to(ROOT).as_posix(),
+        INTEGRATION.relative_to(ROOT).as_posix(),
+        MASTER.relative_to(ROOT).as_posix(),
+    ], "read order")
+'''
+          new_read = '    require(current.get("session_bootstrap", {}).get("read_order") == EXPECTED_READ_ORDER, "read order")\n'
+          text = replace_once(text, old_read, new_read, "document verifier read order")
+          text = replace_once(
+              text,
+              '    require(operational[0].get("content_sha256") == sha(SPEC), "spec digest")\n',
+              '    require(operational[0].get("content_sha256") == sha(SPEC), "spec digest")\n'
+              '    spec_text = SPEC.read_text(encoding="utf-8")\n'
+              '    require("Canonical parent plan: `HEPTA_INTELLIGENCE_MASTER_PLAN_V4` version `4.3.0`" in spec_text, "spec parent version")\n'
+              '    require("PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_3_SOURCE_ONLY" in spec_text, "spec master marker")\n'
+              f'    expected_classes = {CLASSIFICATIONS!r}\n'
+              '    require(all(item in spec_text for item in expected_classes), "spec classification vocabulary")\n'
+              f'    require(not any(item in spec_text for item in {OLD_CLASSIFICATIONS!r}), "stale spec classification vocabulary")\n'
+              '    require(capabilities.get("lifecycle") == EXPECTED_LIFECYCLE, "capability lifecycle")\n'
+              '    require(all(entry.get("selected") is False for entry in capabilities.get("capabilities", [])), "selected capability")\n'
+              '    snapshot = datetime.fromisoformat(current["generated_at_utc"].replace("Z", "+00:00"))\n'
+              '    require(document.get("generated_at_utc") == current.get("generated_at_utc"), "snapshot timestamp drift")\n'
+              '    if (ROOT / ".git").exists():\n'
+              '        commit_time = datetime.fromisoformat(subprocess.check_output(["git", "show", "-s", "--format=%cI", "HEAD"], cwd=ROOT, text=True).strip())\n'
+              '        require(snapshot <= commit_time, "future-dated source snapshot")\n',
+              "document verifier spec/lifecycle/timestamp",
+          )
+          VERIFY_DOC.write_text(text, encoding="utf-8")
+
+          # Master verifier: cross-contract exactness, selection lifecycle, ordered bootstrap and time.
+          text = VERIFY_MASTER.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              "import hashlib\nimport json\nfrom pathlib import Path\nimport sys",
+              "from datetime import datetime\nimport hashlib\nimport json\nfrom pathlib import Path\nimport subprocess\nimport sys",
+              "master verifier imports",
+          )
+          text = replace_once(
+              text,
+              'INTEGRATION = PLAN / "HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json"\n',
+              'INTEGRATION = PLAN / "HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json"\nCAPABILITIES = PLAN / "HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json"\n',
+              "master verifier capability constant",
+          )
+          text = replace_once(
+              text,
+              '    for path in [MASTER, SPEC, CURRENT, DOCUMENT, INTEGRATION, AGENTS, *HISTORICAL]:\n',
+              '    for path in [MASTER, SPEC, CURRENT, DOCUMENT, INTEGRATION, CAPABILITIES, AGENTS, *HISTORICAL]:\n',
+              "master verifier paths",
+          )
+          text = replace_once(
+              text,
+              '    integration = load(INTEGRATION)\n',
+              '    integration = load(INTEGRATION)\n    capabilities = load(CAPABILITIES)\n',
+              "master verifier capability load",
+          )
+          text = replace_once(
+              text,
+              '    require(operational.get("execution_spec_version") == "1.1.0", "spec version")\n',
+              '    require(operational.get("execution_spec_version") == "1.1.0", "spec version")\n'
+              f'    expected_read_order = {READ_ORDER!r}\n'
+              f'    expected_lifecycle = {LIFECYCLE!r}\n'
+              '    require(current.get("session_bootstrap", {}).get("read_order") == expected_read_order, "read order")\n'
+              '    require(capabilities.get("lifecycle") == expected_lifecycle, "capability lifecycle")\n'
+              '    require(all(entry.get("selected") is False for entry in capabilities.get("capabilities", [])), "selected capability")\n'
+              '    require(current.get("current_truth", {}).get("selected") is False, "current selection")\n',
+              "master verifier contracts",
+          )
+          text = replace_once(
+              text,
+              '    text = MASTER.read_text(encoding="utf-8")\n',
+              '    spec_text = SPEC.read_text(encoding="utf-8")\n'
+              '    require("Canonical parent plan: `HEPTA_INTELLIGENCE_MASTER_PLAN_V4` version `4.3.0`" in spec_text, "spec parent version")\n'
+              '    require("PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_3_SOURCE_ONLY" in spec_text, "spec master marker")\n'
+              f'    require(all(item in spec_text for item in {CLASSIFICATIONS!r}), "spec classification vocabulary")\n'
+              f'    require(not any(item in spec_text for item in {OLD_CLASSIFICATIONS!r}), "stale spec classification vocabulary")\n'
+              '    snapshot = datetime.fromisoformat(current["generated_at_utc"].replace("Z", "+00:00"))\n'
+              '    require(document.get("generated_at_utc") == current.get("generated_at_utc"), "document timestamp drift")\n'
+              '    require(integration.get("gap_closure_ledger", {}).get("as_of_utc") == current.get("generated_at_utc"), "integration timestamp drift")\n'
+              '    if (ROOT / ".git").exists():\n'
+              '        commit_time = datetime.fromisoformat(subprocess.check_output(["git", "show", "-s", "--format=%cI", "HEAD"], cwd=ROOT, text=True).strip())\n'
+              '        require(snapshot <= commit_time, "future-dated source snapshot")\n'
+              '    text = MASTER.read_text(encoding="utf-8")\n'
+              '    ordered_names = [Path(item).name for item in expected_read_order]\n'
+              '    positions = [text.find(item) for item in ordered_names]\n'
+              '    require(all(position >= 0 for position in positions) and positions == sorted(positions), "master read order")\n',
+              "master verifier semantic checks",
+          )
+          VERIFY_MASTER.write_text(text, encoding="utf-8")
+
+          # A0 verifier records and enforces the selected=false transition.
+          text = VERIFY_A0.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              '    require(\n        current.get("current_truth", {}).get("wired") is False,\n        "runtime wiring unexpectedly enabled",\n    )\n',
+              '    require(\n        current.get("current_truth", {}).get("selected") is False,\n        "canonical selection was fabricated",\n    )\n'
+              '    require(\n        current.get("current_truth", {}).get("wired") is False,\n        "runtime wiring unexpectedly enabled",\n    )\n',
+              "A0 selected current truth",
+          )
+          text = replace_once(
+              text,
+              '    require(len(by_id) == len(entries), "duplicate or malformed capability")\n',
+              '    require(len(by_id) == len(entries), "duplicate or malformed capability")\n'
+              f'    require(capabilities.get("lifecycle") == {LIFECYCLE!r}, "capability lifecycle drift")\n'
+              '    for capability_id, entry in by_id.items():\n'
+              '        require(entry.get("selected") is False, f"{capability_id} selected before canonical selection")\n',
+              "A0 lifecycle",
+          )
+          text = replace_once(
+              text,
+              '        "a0_candidate_qualified": False,\n',
+              '        "a0_candidate_qualified": False,\n        "selected": False,\n',
+              "A0 receipt selected",
+          )
+          VERIFY_A0.write_text(text, encoding="utf-8")
+
+          # Execution-spec workflow independently enforces the same contract.
+          text = EXEC_WORKFLOW.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              '          integration = load("HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json")\n',
+              '          integration = load("HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json")\n          capabilities = load("HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json")\n',
+              "execution workflow capability load",
+          )
+          text = replace_once(
+              text,
+              '              ("integration", integration.get("authority")),\n',
+              '              ("integration", integration.get("authority")),\n              ("capabilities", capabilities.get("authority")),\n',
+              "execution workflow capability authority",
+          )
+          text = replace_once(
+              text,
+              '          spec_text = spec.read_text(encoding="utf-8")\n',
+              '          require(current.get("session_bootstrap", {}).get("read_order") == '
+              f'{READ_ORDER!r}, "read order drift")\n'
+              f'          require(capabilities.get("lifecycle") == {LIFECYCLE!r}, "capability lifecycle drift")\n'
+              '          require(all(entry.get("selected") is False for entry in capabilities.get("capabilities", [])), "selected capability")\n'
+              '          spec_text = spec.read_text(encoding="utf-8")\n'
+              '          require("Canonical parent plan: `HEPTA_INTELLIGENCE_MASTER_PLAN_V4` version `4.3.0`" in spec_text, "spec parent version")\n'
+              '          require("PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_3_SOURCE_ONLY" in spec_text, "spec master marker")\n'
+              f'          require(all(item in spec_text for item in {CLASSIFICATIONS!r}), "spec classification vocabulary")\n'
+              f'          require(not any(item in spec_text for item in {OLD_CLASSIFICATIONS!r}), "stale spec classification vocabulary")\n',
+              "execution workflow semantic checks",
+          )
+          EXEC_WORKFLOW.write_text(text, encoding="utf-8")
+
+          # Harden archive verification and extraction in the A0 finalizer.
+          text = A0_WORKFLOW.read_text(encoding="utf-8")
+          old_extract = '''          curl -fsSL -L "${headers[@]}" "$artifact_url" \\
+            -o "$API_DIR/source-artifact.zip"
+          unzip -q "$API_DIR/source-artifact.zip" -d "$SOURCE_DIR"
+'''
+          new_extract = '''          curl -fsSL -L "${headers[@]}" "$artifact_url" \\
+            -o "$API_DIR/source-artifact.zip"
+          python3 - "$API_DIR/source-artifact.zip" "$SOURCE_DIR" "$API_DIR/artifacts.json" <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          from pathlib import Path, PurePosixPath
+          import re
+          import stat
+          import sys
+          import zipfile
+
+          archive = Path(sys.argv[1])
+          destination = Path(sys.argv[2])
+          artifacts = json.loads(Path(sys.argv[3]).read_text(encoding="utf-8")).get("artifacts", [])
+          matches = [item for item in artifacts if item.get("name") == os.environ["SOURCE_ARTIFACT_NAME"]]
+          if len(matches) != 1:
+              raise SystemExit("FAIL_HEPTA_INTELLIGENCE_A0_EXECUTABLE: source artifact metadata ambiguity")
+          expected = str(matches[0].get("digest", ""))
+          actual = "sha256:" + hashlib.sha256(archive.read_bytes()).hexdigest()
+          if expected != actual:
+              raise SystemExit("FAIL_HEPTA_INTELLIGENCE_A0_EXECUTABLE: source archive digest mismatch")
+
+          destination.mkdir(parents=True, exist_ok=True)
+          seen: set[str] = set()
+          with zipfile.ZipFile(archive) as bundle:
+              for info in bundle.infolist():
+                  raw = info.filename.replace("\\\\", "/")
+                  if not raw or raw.startswith("/") or re.match(r"^[A-Za-z]:", raw):
+                      raise SystemExit("FAIL_HEPTA_INTELLIGENCE_A0_EXECUTABLE: unsafe archive path")
+                  pure = PurePosixPath(raw)
+                  if any(part in {"", ".", ".."} for part in pure.parts):
+                      raise SystemExit("FAIL_HEPTA_INTELLIGENCE_A0_EXECUTABLE: unsafe archive component")
+                  normalized = pure.as_posix().rstrip("/")
+                  if normalized in seen:
+                      raise SystemExit("FAIL_HEPTA_INTELLIGENCE_A0_EXECUTABLE: duplicate archive target")
+                  seen.add(normalized)
+                  mode = info.external_attr >> 16
+                  if stat.S_ISLNK(mode):
+                      raise SystemExit("FAIL_HEPTA_INTELLIGENCE_A0_EXECUTABLE: archive symlink rejected")
+                  target = destination.joinpath(*pure.parts)
+                  if info.is_dir():
+                      target.mkdir(parents=True, exist_ok=True)
+                      continue
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  with bundle.open(info) as source, target.open("xb") as output:
+                      while chunk := source.read(1024 * 1024):
+                          output.write(chunk)
+          PY
+'''
+          text = replace_once(text, old_extract, new_extract, "A0 safe extraction")
+          text = replace_once(
+              text,
+              '                  "artifacts_metadata_sha256": sha256(api_dir / "artifacts.json"),\n',
+              '                  "artifacts_metadata_sha256": sha256(api_dir / "artifacts.json"),\n                  "source_artifact_archive_sha256": sha256(api_dir / "source-artifact.zip"),\n',
+              "A0 archive evidence",
+          )
+          text = replace_once(
+              text,
+              '          require(source_receipt.get("a0_candidate_qualified") is False, "source receipt self-qualified")\n',
+              '          require(source_receipt.get("a0_candidate_qualified") is False, "source receipt self-qualified")\n          require(source_receipt.get("selected") is False, "source receipt fabricated selection")\n',
+              "A0 source selected check",
+          )
+          text = replace_once(
+              text,
+              '          require(truth.get("q0", {}).get("runtime_capability_qualified") is False, "current truth crossed runtime boundary")\n',
+              '          require(truth.get("q0", {}).get("runtime_capability_qualified") is False, "current truth crossed runtime boundary")\n          require(truth.get("selection", {}).get("selected") is False, "current truth fabricated selection")\n',
+              "A0 truth selected check",
+          )
+          A0_WORKFLOW.write_text(text, encoding="utf-8")
+
+          # Final exact digest propagation after every source edit.
+          spec_digest = sha(SPEC)
+          current = load(CURRENT)
+          current["operational_execution"]["execution_spec_sha256"] = spec_digest
+          dump(CURRENT, current)
+          document = load(DOCUMENT)
+          document["registered_operational_documents"][0]["content_sha256"] = spec_digest
+          dump(DOCUMENT, document)
+          integration = load(INTEGRATION)
+          for item in integration.get("operational_documents", []):
+              if item.get("path") == SPEC_REL:
+                  item["content_sha256"] = spec_digest
+          dump(INTEGRATION, integration)
+
+          # Local deterministic sanity checks independent of Git history.
+          assert sha(MASTER) == load(CURRENT)["canonical"]["content_sha256"]
+          assert sha(MASTER) == load(DOCUMENT)["current_plan_authority"]["human_plan_content_sha256"]
+          assert sha(SPEC) == load(CURRENT)["operational_execution"]["execution_spec_sha256"]
+          assert load(CURRENT)["session_bootstrap"]["read_order"] == READ_ORDER
+          assert load(CAPABILITIES)["lifecycle"] == LIFECYCLE
+          assert all(item["selected"] is False for item in load(CAPABILITIES)["capabilities"])
+          assert load(CURRENT)["generated_at_utc"] == SOURCE_TIME
+          assert load(DOCUMENT)["generated_at_utc"] == SOURCE_TIME
+          assert load(INTEGRATION)["gap_closure_ledger"]["as_of_utc"] == SOURCE_TIME
+          PY
+
+          git config user.name "Hepta governed source publisher"
+          git config user.email "hepta-source-publisher@users.noreply.github.com"
+          git add \
+            .github/workflows/hepta-intelligence-a0-authority.yml \
+            .github/workflows/hepta-intelligence-execution-spec.yml \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+          tree="$(git write-tree)"
+          message="fix(intelligence): close A0 v4.3 review findings
+
+Align the subordinate specification with V4.3, establish one eight-item bootstrap order, add the selected lifecycle state, reject future-dated source snapshots, and bind safe artifact archive verification/extraction. Preserve the exact 17-path A0 source surface and every negative authority."
+          commit="$(printf '%s\n' "$message" | git commit-tree "$tree" -p "$Q0_HEAD")"
+          git reset --hard "$commit"
+
+          python3 -m py_compile \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-document-authority.py
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          env GITHUB_SHA="$commit" GITHUB_HEAD_REF="$TARGET_BRANCH" GITHUB_REF_NAME="$TARGET_BRANCH" \
+            python3 scripts/verify-hepta-intelligence-a0-authority.py > /tmp/a0-source-receipt.json
+          git diff --check "$Q0_HEAD" "$commit"
+          python3 - "$Q0_HEAD" "$commit" <<'PY'
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          base, head = sys.argv[1:]
+          changed = sorted(subprocess.check_output(
+              ["git", "diff", "--name-only", base, head], text=True
+          ).splitlines())
+          expected = json.loads(Path("plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json").read_text())["allowed_changed_paths"]
+          assert changed == expected, (changed, expected)
+          assert len(changed) == 17
+          PY
+
+          mkdir -p "$REPORT_DIR"
+          python3 - "$commit" "$tree" "$SOURCE_TIME" "$REPORT_DIR/candidate.json" <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          commit, tree, source_time, output = sys.argv[1:]
+          root = Path.cwd()
+          spec = root / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md"
+          master = root / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md"
+          value = {
+              "schema": "hepta_a0_v4_3_source_replacement_v1",
+              "status": "PASS_SOURCE_PUBLISHER_STAGING",
+              "repository": os.environ["REPOSITORY"],
+              "candidate": {
+                  "branch": os.environ["TARGET_BRANCH"],
+                  "head": commit,
+                  "tree": tree,
+                  "parent": os.environ["Q0_HEAD"],
+              },
+              "source_snapshot_observed_at_utc": source_time,
+              "master_sha256": hashlib.sha256(master.read_bytes()).hexdigest(),
+              "execution_spec_sha256": hashlib.sha256(spec.read_bytes()).hexdigest(),
+              "resolved_findings": [
+                  "A0-RV-002_V4_3_SPEC_ALIGNMENT",
+                  "A0-RV-003_EIGHT_ITEM_BOOTSTRAP_ORDER",
+                  "A0-RV-005_NON_FUTURE_SOURCE_SNAPSHOT",
+                  "A0-RV-006_SELECTED_LIFECYCLE",
+                  "A0-NB-ARCHIVE_DIGEST_AND_SAFE_EXTRACTION",
+              ],
+              "source_writeback_to_canonical_branch": False,
+              "authority": {
+                  "runtime_wired": False,
+                  "production_authority": False,
+                  "operator_acceptance": False,
+                  "promotion": False,
+                  "release_authority": False,
+                  "callers_ratchet": False,
+              },
+          }
+          value["receipt_binding_sha256"] = hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+          Path(output).write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
+          PY
+          cp /tmp/a0-source-receipt.json "$REPORT_DIR/a0-source-receipt.json"
+          printf '%s\n' "$commit" > "$REPORT_DIR/commit.txt"
+          printf '%s\n' "$tree" > "$REPORT_DIR/tree.txt"
+          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+          printf 'tree=%s\n' "$tree" >> "$GITHUB_OUTPUT"
+
+      - name: Publish immutable staging ref only
+        shell: bash
+        run: |
+          set -euo pipefail
+          commit="${{ steps.build.outputs.commit }}"
+          remote_head="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
+          test "$remote_head" = "$TARGET_HEAD"
+          git push --force origin "$commit:refs/heads/$STAGING_BRANCH"
+
+      - name: Upload source-publisher receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-a0-v4-3-source-publisher-${{ steps.build.outputs.commit }}
+          path: artifacts/hepta-a0-v4-3-source-publisher/**
+          if-no-files-found: error
+          retention-days: 30
