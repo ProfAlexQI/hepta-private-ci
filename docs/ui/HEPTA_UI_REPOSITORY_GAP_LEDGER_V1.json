@@ -5,7 +5,7 @@
     "tree": "f52543dc64b1c831e261bb9b8ac07b6e363d231d",
     "branch": "codex/ui-v5-plan-and-repo-gap-closure-20260829"
   },
-  "status": "IMPLEMENTATION_COMMITTED_HOSTED_QUALIFICATION_REQUIRED",
+  "status": "DRAFT_PR_OPENED_HOSTED_QUALIFICATION_REQUESTED",
   "bootstrapValidation": {
     "runId": 33264125711,
     "jobId": 99131005577,
@@ -15,11 +15,23 @@
     "nonemptySuccessfulSteps": true,
     "localPatchValidationPassed": true
   },
+  "qualificationRequest": {
+    "pullRequest": 78,
+    "openedAt": "2026-08-29T17:09:35Z",
+    "requestedFromHead": {
+      "commit": "762449926187605c61fd0a97908b1e01ad9d6177",
+      "tree": "12c2a7e30f5dcd7cb13d58ad0e55561c04b404d9"
+    },
+    "exactHeadRequired": true,
+    "assignedRunnerRequired": true,
+    "nonemptyStepsRequired": true,
+    "workflowRunsObservedAtRequest": 0
+  },
   "gaps": [
     {
       "id": "REPO-UI-001",
       "title": "contract fixture missing frozen Git objects",
-      "state": "COMMITTED_AWAITING_HOSTED_QUALIFICATION",
+      "state": "PR_OPENED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
       "paths": [
         "scripts/hepta-ci-baseline-contract"
       ]
@@ -27,7 +39,7 @@
     {
       "id": "REPO-UI-002",
       "title": "DWM Windows job executes Bash continuation in PowerShell",
-      "state": "COMMITTED_AWAITING_HOSTED_QUALIFICATION",
+      "state": "PR_OPENED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
       "paths": [
         ".github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml"
       ]
@@ -35,7 +47,7 @@
     {
       "id": "REPO-UI-003",
       "title": "aggregate Windows job executes Bash continuation in PowerShell",
-      "state": "COMMITTED_AWAITING_HOSTED_QUALIFICATION",
+      "state": "PR_OPENED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
       "paths": [
         ".github/workflows/hepta-ui-v4-windows-material-profile-aggregate.yml"
       ]
@@ -43,7 +55,7 @@
     {
       "id": "REPO-UI-004",
       "title": "patched Makepad CxOsOp Debug match is non-exhaustive",
-      "state": "COMMITTED_AWAITING_HOSTED_QUALIFICATION",
+      "state": "PR_OPENED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
       "paths": [
         "scripts/hepta-ui-v4-apply-makepad-windows-ack-patch",
         "scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch"
@@ -52,7 +64,7 @@
     {
       "id": "REPO-UI-005",
       "title": "pipefail gate rejects set -euo pipefail",
-      "state": "COMMITTED_AWAITING_HOSTED_QUALIFICATION",
+      "state": "PR_OPENED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
       "paths": [
         "scripts/hepta-ui-v4-exact-candidate-materialization-gate"
       ]
@@ -60,7 +72,7 @@
     {
       "id": "REPO-UI-006",
       "title": "rmcp 1.8 non_exhaustive constructors",
-      "state": "COMMITTED_AWAITING_HOSTED_QUALIFICATION",
+      "state": "PR_OPENED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
       "paths": [
         "codex-rs/memories/mcp/src/server.rs",
         "codex-rs/tools/src/mcp_tool_tests.rs",
@@ -70,7 +82,7 @@
     {
       "id": "REPO-UI-007",
       "title": "Windows Bazel Rust/test compatibility regressions",
-      "state": "COMMITTED_AWAITING_HOSTED_QUALIFICATION",
+      "state": "PR_OPENED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
       "paths": [
         "codex-rs/analytics/src/analytics_client_tests.rs",
         "codex-rs/app-server-protocol/src/protocol/v2/turn.rs",
@@ -82,6 +94,6 @@
       ]
     }
   ],
-  "closureRule": "Every gap requires a committed exact-head diff and a successful nonempty assigned-runner result; local source transformation is not qualification.",
+  "closureRule": "Every gap requires a committed exact-head diff and a successful nonempty assigned-runner result; local source transformation, PR creation, queued jobs, skipped jobs, or runnerless jobs are not qualification.",
   "sourceControllableGapsClosed": false
 }
