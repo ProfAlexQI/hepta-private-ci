@@ -1,0 +1,280 @@
+{
+  "schema": "hepta.architecture-gap-ledger.v5",
+  "planId": "HEPTA-ARCHITECTURE-CONVERGENCE-V5",
+  "planPath": "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md",
+  "generatedAt": "2026-08-30",
+  "repository": "ProfHepta/hepta-private-ci",
+  "stackParent": {
+    "commit": "f69e5a4a5068a2657f1470da43c26b1410d53c6f",
+    "tree": "532307507d2b02a479d3c76042d42cc948b499df",
+    "pr": 83,
+    "state": "source_implemented_executable_qualification_pending"
+  },
+  "candidateIdentityPolicy": {
+    "sourceHead": "workflow_emitted_exact_git_identity",
+    "mergeCandidate": "workflow_emitted_github_merge_identity",
+    "queuedIsEvidence": false,
+    "emptyStepsAreEvidence": false,
+    "sourceVerifierIsExecutableEvidence": false
+  },
+  "overallState": "source_execution_in_progress_external_gates_open",
+  "currentPackage": "P0.7b/B0_verified_use_kernel",
+  "allGapsClosed": false,
+  "packages": [
+    {
+      "id": "P0.7a_signed_runtime_bootstrap_closure",
+      "order": 1,
+      "state": "source_implemented_executable_qualification_pending",
+      "activationBlockedBy": [
+        "exact_head_nonempty_qualification",
+        "merge_candidate_nonempty_qualification",
+        "independent_review"
+      ],
+      "repositoryControlled": true,
+      "ownedPaths": [
+        "codex-rs/hepta-contracts/src/runtime_bootstrap.rs",
+        "codex-rs/hepta-contracts/src/runtime_bootstrap_tests.rs",
+        "codex-rs/hepta-supervisor/src/agent_runtime_bootstrap.rs",
+        "codex-rs/hepta-agentd/src/runtime_bootstrap.rs",
+        ".github/workflows/hepta-p0-7a-runtime-bootstrap.yml",
+        ".github/workflows/hepta-p0-7a-direct-qualification-arm.yml"
+      ],
+      "exitCriteria": [
+        "rust_1_95_format_pass",
+        "cargo_bazel_lock_coherence",
+        "focused_and_package_tests_pass",
+        "all_target_check_pass",
+        "strict_clippy_pass",
+        "architecture_verifier_pass",
+        "clean_worktree_pass",
+        "exact_head_and_merge_candidate_nonempty"
+      ]
+    },
+    {
+      "id": "P0.7b/B0_verified_use_kernel",
+      "order": 2,
+      "state": "source_in_progress",
+      "activationBlockedBy": [
+        "P0.7a_signed_runtime_bootstrap_closure.qualified_exact"
+      ],
+      "repositoryControlled": true,
+      "ownedPaths": [
+        "codex-rs/hepta-contracts/src/verified_use.rs",
+        "codex-rs/hepta-contracts/src/verified_use_tests.rs",
+        "codex-rs/hepta-contracts/src/lib.rs",
+        "docs/architecture/HEPTA_P0_7B_VERIFIED_USE_DELIVERY_CONTRACT_V1.md",
+        "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md",
+        "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json",
+        "docs/architecture/HEPTA_CURRENT_PLAN.json",
+        "scripts/verify-hepta-architecture-plan-v5.py",
+        ".github/workflows/hepta-architecture-v5-b0-verified-use.yml"
+      ],
+      "requiredFacts": [
+        "closed_physical_capability_kind",
+        "kind_to_authority_action_mapping",
+        "nonzero_revocation_revision",
+        "bounded_verification_window",
+        "final_operation_and_payload_binding",
+        "runtime_context_binding",
+        "current_revision_verifier",
+        "nonclone_nonserializable_private_token",
+        "consume_by_value",
+        "final_boundary_recheck",
+        "digest_bound_witness",
+        "no_product_caller_change"
+      ],
+      "exitCriteria": [
+        "source_verifier_pass",
+        "rust_1_95_format_pass",
+        "focused_verified_use_tests_pass",
+        "codex_hepta_contracts_tests_pass",
+        "locked_all_target_check_pass",
+        "strict_clippy_pass",
+        "clean_worktree_pass",
+        "exact_head_nonempty_qualification",
+        "merge_candidate_nonempty_qualification",
+        "independent_review"
+      ]
+    },
+    {
+      "id": "P0.7b/B1_model_provider_boundaries",
+      "order": 3,
+      "state": "open",
+      "blockedBy": ["P0.7b/B0_verified_use_kernel.qualified_exact"],
+      "repositoryControlled": true
+    },
+    {
+      "id": "P0.7b/B2_tool_network_filesystem_boundaries",
+      "order": 4,
+      "state": "open",
+      "blockedBy": ["P0.7b/B0_verified_use_kernel.qualified_exact"],
+      "repositoryControlled": true
+    },
+    {
+      "id": "P0.7b/B3_secret_matrix_fleet_operator_release_boundaries",
+      "order": 5,
+      "state": "open",
+      "blockedBy": ["P0.7b/B0_verified_use_kernel.qualified_exact"],
+      "repositoryControlled": true
+    },
+    {
+      "id": "P0.7b/B4_negative_callsite_proof",
+      "order": 6,
+      "state": "open",
+      "blockedBy": [
+        "P0.7b/B1_model_provider_boundaries.qualified_exact",
+        "P0.7b/B2_tool_network_filesystem_boundaries.qualified_exact",
+        "P0.7b/B3_secret_matrix_fleet_operator_release_boundaries.qualified_exact"
+      ],
+      "repositoryControlled": true
+    },
+    {
+      "id": "P0.7c_memory_bounded_context_extraction",
+      "order": 7,
+      "state": "open",
+      "blockedBy": ["P0.7b/B4_negative_callsite_proof.qualified_exact"],
+      "repositoryControlled": true
+    },
+    {
+      "id": "P0.7d_common_durable_fault_matrix",
+      "order": 8,
+      "state": "open",
+      "blockedBy": ["P0.7c_memory_bounded_context_extraction.source_implemented"],
+      "repositoryControlled": true,
+      "requiredRows": [
+        "F01_before_intent",
+        "F02_after_intent_before_commit",
+        "F03_after_commit_before_return",
+        "F04_before_outbox",
+        "F05_after_outbox_before_commit",
+        "F06_after_outbox_commit_before_wakeup",
+        "F07_before_delivery_claim",
+        "F08_after_claim_before_send",
+        "F09_after_send_before_ack",
+        "F10_after_destination_commit_before_ack",
+        "F11_after_ack_before_source_settlement",
+        "F12_stale_generation_callback",
+        "F13_permission_loss",
+        "F14_filesystem_full",
+        "F15_corruption",
+        "F16_wal_or_identity_drift",
+        "F17_backup_restore",
+        "F18_process_kill_reopen"
+      ]
+    },
+    {
+      "id": "P0.7e_dependency_inversion_and_wire_isolation",
+      "order": 9,
+      "state": "open",
+      "blockedBy": [
+        "P0.7b/B4_negative_callsite_proof.qualified_exact",
+        "P0.7c_memory_bounded_context_extraction.interfaces_frozen"
+      ],
+      "repositoryControlled": true
+    },
+    {
+      "id": "P0.8a_ast_authority_caller_ratchet",
+      "order": 10,
+      "state": "open",
+      "blockedBy": ["P0.7e_dependency_inversion_and_wire_isolation.qualified_exact"],
+      "repositoryControlled": true
+    },
+    {
+      "id": "P0.8b_runtime_instance_readiness_projection",
+      "order": 11,
+      "state": "open",
+      "blockedBy": ["P0.8a_ast_authority_caller_ratchet.qualified_exact"],
+      "repositoryControlled": true
+    },
+    {
+      "id": "P0.8c_resource_budget_enforcement",
+      "order": 12,
+      "state": "open",
+      "blockedBy": ["P0.8b_runtime_instance_readiness_projection.qualified_exact"],
+      "repositoryControlled": true
+    },
+    {
+      "id": "P0.8d_real_process_vertical_slice",
+      "order": 13,
+      "state": "open",
+      "blockedBy": [
+        "P0.7d_common_durable_fault_matrix.qualified_exact",
+        "P0.8c_resource_budget_enforcement.qualified_exact"
+      ],
+      "repositoryControlled": true
+    },
+    {
+      "id": "P0.9_external_and_administrative_gates",
+      "order": 14,
+      "state": "open",
+      "blockedBy": ["P0.8d_real_process_vertical_slice.qualified_exact"],
+      "repositoryControlled": false
+    }
+  ],
+  "externalGates": [
+    {
+      "id": "github_ruleset_enforcement",
+      "state": "open",
+      "issuer": "repository_administrator"
+    },
+    {
+      "id": "independent_exact_candidate_review",
+      "state": "open",
+      "issuer": "independent_reviewer"
+    },
+    {
+      "id": "physical_platform_and_device_evidence",
+      "state": "open",
+      "issuer": "qualified_physical_operator"
+    },
+    {
+      "id": "real_model_provider_and_corpus_evidence",
+      "state": "open",
+      "issuer": "independent_evaluation_lane"
+    },
+    {
+      "id": "human_accessibility_visual_acceptance",
+      "state": "open",
+      "issuer": "human_acceptance_lane"
+    },
+    {
+      "id": "candidate_bound_operator_acceptance",
+      "state": "open",
+      "issuer": "operator"
+    },
+    {
+      "id": "production_trust_root_ceremony",
+      "state": "open",
+      "issuer": "security_operator"
+    },
+    {
+      "id": "promotion_and_release_decision",
+      "state": "open",
+      "issuer": "release_authority"
+    }
+  ],
+  "authorityFlags": {
+    "runtimeAuthority": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalFilesystemMutation": false,
+    "secretOperation": false,
+    "matrixSend": false,
+    "fleetMutation": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  },
+  "validStopOutcomes": [
+    "PACKAGE_CLOSED_CANDIDATE",
+    "BASE_DRIFT",
+    "BLOCKED_UPSTREAM",
+    "BLOCKED_EXTERNAL",
+    "STOP_CONDITION",
+    "RESUME_REQUIRED"
+  ]
+}
