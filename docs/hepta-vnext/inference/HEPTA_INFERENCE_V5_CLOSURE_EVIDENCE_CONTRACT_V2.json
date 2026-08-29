@@ -1,0 +1,230 @@
+{
+  "schema": "hepta.inference.v5.closure_evidence_contract.v2",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V5",
+  "plan_version": "5.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "source_binding": {
+    "mode": "tracked contract binds observed parent; exact head/tree are emitted by CI",
+    "observed_parent_commit": "af3ac477f9af562590bb985e04d9ecf5f86281d1"
+  },
+  "required_crates": [
+    "codex-hepta-infer-core",
+    "codex-hepta-infer-client",
+    "codex-hepta-inferd",
+    "codex-hepta-infer-worker-host",
+    "codex-hepta-agentd"
+  ],
+  "required_repository_paths": [
+    "codex-rs/hepta-infer-core/Cargo.toml",
+    "codex-rs/hepta-infer-client/Cargo.toml",
+    "codex-rs/hepta-inferd/Cargo.toml",
+    "codex-rs/hepta-infer-worker-host/Cargo.toml",
+    "codex-rs/hepta-agentd/Cargo.toml",
+    "docs/hepta-vnext/inference/HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V5.md",
+    "docs/hepta-vnext/inference/HEPTA_INFERENCE_CURRENT_PLAN_V2.json",
+    "docs/hepta-vnext/inference/HEPTA_INFERENCE_CURRENT_STATUS_V5.json",
+    "docs/hepta-vnext/inference/HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V4.json",
+    "docs/hepta-vnext/inference/HEPTA_INFERENCE_STAGE_MATRIX_V6.json",
+    "docs/hepta-vnext/inference/HEPTA_INFERENCE_BLOCKER_LEDGER_V3.json",
+    "docs/hepta-vnext/inference/HEPTA_INFERENCE_V5_CLOSURE_EVIDENCE_CONTRACT_V2.json",
+    "scripts/hepta-inference-v5-source-truth.py"
+  ],
+  "source_only_required_platforms": [
+    {
+      "name": "linux-x64",
+      "runner": "ubuntu-24.04",
+      "required": true
+    },
+    {
+      "name": "linux-arm64",
+      "runner": "ubuntu-24.04-arm",
+      "required": true
+    },
+    {
+      "name": "macos-intel",
+      "runner": "macos-15-intel",
+      "required": true
+    }
+  ],
+  "source_only_gates": [
+    "clean exact checkout",
+    "V5 source truth",
+    "Cargo metadata locked",
+    "Bazel lock check",
+    "Rust 1.95 formatting",
+    "locked all-target check",
+    "locked all-target tests with deterministic thread setting",
+    "strict all-target no-deps Clippy",
+    "daemon hermetic end-to-end",
+    "agentd shadow hermetic end-to-end",
+    "aggregate rejects non-success, skipped, cancelled and empty runner jobs"
+  ],
+  "mandatory_source_receipt_fields": [
+    "schema",
+    "head",
+    "tree",
+    "parent",
+    "workflow_run_id",
+    "job_id",
+    "runner_name",
+    "runner_os",
+    "runner_arch",
+    "rustc",
+    "cargo",
+    "cargo_lock_digest",
+    "bazel_lock_digest",
+    "source_truth_digest",
+    "fmt",
+    "check",
+    "test",
+    "clippy",
+    "daemon_integration",
+    "agentd_shadow_integration",
+    "qualification_only",
+    "real_provider_executed",
+    "real_native_model_executed",
+    "hardware_qualified",
+    "product_default_route_changed",
+    "operator_accepted",
+    "promoted",
+    "released"
+  ],
+  "source_claim_rules": {
+    "component_present_is_not_integrated": true,
+    "integrated_is_not_qualified": true,
+    "fixture_is_not_real_software": true,
+    "cross_compile_is_not_exact_device": true,
+    "queued_is_not_executed": true,
+    "steps_empty_is_not_pass": true,
+    "runner_id_zero_is_not_pass": true,
+    "optional_skipped_is_not_pass": true,
+    "tracked_json_cannot_self_bind_unknown_final_commit": true
+  },
+  "prompt_input_lease_contract": {
+    "public_wire_raw_prompt": false,
+    "one_time": true,
+    "length_and_sha256_verified": true,
+    "complete_request_fence_required": true,
+    "cross_request_reuse_denied": true,
+    "terminal_cleanup_exactly_once": true,
+    "raw_prompt_log": false,
+    "raw_prompt_receipt": false,
+    "raw_prompt_persistence": false
+  },
+  "private_control_contract": {
+    "public_privileged_messages": false,
+    "os_csprng_secrets": true,
+    "worker_handshake": true,
+    "worker_pid_session_generation_fence": true,
+    "one_time_request_grant": true,
+    "per_event_authentication": true,
+    "operator_separate_and_disabled_by_default": true,
+    "secret_debug": false,
+    "secret_serialization": false,
+    "secret_persistence": false
+  },
+  "cancel_contract": {
+    "one_total_deadline": true,
+    "transport_disconnect_is_ack": false,
+    "malformed_response_is_ack": false,
+    "alive_child_killed_on_failure": true,
+    "wait_reap_bounded": true,
+    "forced_worker_termination_matches_actual_kill": true,
+    "generation_rollover": true,
+    "stale_events_denied": true
+  },
+  "durability_contract": {
+    "scheduler_journal": "temp-sync-rename-parent-sync",
+    "terminal_receipt": "temp-sync-rename-parent-sync",
+    "tombstone": "temp-sync-rename-parent-sync-before-delete",
+    "strict_store_namespace": true,
+    "unknown_entry_fail_closed": true,
+    "nonregular_entry_fail_closed": true,
+    "bounded_indexes": true,
+    "request_id_replay_denied": true
+  },
+  "provider_source_contract": {
+    "literal_loopback_only": true,
+    "proxy_environment_ignored": true,
+    "redirects_denied": true,
+    "canonical_model_digest": true,
+    "duplicate_model_identity_denied": true,
+    "one_total_deadline": true,
+    "prompt_lease_required": true,
+    "controller_computes_output_chain": true,
+    "cancel_capability_required_before_dispatch": true,
+    "automatic_install": false,
+    "model_switch": false,
+    "remote_fallback": false
+  },
+  "native_source_contract": {
+    "isolated_child_process": true,
+    "shared_private_protocol": true,
+    "verified_immutable_load_handle": true,
+    "required_operations": [
+      "load",
+      "warm",
+      "submit",
+      "poll",
+      "cancel",
+      "drain",
+      "unload",
+      "health",
+      "stats"
+    ],
+    "fixed_runtime_model_identity": true,
+    "fixture_and_real_receipts_distinct": true,
+    "remote_fallback": false
+  },
+  "product_shadow_contract": {
+    "owner": "codex-hepta-agentd",
+    "qualification_only": true,
+    "enabled_by_default": false,
+    "kill_switch_engaged_by_default": true,
+    "kill_switch_operator_controlled": true,
+    "primary_output_authoritative": true,
+    "shadow_output_authoritative": false,
+    "product_default_route_changed": false,
+    "timeout_cancels_shadow": true,
+    "memory_write": false,
+    "shared_kg_write": false,
+    "effect_write": false,
+    "route_write": false,
+    "fleet_write": false
+  },
+  "external_evidence": {
+    "real_provider_fixed_tuple": {
+      "required_for_all_gaps_closed": true,
+      "source_fixture_sufficient": false
+    },
+    "real_native_exact_device": {
+      "required_for_all_gaps_closed": true,
+      "source_fixture_sufficient": false
+    },
+    "performance_privacy_rollback": {
+      "required_for_all_gaps_closed": true,
+      "source_fixture_sufficient": false
+    },
+    "independent_operator_acceptance": {
+      "required_for_all_gaps_closed": true,
+      "implementation_author_may_self_attest": false
+    }
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
