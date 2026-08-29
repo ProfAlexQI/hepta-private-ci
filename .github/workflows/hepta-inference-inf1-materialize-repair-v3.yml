@@ -1,0 +1,193 @@
+name: Hepta inference INF-1 materialize and repair v3
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf1-source-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf1-materialize-repair-v3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-inf1-materialize-repair-v3
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    env:
+      BRANCH: codex/hepta-inference-inf1-source-20260829
+      SELF: .github/workflows/hepta-inference-inf1-materialize-repair-v3.yml
+      EXPECTED_PARENT: 6117ab2cdc51cea6fc3d8ebfdbb474f7c7750ac1
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+
+      - name: Verify exact one-file trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          test -z "$(git status --porcelain)"
+
+      - name: Materialize digest-bound source and apply connection isolation repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-materialize.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          root = Path('.')
+          lib = root / 'codex-rs/hepta-inferd/src/lib.rs'
+          text = lib.read_text()
+          text = text.replace(
+              'use tokio::task::JoinSet;\n\n',
+              'use tokio::task::JoinSet;\n\n#[derive(Debug)]\nenum ConnectionTaskError {\n    Peer,\n    Infrastructure(io::Error),\n}\n\n',
+              1,
+          )
+          text = text.replace(
+              '                let stream = accepted?;\n                stream.ensure_current_user_peer()?;\n',
+              '                let stream = accepted?;\n                if stream.ensure_current_user_peer().is_err() {\n                    continue;\n                }\n',
+              1,
+          )
+          text = text.replace(
+              '                    Some(Ok(Ok(()))) => {}\n                    Some(Ok(Err(error))) => return Err(error),\n',
+              '                    Some(Ok(Ok(()))) => {}\n                    Some(Ok(Err(ConnectionTaskError::Peer))) => {}\n                    Some(Ok(Err(ConnectionTaskError::Infrastructure(error)))) => return Err(error),\n',
+              1,
+          )
+          text = text.replace(
+              ') -> io::Result<()> {\n    let request = read_message(&mut stream, max_frame_bytes).await?;\n',
+              ') -> Result<(), ConnectionTaskError> {\n    let request = read_message(&mut stream, max_frame_bytes)\n        .await\n        .map_err(|_| ConnectionTaskError::Peer)?;\n',
+              1,
+          )
+          text = text.replace(
+              '        let now_unix_ms = unix_time_ms()?;\n',
+              '        let now_unix_ms = unix_time_ms().map_err(ConnectionTaskError::Infrastructure)?;\n',
+              1,
+          )
+          text = text.replace(
+              '    persist_terminal_responses(&receipt_store, &response).await?;\n    write_message(&mut stream, &response, max_frame_bytes).await?;\n    stream.shutdown().await\n',
+              '    persist_terminal_responses(&receipt_store, &response)\n        .await\n        .map_err(ConnectionTaskError::Infrastructure)?;\n    write_message(&mut stream, &response, max_frame_bytes)\n        .await\n        .map_err(|_| ConnectionTaskError::Peer)?;\n    stream.shutdown().await.map_err(|_| ConnectionTaskError::Peer)\n',
+              1,
+          )
+          text = text.replace('            use std::os::unix::fs::OpenOptionsExt;\n', '')
+          lib.write_text(text)
+
+          tests = root / 'codex-rs/hepta-inferd/src/tests.rs'
+          value = tests.read_text()
+          value = value.replace('use tokio::time::sleep;\n', 'use tokio::time::sleep;\nuse tokio::time::timeout;\n', 1)
+          value = value.replace('            match task.await {\n', '            match must(timeout(Duration::from_secs(5), task).await) {\n', 1)
+          value = value.replace(
+              '    let error = match serve_with_shutdown(harness.config.clone(), async {\n        let _ = receiver.await;\n    })\n    .await\n    {\n',
+              '    let second = timeout(\n        Duration::from_secs(5),\n        serve_with_shutdown(harness.config.clone(), async {\n            let _ = receiver.await;\n        }),\n    )\n    .await;\n    let error = match must(second) {\n',
+              1,
+          )
+          value = value.replace('    match task.await {\n', '    match must(timeout(Duration::from_secs(5), task).await) {\n', 1)
+          value += '''\n#[tokio::test]\nasync fn truncated_connection_is_connection_local() {\n    let mut harness = Harness::start().await;\n    let stream = must(UnixStream::connect(&harness.config.socket_path).await);\n    drop(stream);\n    sleep(Duration::from_millis(25)).await;\n    assert_eq!(\n        exchange(&harness.config.socket_path, ClientMessage::Ping { nonce: 19 }).await,\n        ServerMessage::Pong { nonce: 19 }\n    );\n    harness.stop().await;\n}\n'''
+          tests.write_text(value)
+
+          gate = root / 'scripts/hepta-inference-inf1-source-gate.py'
+          value = gate.read_text()
+          value = value.replace(
+              '        "prepare_private_socket_directory",\n',
+              '        "prepare_private_socket_directory",\n        "ConnectionTaskError::Peer",\n        "ConnectionTaskError::Infrastructure",\n        "truncated_connection_is_connection_local",\n        "timeout(Duration::from_secs(5)",\n',
+              1,
+          )
+          gate.write_text(value)
+
+          status = root / 'docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_STATUS_V1.json'
+          status.parent.mkdir(parents=True, exist_ok=True)
+          status.write_text(json.dumps({
+              'schema': 'hepta.inference.inf1_source_status.v2',
+              'plan_id': 'HEPTA-INFERENCE-RUNTIME-V2',
+              'stage': 'INF-1',
+              'status': 'SOURCE_PRESENT_NOT_RUN',
+              'activated': False,
+              'qualified': False,
+              'implemented': {
+                  'backend_neutral_core': True,
+                  'uds_control_daemon': True,
+                  'same_user_peer_gate': True,
+                  'canonical_bounded_cbor': True,
+                  'request_generation_fence': True,
+                  'backend_generation_fence': True,
+                  'cancel_generation_fence': True,
+                  'terminal_receipt_store': True,
+                  'per_tenant_queue_bound': True,
+                  'forced_worker_termination_receipt': True,
+                  'connection_local_protocol_failure_isolation': True,
+                  'infrastructure_failure_escalation': True,
+                  'controlled_restart_generation_increment': True,
+                  'tcp_listener': False,
+                  'native_model_worker': False,
+                  'product_caller_wiring': False,
+                  'remote_inference': False,
+                  'automatic_model_install': False,
+              },
+              'authority': {key: False for key in (
+                  'production_listener','production_writer','provider_effect','external_effect',
+                  'shared_kg_write','memory_write','route_write','fleet_write','model_npu',
+                  'remote_inference','automatic_model_install','operator_acceptance','promotion','release'
+              )},
+          }, indent=2) + '\n')
+          PY
+          python3 -m py_compile scripts/hepta-inference-inf1-source-gate.py
+          python3 -m json.tool docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_STATUS_V1.json >/dev/null
+
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Integrate, format, compile, test and lint exact source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-bootstrap.py --apply
+          python3 scripts/hepta-inference-inf1-bootstrap.py --verify
+          cd codex-rs
+          cargo generate-lockfile
+          cargo fmt -p codex-hepta-infer-core -p codex-hepta-inferd
+          cargo fmt -p codex-hepta-infer-core -p codex-hepta-inferd -- --check
+          timeout 20m cargo check -p codex-hepta-infer-core -p codex-hepta-inferd
+          timeout 20m cargo test -p codex-hepta-infer-core
+          timeout 20m cargo test -p codex-hepta-inferd -- --test-threads=1
+          timeout 20m cargo clippy --all-targets --no-deps \
+            -p codex-hepta-infer-core -p codex-hepta-inferd -- -D warnings
+
+      - name: Verify source and negative authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-source-gate.py
+          git diff --check
+
+      - name: Commit exact materialized source and fast-forward
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            codex-rs/Cargo.toml codex-rs/Cargo.lock \
+            codex-rs/hepta-infer-core codex-rs/hepta-inferd \
+            scripts/hepta-inference-inf1-source-gate.py \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_STATUS_V1.json
+          git commit -m "feat(inference): materialize minimal INF-1 UDS controller"
+          git fetch --no-tags origin "$BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          git push origin HEAD:"$BRANCH"
+          echo "source_commit=$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "source_tree=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_STEP_SUMMARY"
+          echo "PASS_HEPTA_INFERENCE_INF1_MATERIALIZED_SOURCE" >> "$GITHUB_STEP_SUMMARY"
