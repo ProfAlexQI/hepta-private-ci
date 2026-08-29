@@ -656,9 +656,8 @@ mod tests {
     #[test]
     fn detached_signature_verification_is_body_independent_and_fail_closed() {
         let artifact = artifact();
-        let signer =
-            H7ArtifactSigner::new("detached-signer", 9, SigningKey::from_bytes(&[6; 32]))
-                .expect("signer");
+        let signer = H7ArtifactSigner::new("detached-signer", 9, SigningKey::from_bytes(&[6; 32]))
+            .expect("signer");
         let envelope = signer
             .sign(
                 &artifact,
@@ -699,12 +698,8 @@ mod tests {
             verifier.verify_envelope_signature(&envelope, 200),
             Err(H7SignedArtifactError::Expired)
         );
-        let wrong_epoch = H7ArtifactVerifier::new(
-            "detached-signer",
-            10,
-            signer.verifying_key(),
-        )
-        .expect("wrong-epoch verifier");
+        let wrong_epoch = H7ArtifactVerifier::new("detached-signer", 10, signer.verifying_key())
+            .expect("wrong-epoch verifier");
         assert_eq!(
             wrong_epoch.verify_envelope_signature(&envelope, 150),
             Err(H7SignedArtifactError::EpochMismatch)

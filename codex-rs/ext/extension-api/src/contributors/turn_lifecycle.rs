@@ -78,13 +78,13 @@ impl TurnStartGate {
             return;
         }
         let reason_code = reason_code.into();
-        state.reason_code = Some(if reason_code.len() <= 128
-            && !reason_code.as_bytes().contains(&0)
-        {
-            reason_code
-        } else {
-            "turn_start_gate_blocked".to_string()
-        });
+        state.reason_code = Some(
+            if reason_code.len() <= 128 && !reason_code.as_bytes().contains(&0) {
+                reason_code
+            } else {
+                "turn_start_gate_blocked".to_string()
+            },
+        );
     }
 
     pub fn disposition(&self) -> TurnStartGateDisposition {

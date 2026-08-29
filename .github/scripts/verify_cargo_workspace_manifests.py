@@ -409,27 +409,12 @@ def load_manifest(path: Path) -> dict:
 
 
 def cargo_manifests() -> list[Path]:
-    workspace_manifest = load_manifest(CARGO_RS_ROOT / "Cargo.toml")
-    workspace = workspace_manifest.get("workspace")
-    members = workspace.get("members") if isinstance(workspace, dict) else None
-    if not isinstance(members, list) or not all(
-        isinstance(member, str) for member in members
-    ):
-        raise ValueError(
-            "codex-rs/Cargo.toml must define a list of string workspace members"
-        )
-
-    manifests: set[Path] = set()
-    for member in members:
-        if not member or Path(member).is_absolute() or ".." in Path(member).parts:
-            raise ValueError(f"invalid Cargo workspace member: {member!r}")
-        matches = sorted(CARGO_RS_ROOT.glob(f"{member}/Cargo.toml"))
-        if not matches:
-            raise ValueError(
-                f"Cargo workspace member {member!r} has no matching manifest"
-            )
-        manifests.update(matches)
-    return sorted(manifests)
+    return sorted(
+        path
+        for path in CARGO_RS_ROOT.rglob("Cargo.toml")
+        if path != CARGO_RS_ROOT / "Cargo.toml"
+        and "third_party" not in path.relative_to(CARGO_RS_ROOT).parts
+    )
 
 
 def manifests_to_verify() -> list[Path]:
