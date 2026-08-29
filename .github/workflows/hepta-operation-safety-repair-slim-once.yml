@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: hepta-operation-safety-repair-once
@@ -16,79 +16,167 @@ concurrency:
 env:
   BRANCH_NAME: codex/hepta-architecture-convergence-p0-2-20260828
   SOURCE_HEAD: ${{ github.sha }}
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
 
 jobs:
-  repair-test-retire:
-    name: Repair, execute and retire operation safety lane
+  source-ratchets:
+    name: Source authority and cleanup ratchets
     if: ${{ !contains(github.event.head_commit.message || '', '[hepta-operation-safety-repair]') }}
     runs-on: ubuntu-slim
-    timeout-minutes: 180
+    timeout-minutes: 15
     steps:
-      - name: Checkout exact triggering head
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ env.SOURCE_HEAD }}
-          fetch-depth: 2
-          persist-credentials: true
-
-      - name: Verify exact clean input
-        shell: bash
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+      - run: python3 scripts/hepta-operation-safety-repair.py
+      - name: Simulate retirement and execute ratchets
         run: |
           set -euo pipefail
-          test "$GITHUB_REF_NAME" = "$BRANCH_NAME"
-          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
-          git fetch --no-tags origin \
-            "refs/heads/$BRANCH_NAME:refs/remotes/origin/$BRANCH_NAME"
-          test "$(git rev-parse refs/remotes/origin/$BRANCH_NAME)" = "$SOURCE_HEAD"
-          git diff --exit-code
-          git diff --cached --exit-code
-
-      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-        with:
-          components: rustfmt, clippy
-
-      - name: Apply audited operation repair
-        run: python3 scripts/hepta-operation-safety-repair.py
-
-      - name: Format owned packages
-        working-directory: codex-rs
-        run: |
-          set -euo pipefail
-          cargo fmt \
-            -p codex-hepta-contracts \
-            -p codex-hepta-automation \
-            -p codex-hepta-agentd \
-            -p codex-hepta-matrix-store
-
-      - name: Execute operation and product gates
-        working-directory: codex-rs
-        run: |
-          set -euo pipefail
-          cargo metadata --format-version 1 --no-deps > "$RUNNER_TEMP/workspace-metadata.json"
-          cargo test -p codex-hepta-contracts provider_operation::tests -- --nocapture
-          cargo test -p codex-hepta-matrix-store operation::tests -- --nocapture
-          cargo test -p codex-hepta-automation --lib -- --nocapture
-          cargo check -p codex-hepta-agentd -p codex-hepta-matrixd
-          cargo clippy \
-            -p codex-hepta-contracts \
-            -p codex-hepta-automation \
-            -p codex-hepta-agentd \
-            -p codex-hepta-matrix-store \
-            -p codex-hepta-matrixd \
-            --all-targets -- -D warnings
-          cargo metadata --locked --format-version 1 --no-deps > /dev/null
-          cargo check --locked -p codex-hepta-agentd -p codex-hepta-matrixd
-
-      - name: Execute architecture ratchets
-        run: |
-          set -euo pipefail
+          rm -f .github/workflows/hepta-automation-operation-repair-once.yml
+          rm -f .github/workflows/hepta-operation-safety-repair-slim-once.yml
+          rm -f scripts/.hepta-automation-repair-trigger
+          rm -f scripts/hepta-operation-safety-repair.py
+          rm -f scripts/hepta-automation-operation-repair-once.py
+          rm -f scripts/hepta-automation-operation-repair-once.py.part-*
+          rm -f scripts/hepta-automation-model-v4.rs
           python3 scripts/verify-hepta-architecture-convergence-p0-2.py
           python3 scripts/verify-hepta-cross-owner-operation-wiring.py
           python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
           python3 scripts/verify-hepta-architecture-gap-ledger.py
 
-      - name: Enforce exact mutation set
-        shell: bash
+  contracts:
+    name: Contracts operation tests and Clippy
+    if: ${{ !contains(github.event.head_commit.message || '', '[hepta-operation-safety-repair]') }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+      - run: python3 scripts/hepta-operation-safety-repair.py
+      - working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-contracts -- --check
+          cargo test --locked -p codex-hepta-contracts provider_operation::tests -- --nocapture
+          cargo test --locked -p codex-hepta-contracts --test cross_owner_fault_matrix -- --nocapture
+          cargo clippy --locked -p codex-hepta-contracts --all-targets -- -D warnings
+
+  matrix-store:
+    name: Matrix operation and real SQLITE_FULL
+    if: ${{ !contains(github.event.head_commit.message || '', '[hepta-operation-safety-repair]') }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+      - run: python3 scripts/hepta-operation-safety-repair.py
+      - working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-matrix-store -- --check
+          cargo test --locked -p codex-hepta-matrix-store operation::tests -- --nocapture
+          cargo test --locked -p codex-hepta-matrix-store --test sqlite_full -- --nocapture
+          cargo clippy --locked -p codex-hepta-matrix-store --all-targets -- -D warnings
+
+  automation:
+    name: Automation operation tests and Clippy
+    if: ${{ !contains(github.event.head_commit.message || '', '[hepta-operation-safety-repair]') }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+      - run: python3 scripts/hepta-operation-safety-repair.py
+      - working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-automation -- --check
+          cargo test --locked -p codex-hepta-automation --lib -- --nocapture
+          cargo clippy --locked -p codex-hepta-automation --all-targets -- -D warnings
+
+  integration:
+    name: Agentd and Matrixd integration check
+    if: ${{ !contains(github.event.head_commit.message || '', '[hepta-operation-safety-repair]') }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+      - run: python3 scripts/hepta-operation-safety-repair.py
+      - working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-agentd -p codex-hepta-matrixd -- --check
+          cargo check --locked -p codex-hepta-agentd -p codex-hepta-matrixd
+          cargo clippy --locked -p codex-hepta-agentd -p codex-hepta-matrixd --all-targets -- -D warnings
+
+  writeback:
+    name: Reproduce, retire and fast-forward exact tested repair
+    needs:
+      - source-ratchets
+      - contracts
+      - matrix-store
+      - automation
+      - integration
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          fetch-depth: 2
+          persist-credentials: true
+      - name: Verify exact clean source
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$BRANCH_NAME"
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+          git fetch --no-tags origin "refs/heads/$BRANCH_NAME:refs/remotes/origin/$BRANCH_NAME"
+          test "$(git rev-parse refs/remotes/origin/$BRANCH_NAME)" = "$SOURCE_HEAD"
+          git diff --exit-code
+          git diff --cached --exit-code
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+      - run: python3 scripts/hepta-operation-safety-repair.py
+      - working-directory: codex-rs
+        run: cargo fmt -p codex-hepta-contracts -p codex-hepta-automation -p codex-hepta-agentd -p codex-hepta-matrix-store -p codex-hepta-matrixd
+      - name: Enforce exact generated mutation set
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -137,9 +225,7 @@ jobs:
               raise SystemExit(f"operation repair did not materialize: {missing}")
           PY
           git diff --check
-
-      - name: Retire write lanes and push exact tested commit
-        shell: bash
+      - name: Retire write lanes and execute final source ratchets
         run: |
           set -euo pipefail
           rm -f scripts/hepta-automation-operation-repair-once.py
@@ -153,6 +239,14 @@ jobs:
             scripts/hepta-automation-operation-repair-once.py.part-02 \
             scripts/hepta-automation-operation-repair-once.py.part-03 \
             scripts/hepta-automation-model-v4.rs
+          python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+          python3 scripts/verify-hepta-cross-owner-operation-wiring.py
+          python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python3 scripts/verify-hepta-architecture-gap-ledger.py
+          git diff --check
+      - name: Commit and fast-forward exact tested repair
+        run: |
+          set -euo pipefail
           git add \
             scripts/verify-hepta-cross-owner-operation-wiring.py \
             codex-rs/Cargo.lock \
@@ -163,8 +257,7 @@ jobs:
             codex-rs/hepta-matrix-store/src/operation.rs \
             codex-rs/hepta-contracts/src/provider_operation.rs
           git diff --cached --check
-          git fetch --no-tags origin \
-            "refs/heads/$BRANCH_NAME:refs/remotes/origin/$BRANCH_NAME"
+          git fetch --no-tags origin "refs/heads/$BRANCH_NAME:refs/remotes/origin/$BRANCH_NAME"
           test "$(git rev-parse refs/remotes/origin/$BRANCH_NAME)" = "$SOURCE_HEAD"
           git config user.name "Hepta operation safety repair"
           git config user.email "102159240+ProfHepta@users.noreply.github.com"
