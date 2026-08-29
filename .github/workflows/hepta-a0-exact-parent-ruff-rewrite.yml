@@ -12,12 +12,19 @@ permissions:
 
 jobs:
   rewrite:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     env:
       BASE_SHA: c768bcbeb4c1168088d2499828c24da521a2a73a
       EXPECTED_HEAD: fc2f9d4694b11072c5e2a5c622d7ff8d0edf6814
       TARGET_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
     steps:
+      - name: Enable Windows long paths before checkout
+        shell: pwsh
+        run: |
+          git config --system core.longpaths true
+          if ((git config --system --get core.longpaths) -ne 'true') {
+            throw 'failed to enable system core.longpaths before checkout'
+          }
       - name: Checkout support branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -33,6 +40,7 @@ jobs:
         run: |
           set -euo pipefail
 
+          work_tmp="$(cygpath -u "$RUNNER_TEMP")"
           observed="$(git ls-remote origin "refs/heads/${TARGET_BRANCH}" | cut -f1)"
           test "$observed" = "$EXPECTED_HEAD"
 
@@ -67,8 +75,8 @@ jobs:
           test "$(git rev-parse HEAD^)" = "$BASE_SHA"
           test "$(git rev-list --count "$BASE_SHA"..HEAD)" = 1
 
-          expected_paths="$RUNNER_TEMP/expected-paths.txt"
-          actual_paths="$RUNNER_TEMP/actual-paths.txt"
+          expected_paths="$work_tmp/expected-paths.txt"
+          actual_paths="$work_tmp/actual-paths.txt"
           cat > "$expected_paths" <<'PATHS'
           .github/workflows/hepta-intelligence-a0-authority.yml
           .github/workflows/hepta-intelligence-master-plan.yml
@@ -90,22 +98,22 @@ jobs:
           diff -u "$expected_paths" "$actual_paths"
           git diff --check "$BASE_SHA" HEAD
 
-          python3 scripts/verify-hepta-intelligence-master-plan.py
-          python3 scripts/verify-hepta-intelligence-document-authority.py
-          python3 scripts/hepta-intelligence-current-truth.py --verify
+          python scripts/verify-hepta-intelligence-master-plan.py
+          python scripts/verify-hepta-intelligence-document-authority.py
+          python scripts/hepta-intelligence-current-truth.py --verify
           generated_head="$(git rev-parse HEAD)"
           generated_tree="$(git rev-parse HEAD^{tree})"
           GITHUB_SHA="$generated_head" \
           GITHUB_REF_NAME="$TARGET_BRANCH" \
           GITHUB_HEAD_REF="$TARGET_BRANCH" \
-            python3 scripts/verify-hepta-intelligence-a0-authority.py \
+            python scripts/verify-hepta-intelligence-a0-authority.py \
               --expected-head "$generated_head" \
               --expected-tree "$generated_tree" \
               --expected-parent "$BASE_SHA" \
               --expected-branch "$TARGET_BRANCH" \
-              --write-receipt "$RUNNER_TEMP/a0-ruff-rewrite-receipt.json"
+              --write-receipt "$work_tmp/a0-ruff-rewrite-receipt.json"
 
-          printf 'new_head=%s\nnew_tree=%s\n' "$generated_head" "$generated_tree" | tee "$RUNNER_TEMP/a0-ruff-rewrite-identity.txt"
+          printf 'new_head=%s\nnew_tree=%s\n' "$generated_head" "$generated_tree" | tee "$work_tmp/a0-ruff-rewrite-identity.txt"
 
           git push \
             --force-with-lease="refs/heads/${TARGET_BRANCH}:${EXPECTED_HEAD}" \
