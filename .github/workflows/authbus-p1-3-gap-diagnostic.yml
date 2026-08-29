@@ -1,0 +1,156 @@
+name: AuthBus P1.3 gap diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - integration/vnext-main-full-ci-authbus-p1-3-20260829
+    paths:
+      - .github/workflows/authbus-p1-3-gap-diagnostic.yml
+
+permissions:
+  contents: read
+
+env:
+  P02_MANIFEST: codex-rs/hepta-authbus-qualification/Cargo.toml
+  P03_MANIFEST: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
+  P13_MANIFEST: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
+  CARGO_INCREMENTAL: "0"
+  CARGO_BUILD_JOBS: "1"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_NET_RETRY: "10"
+  CARGO_HTTP_TIMEOUT: "120"
+  CARGO_TARGET_DIR: /tmp/authbus-p1-3-diagnostic-target
+
+jobs:
+  diagnose:
+    name: Materialize and expose every failing AuthBus matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact diagnostic head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Bind exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/authbus-p1-3-diagnostic
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse HEAD^{tree})"
+            echo "branch=${GITHUB_REF_NAME}"
+          } | tee /tmp/authbus-p1-3-diagnostic/source.txt
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          python3 -m py_compile scripts/authbus-p1-3-finalize.py
+          python3 -m py_compile scripts/authbus-p1-3-semantic-completion.py
+
+      - name: Materialize exact P1.3 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/authbus-p1-3-finalize.py \
+            2>&1 | tee /tmp/authbus-p1-3-diagnostic/finalize.log
+          python3 scripts/authbus-p1-3-semantic-completion.py \
+            2>&1 | tee /tmp/authbus-p1-3-diagnostic/semantic-completion.log
+          scheduler=codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
+          if grep -Fq 'request_sha256.to_string()' "${scheduler}"; then
+            sed -i 's/request_sha256\.to_string()/request_sha256.as_str().to_owned()/' "${scheduler}"
+          fi
+          python3 scripts/verify-authbus-p1-3.py \
+            2>&1 | tee /tmp/authbus-p1-3-diagnostic/source-verifier.log
+          git diff --check
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Generate lock and format affected crates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile --manifest-path "${P13_MANIFEST}" \
+            2>&1 | tee /tmp/authbus-p1-3-diagnostic/generate-lock.log
+          cargo fmt --manifest-path codex-rs/Cargo.toml --package codex-hepta-contracts
+          cargo fmt --manifest-path "${P02_MANIFEST}" --all
+          cargo fmt --manifest-path "${P03_MANIFEST}" --all
+          cargo fmt --manifest-path "${P13_MANIFEST}" --all
+          python3 scripts/verify-authbus-p1-3.py \
+            2>&1 | tee /tmp/authbus-p1-3-diagnostic/formatted-verifier.log
+          git diff --check
+
+      - name: Run all executable matrices and retain every result
+        id: matrix
+        shell: bash
+        run: |
+          set -uo pipefail
+          root=/tmp/authbus-p1-3-diagnostic
+          failed=0
+
+          run_case() {
+            name="$1"
+            shift
+            echo "=== ${name} ===" | tee "${root}/${name}.log"
+            "$@" 2>&1 | tee -a "${root}/${name}.log"
+            rc=${PIPESTATUS[0]}
+            echo "${name}=${rc}" | tee -a "${root}/matrix-status.txt"
+            if test "${rc}" -ne 0; then
+              failed=1
+            fi
+          }
+
+          run_case contracts-lib \
+            cargo test --manifest-path codex-rs/Cargo.toml --locked \
+              -p codex-hepta-contracts --features authbus-local-qualification \
+              --lib -- --nocapture
+          run_case p03-default-off \
+            cargo test --manifest-path "${P03_MANIFEST}" --locked \
+              --no-default-features --lib -- --nocapture
+          run_case p03-tests \
+            cargo test --manifest-path "${P03_MANIFEST}" --locked \
+              --features p0-3-qualification --tests -- --nocapture
+          run_case p02-default-off \
+            cargo test --manifest-path "${P02_MANIFEST}" --locked \
+              --no-default-features --lib -- --nocapture
+          run_case p02-tests \
+            cargo test --manifest-path "${P02_MANIFEST}" --locked \
+              --features sqlite-qualification --tests -- --nocapture
+          run_case p13-default-off \
+            cargo test --manifest-path "${P13_MANIFEST}" --locked \
+              --no-default-features --lib -- --nocapture
+          run_case p13-tests \
+            cargo test --manifest-path "${P13_MANIFEST}" --locked \
+              --features p1-3-qualification --tests -- --nocapture
+
+          exit "${failed}"
+
+      - name: Capture generated source and status
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p /tmp/authbus-p1-3-diagnostic
+          git status --short > /tmp/authbus-p1-3-diagnostic/git-status.txt
+          git diff --no-ext-diff -- \
+            codex-rs/hepta-contracts \
+            codex-rs/hepta-authbus-qualification \
+            codex-rs/hepta-authbus-p0-3-qualification \
+            codex-rs/hepta-authbus-p1-3-qualification \
+            docs/hepta-vnext/authbus \
+            scripts/verify-authbus-p1-3.py \
+            > /tmp/authbus-p1-3-diagnostic/generated.patch
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: authbus-p1-3-gap-diagnostic-${{ github.run_id }}
+          path: /tmp/authbus-p1-3-diagnostic
+          if-no-files-found: error
+          retention-days: 14
