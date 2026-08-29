@@ -1,0 +1,47 @@
+name: P0.3.4 exact reconstruction payload export v5 slim
+
+on:
+  push:
+    branches:
+      - codex/p034-rebuild-v2-20260829
+    paths:
+      - .github/workflows/p034-payload-export-v5-slim.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    name: Export exact P0.3.4 reconstruction payload v5 on slim
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact helper head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Reconstruct, validate, and bind payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          mkdir -p artifacts/p034-payload-v5/extracted
+          cat ci/p034-rebuild/payload.part* > artifacts/p034-payload-v5/payload.b64
+          base64 -d artifacts/p034-payload-v5/payload.b64 > artifacts/p034-payload-v5/payload.tar.gz
+          echo 'f66d0ccfe03fd2dac66786e02077110ca7c5c1d251c445737fe528ca9061e621  artifacts/p034-payload-v5/payload.tar.gz' | sha256sum -c -
+          tar -xzf artifacts/p034-payload-v5/payload.tar.gz -C artifacts/p034-payload-v5/extracted
+          python3 ci/p034-rebuild/hotfix.py artifacts/p034-payload-v5/extracted | tee artifacts/p034-payload-v5/validation.json
+          printf '%s\n' "${GITHUB_SHA}" > artifacts/p034-payload-v5/HELPER_HEAD
+          sha256sum artifacts/p034-payload-v5/payload.tar.gz > artifacts/p034-payload-v5/payload.tar.gz.sha256
+          find artifacts/p034-payload-v5/extracted -type f -print0 | sort -z | xargs -0 sha256sum > artifacts/p034-payload-v5/EXTRACTED_SHA256SUMS
+
+      - name: Upload exact payload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: p034-reconstruction-payload-v5-slim-${{ github.sha }}
+          path: artifacts/p034-payload-v5
+          if-no-files-found: error
+          retention-days: 14
