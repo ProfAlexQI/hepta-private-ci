@@ -1,3 +1,5 @@
+#![cfg(feature = "qualification-fault-injection")]
+
 use codex_hepta_contracts::AgentId;
 use codex_hepta_contracts::OperationPhase;
 use codex_hepta_matrix_protocol::MatrixEventId;
@@ -14,7 +16,6 @@ use codex_hepta_matrix_store::RoomBindingDraft;
 use codex_hepta_paths::HeptaFleetRoot;
 use codex_state::SqliteConfig;
 use codex_utils_absolute_path::AbsolutePathBuf;
-use sqlx::AssertSqlSafe;
 
 const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 
@@ -81,51 +82,36 @@ async fn real_matrix_sqlite_full_rolls_back_failed_inbox_and_preserves_operation
     )
     .expect("absolute SQLite home");
     let sqlite = SqliteConfig::from_sqlite_home(sqlite_home);
-    let control_pool = sqlite
+    let observation_pool = sqlite
         .open_durable_evidence_pool(store.path())
         .await
-        .expect("open SQLite control connection");
+        .expect("open SQLite observation connection");
     let page_count: i64 = sqlx::query_scalar("PRAGMA page_count")
-        .fetch_one(&control_pool)
+        .fetch_one(&observation_pool)
         .await
         .expect("page count");
-    let limited_pages = page_count.checked_add(4).expect("page limit");
-    // SQLite does not accept a bind parameter for PRAGMA assignment. The only
-    // interpolated value is this checked integer obtained from SQLite itself.
-    let page_limit_pragma = format!("PRAGMA max_page_count = {limited_pages}");
-    let applied_limit: i64 = sqlx::query_scalar(AssertSqlSafe(page_limit_pragma))
-        .fetch_one(&control_pool)
-        .await
-        .expect("apply max page count");
-    assert_eq!(applied_limit, limited_pages);
-    control_pool.close().await;
+    observation_pool.close().await;
+    let max_page_count = u64::try_from(page_count).expect("non-negative page count");
 
-    let payload = vec![b'x'; 128 * 1024];
-    let mut failed_event = None;
-    for index in 0_u64..128 {
-        let event_id = MatrixEventId::parse(format!("$sqlite-full-{index}"))
-            .expect("generated event id");
-        let draft = InboxDraft {
-            event_id: event_id.clone(),
-            room_id: room_id.clone(),
-            sender: MatrixUserId::parse("@owner:example.test").expect("sender"),
-            event_type: "m.room.message".to_string(),
-            payload: payload.clone(),
-            binding_revision: 1,
-            generation: 1,
-            origin_server_ts_ms: 10 + index,
-            received_at_ms: 20 + index,
-        };
-        match store.ingest_inbox(&draft).await {
-            Ok(_) => {}
-            Err(MatrixDurableError::Unavailable) => {
-                failed_event = Some(event_id);
-                break;
-            }
-            Err(error) => panic!("unexpected Matrix fault result: {error}"),
-        }
-    }
-    let failed_event = failed_event.expect("real SQLite growth must reach SQLITE_FULL");
+    let failed_event = MatrixEventId::parse("$sqlite-full-failed").expect("event id");
+    let failed = InboxDraft {
+        event_id: failed_event.clone(),
+        room_id: room_id.clone(),
+        sender: MatrixUserId::parse("@owner:example.test").expect("sender"),
+        event_type: "m.room.message".to_string(),
+        payload: vec![b'x'; 512 * 1024],
+        binding_revision: 1,
+        generation: 1,
+        origin_server_ts_ms: 10,
+        received_at_ms: 20,
+    };
+    assert_eq!(
+        store
+            .ingest_inbox_with_max_page_count_for_qualification(&failed, max_page_count)
+            .await,
+        Err(MatrixDurableError::Unavailable),
+        "the product write transaction must observe SQLITE_FULL on its own connection",
+    );
     assert!(
         store
             .inbox(&failed_event)
@@ -140,17 +126,6 @@ async fn real_matrix_sqlite_full_rolls_back_failed_inbox_and_preserves_operation
         .expect("load baseline operation after SQLITE_FULL")
         .expect("baseline operation remains");
     assert_eq!(still_exact, baseline_operation);
-
-    let reset_pool = sqlite
-        .open_durable_evidence_pool(store.path())
-        .await
-        .expect("open reset connection");
-    let reset_limit: i64 = sqlx::query_scalar("PRAGMA max_page_count = 2147483646")
-        .fetch_one(&reset_pool)
-        .await
-        .expect("reset max page count");
-    assert!(reset_limit >= page_count);
-    reset_pool.close().await;
     store.close().await;
 
     let reopened = MatrixDurableStore::open(&layout, MatrixDurableConfig::default())
