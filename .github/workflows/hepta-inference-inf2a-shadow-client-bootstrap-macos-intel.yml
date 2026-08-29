@@ -1,0 +1,152 @@
+name: Hepta inference INF-2A shadow client bootstrap macOS Intel
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf2a-shadow-bootstrap-v1-20260829
+    paths:
+      - "codex-rs/hepta-infer-client/**"
+      - "scripts/hepta-inference-inf2a-shadow-client-source-gate.py"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_POLICY_V1.json"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_RECEIPT_2026-08-29.json"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF4_PERFORMANCE_CLASSIFICATION_2026-08-29.json"
+      - ".github/workflows/hepta-inference-inf2a-shadow-client-bootstrap-macos-intel.yml"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF2A_BOOTSTRAP_TRIGGER.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-inf2a-shadow-client-bootstrap-macos-intel
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: Materialize and qualify workspace-integrated shadow client
+    runs-on: macos-15-intel
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Integrate client into a bounded workspace candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("codex-rs/Cargo.toml")
+          text = path.read_text(encoding="utf-8")
+          member = '    "hepta-infer-client",\n'
+          dependency = 'codex-hepta-infer-client = { path = "hepta-infer-client" }\n'
+          if member not in text:
+              anchor = '    "hepta-infer-core",\n'
+              if text.count(anchor) != 1:
+                  raise SystemExit("workspace member anchor drift")
+              text = text.replace(anchor, anchor + member)
+          if dependency not in text:
+              anchor = 'codex-hepta-infer-core = { path = "hepta-infer-core" }\n'
+              if text.count(anchor) != 1:
+                  raise SystemExit("workspace dependency anchor drift")
+              text = text.replace(anchor, anchor + dependency)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Format exact owned source
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-infer-core -p codex-hepta-inferd -p codex-hepta-infer-client
+
+      - name: Compile and update lockfile
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo check -p codex-hepta-infer-core -p codex-hepta-inferd -p codex-hepta-infer-client
+
+      - name: Test exact controller and client scope
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo test -p codex-hepta-infer-core -p codex-hepta-inferd -p codex-hepta-infer-client -- --test-threads=1
+
+      - name: Strict owned-source Clippy
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo clippy --all-targets --no-deps \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-inferd \
+            -p codex-hepta-infer-client \
+            -- -D warnings
+
+      - name: Verify fail-closed source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/hepta-inference-inf2a-shadow-client-source-gate.py
+          python3 scripts/hepta-inference-inf2a-shadow-client-source-gate.py
+
+      - name: Build exact integration export
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/hepta-inference-inf2a-shadow-client-export"
+          mkdir -p "$root/codex-rs/hepta-infer-client/src" "$root/codex-rs"
+          cp codex-rs/Cargo.toml codex-rs/Cargo.lock "$root/codex-rs/"
+          cp codex-rs/hepta-infer-client/Cargo.toml "$root/codex-rs/hepta-infer-client/"
+          cp codex-rs/hepta-infer-client/src/lib.rs codex-rs/hepta-infer-client/src/tests.rs \
+            "$root/codex-rs/hepta-infer-client/src/"
+          cp scripts/hepta-inference-inf2a-shadow-client-source-gate.py "$root/"
+          python3 - "$root" <<'PY'
+          import hashlib, json, os, pathlib, platform, sys
+          root = pathlib.Path(sys.argv[1])
+          files = []
+          for path in sorted(p for p in root.rglob("*") if p.is_file()):
+              payload = path.read_bytes()
+              files.append({
+                  "path": str(path.relative_to(root)),
+                  "sha256": hashlib.sha256(payload).hexdigest(),
+                  "byte_length": len(payload),
+              })
+          manifest = {
+              "schema": "hepta.inference.inf2a.shadow_client_export.v1",
+              "source_head": os.environ["GITHUB_SHA"],
+              "runner_os": os.environ.get("RUNNER_OS"),
+              "runner_arch": os.environ.get("RUNNER_ARCH"),
+              "platform": platform.platform(),
+              "rustc": os.popen("rustc --version").read().strip(),
+              "cargo": os.popen("cargo --version").read().strip(),
+              "files": files,
+              "qualified": False,
+              "route_mode": "SHADOW_COMPARE_ONLY",
+              "production_listener": False,
+              "product_default_route_changed": False,
+              "operator_accepted": False,
+              "promoted": False,
+          }
+          (root / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
+          find "$root" -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 shasum -a 256 > "$root/SHA256SUMS"
+
+      - name: Upload exact workspace integration export
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf2a-shadow-client-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-inference-inf2a-shadow-client-export
+          if-no-files-found: error
+          retention-days: 14
