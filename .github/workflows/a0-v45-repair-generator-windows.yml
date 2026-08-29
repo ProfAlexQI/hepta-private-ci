@@ -1,0 +1,74 @@
+name: Hepta Intelligence A0 V4.5 repair generator Windows
+
+on:
+  push:
+    branches: ["codex/hepta-intelligence-a0-v45-repair-generator-20260830"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a0-v45-repair-generator-windows
+  cancel-in-progress: true
+
+env:
+  Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
+  CANONICAL_A0_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+
+jobs:
+  validate:
+    name: Validate V4.5 exact-parent replacement on Windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {fetch-depth: 0, persist-credentials: false}
+      - name: Generate and run all source gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TMPROOT="$RUNNER_TEMP/a0-v45"
+          rm -rf "$TMPROOT"
+          python - <<'PY'
+          import base64,gzip,hashlib,os
+          from pathlib import Path
+          code=gzip.decompress(base64.b64decode(''.join(p.read_text() for p in sorted(Path('scripts/a0-v45-generator').glob('payload.*')))))
+          assert hashlib.sha256(code).hexdigest()=='50909f010ca32cd513e94c6088b861ea61bad6c17a2417cce1e44d647a37ace2'
+          Path(os.environ['RUNNER_TEMP'],'a0-v45-generator.py').write_bytes(code)
+          PY
+          python "$RUNNER_TEMP/a0-v45-generator.py" --root "$GITHUB_WORKSPACE" --output "$TMPROOT"
+          git checkout --detach "$Q0_HEAD"
+          cp -a "$TMPROOT/generated/." "$GITHUB_WORKSPACE/"
+          git add -A && git diff --cached --check
+          python - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          m=json.loads(Path(os.environ['RUNNER_TEMP'],'a0-v45','repair-manifest.json').read_text())
+          p=sorted(x for x in subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines() if x)
+          assert p==[x['path'] for x in m['files']] and len(p)==17
+          assert not m['source_writeback'] and not m['a0_candidate_qualified'] and all(v is False for v in m['authority'].values())
+          PY
+          git -c user.name='A0 V4.5 Windows validation' -c user.email='a0-v45-windows@invalid.example' commit -m 'test(intelligence): validate V4.5 exact-parent replacement on Windows'
+          test "$(git rev-parse HEAD^)" = "$Q0_HEAD"
+          python -m py_compile scripts/hepta-intelligence-current-truth.py scripts/verify-hepta-intelligence-a0-authority.py scripts/verify-hepta-intelligence-document-authority.py scripts/verify-hepta-intelligence-master-plan.py
+          python scripts/verify-hepta-intelligence-master-plan.py
+          python scripts/verify-hepta-intelligence-document-authority.py
+          python scripts/hepta-intelligence-current-truth.py --verify
+          python scripts/hepta-intelligence-current-truth.py --compact >"$RUNNER_TEMP/truth-a.json"; python scripts/hepta-intelligence-current-truth.py --compact >"$RUNNER_TEMP/truth-b.json"; cmp "$RUNNER_TEMP/truth-a.json" "$RUNNER_TEMP/truth-b.json"
+          GITHUB_SHA="$(git rev-parse HEAD)" GITHUB_REPOSITORY='ProfHepta/hepta-private-ci' GITHUB_REF_NAME="$CANONICAL_A0_BRANCH" python scripts/verify-hepta-intelligence-a0-authority.py >"$TMPROOT/a0-source-evidence-receipt.json"
+          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do python scripts/hepta-intelligence-status-compat.py "$tranche" --check-only; done
+          git diff --binary "$Q0_HEAD" HEAD >"$TMPROOT/a0-v45-replacement.patch"
+          python - <<'PY'
+          import hashlib,json,os,subprocess
+          from pathlib import Path
+          o=Path(os.environ['RUNNER_TEMP'],'a0-v45'); m=json.loads((o/'repair-manifest.json').read_text())
+          m.update({'validation_architecture':'x86_64-pc-windows','validation_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'validation_tree':subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip(),'validation_parent':subprocess.check_output(['git','rev-parse','HEAD^'],text=True).strip(),'generator_sha256':'50909f010ca32cd513e94c6088b861ea61bad6c17a2417cce1e44d647a37ace2','patch_sha256':hashlib.sha256((o/'a0-v45-replacement.patch').read_bytes()).hexdigest(),'status':'PASS_LOCAL_EXACT_PARENT_V4_5_REPLACEMENT_VALIDATION_WINDOWS'})
+          (o/'repair-manifest.json').write_text(json.dumps(m,indent=2,sort_keys=True)+'\n')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-a0-v45-repair-windows-${{ github.sha }}
+          path: ${{ runner.temp }}/a0-v45/**
+          if-no-files-found: error
+          retention-days: 30
