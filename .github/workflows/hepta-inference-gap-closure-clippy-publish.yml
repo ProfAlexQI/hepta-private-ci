@@ -1,0 +1,185 @@
+name: Hepta inference exact Rust and Clippy publisher
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-gap-closure-scratch-check-20260829
+    paths:
+      - ".github/workflows/hepta-inference-gap-closure-clippy-publish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-gap-closure-clippy-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Qualify and fast-forward exact Rust repair
+    runs-on: macos-15-intel
+    timeout-minutes: 75
+    env:
+      TARGET_BRANCH: codex/hepta-inference-gap-closure-20260829
+      EXPECTED_PARENT: 83f675720bee198f7e2524a447ab1177fcb99ef6
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          ref: ${{ env.EXPECTED_PARENT }}
+          fetch-depth: 0
+
+      - name: Verify exact immutable parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_PARENT"
+          test -z "$(git status --porcelain)"
+          git fetch --no-tags origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_PARENT"
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply exact Rust 1.95 formatting and test-only boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd codex-rs
+            cargo fmt \
+              -p codex-hepta-infer-core \
+              -p codex-hepta-infer-client \
+              -p codex-hepta-inferd
+          )
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-inferd/src/shadow.rs")
+          text = path.read_text(encoding="utf-8")
+          replacements = (
+              (
+                  "#[derive(Clone, Debug)]\npub struct ShadowClient {",
+                  "#[cfg(test)]\n#[derive(Clone, Debug)]\npub struct ShadowClient {",
+              ),
+              (
+                  "impl ShadowClient {",
+                  "#[cfg(test)]\nimpl ShadowClient {",
+              ),
+              (
+                  "async fn read_server_message(\n",
+                  "#[cfg(test)]\nasync fn read_server_message(\n",
+              ),
+              (
+                  "async fn write_client_message(\n",
+                  "#[cfg(test)]\nasync fn write_client_message(\n",
+              ),
+          )
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"unexpected source shape for {old!r}: count={count}")
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+          (
+            cd codex-rs
+            cargo fmt \
+              -p codex-hepta-infer-core \
+              -p codex-hepta-infer-client \
+              -p codex-hepta-inferd
+            cargo fmt \
+              -p codex-hepta-infer-core \
+              -p codex-hepta-infer-client \
+              -p codex-hepta-inferd -- --check
+          )
+
+      - name: Enforce exact source allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+
+          changed = set(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
+          expected = {
+              "codex-rs/hepta-infer-core/src/adapter.rs",
+              "codex-rs/hepta-infer-core/src/worker.rs",
+              "codex-rs/hepta-inferd/src/shadow.rs",
+          }
+          if changed != expected:
+              raise SystemExit(f"source allowlist mismatch: {sorted(changed)}")
+          PY
+          git diff --check
+          grep -F '#[cfg(test)]' codex-rs/hepta-inferd/src/shadow.rs >/dev/null
+          test "$(grep -c -F '#[cfg(test)]' codex-rs/hepta-inferd/src/shadow.rs)" -ge 5
+
+      - name: Locked check
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo check --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
+
+      - name: All-target tests
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo test --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
+
+      - name: Strict Clippy
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo clippy --locked --all-targets --no-deps \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd -- -D warnings
+
+      - name: Create bounded source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            codex-rs/hepta-infer-core/src/adapter.rs \
+            codex-rs/hepta-infer-core/src/worker.rs \
+            codex-rs/hepta-inferd/src/shadow.rs
+          test -z "$(git diff --name-only)"
+          git commit -m "fix(inference): converge Rust 1.95 and test-only client boundary"
+          echo "CANDIDATE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "CANDIDATE_TREE=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_ENV"
+
+      - name: Revalidate and fast-forward target branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_PARENT"
+          git push origin HEAD:"$TARGET_BRANCH"
+
+      - name: Record fail-closed publisher result
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Hepta inference Rust/Clippy publisher"
+            echo
+            echo "- expected parent: $EXPECTED_PARENT"
+            echo "- candidate: ${CANDIDATE_SHA:-not-created}"
+            echo "- candidate tree: ${CANDIDATE_TREE:-not-created}"
+            echo "- qualification_only: true"
+            echo "- production authority: false"
+            echo "- operator acceptance: false"
+            echo "- promotion: false"
+            echo "- release: false"
+          } >> "$GITHUB_STEP_SUMMARY"
