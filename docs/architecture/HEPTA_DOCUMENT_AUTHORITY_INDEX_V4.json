@@ -106,18 +106,60 @@
       "editable": true
     },
     {
+      "id": "selected_plan_verifier_router",
+      "path": "scripts/verify-hepta-selected-architecture-plan.py",
+      "class": "machine_verifier_router",
+      "editable": true,
+      "authority": "select_allowlisted_source_verifier_only"
+    },
+    {
+      "id": "v4_source_verifier",
+      "path": "scripts/verify-hepta-architecture-plan-v4.py",
+      "class": "historical_compatibility_verifier",
+      "editable": true,
+      "authority": "v4_source_consistency_only"
+    },
+    {
       "id": "v5_source_verifier",
       "path": "scripts/verify-hepta-architecture-plan-v5.py",
       "class": "machine_verifier",
       "editable": true,
-      "authority": "source_consistency_only"
+      "authority": "v5_source_consistency_only"
+    },
+    {
+      "id": "v5_b0_scoped_format_verifier",
+      "path": "scripts/verify-hepta-v5-b0-format.py",
+      "class": "machine_formatter",
+      "editable": true,
+      "authority": "b0_source_format_only"
+    },
+    {
+      "id": "v4_architecture_regression_workflow",
+      "path": ".github/workflows/hepta-architecture-plan-v4.yml",
+      "class": "qualification_workflow",
+      "editable": true,
+      "authority": "selected_plan_source_execution_only"
+    },
+    {
+      "id": "p07a_runtime_bootstrap_workflow",
+      "path": ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml",
+      "class": "qualification_workflow",
+      "editable": true,
+      "authority": "p0_7a_package_and_selected_plan_regression_only"
+    },
+    {
+      "id": "p07a_direct_arm_workflow",
+      "path": ".github/workflows/hepta-p0-7a-direct-arm.yml",
+      "class": "qualification_workflow",
+      "editable": true,
+      "authority": "p0_7a_direct_arm_and_selected_plan_regression_only"
     },
     {
       "id": "v5_b0_workflow",
       "path": ".github/workflows/hepta-architecture-v5-b0-verified-use.yml",
       "class": "qualification_workflow",
       "editable": true,
-      "authority": "package_execution_only"
+      "authority": "b0_package_execution_only"
     },
     {
       "id": "v4_plan",
@@ -153,6 +195,7 @@
     "historical_plan",
     "historical_gap_ledger",
     "historical_document_authority",
+    "historical_compatibility_verifier",
     "archival_snapshot",
     "dropbox_snapshot",
     "source_only_receipt",
