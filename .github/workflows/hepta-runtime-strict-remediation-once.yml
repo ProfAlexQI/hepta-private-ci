@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
-      EXPECTED_PARENT: 8d27dc216bde821110fd966bea331af7d56810c0
+      EXPECTED_PARENT: 451c160a075c564d51f4d5b67a735acfbe3fd412
       BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
       LEGACY_WORKFLOW: .github/workflows/hepta-strict-clippy-remediation-once.yml
       WORKFLOW_PATH: .github/workflows/hepta-runtime-strict-remediation-once.yml
@@ -169,6 +169,7 @@ jobs:
               codex-rs/hepta-memory/src/*) ;;
               codex-rs/hepta-agentd/src/app_runtime.rs) ;;
               codex-rs/hepta-agentd/src/runtime_tests.rs) ;;
+              codex-rs/hepta-agentd/src/production_writer_host.rs) ;;
               codex-rs/hepta-agent-protocol/src/lib.rs) ;;
               codex-rs/app-server-protocol/src/protocol/thread_history.rs) ;;
               *)
@@ -256,6 +257,7 @@ jobs:
               codex-rs/hepta-memory/src/*) ;;
               codex-rs/hepta-agentd/src/app_runtime.rs) ;;
               codex-rs/hepta-agentd/src/runtime_tests.rs) ;;
+              codex-rs/hepta-agentd/src/production_writer_host.rs) ;;
               codex-rs/hepta-agent-protocol/src/lib.rs) ;;
               codex-rs/app-server-protocol/src/protocol/thread_history.rs) ;;
               *)
