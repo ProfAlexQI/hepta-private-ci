@@ -66,9 +66,7 @@ impl ShadowDaemonConfig {
         backend_generation: u64,
     ) -> io::Result<Self> {
         let tuple = match adapter {
-            AdapterId::Ollama => {
-                ExactAdapterTuple::fixed_ollama_granite4_1b(tuple_digest.clone())
-            }
+            AdapterId::Ollama => ExactAdapterTuple::fixed_ollama_granite4_1b(tuple_digest.clone()),
             AdapterId::LmStudio => {
                 ExactAdapterTuple::fixed_lmstudio_granite4_micro(tuple_digest.clone())
             }
@@ -111,7 +109,8 @@ impl ShadowDaemonConfig {
             ));
         }
         let socket_parent = required_parent(&self.socket_path, "INF_SHADOW_SOCKET_PARENT_MISSING")?;
-        let receipt_parent = required_parent(&self.receipt_dir, "INF_SHADOW_RECEIPT_PARENT_MISSING")?;
+        let receipt_parent =
+            required_parent(&self.receipt_dir, "INF_SHADOW_RECEIPT_PARENT_MISSING")?;
         if !self.socket_path.is_absolute()
             || !self.receipt_dir.is_absolute()
             || self.socket_path == self.receipt_dir
@@ -298,12 +297,14 @@ fn dispatch(
     })
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug)]
 pub struct ShadowClient {
     socket_path: PathBuf,
     max_frame_bytes: usize,
 }
 
+#[cfg(test)]
 impl ShadowClient {
     pub fn new(socket_path: PathBuf, max_frame_bytes: usize) -> io::Result<Self> {
         if !socket_path.is_absolute() {
@@ -340,6 +341,7 @@ async fn read_message(
     ClientMessage::decode_canonical(&bytes).map_err(infer_error_to_io)
 }
 
+#[cfg(test)]
 async fn read_server_message(
     stream: &mut UnixStream,
     max_frame_bytes: usize,
@@ -364,6 +366,7 @@ async fn read_frame(stream: &mut UnixStream, max_frame_bytes: usize) -> io::Resu
     Ok(bytes)
 }
 
+#[cfg(test)]
 async fn write_client_message(
     stream: &mut UnixStream,
     message: &ClientMessage,
@@ -719,11 +722,8 @@ mod tests {
 
     #[tokio::test]
     async fn semantic_shadow_path_is_owner_local_and_persists_digest_only_receipt() {
-        let mut harness = Harness::start(
-            AdapterId::Ollama,
-            DispatchRequirements::semantic_text(),
-        )
-        .await;
+        let mut harness =
+            Harness::start(AdapterId::Ollama, DispatchRequirements::semantic_text()).await;
         let client = harness.client();
         assert_eq!(
             must(client.exchange(ClientMessage::Ping { nonce: 9 }).await),
@@ -779,11 +779,8 @@ mod tests {
 
     #[tokio::test]
     async fn provider_cancel_requirement_is_rejected_before_queueing() {
-        let mut harness = Harness::start(
-            AdapterId::Ollama,
-            DispatchRequirements::cancel_required(),
-        )
-        .await;
+        let mut harness =
+            Harness::start(AdapterId::Ollama, DispatchRequirements::cancel_required()).await;
         let client = harness.client();
         assert_eq!(
             must(
@@ -841,8 +838,6 @@ mod tests {
     fn client_rejects_relative_socket_and_unbounded_frames() {
         assert!(ShadowClient::new(PathBuf::from("relative.sock"), MAX_FRAME_BYTES).is_err());
         assert!(ShadowClient::new(PathBuf::from("/tmp/infer.sock"), 0).is_err());
-        assert!(
-            ShadowClient::new(PathBuf::from("/tmp/infer.sock"), MAX_FRAME_BYTES + 1).is_err()
-        );
+        assert!(ShadowClient::new(PathBuf::from("/tmp/infer.sock"), MAX_FRAME_BYTES + 1).is_err());
     }
 }

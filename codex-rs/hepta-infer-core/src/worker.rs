@@ -324,8 +324,10 @@ impl WorkerSupervisor {
 
     pub fn start(&mut self, expected_generation: u64) -> Result<()> {
         self.require_generation(expected_generation)?;
-        if !matches!(self.health, WorkerHealth::Stopped | WorkerHealth::FailedClosed)
-            || !self.active.is_empty()
+        if !matches!(
+            self.health,
+            WorkerHealth::Stopped | WorkerHealth::FailedClosed
+        ) || !self.active.is_empty()
         {
             return Err(WorkerError::InvalidWorkerState);
         }
@@ -410,10 +412,7 @@ impl WorkerSupervisor {
         })
     }
 
-    pub fn controlled_restart(
-        &mut self,
-        expected_generation: u64,
-    ) -> Result<WorkerFaultReceipt> {
+    pub fn controlled_restart(&mut self, expected_generation: u64) -> Result<WorkerFaultReceipt> {
         self.require_generation(expected_generation)?;
         self.fail_closed(WorkerFault::ProtocolViolation)
     }
@@ -526,9 +525,9 @@ pub type Result<T> = std::result::Result<T, WorkerError>;
 fn valid_backend_id(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 64
-        && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-')
-        })
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
 }
 
 fn is_lower_hex_commit(value: &str) -> bool {
@@ -642,10 +641,7 @@ mod tests {
         );
         let mut writable = descriptor(7);
         writable.read_only = false;
-        assert_eq!(
-            writable.validate(7),
-            Err(WorkerError::SharedRegionWritable)
-        );
+        assert_eq!(writable.validate(7), Err(WorkerError::SharedRegionWritable));
         let overflowing = AbiByteSlice {
             region_handle: 1,
             offset: u64::MAX,

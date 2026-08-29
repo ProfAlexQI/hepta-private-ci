@@ -373,7 +373,8 @@ impl QualifiedController {
         result_digest: Digest,
         output_tokens: u32,
     ) -> Result<TerminalReceipt> {
-        self.controller.complete(fence, result_digest, output_tokens)
+        self.controller
+            .complete(fence, result_digest, output_tokens)
     }
 
     pub fn cancel(
@@ -528,17 +529,15 @@ mod tests {
     fn strict_sse_is_fail_closed_for_both_fixed_adapters() {
         for (index, tuple) in [
             must(ExactAdapterTuple::fixed_ollama_granite4_1b(digest('a'))),
-            must(ExactAdapterTuple::fixed_lmstudio_granite4_micro(digest('d'))),
+            must(ExactAdapterTuple::fixed_lmstudio_granite4_micro(digest(
+                'd',
+            ))),
         ]
         .into_iter()
         .enumerate()
         {
             let policy = digest(if index == 0 { 'b' } else { 'e' });
-            let request = request(
-                tuple.tuple_digest.clone(),
-                policy.clone(),
-                "request-sse",
-            );
+            let request = request(tuple.tuple_digest.clone(), policy.clone(), "request-sse");
             let registry = must(AdapterRegistry::new(
                 [tuple],
                 [PolicyProfile::new(
