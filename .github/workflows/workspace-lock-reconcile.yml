@@ -1,0 +1,124 @@
+name: Workspace lock reconciliation
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-convergence-p0-2-20260828
+    paths:
+      - .github/workflows/workspace-lock-reconcile.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: workspace-lock-reconcile-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  EXPECTED_BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
+  EXPECTED_PARENT: 9df5d37113a6a54208d4bf98710c42d7d327aee9
+  WORKFLOW_PATH: .github/workflows/workspace-lock-reconcile.yml
+
+jobs:
+  reconcile:
+    name: Reconcile exact workspace lock and retire self
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact reconciliation candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Prove exact branch and parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$EXPECTED_BRANCH"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          toolchain: 1.95.0
+
+      - name: Reconcile Cargo.lock through Cargo
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata \
+            --manifest-path codex-rs/Cargo.toml \
+            --format-version 1 \
+            --no-deps \
+            >/dev/null
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "codex-rs/Cargo.lock"
+          git diff --check
+
+      - name: Verify exact local-package lock semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib
+          import tomllib
+
+          lock = tomllib.loads(pathlib.Path("codex-rs/Cargo.lock").read_text())
+          packages = lock["package"]
+          runtime = [p for p in packages if p.get("name") == "codex-hepta-memory-runtime"]
+          assert len(runtime) == 1, runtime
+          assert runtime[0]["version"] == "0.0.0", runtime[0]
+          expected = {
+              "codex-hepta-contracts",
+              "codex-hepta-memory",
+              "codex-hepta-paths",
+              "tempfile",
+              "tokio",
+          }
+          assert set(runtime[0].get("dependencies", [])) == expected, runtime[0]
+          agentd = [p for p in packages if p.get("name") == "codex-hepta-agentd"]
+          assert len(agentd) == 1, agentd
+          assert "codex-hepta-memory-runtime" in agentd[0].get("dependencies", []), agentd[0]
+          PY
+
+      - name: Run fail-closed source ratchets on reconciled lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+          python3 scripts/verify-hepta-authority-callers-p0-1.py
+          python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python3 scripts/verify-hepta-cross-owner-operation-wiring.py
+          python3 scripts/verify-hepta-architecture-gap-ledger.py
+          cargo check --manifest-path codex-rs/Cargo.toml --locked -p codex-hepta-memory-runtime
+          cargo check --manifest-path codex-rs/Cargo.toml --locked -p codex-hepta-agentd
+
+      - name: Retire the one-shot workflow and prove bounded diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm "$WORKFLOW_PATH"
+          mapfile -t changed < <(git diff --name-only | sort)
+          test "${#changed[@]}" -eq 2
+          test "${changed[0]}" = ".github/workflows/workspace-lock-reconcile.yml"
+          test "${changed[1]}" = "codex-rs/Cargo.lock"
+          git diff --check
+
+      - name: Fast-forward exact branch only
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head=$(git ls-remote origin "refs/heads/$EXPECTED_BRANCH" | awk '{print $1}')
+          test "$remote_head" = "$GITHUB_SHA"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add codex-rs/Cargo.lock "$WORKFLOW_PATH"
+          git commit -m "build(workspace): reconcile Memory runtime lock entry"
+          test "$(git rev-parse HEAD^)" = "$GITHUB_SHA"
+          git push origin "HEAD:refs/heads/$EXPECTED_BRANCH"
