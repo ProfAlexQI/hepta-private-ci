@@ -32,7 +32,7 @@ jobs:
         env:
           EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
           EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-          EXPECTED_PARENT: a64b136f16c6f71af695f2024d626618d959d4ce
+          EXPECTED_PARENT: 6aadaebdaaaa6001b151ded4e2f2c19d7e792eb4
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
@@ -212,9 +212,125 @@ jobs:
               "use super::intelligence_mutation_state::IntelligenceMutationState;\n",
               "",
           )
+
+          replace_exact(
+              "codex-rs/hepta-memory/src/intelligence_mutation_state.rs",
+              '''        let request = IntelligenceMutationTransitionRequest {
+              binding: drifted,
+              sequence: 0,
+              causal_parent_sha256: None,
+              action: IntelligenceMutationAction::WitnessSource {
+                  source_sha256: digest("source"),
+              },
+          };
+          assert_eq!(
+              state.apply(request),
+              Err(IntelligenceMutationStateError::BindingDrift)
+          );
+          ''',
+              '''        let drifted_request = IntelligenceMutationTransitionRequest {
+              binding: drifted,
+              sequence: 0,
+              causal_parent_sha256: None,
+              action: IntelligenceMutationAction::WitnessSource {
+                  source_sha256: digest("source"),
+              },
+          };
+          assert_eq!(
+              state.apply(drifted_request),
+              Err(IntelligenceMutationStateError::BindingDrift)
+          );
+          ''',
+          )
           PY
 
           (cd codex-rs && cargo fmt --all)
+          (cd codex-rs && cargo fmt --all -- --check)
+          git diff --check
+
+      - name: Apply machine-applicable strict Clippy repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          run_fix() {
+            local label="$1"
+            shift
+            echo "::group::clippy-fix ${label}"
+            set +e
+            (
+              cd codex-rs
+              cargo clippy --fix --locked --allow-dirty --allow-staged "$@"
+            )
+            local code=$?
+            set -e
+            echo "clippy_fix_${label//-/_}_exit=${code}"
+            echo "::endgroup::"
+          }
+
+          run_fix memory \
+            -p codex-hepta-memory --all-targets --no-deps -- -D warnings
+          run_fix extension-default \
+            -p codex-hepta-memory-extension --all-targets --no-deps -- -D warnings
+          run_fix extension-shadow \
+            -p codex-hepta-memory-extension \
+            --features qualification-intelligence-mutation-shadow \
+            --all-targets --no-deps -- -D warnings
+          run_fix agentd-default \
+            -p codex-hepta-agentd --all-targets --no-deps -- -D warnings
+          run_fix agentd-shadow \
+            -p codex-hepta-agentd \
+            --features qualification-intelligence-mutation-shadow \
+            --all-targets --no-deps -- -D warnings
+
+          (cd codex-rs && cargo fmt --all)
+          (cd codex-rs && cargo fmt --all -- --check)
+          git diff --check
+
+      - name: Require every strict Clippy profile to converge
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir="$RUNNER_TEMP/hepta-q0-strict-clippy"
+          rm -rf "$output_dir"
+          mkdir -p "$output_dir"
+          failed=0
+
+          run_strict() {
+            local label="$1"
+            shift
+            echo "::group::strict-clippy ${label}"
+            set +e
+            (
+              cd codex-rs
+              cargo clippy --locked "$@"
+            ) 2>&1 | tee "$output_dir/${label}.log"
+            local code=${PIPESTATUS[0]}
+            set -e
+            printf '%s\n' "$code" > "$output_dir/${label}.exit"
+            echo "strict_clippy_${label//-/_}_exit=${code}"
+            echo "::endgroup::"
+            if [[ "$code" != 0 ]]; then
+              failed=1
+            fi
+          }
+
+          run_strict memory \
+            -p codex-hepta-memory --all-targets --no-deps -- -D warnings
+          run_strict extension-default \
+            -p codex-hepta-memory-extension --all-targets --no-deps -- -D warnings
+          run_strict extension-shadow \
+            -p codex-hepta-memory-extension \
+            --features qualification-intelligence-mutation-shadow \
+            --all-targets --no-deps -- -D warnings
+          run_strict agentd-default \
+            -p codex-hepta-agentd --all-targets --no-deps -- -D warnings
+          run_strict agentd-shadow \
+            -p codex-hepta-agentd \
+            --features qualification-intelligence-mutation-shadow \
+            --all-targets --no-deps -- -D warnings
+
+          test "$failed" = 0
           (cd codex-rs && cargo fmt --all -- --check)
           git diff --check
 
@@ -268,25 +384,43 @@ jobs:
           changed = subprocess.check_output(
               ["git", "diff", "--name-only"], text=True
           ).splitlines()
-          expected = sorted(
-              [
-                  ".github/workflows/hepta-q0-e1-residue-repair.yml",
-                  "codex-rs/hepta-agentd/src/app_runtime.rs",
-                  "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
-                  "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
-                  "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs",
-                  "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs",
-                  "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs",
-                  "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
-                  "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
-                  "scripts/verify-hepta-intelligence-mutation-journal.py",
-                  "scripts/verify-hepta-intelligence-mutation-state.py",
-              ]
+          required = {
+              ".github/workflows/hepta-q0-e1-residue-repair.yml",
+              "codex-rs/hepta-agentd/src/app_runtime.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
+              "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
+              "codex-rs/hepta-memory/src/intelligence_mutation_state.rs",
+              "scripts/verify-hepta-intelligence-mutation-journal.py",
+              "scripts/verify-hepta-intelligence-mutation-state.py",
+          }
+          missing = sorted(required.difference(changed))
+          if missing:
+              raise AssertionError(f"required repair paths missing: {missing}")
+
+          exact_allowed = {
+              ".github/workflows/hepta-q0-e1-residue-repair.yml",
+              "scripts/verify-hepta-intelligence-mutation-journal.py",
+              "scripts/verify-hepta-intelligence-mutation-state.py",
+          }
+          allowed_prefixes = (
+              "codex-rs/hepta-memory/",
+              "codex-rs/ext/hepta-memory/",
+              "codex-rs/hepta-agentd/",
           )
-          if sorted(changed) != expected:
-              raise AssertionError(
-                  f"unexpected repair paths: actual={sorted(changed)} expected={expected}"
-              )
+          unexpected = sorted(
+              path
+              for path in changed
+              if path not in exact_allowed
+              and not path.startswith(allowed_prefixes)
+          )
+          if unexpected:
+              raise AssertionError(f"unexpected repair paths: {unexpected}")
+          print(f"verified_repair_path_count={len(changed)}")
           PY
 
           remote_head="$(
