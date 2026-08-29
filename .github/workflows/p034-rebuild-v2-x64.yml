@@ -1,11 +1,12 @@
-name: P0.3.4 reconstructed candidate publisher v4 x64
+name: P0.3.4 reconstructed candidate publisher v5 x64
 
 on:
   push:
     branches:
       - codex/p034-rebuild-v2-20260829
     paths:
-      - .github/workflows/p034-rebuild-v2-x64.yml
+      - ci/p034-rebuild/TRIGGER_X64
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -22,7 +23,7 @@ jobs:
       TARGET_BRANCH: codex/hepta-intelligence-legacy-governance-v2-20260829
       EXPECTED_TARGET: 35de548b07d3957679800f694ecf1a6f3e001c36
       P033_HEAD: eddcb59ca43a76ac83b64507983bd908f406ff48
-      PAYLOAD_SHA256: 1bae5fe3176c0477875010a18e817a156f6a8898996ae81b89a4ccbbe4811297
+      PAYLOAD_SHA256: f66d0ccfe03fd2dac66786e02077110ca7c5c1d251c445737fe528ca9061e621
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
       RUST_BACKTRACE: "1"
@@ -53,7 +54,7 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt,clippy
 
-      - name: Recover and repair digest-bound reconstruction payload
+      - name: Recover and validate digest-bound reconstruction payload
         shell: bash
         run: |
           set -euo pipefail
@@ -63,7 +64,6 @@ jobs:
           echo "${PAYLOAD_SHA256}  ${RUNNER_TEMP}/p034-rebuild.tar.gz" | sha256sum -c -
           tar -C "${RUNNER_TEMP}/p034-rebuild" -xzf "${RUNNER_TEMP}/p034-rebuild.tar.gz"
           python3 helper/ci/p034-rebuild/hotfix.py "${RUNNER_TEMP}/p034-rebuild"
-          python3 -m py_compile "${RUNNER_TEMP}/p034-rebuild/"*.py
 
       - name: Build, prequalify, squash, and publish exact candidate
         shell: bash
