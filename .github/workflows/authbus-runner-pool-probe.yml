@@ -24,3 +24,5 @@ jobs:
           test -n "${RUNNER_OS}"
           printf 'runner_name=%s\nrunner_os=%s\nrunner_arch=%s\n' \
             "${RUNNER_NAME}" "${RUNNER_OS}" "${RUNNER_ARCH}"
+
+# External ref creation is followed by this explicit push-trigger commit.
