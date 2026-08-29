@@ -1,8 +1,8 @@
 {
-  "schema": "hepta.inference.inf0c.capability_classifier_source_receipt.v1",
+  "schema": "hepta.inference.inf0c.capability_classifier_source_receipt.v2",
   "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
-  "source_candidate_commit": "15811927dc23a522d736fc09d1ff67f02a759229",
-  "source_candidate_tree": "d331cad96ac35002454b39f6ff28c174af2a0655",
+  "source_candidate_commit": "a45d0b6b1591ed67f6f580879a706849a81c6fe9",
+  "source_candidate_tree": "eb415339159aff6bdf39a2030b55432d89321f2d",
   "parent_protocol_receipt": "93bdd3245c2f3d0685ceae8e2ce1267c40a63685",
   "components": {
     "exact_tuple_tool_call_classification": true,
@@ -15,6 +15,7 @@
     "remote_fallback_disabled": true,
     "implicit_model_switch_disabled": true,
     "implicit_model_install_disabled": true,
+    "cross_module_qualification_error_boundary_unified": true,
     "raw_provider_output_persisted": false,
     "raw_tool_arguments_persisted": false,
     "raw_sse_events_persisted": false,
