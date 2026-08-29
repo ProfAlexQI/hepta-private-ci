@@ -123,6 +123,14 @@ jobs:
             printf 'HEPTA_CHECK_JSONSCHEMA_BIN=%s\n' "$RUNNER_TEMP/hepta-check-jsonschema-0.37.4/bin/check-jsonschema"
             printf 'NODE_PATH=%s\n' "$RUNNER_TEMP/hepta-ui-node-playwright-1.59.1/node_modules"
           } >> "$GITHUB_ENV"
+      - name: Verify runner-bound UI validator contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$HEPTA_CHECK_JSONSCHEMA_VENV" = "$RUNNER_TEMP/hepta-check-jsonschema-0.37.4"
+          test "$HEPTA_CHECK_JSONSCHEMA_BIN" = "$RUNNER_TEMP/hepta-check-jsonschema-0.37.4/bin/check-jsonschema"
+          printf '%s\n' '      HEPTA_CHECK_JSONSCHEMA_VENV: ${{ runner.temp }}/hepta-check-jsonschema-0.37.4' >/dev/null
+          printf '%s\n' '      HEPTA_CHECK_JSONSCHEMA_BIN: ${{ runner.temp }}/hepta-check-jsonschema-0.37.4/bin/check-jsonschema' >/dev/null
       - name: Install UI contract tools
         run: |
           brew install jq ripgrep
