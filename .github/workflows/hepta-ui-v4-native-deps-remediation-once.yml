@@ -1,0 +1,249 @@
+name: hepta-ui-v4-native-deps-remediation-once
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-executable-final-gap-closure-v3-20260829"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v4-native-deps-remediation-once
+  cancel-in-progress: false
+
+env:
+  HEPTA_EXPECTED_BRANCH: codex/ui-v4-executable-final-gap-closure-v3-20260829
+
+jobs:
+  remediate:
+    name: Apply bounded Linux Native dependency and receipt remediation
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify bounded write target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$HEPTA_EXPECTED_BRANCH"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse --abbrev-ref HEAD)" = HEAD
+
+      - name: Patch Linux Native dependencies and truthful receipts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          dependency_step = '''      - name: Install Linux Native build dependencies
+                shell: bash
+                run: |
+                  set -euo pipefail
+                  sudo apt-get update
+                  sudo apt-get install --yes --no-install-recommends \\
+                    build-essential \\
+                    pkg-config \\
+                    clang \\
+                    ca-certificates \\
+                    libssl-dev \\
+                    libx11-dev \\
+                    libxcursor-dev \\
+                    libxkbcommon-dev \\
+                    libxrandr-dev \\
+                    libxi-dev \\
+                    libxinerama-dev \\
+                    libasound2-dev \\
+                    libpulse-dev \\
+                    libwayland-dev \\
+                    wayland-protocols \\
+                    libegl1-mesa-dev \\
+                    libgl1-mesa-dev \\
+                    libgles2-mesa-dev \\
+                    libglx-dev \\
+                    libdrm-dev \\
+                    libgbm-dev
+          '''
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, got {count}")
+              return text.replace(old, new, 1)
+
+          v4_path = Path('.github/workflows/hepta-ui-v4-final-gap-closure-v4.yml')
+          v4 = v4_path.read_text()
+          v4_anchor = '''      - name: Install Rust 1.95
+                uses: dtolnay/rust-toolchain@stable
+                with:
+                  toolchain: 1.95.0
+                  components: rustfmt
+              - name: Compile Rust-served bundle and Native contracts
+          '''
+          v4_replacement = '''      - name: Install Rust 1.95
+                uses: dtolnay/rust-toolchain@stable
+                with:
+                  toolchain: 1.95.0
+                  components: rustfmt
+          ''' + dependency_step + '''      - name: Compile Rust-served bundle and Native contracts
+          '''
+          v4 = replace_once(v4, v4_anchor, v4_replacement, 'v4 dependency insertion')
+          v4_path.write_text(v4)
+
+          generic_path = Path('.github/workflows/hepta-ui-v4.yml')
+          generic = generic_path.read_text()
+          generic_anchor = '''      - name: Install repository Rust toolchain
+                uses: dtolnay/rust-toolchain@stable
+                with:
+                  toolchain: 1.95.0
+                  components: rustfmt
+
+              - name: Compile digest-bound served bundle path
+          '''
+          generic_replacement = '''      - name: Install repository Rust toolchain
+                uses: dtolnay/rust-toolchain@stable
+                with:
+                  toolchain: 1.95.0
+                  components: rustfmt
+
+          ''' + dependency_step + '''
+              - name: Compile digest-bound served bundle path
+                id: served
+                continue-on-error: true
+          '''
+          generic = replace_once(generic, generic_anchor, generic_replacement, 'generic dependency insertion')
+          generic = replace_once(
+              generic,
+              '''      - name: Check Native formatting
+                run: cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
+
+              - name: Compile and test fail-closed Native v4 contracts
+          ''',
+              '''      - name: Check Native formatting
+                id: format
+                continue-on-error: true
+                run: cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
+
+              - name: Compile and test fail-closed Native v4 contracts
+                id: native
+                continue-on-error: true
+          ''',
+              'generic outcome ids',
+          )
+          old_receipt = '''      - name: Write exact compile receipt
+                if: always()
+                shell: bash
+                run: |
+                  mkdir -p artifacts/ui-v4-native
+                  printf '{"schema":"hepta.ui.v4.generic-native-compile.v1","candidate":{"commit":"%s","tree":"%s"},"rustToolchain":"1.95.0","productBound":false,"systemMaterialBound":false,"authority":{"network":false,"mutation":false,"effect":false,"liveAdapter":false,"production":false,"operatorAcceptance":false,"promotion":false,"release":false}}\\n' \\
+                    "$HEPTA_CANDIDATE_SHA" "$(git rev-parse 'HEAD^{tree}')" \\
+                    > artifacts/ui-v4-native/receipt.json
+          '''
+          new_receipt = '''      - name: Write exact compile receipt
+                if: always()
+                shell: bash
+                env:
+                  SERVED_OUTCOME: ${{ steps.served.outcome }}
+                  FORMAT_OUTCOME: ${{ steps.format.outcome }}
+                  NATIVE_OUTCOME: ${{ steps.native.outcome }}
+                run: |
+                  set -euo pipefail
+                  mkdir -p artifacts/ui-v4-native
+                  ruby -rjson -e '\''
+                    checks = {
+                      "servedBundle" => ENV.fetch("SERVED_OUTCOME"),
+                      "nativeFormatting" => ENV.fetch("FORMAT_OUTCOME"),
+                      "nativeContracts" => ENV.fetch("NATIVE_OUTCOME")
+                    }
+                    pass = checks.values.all? { |value| value == "success" }
+                    payload = {
+                      "schema" => "hepta.ui.v4.generic-native-compile.v2",
+                      "status" => pass ? "PASS_GENERIC_NATIVE_COMPILE" : "FAIL_GENERIC_NATIVE_COMPILE",
+                      "candidate" => {
+                        "commit" => ENV.fetch("HEPTA_CANDIDATE_SHA"),
+                        "tree" => `git rev-parse HEAD^{tree}`.strip
+                      },
+                      "rustToolchain" => "1.95.0",
+                      "checks" => checks,
+                      "productBound" => false,
+                      "systemMaterialBound" => false,
+                      "authority" => {
+                        "network" => false,
+                        "mutation" => false,
+                        "effect" => false,
+                        "liveAdapter" => false,
+                        "production" => false,
+                        "operatorAcceptance" => false,
+                        "promotion" => false,
+                        "release" => false
+                      }
+                    }
+                    File.write("artifacts/ui-v4-native/receipt.json", JSON.pretty_generate(payload) + "\\n")
+                  '\''
+          '''
+          generic = replace_once(generic, old_receipt, new_receipt, 'truthful generic receipt')
+          upload_block = '''      - name: Upload exact compile receipt
+                if: always()
+                uses: actions/upload-artifact@v4
+                with:
+                  name: hepta-ui-v4-native-compile-${{ env.HEPTA_CANDIDATE_SHA }}
+                  path: artifacts/ui-v4-native/receipt.json
+                  if-no-files-found: warn
+                  retention-days: 14
+          '''
+          enforce_block = upload_block + '''
+              - name: Enforce exact compile result
+                if: always()
+                shell: bash
+                env:
+                  SERVED_OUTCOME: ${{ steps.served.outcome }}
+                  FORMAT_OUTCOME: ${{ steps.format.outcome }}
+                  NATIVE_OUTCOME: ${{ steps.native.outcome }}
+                run: |
+                  set -euo pipefail
+                  test "$SERVED_OUTCOME" = success
+                  test "$FORMAT_OUTCOME" = success
+                  test "$NATIVE_OUTCOME" = success
+          '''
+          generic = replace_once(generic, upload_block, enforce_block, 'generic final enforcement')
+          generic_path.write_text(generic)
+          PY
+
+      - name: Validate bounded remediation
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4.yml"); YAML.parse_file(".github/workflows/hepta-ui-v4-final-gap-closure-v4.yml")'
+          grep -q 'libwayland-dev' .github/workflows/hepta-ui-v4.yml
+          grep -q 'libwayland-dev' .github/workflows/hepta-ui-v4-final-gap-closure-v4.yml
+          grep -q 'FAIL_GENERIC_NATIVE_COMPILE' .github/workflows/hepta-ui-v4.yml
+          grep -q 'Enforce exact compile result' .github/workflows/hepta-ui-v4.yml
+          rm .github/workflows/hepta-ui-v4-native-deps-remediation-once.yml
+          git diff --check
+          ruby -e '
+            paths = `git diff --name-only`.lines(chomp: true).sort
+            expected = [
+              ".github/workflows/hepta-ui-v4-final-gap-closure-v4.yml",
+              ".github/workflows/hepta-ui-v4-native-deps-remediation-once.yml",
+              ".github/workflows/hepta-ui-v4.yml"
+            ].sort
+            abort "unexpected remediation paths: #{paths.inspect}" unless paths == expected
+          '
+
+      - name: Commit bounded remediation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "hepta-ui-remediation-bot"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git add -A .github/workflows
+          git commit -m "ci(ui): install Linux Native dependencies and seal receipts"
+          git push origin "HEAD:$HEPTA_EXPECTED_BRANCH"
