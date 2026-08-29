@@ -16,7 +16,7 @@ concurrency:
 jobs:
   prune-stale-ui-queue:
     name: Cancel superseded queued UI runs
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
@@ -54,7 +54,7 @@ jobs:
               ui && !protected
             end
             plan={
-              "schema"=>"hepta.actions.queue-recovery.once.v4",
+              "schema"=>"hepta.actions.queue-recovery.once.v5",
               "repository"=>ENV.fetch("GITHUB_REPOSITORY"),
               "protectedBranch"=>branch,
               "protectedHeadSha"=>sha,
