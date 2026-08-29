@@ -1,0 +1,26 @@
+name: AuthBus runner pool probe
+
+on:
+  push:
+    branches:
+      - tmp/authbus-runner-pool-probe-20260830
+    paths:
+      - .github/workflows/authbus-runner-pool-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  slim:
+    name: Probe ubuntu-slim availability
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - name: Emit executable runner witness
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RUNNER_NAME}"
+          test -n "${RUNNER_OS}"
+          printf 'runner_name=%s\nrunner_os=%s\nrunner_arch=%s\n' \
+            "${RUNNER_NAME}" "${RUNNER_OS}" "${RUNNER_ARCH}"
