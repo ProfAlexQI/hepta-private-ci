@@ -1,0 +1,127 @@
+{
+  "schema": "hepta.inference.v4.closure_evidence_contract.v1",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V4",
+  "version": "1.0.0",
+  "canonical_truth": {
+    "plan": "docs/hepta-vnext/inference/HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V4.md",
+    "current_status": "docs/hepta-vnext/inference/HEPTA_INFERENCE_CURRENT_STATUS_V4.json",
+    "implementation_status": "docs/hepta-vnext/inference/HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V3.json",
+    "stage_matrix": "docs/hepta-vnext/inference/HEPTA_INFERENCE_STAGE_MATRIX_V5.json",
+    "blocker_ledger": "docs/hepta-vnext/inference/HEPTA_INFERENCE_BLOCKER_LEDGER_V2.json",
+    "evidence_contract": "docs/hepta-vnext/inference/HEPTA_INFERENCE_V4_CLOSURE_EVIDENCE_CONTRACT_V1.json",
+    "runbook": "docs/hepta-vnext/inference/HEPTA_INFERENCE_RUNTIME_RUNBOOK_V1.md",
+    "threat_model": "docs/hepta-vnext/inference/HEPTA_INFERENCE_THREAT_MODEL_V1.md",
+    "test_matrix": "docs/hepta-vnext/inference/HEPTA_INFERENCE_TEST_MATRIX_V1.md"
+  },
+  "exact_head_fields": [
+    "repository",
+    "head_sha",
+    "tree_sha",
+    "parent_sha",
+    "cargo_lock_sha256",
+    "workflow_path",
+    "workflow_run_id",
+    "job_id",
+    "run_attempt",
+    "runner_name",
+    "runner_os",
+    "runner_arch",
+    "toolchain"
+  ],
+  "artifact_identity_fields": [
+    "provider",
+    "service_version",
+    "endpoint_literal",
+    "model_id",
+    "model_artifact_sha256",
+    "gguf_metadata_sha256",
+    "tokenizer_sha256",
+    "chat_template_sha256",
+    "runtime_build_sha256",
+    "runtime_upstream_commit",
+    "sbom_sha256",
+    "license_sha256",
+    "device_profile_sha256",
+    "policy_sha256",
+    "resource_budget_sha256"
+  ],
+  "lifecycle_fields": [
+    "request_id",
+    "request_generation",
+    "cancel_generation",
+    "backend_generation",
+    "session_id_digest",
+    "request_capability_digest",
+    "worker_session_nonce_digest",
+    "last_sequence",
+    "output_tokens",
+    "output_bytes",
+    "rolling_result_digest",
+    "termination_reason",
+    "cancel_acknowledged",
+    "forced_worker_termination",
+    "process_death_observed",
+    "remote_fallback_attempted"
+  ],
+  "classes": {
+    "E0": {
+      "required": true,
+      "substitution_allowed": false
+    },
+    "E1": {
+      "required": true,
+      "substitution_allowed": false
+    },
+    "E2": {
+      "required_for_supported_external_providers": true,
+      "substitution_allowed": false
+    },
+    "E3": {
+      "required": true,
+      "substitution_allowed": false
+    },
+    "E4": {
+      "required_for_each_supported_device": true,
+      "substitution_allowed": false
+    },
+    "E5": {
+      "required": true,
+      "substitution_allowed": false
+    },
+    "E6": {
+      "required": true,
+      "author_may_self_accept": false
+    },
+    "E7": {
+      "required_for_activation": true,
+      "authorized_in_v4_source_pr": false
+    }
+  },
+  "aggregate_rules": {
+    "required_job_may_be_skipped": false,
+    "empty_steps_accepted": false,
+    "runner_id_zero_accepted": false,
+    "historical_schema_rewrite_required": false,
+    "ancestry_required_for_historical_receipt": true,
+    "authority_must_be_explicit": true,
+    "raw_prompt_or_output_allowed": false,
+    "silent_remote_fallback_allowed": false
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

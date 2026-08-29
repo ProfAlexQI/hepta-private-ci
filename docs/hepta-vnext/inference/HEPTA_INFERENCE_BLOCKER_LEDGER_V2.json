@@ -1,0 +1,143 @@
+{
+  "schema": "hepta.inference.blocker_ledger.v2",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V4",
+  "plan_version": "4.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "candidate_branch": "codex/hepta-inference-v4-gap-closure-20260830",
+  "planning_base": {
+    "commit": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
+    "tree": "4bbc59481ca90ccd62e702baa3b865a221d4b2e5"
+  },
+  "status": "OPEN",
+  "source_owned_open": 11,
+  "execution_only_open": 1,
+  "blockers": [
+    {
+      "id": "INF-V4-B001",
+      "priority": "P0",
+      "package": "V4-T0",
+      "title": "Historical INF-0C gate is not descendant-safe",
+      "class": "SOURCE",
+      "state": "OPEN",
+      "evidence": "run 33265631140 job 99135073849 rejects an absent field in historical stage matrix V2",
+      "closure": "Gate accepts immutable historical schema and derives current source completeness from active V4 truth without weakening authority checks"
+    },
+    {
+      "id": "INF-V4-B002",
+      "priority": "P0",
+      "package": "V4-T0",
+      "title": "Multiple active-looking plans and status files",
+      "class": "SOURCE",
+      "state": "OPEN",
+      "closure": "Canonical pointer and V4 exact-head source gate enforce one active truth set"
+    },
+    {
+      "id": "INF-V4-B003",
+      "priority": "P0",
+      "package": "V4-H1",
+      "title": "Same-UID client lacks unforgeable role/session/request capability",
+      "class": "SOURCE_AND_E1",
+      "state": "OPEN",
+      "closure": "Typed role protocols, daemon-minted capability, worker nonce, role-confusion and theft tests pass"
+    },
+    {
+      "id": "INF-V4-B004",
+      "priority": "P0",
+      "package": "V4-H2",
+      "title": "Queue limits are reused for inflight/running and no per-model budget exists",
+      "class": "SOURCE_AND_E1",
+      "state": "OPEN",
+      "closure": "Distinct global/tenant/model budgets and adversarial admit-start tests pass"
+    },
+    {
+      "id": "INF-V4-B005",
+      "priority": "P1",
+      "package": "V4-H2",
+      "title": "Receipt lifecycle lacks TTL and compaction",
+      "class": "SOURCE_AND_E1",
+      "state": "OPEN",
+      "closure": "Restart recovery, corruption handling, TTL, compaction and disk-budget tests pass"
+    },
+    {
+      "id": "INF-V4-B006",
+      "priority": "P0",
+      "package": "V4-R1",
+      "title": "Worker supervisor is an in-memory contract rather than an isolated process",
+      "class": "SOURCE_AND_E1",
+      "state": "OPEN",
+      "closure": "Authenticated child process, heartbeat, crash, hang, drain, kill and stale-session tests pass"
+    },
+    {
+      "id": "INF-V4-B007",
+      "priority": "P0",
+      "package": "V4-P1",
+      "title": "Real Ollama/LM Studio calls are not behind the daemon boundary",
+      "class": "SOURCE_AND_E2",
+      "state": "OPEN",
+      "closure": "Exact-tuple real-service receipts pass with no download, no proxy/redirect, strict media and semantic validation"
+    },
+    {
+      "id": "INF-V4-B008",
+      "priority": "P0",
+      "package": "V4-N1",
+      "title": "No real native llama.cpp model execution",
+      "class": "SOURCE_AND_E3",
+      "state": "OPEN",
+      "closure": "Pinned runtime loads exact GGUF and streams real token(s) with digest-valid receipt"
+    },
+    {
+      "id": "INF-V4-B009",
+      "priority": "P0",
+      "package": "V4-C1",
+      "title": "No observed cancel acknowledgement or forced worker death",
+      "class": "SOURCE_AND_E1_E2_E3",
+      "state": "OPEN",
+      "closure": "Cancel state machine records ACK or observed process death; stale events are rejected"
+    },
+    {
+      "id": "INF-V4-B010",
+      "priority": "P1",
+      "package": "V4-S1",
+      "title": "Scheduler, leases, KV/prefix cache and memory-pressure policy are absent",
+      "class": "SOURCE_AND_E1_E4",
+      "state": "OPEN",
+      "closure": "Bounded fairness, lease revocation, digest-safe cache and deterministic eviction tests pass"
+    },
+    {
+      "id": "INF-V4-B011",
+      "priority": "P0",
+      "package": "V4-PB1",
+      "title": "Product route bypasses new control plane",
+      "class": "SOURCE_AND_E5",
+      "state": "OPEN",
+      "closure": "Opt-in shadow bridge traverses daemon and cannot change authoritative output or write Hepta state"
+    },
+    {
+      "id": "INF-V4-B012",
+      "priority": "P0",
+      "package": "V4-D1_V4-O1",
+      "title": "No exact-device performance, soak, independent operator or rollout receipt",
+      "class": "E4_E6_E7",
+      "state": "OPEN",
+      "closure": "Supported device profiles, soak, rollback, independent acceptance and explicit promotion ladder are evidenced"
+    }
+  ],
+  "closure_rule": "No blocker is closed by source presence alone when its class includes E1-E7.",
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "schema": "hepta.inference.canonical_truth.v1",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V4",
+  "plan_version": "4.0.0",
+  "published_date": "2026-08-30",
+  "repository": "ProfHepta/hepta-private-ci",
+  "candidate_branch": "codex/hepta-inference-v4-gap-closure-20260830",
+  "planning_base": {
+    "commit": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
+    "tree": "4bbc59481ca90ccd62e702baa3b865a221d4b2e5"
+  },
+  "active": {
+    "plan": "docs/hepta-vnext/inference/HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V4.md",
+    "current_status": "docs/hepta-vnext/inference/HEPTA_INFERENCE_CURRENT_STATUS_V4.json",
+    "implementation_status": "docs/hepta-vnext/inference/HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V3.json",
+    "stage_matrix": "docs/hepta-vnext/inference/HEPTA_INFERENCE_STAGE_MATRIX_V5.json",
+    "blocker_ledger": "docs/hepta-vnext/inference/HEPTA_INFERENCE_BLOCKER_LEDGER_V2.json",
+    "evidence_contract": "docs/hepta-vnext/inference/HEPTA_INFERENCE_V4_CLOSURE_EVIDENCE_CONTRACT_V1.json",
+    "runbook": "docs/hepta-vnext/inference/HEPTA_INFERENCE_RUNTIME_RUNBOOK_V1.md",
+    "threat_model": "docs/hepta-vnext/inference/HEPTA_INFERENCE_THREAT_MODEL_V1.md",
+    "test_matrix": "docs/hepta-vnext/inference/HEPTA_INFERENCE_TEST_MATRIX_V1.md"
+  },
+  "historical_predecessors": [
+    "docs/hepta-vnext/inference/HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V3.md",
+    "docs/hepta-vnext/inference/HEPTA_INFERENCE_CURRENT_STATUS_V3.json",
+    "docs/hepta-vnext/inference/HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V2.json",
+    "docs/hepta-vnext/inference/HEPTA_INFERENCE_STAGE_MATRIX_V4.json",
+    "docs/hepta-vnext/inference/HEPTA_INFERENCE_BLOCKER_LEDGER_V1.json"
+  ],
+  "source_binding_policy": {
+    "static_documents_bind_planning_base": true,
+    "candidate_head_resolved_by_ci": true,
+    "historical_receipts_immutable": true,
+    "descendant_gates_use_ancestry_and_artifact_digests": true,
+    "self_referential_commit_copy_forbidden": true
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

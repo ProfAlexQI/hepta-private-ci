@@ -1,0 +1,229 @@
+{
+  "schema": "hepta.inference.stage_matrix.v5",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V4",
+  "plan_version": "4.0.0",
+  "overall_status": "SOURCE_IMPLEMENTATION_IN_PROGRESS",
+  "current_stage": "V4-T0",
+  "evidence_classes": {
+    "E0": "source_contract",
+    "E1": "deterministic_isolated_process",
+    "E2": "real_provider_exact_tuple",
+    "E3": "real_native_model",
+    "E4": "exact_device_performance",
+    "E5": "product_shadow",
+    "E6": "independent_operator_acceptance",
+    "E7": "promotion_release"
+  },
+  "status_vocabulary": [
+    "NOT_STARTED",
+    "SOURCE_PLANNED",
+    "SOURCE_PRESENT_NOT_EXECUTED",
+    "EXECUTED_FAILED",
+    "EXECUTED_PASSED_QUALIFICATION_ONLY",
+    "BLOCKED_PREREQUISITE",
+    "OPERATOR_ACCEPTED",
+    "PROMOTED",
+    "RELEASED"
+  ],
+  "stages": [
+    {
+      "id": "V4-T0",
+      "title": "canonical_truth_and_ci_convergence",
+      "depends_on": [],
+      "status": "SOURCE_PLANNED",
+      "required_evidence": "E0",
+      "source_complete": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "released": false
+    },
+    {
+      "id": "V4-T1",
+      "title": "toolchain_and_build_graph_convergence",
+      "depends_on": [
+        "V4-T0"
+      ],
+      "status": "SOURCE_PLANNED",
+      "required_evidence": "E0",
+      "source_complete": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "released": false
+    },
+    {
+      "id": "V4-H1",
+      "title": "role_session_capability_boundary",
+      "depends_on": [
+        "V4-T1"
+      ],
+      "status": "SOURCE_PLANNED",
+      "required_evidence": "E0+E1",
+      "source_complete": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "released": false
+    },
+    {
+      "id": "V4-H2",
+      "title": "bounded_lifecycle_durability_deadlines",
+      "depends_on": [
+        "V4-H1"
+      ],
+      "status": "SOURCE_PLANNED",
+      "required_evidence": "E0+E1",
+      "source_complete": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "released": false
+    },
+    {
+      "id": "V4-R1",
+      "title": "isolated_process_transport",
+      "depends_on": [
+        "V4-H2"
+      ],
+      "status": "SOURCE_PLANNED",
+      "required_evidence": "E1",
+      "source_complete": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "released": false
+    },
+    {
+      "id": "V4-P1",
+      "title": "real_provider_adapters",
+      "depends_on": [
+        "V4-R1"
+      ],
+      "status": "NOT_STARTED",
+      "required_evidence": "E2",
+      "source_complete": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "released": false
+    },
+    {
+      "id": "V4-N1",
+      "title": "native_llamacpp_real_model",
+      "depends_on": [
+        "V4-R1"
+      ],
+      "status": "NOT_STARTED",
+      "required_evidence": "E3",
+      "source_complete": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "released": false
+    },
+    {
+      "id": "V4-C1",
+      "title": "cancel_ack_and_forced_kill",
+      "depends_on": [
+        "V4-P1",
+        "V4-N1"
+      ],
+      "status": "NOT_STARTED",
+      "required_evidence": "E1+E2+E3",
+      "source_complete": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "released": false
+    },
+    {
+      "id": "V4-S1",
+      "title": "scheduler_leases_cache_resources",
+      "depends_on": [
+        "V4-C1"
+      ],
+      "status": "NOT_STARTED",
+      "required_evidence": "E0+E1+E4",
+      "source_complete": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "released": false
+    },
+    {
+      "id": "V4-PB1",
+      "title": "product_shadow_bridge",
+      "depends_on": [
+        "V4-S1"
+      ],
+      "status": "NOT_STARTED",
+      "required_evidence": "E5",
+      "source_complete": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "released": false
+    },
+    {
+      "id": "V4-D1",
+      "title": "exact_device_performance",
+      "depends_on": [
+        "V4-S1",
+        "V4-N1"
+      ],
+      "status": "NOT_STARTED",
+      "required_evidence": "E4",
+      "source_complete": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "released": false
+    },
+    {
+      "id": "V4-O1",
+      "title": "operator_acceptance_promotion_release",
+      "depends_on": [
+        "V4-PB1",
+        "V4-D1"
+      ],
+      "status": "NOT_STARTED",
+      "required_evidence": "E6+E7",
+      "source_complete": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "released": false
+    }
+  ],
+  "module_closed_candidate": false,
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

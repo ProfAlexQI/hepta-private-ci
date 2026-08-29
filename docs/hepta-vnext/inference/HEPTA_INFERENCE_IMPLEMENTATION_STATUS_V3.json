@@ -1,0 +1,112 @@
+{
+  "schema": "hepta.inference.implementation_status.v3",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V4",
+  "plan_version": "4.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "planning_base_commit": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
+  "state": "SOURCE_IMPLEMENTATION_IN_PROGRESS",
+  "components": {
+    "control_core": {
+      "source": "PRESENT_CANDIDATE",
+      "execution": "SOURCE_TESTED_PRE_V4"
+    },
+    "owner_local_client": {
+      "source": "PRESENT_CANDIDATE",
+      "execution": "SOURCE_TESTED_PRE_V4"
+    },
+    "daemon": {
+      "source": "PRESENT_CANDIDATE",
+      "execution": "SOURCE_TESTED_PRE_V4"
+    },
+    "role_separation": {
+      "source": "PARTIAL_PUBLIC_DENIAL_ONLY",
+      "execution": "NOT_QUALIFIED_V4"
+    },
+    "session_capability": {
+      "source": "ABSENT",
+      "execution": "NOT_EXECUTED"
+    },
+    "receipt_store": {
+      "source": "PARTIAL_NO_TTL_COMPACTION",
+      "execution": "NOT_QUALIFIED_V4"
+    },
+    "worker_host": {
+      "source": "CONTRACT_ONLY",
+      "execution": "NOT_EXECUTED"
+    },
+    "provider_worker": {
+      "source": "ADAPTER_CONTRACT_ONLY",
+      "execution": "HISTORICAL_EXTERNAL_EVIDENCE_ONLY"
+    },
+    "native_llama_cpp": {
+      "source": "ABI_AND_MANIFEST_ONLY",
+      "execution": "NOT_EXECUTED"
+    },
+    "cancellation": {
+      "source": "QUEUED_CANCEL_AND_REJECTION_ONLY",
+      "execution": "NO_WORKER_ACK_OR_KILL_PROOF"
+    },
+    "scheduler": {
+      "source": "ABSENT",
+      "execution": "NOT_EXECUTED"
+    },
+    "leases_and_cache": {
+      "source": "ABSENT",
+      "execution": "NOT_EXECUTED"
+    },
+    "product_bridge": {
+      "source": "ABSENT",
+      "execution": "NOT_EXECUTED"
+    },
+    "device_qualification": {
+      "source": "WORKFLOW_FRAMEWORK_PARTIAL",
+      "execution": "NOT_EXECUTED_V4"
+    },
+    "operator_acceptance": {
+      "source": "ABSENT_V4_PACKAGE",
+      "execution": "NOT_EXECUTED"
+    }
+  },
+  "implemented_invariants": [
+    "qualification-only authority snapshot",
+    "owner-local UDS and same-UID peer check",
+    "canonical bounded CBOR",
+    "generation and sequence fences",
+    "bounded queue/inflight/running accounting candidate",
+    "rolling token digest and output reconciliation candidate",
+    "connection semaphore and bounded I/O candidate",
+    "atomic receipt write, scan, budget, replay guard candidate",
+    "no remote fallback in current inference crates"
+  ],
+  "missing_invariants": [
+    "unforgeable session and request capabilities",
+    "separate public/worker/operator protocols and channels",
+    "worker session nonce and attestation",
+    "real child-process lifecycle and process death observation",
+    "receipt TTL and compaction",
+    "real provider path behind daemon",
+    "real llama.cpp model execution",
+    "cancel ACK and forced-kill evidence",
+    "scheduler, leases, cache, and device budgets",
+    "product shadow integration",
+    "exact-device performance and soak",
+    "independent operator acceptance and rollout package"
+  ],
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

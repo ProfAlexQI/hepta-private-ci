@@ -1,0 +1,84 @@
+{
+  "schema": "hepta.inference.current_status.v4",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V4",
+  "plan_version": "4.0.0",
+  "status": "SOURCE_IMPLEMENTATION_IN_PROGRESS",
+  "qualified": false,
+  "module_closed_candidate": false,
+  "repository": "ProfHepta/hepta-private-ci",
+  "candidate_branch": "codex/hepta-inference-v4-gap-closure-20260830",
+  "planning_base": {
+    "commit": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
+    "tree": "4bbc59481ca90ccd62e702baa3b865a221d4b2e5"
+  },
+  "candidate_binding": {
+    "head": "RESOLVED_BY_EXACT_HEAD_CI",
+    "tree": "RESOLVED_BY_EXACT_HEAD_CI",
+    "cargo_lock_sha256": "RESOLVED_BY_EXACT_HEAD_CI",
+    "toolchain": "rust-1.95.0",
+    "latest_aggregate_run": null
+  },
+  "present_source": {
+    "hepta_infer_core": true,
+    "hepta_infer_client": true,
+    "hepta_inferd": true,
+    "rolling_token_digest": true,
+    "output_count_and_limit_reconciliation": true,
+    "inflight_and_running_accounting": true,
+    "connection_semaphore_and_io_timeout": true,
+    "deadline_sweep": true,
+    "receipt_atomic_write_scan_budget_and_replay_guard": true,
+    "public_role_denial": true
+  },
+  "source_gaps": {
+    "canonical_v4_exact_head_gate": true,
+    "historical_inf0c_descendant_gate_repair": true,
+    "typed_public_worker_operator_protocols": true,
+    "daemon_minted_session_and_request_capability": true,
+    "private_worker_and_operator_channels": true,
+    "worker_session_nonce": true,
+    "separate_queue_inflight_running_model_budgets": true,
+    "receipt_ttl_and_compaction": true,
+    "observed_worker_cancel_ack_and_forced_kill": true,
+    "isolated_worker_host_process": true,
+    "real_provider_adapter_behind_daemon": true,
+    "real_native_model_execution": true,
+    "scheduler_input_kv_prefix_leases": true,
+    "product_shadow_bridge": true,
+    "exact_device_performance": true
+  },
+  "execution_evidence": {
+    "E0_source": "NOT_EXECUTED_ON_V4_HEAD",
+    "E1_process_fixture": "NOT_EXECUTED_ON_V4_HEAD",
+    "E2_real_provider": "NOT_EXECUTED_ON_V4_HEAD",
+    "E3_real_native_model": "NOT_EXECUTED_ON_V4_HEAD",
+    "E4_exact_device": "NOT_EXECUTED_ON_V4_HEAD",
+    "E5_product_shadow": "NOT_EXECUTED_ON_V4_HEAD",
+    "E6_operator_acceptance": "NOT_EXECUTED",
+    "E7_promotion_release": "NOT_AUTHORIZED"
+  },
+  "known_exact_head_failure_at_planning_base": {
+    "workflow_run": 33265631140,
+    "job": 99135073849,
+    "step": "Re-run evidence-v2 source contract",
+    "failure_code": "INF-0C source flag false: trusted_control_helper_source_complete",
+    "classification": "HISTORICAL_MATRIX_DESCENDANT_GATE_DRIFT"
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
