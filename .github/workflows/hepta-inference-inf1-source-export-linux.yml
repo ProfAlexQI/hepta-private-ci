@@ -1,4 +1,4 @@
-name: Hepta inference INF-1 materialized source export Linux
+name: Hepta inference INF-1 materialized source export macOS
 
 on:
   push:
@@ -12,13 +12,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: hepta-inference-inf1-source-export-linux
+  group: hepta-inference-inf1-source-export-macos
   cancel-in-progress: false
 
 jobs:
   export:
     name: Export materialized INF-1 source before Rust execution
-    runs-on: ubuntu-24.04
+    runs-on: macos-15-intel
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -61,7 +61,7 @@ jobs:
                       'byte_length': len(data),
                   })
           manifest = {
-              'schema': 'hepta.inference.inf1.materialized-source-linux.v1',
+              'schema': 'hepta.inference.inf1.materialized-source-macos.v1',
               'head': os.environ['GITHUB_SHA'],
               'files': files,
               'qualified': False,
@@ -70,12 +70,12 @@ jobs:
           }
           (root / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
           PY
-          find "$out" -type f -print0 | sort -z | xargs -0 sha256sum > "$out/SHA256SUMS"
+          find "$out" -type f -print0 | sort -z | xargs -0 shasum -a 256 > "$out/SHA256SUMS"
 
       - name: Upload materialized source
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-inference-inf1-materialized-linux-${{ github.sha }}
+          name: hepta-inference-inf1-materialized-macos-${{ github.sha }}
           path: ${{ runner.temp }}/hepta-inference-inf1-materialized
           if-no-files-found: error
           retention-days: 7
