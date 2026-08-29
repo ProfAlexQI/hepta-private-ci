@@ -1,0 +1,78 @@
+name: Hepta inference V4 source payload inspection
+
+on:
+  push:
+    branches:
+      - ops/hepta-inference-v4-payload-inspect-20260830
+    paths:
+      - ".github/workflows/hepta-inference-v4-payload-inspect.yml"
+      - "tools/hepta-inference-v2-publisher/payload.part*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-v4-payload-inspect
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    name: Reconstruct and audit bounded runtime source payload
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Reconstruct source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/runtime-source.tar.gz"
+          cat tools/hepta-inference-v2-publisher/payload.part00 \
+              tools/hepta-inference-v2-publisher/payload.part01 \
+              tools/hepta-inference-v2-publisher/payload.part02 \
+              tools/hepta-inference-v2-publisher/payload.part03 \
+              tools/hepta-inference-v2-publisher/payload.part04 \
+            | base64 --decode > "$archive"
+          test "$(sha256sum "$archive" | cut -d' ' -f1)" = \
+            "fbc9c7cf4931f6c2a53dc448ac3089344ae0ee2ac7e6ce226d4c4950a7c3a590"
+          mkdir -p "$RUNNER_TEMP/runtime-source"
+          tar -tzf "$archive" | tee "$RUNNER_TEMP/runtime-source-manifest.txt"
+          python3 - "$archive" <<'PY'
+          import pathlib
+          import sys
+          import tarfile
+
+          archive = pathlib.Path(sys.argv[1])
+          with tarfile.open(archive, "r:gz") as handle:
+              members = handle.getmembers()
+              if not members:
+                  raise SystemExit("empty archive")
+              for member in members:
+                  path = pathlib.PurePosixPath(member.name)
+                  if path.is_absolute() or ".." in path.parts:
+                      raise SystemExit(f"unsafe path: {member.name}")
+                  if not (member.isdir() or member.isfile()):
+                      raise SystemExit(f"non-regular member: {member.name}")
+              handle.extractall(path=pathlib.Path(sys.argv[1]).parent / "runtime-source", filter="data")
+          PY
+          find "$RUNNER_TEMP/runtime-source" -type f -print0 \
+            | sort -z \
+            | xargs -0 sha256sum \
+            > "$RUNNER_TEMP/runtime-source-sha256.txt"
+
+      - name: Upload decoded source for review
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-v4-payload-source-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/runtime-source/
+            ${{ runner.temp }}/runtime-source-manifest.txt
+            ${{ runner.temp }}/runtime-source-sha256.txt
+          if-no-files-found: error
+          retention-days: 7
