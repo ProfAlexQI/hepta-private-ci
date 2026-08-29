@@ -1,0 +1,51 @@
+name: Hepta inference INF-0C cancel capability v4 macOS
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0c-cancel-v4-qualification-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf0c-cancel-capability-v4-macos.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    name: Cancel v4 hermetic classifier macOS
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      EXPECTED_PARENT: 400aacfa2c7992375e0d72e7976aa2faab280feb
+      RECEIPT_HEAD: b252fcc22f45f4151ecec7a82e5f5fb99a28d0fb
+      SOURCE_HEAD: 8ff6dcf797309ca9966bc6bf2f8fa84c9784fee0
+      SOURCE_TREE: 935fb228042ad3f86db31b6c71841fc03a71ab8f
+      SELF: .github/workflows/hepta-inference-inf0c-cancel-capability-v4-macos.yml
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 4
+      - name: Verify source and append-only receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          test "$(git rev-parse "$RECEIPT_HEAD^")" = "$SOURCE_HEAD"
+          test "$(git show -s --format=%T "$SOURCE_HEAD")" = "$SOURCE_TREE"
+      - name: Execute corrected classifier gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-inference-inf0c-real-e2e.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v3.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v4.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v4-selftest.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v4-source-gate.py
+          python3 scripts/hepta-inference-inf0c-cancel-capability-v4-selftest.py
+          python3 scripts/hepta-inference-inf0c-cancel-capability-v4-source-gate.py
+          echo "PASS_HEPTA_INFERENCE_INF0C_CANCEL_CAPABILITY_V4_MACOS" >> "$GITHUB_STEP_SUMMARY"
