@@ -1,15 +1,12 @@
-name: AuthBus P1.3 full-stack gap closure
+name: AuthBus P1.3 clean replay closure
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - codex/authbus-p1-3-gap-closure-20260829
     paths:
-      - .github/workflows/authbus-p1-3-materialize.yml
-      - scripts/authbus-p1-3-finalize.py
-      - scripts/authbus-p1-3-semantic-completion.py
-      - scripts/authbus-p1-3-gap-closure.py
+      - .github/workflows/authbus-p1-3-clean-replay-materialize.yml
+      - scripts/authbus-p1-3-clippy-completion.py
 
 permissions:
   contents: write
@@ -17,6 +14,11 @@ permissions:
 
 env:
   EXPECTED_PARENT: ddcf9cfa7fe4128adddda073e8da64d133de98da
+  BASE_BRANCH: integration/vnext-main-full-ci-authbus-p1-3-20260829
+  BASE_SHA: 6b7aa91d7702a92a50297b1b1bd8170ffb7cb184
+  BASE_TREE: f46fa8c6d541742eaea62d70ea62c0fe316dbaf9
+  TARGET_BRANCH: codex/authbus-p1-3-clean-replay-20260830
+  REGISTRY_SHA256: dfcab028e1a135a0895b3f9eddec9f5f99cf5f392701b98ad14180058a284bf1
   P02_MANIFEST: codex-rs/hepta-authbus-qualification/Cargo.toml
   P03_MANIFEST: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
   P11_MANIFEST: codex-rs/hepta-authbus-p1-qualification/Cargo.toml
@@ -27,34 +29,22 @@ env:
   CARGO_PROFILE_DEV_DEBUG: "0"
   CARGO_NET_RETRY: "10"
   CARGO_HTTP_TIMEOUT: "120"
-  CARGO_TARGET_DIR: /tmp/authbus-p1-3-target
+  CARGO_TARGET_DIR: /tmp/authbus-p1-3-clean-replay-target
 
 jobs:
   materialize:
-    name: Materialize, repair, qualify, and commit P1.3
-    runs-on: ubuntu-slim
+    name: Qualify and assemble exact clean-replay source
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - name: Checkout exact seed
+      - name: Checkout exact one-shot seed
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
           fetch-depth: 2
           persist-credentials: true
 
-      - name: Detect one-shot seed
-        id: mode
-        shell: bash
-        run: |
-          set -euo pipefail
-          if test -f scripts/authbus-p1-3-finalize.py; then
-            echo "seed=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "seed=false" >> "${GITHUB_OUTPUT}"
-          fi
-
-      - name: Verify exact seed and repair inputs
-        if: steps.mode.outputs.seed == 'true'
+      - name: Bind exact seed, canonical base, and empty target
         shell: bash
         run: |
           set -euo pipefail
@@ -64,25 +54,40 @@ jobs:
           python3 -m py_compile scripts/authbus-p1-3-finalize.py
           python3 -m py_compile scripts/authbus-p1-3-semantic-completion.py
           python3 -m py_compile scripts/authbus-p1-3-gap-closure.py
+          python3 -m py_compile scripts/authbus-p1-3-clippy-completion.py
 
-      - name: Materialize canonical registry and close compile gaps
-        if: steps.mode.outputs.seed == 'true'
+          git fetch --no-tags --depth=1 origin \
+            "refs/heads/${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}"
+          test "$(git rev-parse "refs/remotes/origin/${BASE_BRANCH}")" = "${BASE_SHA}"
+          test "$(git rev-parse "${BASE_SHA}^{tree}")" = "${BASE_TREE}"
+          ! git ls-remote --exit-code --heads origin \
+            "refs/heads/${TARGET_BRANCH}" >/dev/null 2>&1
+
+      - name: Materialize canonical registry and close known gaps
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/authbus-p1-3-finalize.py | tee /tmp/authbus-p1-3-finalize.txt
-          grep -q 'applied_authbus_p1_3_registry_files=9' /tmp/authbus-p1-3-finalize.txt
-          grep -q 'applied_authbus_p1_3_existing_file_patches=5' /tmp/authbus-p1-3-finalize.txt
-          grep -q 'removed_p0_3_canonical_type_copies=2' /tmp/authbus-p1-3-finalize.txt
+          python3 scripts/authbus-p1-3-finalize.py \
+            | tee /tmp/authbus-p1-3-finalize.txt
+          grep -q 'applied_authbus_p1_3_registry_files=9' \
+            /tmp/authbus-p1-3-finalize.txt
+          grep -q 'applied_authbus_p1_3_existing_file_patches=5' \
+            /tmp/authbus-p1-3-finalize.txt
+          grep -q 'removed_p0_3_canonical_type_copies=2' \
+            /tmp/authbus-p1-3-finalize.txt
 
           scheduler=codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
           test "$(grep -F -c 'request_sha256.to_string()' "${scheduler}")" = "1"
-          sed -i 's/request_sha256\.to_string()/request_sha256.as_str().to_owned()/' "${scheduler}"
+          sed -i \
+            's/request_sha256\.to_string()/request_sha256.as_str().to_owned()/' \
+            "${scheduler}"
           ! grep -Fq 'request_sha256.to_string()' "${scheduler}"
 
           python3 scripts/authbus-p1-3-semantic-completion.py \
             | tee /tmp/authbus-p1-3-semantic-completion.txt
           grep -q 'applied_authbus_p1_3_semantic_completion=1' \
+            /tmp/authbus-p1-3-semantic-completion.txt
+          grep -q "authbus_p1_3_registry_sha256=${REGISTRY_SHA256}" \
             /tmp/authbus-p1-3-semantic-completion.txt
           grep -q 'closed_b2_four_dimension_wire_gap=1' \
             /tmp/authbus-p1-3-semantic-completion.txt
@@ -96,31 +101,40 @@ jobs:
           grep -q 'closed_authbus_p1_3_materialized_compile_gap=1' \
             /tmp/authbus-p1-3-gap-closure.txt
 
-          python3 scripts/verify-authbus-p1-3.py | tee /tmp/authbus-p1-3-source.json
-          grep -q 'PASS_AUTHBUS_P1_3_SOURCE_ONLY' /tmp/authbus-p1-3-source.json
+          python3 scripts/authbus-p1-3-clippy-completion.py \
+            | tee /tmp/authbus-p1-3-clippy-completion.txt
+          grep -q 'applied_authbus_p1_3_strict_clippy_repairs=11' \
+            /tmp/authbus-p1-3-clippy-completion.txt
+          grep -q 'closed_authbus_p1_3_strict_clippy_gap=1' \
+            /tmp/authbus-p1-3-clippy-completion.txt
+
+          python3 scripts/verify-authbus-p1-3.py \
+            | tee /tmp/authbus-p1-3-source.json
+          grep -q 'PASS_AUTHBUS_P1_3_SOURCE_ONLY' \
+            /tmp/authbus-p1-3-source.json
           git diff --check
 
       - name: Install Rust 1.95
-        if: steps.mode.outputs.seed == 'true'
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: 1.95.0
           components: rustfmt, clippy
 
       - name: Generate lock and format every affected crate
-        if: steps.mode.outputs.seed == 'true'
         shell: bash
         run: |
           set -euo pipefail
           test "$(rustc -V | awk '{print $2}')" = "1.95.0"
           cargo generate-lockfile --manifest-path "${P13_MANIFEST}"
-          cargo fmt --manifest-path codex-rs/Cargo.toml --package codex-hepta-contracts
+          cargo fmt --manifest-path codex-rs/Cargo.toml \
+            --package codex-hepta-contracts
           cargo fmt --manifest-path "${P02_MANIFEST}" --all
           cargo fmt --manifest-path "${P03_MANIFEST}" --all
           cargo fmt --manifest-path "${P11_MANIFEST}" --all
           cargo fmt --manifest-path "${P12_MANIFEST}" --all
           cargo fmt --manifest-path "${P13_MANIFEST}" --all
-          cargo fmt --manifest-path codex-rs/Cargo.toml --package codex-hepta-contracts -- --check
+          cargo fmt --manifest-path codex-rs/Cargo.toml \
+            --package codex-hepta-contracts -- --check
           cargo fmt --manifest-path "${P02_MANIFEST}" --all -- --check
           cargo fmt --manifest-path "${P03_MANIFEST}" --all -- --check
           cargo fmt --manifest-path "${P11_MANIFEST}" --all -- --check
@@ -129,12 +143,13 @@ jobs:
           test -s codex-rs/hepta-authbus-p1-3-qualification/Cargo.lock
           cargo metadata --manifest-path "${P13_MANIFEST}" --locked \
             --format-version 1 --no-deps >/dev/null
-          python3 scripts/verify-authbus-p1-3.py | tee /tmp/authbus-p1-3-formatted.json
-          grep -q 'PASS_AUTHBUS_P1_3_SOURCE_ONLY' /tmp/authbus-p1-3-formatted.json
+          python3 scripts/verify-authbus-p1-3.py \
+            | tee /tmp/authbus-p1-3-formatted.json
+          grep -q 'PASS_AUTHBUS_P1_3_SOURCE_ONLY' \
+            /tmp/authbus-p1-3-formatted.json
           git diff --check
 
       - name: Run P0.2 through P1.3 executable matrices
-        if: steps.mode.outputs.seed == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -168,7 +183,6 @@ jobs:
             --features p1-3-qualification --tests -- --nocapture
 
       - name: Check and lint P0.2 through P1.3
-        if: steps.mode.outputs.seed == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -204,8 +218,7 @@ jobs:
           cargo clippy --manifest-path "${P13_MANIFEST}" --locked \
             --features p1-3-qualification --all-targets -- -D warnings
 
-      - name: Revalidate source contracts after executable gates
-        if: steps.mode.outputs.seed == 'true'
+      - name: Revalidate all inherited source contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -216,18 +229,44 @@ jobs:
           python3 scripts/verify-authbus-p1-3.py
           git diff --check
 
-      - name: Commit only the fully qualified P1.3 source set
-        if: steps.mode.outputs.seed == 'true'
+      - name: Assemble one clean source commit from the exact canonical base
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf scripts/__pycache__
-          rm scripts/authbus-p1-3-finalize.py
-          rm scripts/authbus-p1-3-semantic-completion.py
-          rm scripts/authbus-p1-3-gap-closure.py
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path(".github/workflows/authbus-p1-3-qualification.yml")
+          source = path.read_text(encoding="utf-8")
+          replacements = (
+              (
+                  "      - integration/vnext-main-full-ci-authbus-p1-3-20260829",
+                  "      - codex/authbus-p1-3-clean-replay-20260830",
+                  1,
+                  "target branch",
+              ),
+              (
+                  "runs-on: ubuntu-slim",
+                  "runs-on: ubuntu-24.04",
+                  4,
+                  "hosted runner",
+              ),
+              (
+                  "f6702be58c499d853d273f3174a2556481a3f5b4284cd9cd0b0a247160d7ac08",
+                  "dfcab028e1a135a0895b3f9eddec9f5f99cf5f392701b98ad14180058a284bf1",
+                  3,
+                  "registry digest",
+              ),
+          )
+          for before, after, expected, label in replacements:
+              count = source.count(before)
+              if count != expected:
+                  raise SystemExit(
+                      f"{label}: expected {expected} anchors, found {count}"
+                  )
+              source = source.replace(before, after)
+          path.write_text(source, encoding="utf-8")
+          PY
 
           final_paths=(
             codex-rs/hepta-contracts/src/authbus_b2.rs
@@ -248,13 +287,30 @@ jobs:
             docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.md
             scripts/verify-authbus-p1-3.py
           )
-          git add -- "${final_paths[@]}"
-          git add -u -- \
+
+          tar -cf /tmp/authbus-p1-3-final.tar \
+            .github/workflows/authbus-p1-3-qualification.yml \
+            "${final_paths[@]}"
+
+          git reset --hard
+          git clean -fdx
+          git checkout --detach "${BASE_SHA}"
+          test "$(git rev-parse HEAD)" = "${BASE_SHA}"
+          test "$(git rev-parse HEAD^{tree})" = "${BASE_TREE}"
+
+          tar -xf /tmp/authbus-p1-3-final.tar
+
+          git rm -f \
+            .github/workflows/authbus-p1-3-materialize.yml \
             scripts/authbus-p1-3-finalize.py \
-            scripts/authbus-p1-3-semantic-completion.py \
-            scripts/authbus-p1-3-gap-closure.py
+            scripts/authbus-p1-3-semantic-completion.py
+          git add -- \
+            .github/workflows/authbus-p1-3-qualification.yml \
+            "${final_paths[@]}"
 
           cat > /tmp/authbus-p1-3-expected-paths.txt <<'EOF'
+          .github/workflows/authbus-p1-3-materialize.yml
+          .github/workflows/authbus-p1-3-qualification.yml
           codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
           codex-rs/hepta-authbus-p0-3-qualification/tests/p0_3.rs
           codex-rs/hepta-authbus-p1-3-qualification/Cargo.lock
@@ -272,7 +328,6 @@ jobs:
           docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.json
           docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.md
           scripts/authbus-p1-3-finalize.py
-          scripts/authbus-p1-3-gap-closure.py
           scripts/authbus-p1-3-semantic-completion.py
           scripts/verify-authbus-p1-3.py
           EOF
@@ -283,8 +338,47 @@ jobs:
             > /tmp/authbus-p1-3-actual-paths.txt
           diff -u /tmp/authbus-p1-3-expected-paths.txt \
             /tmp/authbus-p1-3-actual-paths.txt
+
+          test ! -e .github/workflows/authbus-p1-3-materialize.yml
+          test ! -e .github/workflows/authbus-p1-3-clean-replay-materialize.yml
+          test ! -e scripts/authbus-p1-3-finalize.py
+          test ! -e scripts/authbus-p1-3-semantic-completion.py
+          test ! -e scripts/authbus-p1-3-gap-closure.py
+          test ! -e scripts/authbus-p1-3-clippy-completion.py
+
+          python3 scripts/verify-authbus-p1-2.py \
+            | tee /tmp/authbus-p1-2-clean-source.json
+          grep -q PASS_AUTHBUS_P1_2_SOURCE_ONLY \
+            /tmp/authbus-p1-2-clean-source.json
+          python3 scripts/verify-authbus-p1-3.py \
+            | tee /tmp/authbus-p1-3-clean-source.json
+          grep -q PASS_AUTHBUS_P1_3_SOURCE_ONLY \
+            /tmp/authbus-p1-3-clean-source.json
           git diff --cached --check
 
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "feat(authbus): close full-stack P1.3 gaps"
-          git push origin "HEAD:${GITHUB_REF_NAME}" \
+
+          source_sha="$(git rev-parse HEAD)"
+          source_tree="$(git rev-parse HEAD^{tree})"
+          test "$(git rev-parse HEAD^)" = "${BASE_SHA}"
+          test "${source_tree}" != "${BASE_TREE}"
+          ! git ls-remote --exit-code --heads origin \
+            "refs/heads/${TARGET_BRANCH}" >/dev/null 2>&1
+
+          git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}" \
             --force-with-lease="refs/heads/${GITHUB_REF_NAME}:${GITHUB_SHA}"
+
+          {
+            echo "source_sha=${source_sha}"
+            echo "source_tree=${source_tree}"
+            echo "source_parent=${BASE_SHA}"
+            echo "target_branch=${TARGET_BRANCH}"
+            echo "qualified_working_tree=true"
+            echo "authority=false"
+            echo "effect_authority=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+          } | tee -a "${GITHUB_STEP_SUMMARY}"
