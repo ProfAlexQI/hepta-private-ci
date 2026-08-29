@@ -45,8 +45,6 @@ jobs:
           git diff --exit-code
           git diff --cached --exit-code
 
-      - uses: ./.github/actions/setup-ci
-
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
           components: rustfmt, clippy
@@ -97,7 +95,7 @@ jobs:
           }
           tracked = set(
               subprocess.check_output(
-                  ["git", "diff", "--name-only", "--diff-filter=ACMRTUXB"],
+                  ["git", "diff", "--name-only"],
                   text=True,
               ).splitlines()
           )
@@ -111,8 +109,7 @@ jobs:
           unexpected = sorted(changed - allowed)
           if unexpected:
               raise SystemExit(f"CI gap closure escaped allowlist: {unexpected}")
-          required = allowed
-          missing = sorted(required - changed)
+          missing = sorted(allowed - changed)
           if missing:
               raise SystemExit(f"CI gap closure did not produce expected paths: {missing}")
           PY
