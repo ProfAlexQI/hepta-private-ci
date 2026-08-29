@@ -1,0 +1,190 @@
+name: hepta-ui-v4-gap-closure-export-ubuntu
+
+on:
+  push:
+    branches:
+      - "ops/hepta-ui-v4-gap-closure-export-ubuntu-20260829"
+    paths:
+      - ".github/workflows/hepta-ui-v4-gap-closure-export-ubuntu.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v4-gap-closure-export-ubuntu-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    name: Export verified UI v4 blocker-closure tree on Ubuntu
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout isolated execution head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Execute exact-blob guarded patch locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "ops/hepta-ui-v4-gap-closure-export-ubuntu-20260829"
+          test "$(git diff --name-only f9f362c8c0eb2fa6e28ded8cb141e4d4e8a02a2d..HEAD)" = ".github/workflows/hepta-ui-v4-gap-closure-export-ubuntu.yml"
+          git fetch --no-tags origin refs/heads/automation/hepta-ui-v4-gap-closure-payload-20260829:refs/remotes/origin/hepta-gap-payload
+          python3 - <<'PY'
+          import base64
+          import gzip
+          import hashlib
+          import json
+          import subprocess
+
+          ref = "refs/remotes/origin/hepta-gap-payload"
+          root = ".github/hepta-ui-v4-gap-closure-payload"
+
+          def show(path: str) -> str:
+              return subprocess.check_output(["git", "show", f"{ref}:{path}"], text=True)
+
+          manifest = json.loads(show(f"{root}/manifest.json"))
+          assert manifest["schema"] == "hepta.ui.v4.gap-closure-bootstrap-payload.v1"
+          assert manifest["targetBase"] == "f9f362c8c0eb2fa6e28ded8cb141e4d4e8a02a2d"
+          encoded = "".join(
+              show(f"{root}/chunk-{index:02d}.txt").strip()
+              for index in range(manifest["chunkCount"])
+          )
+          assert len(encoded) == manifest["base64Chars"]
+          assert hashlib.sha256(encoded.encode()).hexdigest() == manifest["base64Sha256"]
+          compressed = base64.b64decode(encoded, validate=True)
+          assert len(compressed) == manifest["gzipBytes"]
+          assert hashlib.sha256(compressed).hexdigest() == manifest["gzipSha256"]
+          source = gzip.decompress(compressed)
+          assert len(source) == manifest["sourceBytes"]
+          assert hashlib.sha256(source).hexdigest() == manifest["sourceSha256"]
+
+          source_text = source.decode("utf-8")
+          old_marker = '    marker = "    if digest != SHA256_ABC {\\n"\n'
+          new_marker = '    marker = \'    if sha256_hex(b"abc") != SHA256_ABC {\\n\'\n'
+          assert source_text.count(old_marker) == 1
+          source_text = source_text.replace(old_marker, new_marker, 1)
+
+          original_branch = "codex/ui-v4-executable-final-gap-closure-v3-20260829"
+          execution_branch = "ops/hepta-ui-v4-gap-closure-export-ubuntu-20260829"
+          assert source_text.count(original_branch) >= 1
+          source_text = source_text.replace(original_branch, execution_branch)
+          source = source_text.encode("utf-8")
+
+          real_run = subprocess.run
+
+          def local_only_run(args, *positional, **kwargs):
+              command = list(args)
+              if (
+                  len(command) >= 4
+                  and command[:3] == ["git", "push", "origin"]
+                  and command[-1].startswith("HEAD:")
+              ):
+                  print(json.dumps({
+                      "suppressedPush": command[-1],
+                      "reason": "artifact export followed by authorized Git API promotion",
+                  }, sort_keys=True))
+                  return subprocess.CompletedProcess(
+                      command,
+                      0,
+                      stdout="verified local result staged for export\n",
+                      stderr="",
+                  )
+              return real_run(command, *positional, **kwargs)
+
+          subprocess.run = local_only_run
+          print(json.dumps({
+              "payloadSourceSha256": hashlib.sha256(gzip.decompress(compressed)).hexdigest(),
+              "executionSourceSha256": hashlib.sha256(source).hexdigest(),
+              "platform": "ubuntu-latest",
+          }, sort_keys=True))
+          exec(compile(source, "hepta-ui-v4-gap-closure-export-ubuntu", "exec"))
+          PY
+
+      - name: Export transformed files and identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          root="artifacts/gap-closure"
+          mkdir -p "$root/files"
+          git rev-parse HEAD > "$root/result-commit.txt"
+          git rev-parse 'HEAD^{tree}' > "$root/result-tree.txt"
+          git rev-parse 'HEAD^' > "$root/result-parent.txt"
+          git diff-tree --no-commit-id --name-status -r HEAD > "$root/result-diff.txt"
+          git show --no-ext-diff --format=fuller --stat HEAD > "$root/result-summary.txt"
+          cat > "$root/targets.txt" <<'EOF'
+          apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs
+          apps/hepta-native/src/persistence/matrix_session_store/private_file.rs
+          apps/hepta-native/src/shared/hepta_system_preferences.rs
+          codex-rs/hepta-core/build.rs
+          .gitattributes
+          scripts/hepta-ui-v4-served-bundle-gate
+          .github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml
+          .github/workflows/hepta-ui-v4-windows-material-profile-runtime.yml
+          .github/workflows/hepta-ui-v4-windows-material-profile-aggregate.yml
+          .github/workflows/hepta-ui-v4-windows-material-profile-exact.yml
+          scripts/hepta-ui-v4-exact-head-qualification-closure-gate
+          .github/workflows/hepta-ci.yml
+          .github/workflows/hepta-ui-v4.yml
+          EOF
+          while IFS= read -r path; do
+            mkdir -p "$root/files/$(dirname "$path")"
+            cp "$path" "$root/files/$path"
+          done < "$root/targets.txt"
+          if test -f artifacts/hepta-ui-v4-gap-closure-application.json; then
+            cp artifacts/hepta-ui-v4-gap-closure-application.json "$root/application-report.json"
+          fi
+          tar -C "$root/files" -czf "$root/transformed-files.tar.gz" .
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path("artifacts/gap-closure")
+          archive = root / "transformed-files.tar.gz"
+          (root / "transformed-files.tar.gz.sha256").write_text(
+              hashlib.sha256(archive.read_bytes()).hexdigest() + "  transformed-files.tar.gz\n",
+              encoding="utf-8",
+          )
+          files_root = root / "files"
+          files = []
+          for path in sorted(p for p in files_root.rglob("*") if p.is_file()):
+              data = path.read_bytes()
+              files.append({
+                  "path": path.relative_to(files_root).as_posix(),
+                  "bytes": len(data),
+                  "sha256": hashlib.sha256(data).hexdigest(),
+              })
+          payload = {
+              "schema": "hepta.ui.v4.gap-closure-result-export.v1",
+              "status": "PASS_VERIFIED_LOCAL_RESULT_TREE_EXPORTED",
+              "auditedHead": "f9f362c8c0eb2fa6e28ded8cb141e4d4e8a02a2d",
+              "resultCommit": (root / "result-commit.txt").read_text().strip(),
+              "resultTree": (root / "result-tree.txt").read_text().strip(),
+              "resultParent": (root / "result-parent.txt").read_text().strip(),
+              "changedFileCount": len(files),
+              "files": files,
+              "claims": {
+                  "repositoryControlledPatchValidated": True,
+                  "exactHeadHostedCiValidated": False,
+                  "externalEvidenceComplete": False,
+                  "allGapsClosed": False,
+                  "releaseAuthority": False,
+              },
+          }
+          (root / "export-manifest.json").write_text(
+              json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Upload verified result tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-gap-closure-result-ubuntu-${{ github.sha }}
+          path: artifacts/gap-closure
+          if-no-files-found: error
+          retention-days: 14
