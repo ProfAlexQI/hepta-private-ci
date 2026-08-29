@@ -1,4 +1,4 @@
-name: p034-payload-inspect-macos-v2
+name: p034-payload-inspect-macos-v3
 
 on:
   push:
@@ -12,15 +12,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: p034-payload-inspect-macos-v2
-  cancel-in-progress: true
+  group: p034-payload-inspect-macos-v3-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   inspect:
     runs-on: macos-15
     timeout-minutes: 30
     env:
-      PAYLOAD_SHA256: bd21ef335c14fa2c78f6a2bb87b4c39d1a8937361c62ca80a92b5907a43617cd
+      PAYLOAD_SHA256: 0a3c110310edaf463bd7fd4a31148e3cb8dcbdbebc9f38700d94bfcdd5059373
     steps:
       - uses: actions/checkout@v4
         with:
@@ -95,7 +95,7 @@ jobs:
                       }
                   )
           receipt = {
-              "schema": "hepta_intelligence_p0_3_4_payload_inspection_v2",
+              "schema": "hepta_intelligence_p0_3_4_payload_inspection_v3",
               "payload_sha256": actual,
               "member_count": len(members),
               "file_count": len(files),
