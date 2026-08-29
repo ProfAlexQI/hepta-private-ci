@@ -1,0 +1,137 @@
+name: Hepta V4 source materializer ARM (temporary)
+
+on:
+  push:
+    branches:
+      - "codex/hepta-architecture-v4-p0-7a-materialize-arm-20260830"
+    paths:
+      - ".github/workflows/hepta-architecture-v4-source-materialize-arm.yml"
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: hepta-v4-source-materializer-arm-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    if: >-
+      github.repository == 'ProfHepta/hepta-private-ci' &&
+      github.ref == 'refs/heads/codex/hepta-architecture-v4-p0-7a-materialize-arm-20260830'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact ARM materializer branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: codex/hepta-architecture-v4-p0-7a-materialize-arm-20260830
+          persist-credentials: true
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt
+
+      - name: Verify exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git branch --show-current)" = "codex/hepta-architecture-v4-p0-7a-materialize-arm-20260830"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Import content-addressed canonical lock artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LOCK_ARTIFACT_ID: "9718989019"
+          EXPECTED_CARGO_LOCK_SHA256: "4a05f420c05e104cdcdb8c5f276efe115574c5fee04b048ccb685f6d073d0061"
+          EXPECTED_BAZEL_LOCK_SHA256: "c03b95ff14a8c813ea4cbb27498437293057540d2374b7f9b6903c1a0a4749d4"
+        run: |
+          set -euo pipefail
+          lock_root="$RUNNER_TEMP/hepta-p0-7a-lock-artifact"
+          mkdir -p "$lock_root"
+          curl --fail --location --retry 5 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --output "$RUNNER_TEMP/hepta-p0-7a-lock-artifact.zip" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$LOCK_ARTIFACT_ID/zip"
+          unzip -q "$RUNNER_TEMP/hepta-p0-7a-lock-artifact.zip" -d "$lock_root"
+          cargo_lock="$(find "$lock_root" -type f -path '*/codex-rs/Cargo.lock' -print -quit)"
+          bazel_lock="$(find "$lock_root" -type f -name MODULE.bazel.lock -print -quit)"
+          test -n "$cargo_lock"
+          test -n "$bazel_lock"
+          test "$(sha256sum "$cargo_lock" | awk '{print $1}')" = "$EXPECTED_CARGO_LOCK_SHA256"
+          test "$(sha256sum "$bazel_lock" | awk '{print $1}')" = "$EXPECTED_BAZEL_LOCK_SHA256"
+          cp "$cargo_lock" codex-rs/Cargo.lock
+          cp "$bazel_lock" MODULE.bazel.lock
+
+      - name: Materialize stable Rust format and remove bootstrap workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd codex-rs
+            cargo fmt --all
+          )
+          rm .github/workflows/hepta-architecture-v4-source-materialize.yml
+          rm .github/workflows/hepta-architecture-v4-source-materialize-arm.yml
+
+      - name: Reject scope escape and verify generated state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+
+          allowed_exact = {
+              "MODULE.bazel.lock",
+              "codex-rs/Cargo.lock",
+              ".github/workflows/hepta-architecture-v4-source-materialize.yml",
+              ".github/workflows/hepta-architecture-v4-source-materialize-arm.yml",
+          }
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only", "-z"], text=False
+          ).decode().split("\0")
+          unexpected = [
+              path
+              for path in changed
+              if path
+              and path not in allowed_exact
+              and not (path.startswith("codex-rs/") and path.endswith(".rs"))
+          ]
+          if unexpected:
+              raise SystemExit("unexpected materializer paths: " + ", ".join(unexpected))
+          untracked = subprocess.check_output(
+              ["git", "ls-files", "--others", "--exclude-standard", "-z"], text=False
+          ).decode().split("\0")
+          untracked = [path for path in untracked if path]
+          if untracked:
+              raise SystemExit("unexpected untracked paths: " + ", ".join(untracked))
+          if not changed:
+              raise SystemExit("materializer produced no tracked changes")
+          PY
+          git diff --check
+          cargo metadata --locked --manifest-path codex-rs/Cargo.toml --no-deps --format-version 1 >/dev/null
+          (
+            cd codex-rs
+            cargo fmt --all -- --check
+          )
+          just bazel-lock-check
+
+      - name: Commit canonical generated state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -u
+          git diff --cached --check
+          git commit -m "chore(hepta): materialize P0.7a lock and format state"
+          git push origin HEAD:refs/heads/codex/hepta-architecture-v4-p0-7a-materialize-arm-20260830
