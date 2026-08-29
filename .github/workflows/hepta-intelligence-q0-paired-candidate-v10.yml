@@ -16,7 +16,7 @@ concurrency:
 
 env:
   EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-  EXPECTED_PARENT: 6cd25eaa3157bcc22b02e7686f41bfb1bf9bf0d3
+  EXPECTED_PARENT: b445bfbfd22efb5ba81ed66b1b68b27934ccc701
   Q0_WORKFLOW_PATH: .github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml
   Q0_WORKFLOW_REF: ${{ github.workflow_ref }}
   Q0_WORKFLOW_SHA: ${{ github.workflow_sha }}
