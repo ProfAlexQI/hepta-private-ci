@@ -1,6 +1,6 @@
 {
   "schema": "hepta.ui.remaining-external-blockers.v7",
-  "status": "ONLY_NON_SYNTHESIZABLE_EVIDENCE_REMAINS_AFTER_EXECUTABLE_CLOSURE",
+  "status": "AUTOMATED_RUNNER_AND_BROWSER_EVIDENCE_ARMED_PHYSICAL_AND_HUMAN_EVIDENCE_REMAINS",
   "sourceControllableGapsClosed": true,
   "sourceImplementationGaps": [],
   "resolvedRepositoryBlockers": [
@@ -8,46 +8,73 @@
     "Rust 1.88/sqlx 0.9 MSRV conflict",
     "runner-only proof without Rust execution",
     "unnamed platform device semantics",
-    "missing Chrome human browser coverage"
+    "missing Chrome human browser coverage",
+    "Windows checkout path-length failure",
+    "Linux Native Wayland and graphics build dependencies",
+    "platform-aware unbound adapter expectation",
+    "misclassified Ruby gate replaced by Rust harness",
+    "WebKit inline-style CSP incompatibility",
+    "five-engine exact Rust-served browser qualification wiring",
+    "candidate-bound artifact intake with fail-closed selection"
+  ],
+  "automatedEvidenceSlots": [
+    "runnerExecution",
+    "crossBrowserRuntime"
+  ],
+  "nonSynthesizableEvidenceSlots": [
+    "windowsDevice",
+    "operatorAcceptance",
+    "macosDevice",
+    "iosDevice",
+    "androidDevice",
+    "browserHumanAcceptance"
   ],
   "externalEvidence": [
     {
       "slot": "runnerExecution",
+      "source": "canonical_same_run",
       "required": "Same-run exact-head source, served bundle, Native, converged platform, and iOS/Android target jobs execute successfully on assigned runners",
       "syntheticEvidenceAllowed": false
     },
     {
       "slot": "windowsDevice",
+      "source": "physical_signed_external",
       "required": "Physical Windows DWM Mica/Acrylic/None rollback and lifecycle receipt",
       "syntheticEvidenceAllowed": false
     },
     {
       "slot": "operatorAcceptance",
+      "source": "human_signed_external",
       "required": "Ed25519-verified candidate-bound non-delegable human operator acceptance within an unexpired review window",
       "syntheticEvidenceAllowed": false
     },
     {
       "slot": "macosDevice",
+      "source": "physical_signed_external",
       "required": "Physical macOS AppKit material, active/inactive, accessibility fallback, rollback, suspend, and shutdown receipt",
       "syntheticEvidenceAllowed": false
     },
     {
       "slot": "iosDevice",
+      "source": "physical_signed_external",
       "required": "Physical iOS UIKit material, Dynamic Type, safe-area, keyboard, accessibility fallback, rollback, suspend, and shutdown receipt",
       "syntheticEvidenceAllowed": false
     },
     {
       "slot": "androidDevice",
+      "source": "physical_signed_external",
       "required": "Physical Android Material 3 dynamic color, IME/navigation inset, animator scale, fallback, rollback, suspend, and shutdown receipt",
       "syntheticEvidenceAllowed": false
     },
     {
       "slot": "crossBrowserRuntime",
+      "source": "canonical_same_run",
       "required": "Exact Rust-served Chromium, Edge, Firefox, WebKit/Linux, and WebKit/macOS runtime matrix with screenshot hashes and network audit",
       "syntheticEvidenceAllowed": false
     },
     {
       "slot": "browserHumanAcceptance",
+      "source": "human_signed_external",
       "required": "Ed25519-verified human screenshot and accessibility acceptance on physical Chrome, Edge, Firefox, and Safari",
       "syntheticEvidenceAllowed": false
     }

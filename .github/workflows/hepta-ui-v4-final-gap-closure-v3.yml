@@ -1,21 +1,215 @@
-name: archived-ui-v4-contract
+name: hepta-ui-v4-final-gap-closure-v3
 
 on:
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact 40-hex candidate commit
+        required: true
+        type: string
+      candidate_tree:
+        description: Exact 40-hex candidate tree
+        required: true
+        type: string
+      runner_execution_artifact_id:
+        description: Artifact containing PASS_EXACT_HEAD_EXECUTABLE_RUNNER_MATRIX
+        required: true
+        type: string
+      windows_device_artifact_id:
+        description: Artifact containing physical Windows device receipt
+        required: true
+        type: string
+      operator_acceptance_artifact_id:
+        description: Artifact containing signed operator acceptance
+        required: true
+        type: string
+      macos_device_artifact_id:
+        description: Artifact containing physical macOS device receipt
+        required: true
+        type: string
+      ios_device_artifact_id:
+        description: Artifact containing physical iOS device receipt
+        required: true
+        type: string
+      android_device_artifact_id:
+        description: Artifact containing physical Android device receipt
+        required: true
+        type: string
+      cross_browser_runtime_artifact_id:
+        description: Artifact containing PASS_RUST_SERVED_CROSS_BROWSER_MATRIX
+        required: true
+        type: string
+      browser_human_acceptance_artifact_id:
+        description: Artifact containing signed physical browser human acceptance
+        required: true
+        type: string
 
 permissions:
   contents: read
+  actions: read
+
+concurrency:
+  group: hepta-ui-v4-final-gap-v3-intake-${{ inputs.candidate_sha }}
+  cancel-in-progress: false
+
+env:
+  HEPTA_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+  HEPTA_CANDIDATE_TREE: ${{ inputs.candidate_tree }}
 
 jobs:
-  archived:
-    name: Historical UI v4 contract archive
+  evidence-intake:
+    name: Final gap v3 signed evidence intake
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30
     steps:
-      - name: Explain canonical replacement
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact candidate identity
         shell: bash
         run: |
           set -euo pipefail
-          echo "This historical UI v4 workflow is retained for audit and manual replay only."
-          echo "Repository-controlled executable qualification moved to hepta-ui-v4-final-gap-closure-v4."
-          echo "Physical-device, operator, browser-human, and product-host evidence remain in their dedicated governed workflows."
+          [[ "$HEPTA_CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$HEPTA_CANDIDATE_TREE" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$HEPTA_CANDIDATE_TREE"
+          ruby -c scripts/hepta-ui-v4-final-gap-closure-index-v3
+          ruby scripts/hepta-ui-v4-final-gap-closure-index-v3 --self-test
+
+      - name: Download runner execution evidence
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ inputs.runner_execution_artifact_id }}
+          path: artifacts/raw/runnerExecution
+
+      - name: Download Windows physical evidence
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ inputs.windows_device_artifact_id }}
+          path: artifacts/raw/windowsDevice
+
+      - name: Download operator acceptance evidence
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ inputs.operator_acceptance_artifact_id }}
+          path: artifacts/raw/operatorAcceptance
+
+      - name: Download macOS physical evidence
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ inputs.macos_device_artifact_id }}
+          path: artifacts/raw/macosDevice
+
+      - name: Download iOS physical evidence
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ inputs.ios_device_artifact_id }}
+          path: artifacts/raw/iosDevice
+
+      - name: Download Android physical evidence
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ inputs.android_device_artifact_id }}
+          path: artifacts/raw/androidDevice
+
+      - name: Download cross-browser runtime evidence
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ inputs.cross_browser_runtime_artifact_id }}
+          path: artifacts/raw/crossBrowserRuntime
+
+      - name: Download browser human acceptance evidence
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ inputs.browser_human_acceptance_artifact_id }}
+          path: artifacts/raw/browserHumanAcceptance
+
+      - name: Select exact candidate receipts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/selected
+          ruby -rjson -rfileutils -e '
+            candidate_commit=ENV.fetch("HEPTA_CANDIDATE_SHA")
+            candidate_tree=ENV.fetch("HEPTA_CANDIDATE_TREE")
+            rules={
+              "runnerExecution"=>"PASS_EXACT_HEAD_EXECUTABLE_RUNNER_MATRIX",
+              "windowsDevice"=>"PASS_PLATFORM_DEVICE_QUALIFICATION",
+              "operatorAcceptance"=>"PASS_CANDIDATE_BOUND_OPERATOR_ACCEPTANCE",
+              "macosDevice"=>"PASS_PLATFORM_DEVICE_QUALIFICATION",
+              "iosDevice"=>"PASS_PLATFORM_DEVICE_QUALIFICATION",
+              "androidDevice"=>"PASS_PLATFORM_DEVICE_QUALIFICATION",
+              "crossBrowserRuntime"=>"PASS_RUST_SERVED_CROSS_BROWSER_MATRIX",
+              "browserHumanAcceptance"=>"PASS_CROSS_BROWSER_HUMAN_ACCEPTANCE"
+            }
+            rules.each do |slot,status|
+              candidates=Dir.glob("artifacts/raw/#{slot}/**/*.json").sort.filter_map do |path|
+                begin
+                  receipt=JSON.parse(File.read(path))
+                  pair=receipt.fetch("candidate",{})
+                  path if receipt["status"]==status &&
+                    pair["commit"]==candidate_commit &&
+                    pair["tree"]==candidate_tree
+                rescue JSON::ParserError
+                  nil
+                end
+              end
+              abort "#{slot}: expected exactly one exact-candidate #{status} receipt, got #{candidates.inspect}" unless candidates.length==1
+              FileUtils.cp(candidates.first,"artifacts/selected/#{slot}.json")
+            end
+          '
+
+      - name: Evaluate all eight exact candidate evidence slots
+        id: index
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby scripts/hepta-ui-v4-final-gap-closure-index-v3 \
+            --candidate-commit "$HEPTA_CANDIDATE_SHA" \
+            --candidate-tree "$HEPTA_CANDIDATE_TREE" \
+            --evaluated-at-unix "$(date +%s)" \
+            --runner-execution artifacts/selected/runnerExecution.json \
+            --windows-device artifacts/selected/windowsDevice.json \
+            --operator-acceptance artifacts/selected/operatorAcceptance.json \
+            --macos-device artifacts/selected/macosDevice.json \
+            --ios-device artifacts/selected/iosDevice.json \
+            --android-device artifacts/selected/androidDevice.json \
+            --cross-browser-runtime artifacts/selected/crossBrowserRuntime.json \
+            --browser-human-acceptance artifacts/selected/browserHumanAcceptance.json \
+            --output artifacts/final/index.json
+
+      - name: Enforce complete gap closure
+        if: always()
+        shell: bash
+        env:
+          INDEX_OUTCOME: ${{ steps.index.outcome }}
+        run: |
+          set -euo pipefail
+          test "$INDEX_OUTCOME" = success
+          jq -e '
+            .status == "PASS_ALL_UI_GAPS_CLOSED"
+            and .sourceControllableGapsClosed == true
+            and .externalEvidenceComplete == true
+            and .allGapsClosed == true
+            and (.blockers|length) == 0
+            and (.failures|length) == 0
+            and ([.slots[].qualified]|all(.==true))
+            and ([.authority[]]|all(.==false))
+            and ([.boundary[]]|all(.==false))
+          ' artifacts/final/index.json
+
+      - name: Upload complete exact-candidate closure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-all-gaps-closed-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: |
+            artifacts/final/index.json
+            artifacts/selected
+          if-no-files-found: error
+          retention-days: 30

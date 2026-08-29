@@ -1,11 +1,17 @@
 {
   "schema": "hepta.ui.executable-final-gap-closure.v3",
-  "status": "SOURCE_AND_EXECUTABLE_FRAMEWORK_READY_EXTERNAL_EVIDENCE_REQUIRED",
-  "base": {
-    "pullRequest": 62,
-    "branch": "codex/ui-v4-final-source-and-evidence-closure-20260829",
-    "commit": "8fbdc5d126f4893e689bf03b3c26e8a20c3cb463",
-    "tree": "6e38ae44845debc556dbc6ed0f0fc915322fabec"
+  "status": "CANONICAL_EXECUTABLE_AND_BROWSER_FRAMEWORK_READY_PHYSICAL_AND_HUMAN_EVIDENCE_REQUIRED",
+  "qualification": {
+    "canonicalWorkflow": ".github/workflows/hepta-ui-v4-final-gap-closure-v4.yml",
+    "manualEvidenceIntakeWorkflow": ".github/workflows/hepta-ui-v4-final-gap-closure-v3.yml",
+    "candidateCommitSource": "github.event.pull_request.head.sha || github.sha",
+    "candidateTreeSource": "git rev-parse HEAD^{tree}",
+    "exactCandidateCheckout": true,
+    "mergeRefQualificationAllowed": false,
+    "sameRunRunnerReceipt": true,
+    "sameRunCrossBrowserReceipt": false,
+    "crossBrowserWorkflow": ".github/workflows/hepta-ui-v4-rust-served-cross-browser-final.yml",
+    "candidateBoundCrossBrowserReceipt": true
   },
   "rustToolchain": "1.95.0",
   "genericWorkflow": {
@@ -15,17 +21,25 @@
     "nativeFocusedTests": true
   },
   "sameRunExecutableJobs": [
-    "Final gap v3 source contract",
-    "Final gap v3 served and Native contracts",
-    "Final gap v3 platform contracts (ubuntu-latest)",
-    "Final gap v3 platform contracts (windows-latest)",
-    "Final gap v3 platform contracts (macos-latest)",
-    "Final gap v3 mobile target (aarch64-apple-ios)",
-    "Final gap v3 mobile target (aarch64-linux-android)"
+    "Final gap v4 source contract",
+    "Final gap v4 served and Native contracts",
+    "Final gap v4 platform contracts (ubuntu-latest)",
+    "Final gap v4 platform contracts (windows-latest)",
+    "Final gap v4 platform contracts (macos-latest)",
+    "Final gap v4 mobile target (aarch64-apple-ios)",
+    "Final gap v4 mobile target (aarch64-linux-android)"
+  ],
+  "browserEngineJobs": [
+    "Final gap v4 browser engine (chromium)",
+    "Final gap v4 browser engine (edge)",
+    "Final gap v4 browser engine (firefox)",
+    "Final gap v4 browser engine (webkitLinux)",
+    "Final gap v4 browser engine (webkitMacos)"
   ],
   "runnerExecutionRequirements": {
     "nonzeroRunnerId": true,
     "nonemptyRunnerName": true,
+    "nonemptyRunnerLabels": true,
     "nonemptySuccessfulSteps": true,
     "exactHead": true,
     "servedBundleCompiled": true,
@@ -34,6 +48,25 @@
     "windowsSafetyHarnessTested": true,
     "iosTargetCompiled": true,
     "androidTargetCompiled": true
+  },
+  "crossBrowserRuntimeRequirements": {
+    "rustServed": true,
+    "fixtureAllowed": false,
+    "engines": [
+      "chromium",
+      "edge",
+      "firefox",
+      "webkitLinux",
+      "webkitMacos"
+    ],
+    "consoleErrors": 0,
+    "pageErrors": 0,
+    "crossOriginRequests": 0,
+    "nonGetRequests": 0,
+    "sameJavascriptDigest": true,
+    "screenshotDigestPerEngine": true,
+    "physicalBrowserAcceptanceClaimed": false,
+    "safariProductValidationClaimed": false
   },
   "requiredEvidenceSlots": [
     "runnerExecution",
@@ -45,6 +78,14 @@
     "crossBrowserRuntime",
     "browserHumanAcceptance"
   ],
+  "manualExternalEvidenceSlots": [
+    "windowsDevice",
+    "operatorAcceptance",
+    "macosDevice",
+    "iosDevice",
+    "androidDevice",
+    "browserHumanAcceptance"
+  ],
   "humanBrowserCoverage": [
     "chrome",
     "edge",
@@ -52,6 +93,7 @@
     "safari"
   ],
   "sourceControllableGapsClosed": true,
+  "executionEvidenceComplete": false,
   "externalEvidenceComplete": false,
   "allGapsClosed": false,
   "permanentBoundary": {
@@ -75,5 +117,9 @@
     "operatorAcceptance": false,
     "promotion": false,
     "release": false
-  }
+  },
+  "automatedCandidateBoundEvidenceSlots": [
+    "runnerExecution",
+    "crossBrowserRuntime"
+  ]
 }

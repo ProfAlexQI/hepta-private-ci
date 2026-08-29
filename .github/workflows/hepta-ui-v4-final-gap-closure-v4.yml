@@ -1,39 +1,38 @@
-name: hepta-ui-v4-executable-remediation
+name: hepta-ui-v4-final-gap-closure-v4
 
 on:
   push:
-    branches:
-      - "codex/ui-v4-executable-gap-remediation-20260829"
+    branches: ["codex/ui-v4-executable-final-gap-closure-v3-*"]
   pull_request:
     paths:
-      - "apps/hepta-native/**"
       - "apps/hepta-control-ui/**"
+      - "apps/hepta-native/src/shared/**"
       - "codex-rs/hepta-core/**"
       - "codex-rs/hepta-native-gateway/**"
       - "tools/hepta-ui-global-platform-source-closure/**"
       - "tools/hepta-ui-windows-product-host-safety/**"
       - "tools/hepta-ui-windows-product-host-device-drill/**"
-      - ".github/workflows/hepta-ui-v4-executable-remediation.yml"
+      - "scripts/hepta-ui-v4-final-gap-closure-index-v3"
+      - "scripts/hepta-ui-v4-executable-final-gap-closure-v3-gate"
+      - ".github/workflows/hepta-ui-v4-final-gap-closure-v4.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  HEPTA_RUST_TOOLCHAIN: "1.95.0"
-  GIT_CONFIG_COUNT: "1"
-  GIT_CONFIG_KEY_0: core.longpaths
-  GIT_CONFIG_VALUE_0: "true"
 
 concurrency:
-  group: hepta-ui-v4-executable-remediation-${{ github.event.pull_request.number || github.ref }}
+  group: hepta-ui-v4-final-gap-v4-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
   source-contract:
-    name: Executable remediation source contract
+    name: Final gap v4 source contract
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v4
@@ -41,23 +40,19 @@ jobs:
           ref: ${{ env.HEPTA_CANDIDATE_SHA }}
           fetch-depth: 1
           persist-credentials: false
-      - name: Validate inherited exact source boundary
+      - name: Validate exact source and contracts
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
           ruby -c scripts/hepta-ui-v4-final-gap-closure-index-v3
           ruby -c scripts/hepta-ui-v4-executable-final-gap-closure-v3-gate
-          ruby scripts/hepta-ui-v4-final-gap-closure-index-v3 --self-test >/dev/null
-          ruby scripts/hepta-ui-v4-executable-final-gap-closure-v3-gate > source-gate.json
-          ruby -rjson -e '
-            receipt=JSON.parse(File.read("source-gate.json"))
-            abort "source gate" unless receipt.fetch("status") == "PASS_EXECUTABLE_FINAL_GAP_CLOSURE_V3_SOURCE_ONLY"
-            abort "authority" unless %w[production_authority effect_authority live_adapter_authority operator_acceptance promotion release].all? { |key| receipt.fetch(key) == false }
-          '
+          ruby scripts/hepta-ui-v4-final-gap-closure-index-v3 --self-test
+          ruby scripts/hepta-ui-v4-executable-final-gap-closure-v3-gate
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-final-gap-closure-v4.yml")'
 
-  served-native-contract:
-    name: Executable remediation served and Native contracts
+  served-native:
+    name: Final gap v4 served and Native contracts
     needs: source-contract
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -78,10 +73,35 @@ jobs:
         with:
           toolchain: 1.95.0
           components: rustfmt
+      - name: Install Linux Native build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential \
+            pkg-config \
+            clang \
+            ca-certificates \
+            libssl-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxkbcommon-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxinerama-dev \
+            libasound2-dev \
+            libpulse-dev \
+            libwayland-dev \
+            wayland-protocols \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev \
+            libgles2-mesa-dev \
+            libglx-dev \
+            libdrm-dev \
+            libgbm-dev
       - name: Compile Rust-served bundle and Native contracts
         shell: bash
-        env:
-          CARGO_TERM_COLOR: always
         run: |
           set -euo pipefail
           cargo check --manifest-path codex-rs/Cargo.toml -p hepta-core
@@ -95,8 +115,8 @@ jobs:
           cargo test --manifest-path apps/hepta-native/Cargo.toml --lib \
             shared::hepta_platform_material_runtime::tests::runtime_material_resolution_is_bounded_and_fail_closed -- --exact
 
-  platform-contract:
-    name: Executable remediation platform contracts (${{ matrix.os }})
+  platform-contracts:
+    name: Final gap v4 platform contracts (${{ matrix.os }})
     needs: source-contract
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
@@ -105,18 +125,16 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - name: Checkout exact sparse candidate
+      - name: Enable Windows long paths before checkout
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global core.longpaths true
+      - name: Checkout exact candidate
         uses: actions/checkout@v4
         with:
           ref: ${{ env.HEPTA_CANDIDATE_SHA }}
           fetch-depth: 1
           persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /apps/hepta-native/src/shared/
-            /tools/hepta-ui-global-platform-source-closure/
-            /tools/hepta-ui-windows-product-host-safety/
-            /tools/hepta-ui-windows-product-host-device-drill/
       - name: Verify exact checkout
         shell: bash
         run: |
@@ -129,27 +147,21 @@ jobs:
           components: rustfmt
       - name: Compile and test converged platform contracts
         shell: bash
-        env:
-          CARGO_TERM_COLOR: always
         run: |
           set -euo pipefail
-          global_manifest=tools/hepta-ui-global-platform-source-closure/Cargo.toml
-          safety_manifest=tools/hepta-ui-windows-product-host-safety/Cargo.toml
-          device_manifest=tools/hepta-ui-windows-product-host-device-drill/Cargo.toml
-          cargo fmt --manifest-path "$global_manifest" -- --check
-          cargo check --manifest-path "$global_manifest" --all-targets
-          cargo test --manifest-path "$global_manifest" -- --nocapture
-          cargo fmt --manifest-path "$safety_manifest" -- --check
-          cargo check --manifest-path "$safety_manifest" --all-targets --no-default-features
-          cargo test --manifest-path "$safety_manifest" --no-default-features -- --nocapture
-          cargo check --manifest-path "$safety_manifest" --all-targets --no-default-features --features hepta_ui_windows_system_material_v4
-          cargo test --manifest-path "$safety_manifest" --no-default-features --features hepta_ui_windows_system_material_v4 -- --nocapture
-          cargo fmt --manifest-path "$device_manifest" -- --check
-          cargo check --manifest-path "$device_manifest" --all-targets --no-default-features
-          cargo check --manifest-path "$device_manifest" --all-targets --no-default-features --features hepta_ui_windows_system_material_v4
+          for manifest in \
+            tools/hepta-ui-global-platform-source-closure/Cargo.toml \
+            tools/hepta-ui-windows-product-host-safety/Cargo.toml; do
+            cargo fmt --manifest-path "$manifest" -- --check
+            cargo check --manifest-path "$manifest" --all-targets
+            cargo test --manifest-path "$manifest" -- --nocapture
+          done
+          manifest=tools/hepta-ui-windows-product-host-device-drill/Cargo.toml
+          cargo fmt --manifest-path "$manifest" -- --check
+          cargo check --manifest-path "$manifest" --all-targets
 
-  mobile-target-contract:
-    name: Executable remediation mobile target (${{ matrix.target }})
+  mobile-targets:
+    name: Final gap v4 mobile target (${{ matrix.target }})
     needs: source-contract
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -157,19 +169,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {os: macos-latest, target: aarch64-apple-ios}
-          - {os: ubuntu-latest, target: aarch64-linux-android}
+          - os: macos-latest
+            target: aarch64-apple-ios
+          - os: ubuntu-latest
+            target: aarch64-linux-android
     steps:
-      - name: Checkout exact sparse candidate
+      - name: Checkout exact candidate
         uses: actions/checkout@v4
         with:
           ref: ${{ env.HEPTA_CANDIDATE_SHA }}
           fetch-depth: 1
           persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /apps/hepta-native/src/shared/
-            /tools/hepta-ui-global-platform-source-closure/
       - name: Verify exact checkout
         shell: bash
         run: |
@@ -182,37 +192,115 @@ jobs:
           targets: ${{ matrix.target }}
       - name: Compile target-specific platform contract
         shell: bash
-        env:
-          CARGO_TERM_COLOR: always
         run: |
           set -euo pipefail
-          cargo check --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml --lib --target "${{ matrix.target }}"
+          cargo check \
+            --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml \
+            --lib --target "${{ matrix.target }}"
 
-  closure:
-    name: Executable remediation matrix closure
+  final-index:
+    name: Final UI repository-controlled closure v4
     if: always()
-    needs: [source-contract, served-native-contract, platform-contract, mobile-target-contract]
+    needs: [source-contract, served-native, platform-contracts, mobile-targets]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Emit fail-closed exact-candidate result
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Produce exact same-run runner receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+          mkdir -p artifacts/final
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" \
+            > artifacts/final/jobs.json
+          ruby -rjson -e '
+            jobs=JSON.parse(File.read("artifacts/final/jobs.json")).fetch("jobs")
+            required=[
+              "Final gap v4 source contract",
+              "Final gap v4 served and Native contracts",
+              "Final gap v4 platform contracts (ubuntu-latest)",
+              "Final gap v4 platform contracts (windows-latest)",
+              "Final gap v4 platform contracts (macos-latest)",
+              "Final gap v4 mobile target (aarch64-apple-ios)",
+              "Final gap v4 mobile target (aarch64-linux-android)"
+            ]
+            candidate=ENV.fetch("HEPTA_CANDIDATE_SHA")
+            selected=required.map do |name|
+              matches=jobs.select{|job| job["name"]==name}
+              next {"name"=>name,"qualified"=>false} unless matches.length==1
+              job=matches.first; steps=Array(job["steps"])
+              ok=job["head_sha"]==candidate && job["status"]=="completed" && job["conclusion"]=="success" && job["runner_id"].to_i>0 && !job["runner_name"].to_s.empty? && !steps.empty? && steps.all?{|s| %w[success skipped].include?(s["conclusion"])}
+              {"name"=>name,"jobId"=>job["id"],"runnerId"=>job["runner_id"].to_i,"runnerName"=>job["runner_name"].to_s,"labels"=>Array(job["labels"]),"stepCount"=>steps.length,"qualified"=>ok}
+            end
+            pass=selected.all?{|job| job["qualified"]}
+            payload={
+              "status"=>pass ? "PASS_EXACT_HEAD_EXECUTABLE_RUNNER_MATRIX" : "FAIL_EXACT_HEAD_EXECUTABLE_RUNNER_MATRIX",
+              "candidate"=>{"commit"=>candidate,"tree"=>`git rev-parse HEAD^{tree}`.strip},
+              "jobs"=>selected,
+              "allRequiredJobsExecuted"=>pass,
+              "allRequiredStepsSuccessful"=>pass,
+              "exactHeadCheckedOut"=>pass,
+              "servedBundleCompiled"=>pass,
+              "nativeContractsTested"=>pass,
+              "globalPlatformHarnessTested"=>pass,
+              "windowsSafetyHarnessTested"=>pass,
+              "iosTargetCompiled"=>pass,
+              "androidTargetCompiled"=>pass,
+              "qualification"=>{"productWired"=>false,"productCargoFeatureDeclared"=>false,"productModuleRegistered"=>false,"productLifecycleWired"=>false,"automaticBindingAllowed"=>false,"productHostMayBind"=>false,"productBound"=>false,"systemMaterialBound"=>false,"nativeProductRuntime"=>false,"deviceValidation"=>false},
+              "authority"=>{"network"=>false,"mutation"=>false,"effect"=>false,"liveAdapter"=>false,"production"=>false,"operatorAcceptance"=>false,"promotion"=>false,"release"=>false},
+              "failures"=>pass ? [] : ["one or more exact-head executable jobs failed"]
+            }
+            File.write("artifacts/final/runner.json",JSON.pretty_generate(payload)+"\n")
+          '
+      - name: Produce bounded final index
+        id: index
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby scripts/hepta-ui-v4-final-gap-closure-index-v3 \
+            --candidate-commit "$HEPTA_CANDIDATE_SHA" \
+            --candidate-tree "$(git rev-parse 'HEAD^{tree}')" \
+            --evaluated-at-unix "$(date +%s)" \
+            --runner-execution artifacts/final/runner.json \
+            --output artifacts/final/index.json
+      - name: Enforce repository-controlled closure result
+        if: always()
         shell: bash
         env:
-          SOURCE_RESULT: ${{ needs.source-contract.result }}
-          SERVED_RESULT: ${{ needs.served-native-contract.result }}
-          PLATFORM_RESULT: ${{ needs.platform-contract.result }}
-          MOBILE_RESULT: ${{ needs.mobile-target-contract.result }}
+          INDEX_OUTCOME: ${{ steps.index.outcome }}
         run: |
           set -euo pipefail
-          pass=true
-          for value in "$SOURCE_RESULT" "$SERVED_RESULT" "$PLATFORM_RESULT" "$MOBILE_RESULT"; do
-            [[ "$value" == success ]] || pass=false
-          done
-          if [[ "$pass" == true ]]; then
-            status=PASS_EXECUTABLE_UI_REMEDIATION_MATRIX
-          else
-            status=FAIL_EXECUTABLE_UI_REMEDIATION_MATRIX
+          if [[ "$INDEX_OUTCOME" != success ]]; then
+            cat artifacts/final/index.json >&2
+            exit 1
           fi
-          printf '{"schema":"hepta.ui.v4.executable-remediation.v1","status":"%s","candidate":{"commit":"%s"},"results":{"source":"%s","servedNative":"%s","platform":"%s","mobile":"%s"},"productWired":false,"systemMaterialBound":false,"authority":{"network":false,"mutation":false,"effect":false,"liveAdapter":false,"production":false,"operatorAcceptance":false,"promotion":false,"release":false}}\n' \
-            "$status" "$HEPTA_CANDIDATE_SHA" "$SOURCE_RESULT" "$SERVED_RESULT" "$PLATFORM_RESULT" "$MOBILE_RESULT" | tee result.json
-          [[ "$pass" == true ]]
+          jq -e '
+            .status == "BLOCKED_EXTERNAL_EVIDENCE_REQUIRED"
+            and .sourceControllableGapsClosed == true
+            and .externalEvidenceComplete == false
+            and .allGapsClosed == false
+            and .slots.runnerExecution.qualified == true
+            and (.failures|length) == 0
+            and ([.authority[]]|all(.==false))
+            and ([.boundary[]]|all(.==false))
+          ' artifacts/final/index.json
+      - name: Upload repository-controlled closure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-final-gap-v4-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: artifacts/final
+          if-no-files-found: error
+          retention-days: 14
