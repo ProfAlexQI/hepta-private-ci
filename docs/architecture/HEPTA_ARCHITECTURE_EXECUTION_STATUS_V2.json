@@ -1,0 +1,75 @@
+{
+  "schema": "hepta.architecture-execution-status.v2",
+  "schemaVersion": 2,
+  "candidateBindingPolicy": {
+    "mode": "workflow_runtime_receipt_only",
+    "sourceHeadField": "GITHUB_EVENT_PULL_REQUEST_HEAD_SHA_OR_GITHUB_SHA",
+    "sourceTreeCommand": "git rev-parse HEAD^{tree}",
+    "mergeCandidateField": "GITHUB_SHA_FOR_PULL_REQUEST",
+    "committedSourceFileMayClaimExecutableQualification": false
+  },
+  "sourceClosure": {
+    "canonicalArchitectureCatalog": "closed",
+    "generatedArchitectureViews": "closed",
+    "runtimeProfileAvailabilityMatrix": "closed",
+    "documentAuthorityIndex": "closed",
+    "repositoryGovernanceContract": "closed",
+    "sourceMutatingArchitectureWorkflowsRetired": "closed",
+    "typedAuthorityKernel": "closed",
+    "productGraph": "closed",
+    "thinAgentdComposition": "closed",
+    "memoryRuntimeFacade": "closed",
+    "automationOperationBinding": "closed",
+    "matrixOperationBinding": "closed",
+    "providerOperationGate": "closed"
+  },
+  "execution": {
+    "allowedStates": [
+      "not_run",
+      "queued",
+      "running",
+      "passed",
+      "failed",
+      "blocked",
+      "superseded"
+    ],
+    "exactSourceHead": "not_run",
+    "mergeCandidate": "not_run",
+    "rustfmt": "not_run",
+    "tests": "not_run",
+    "cargoCheck": "not_run",
+    "clippy": "not_run",
+    "faultMatrix": "not_run"
+  },
+  "externalGates": {
+    "repositoryRuleset": {
+      "state": "blocked",
+      "reason": "live_repository_administration_configuration_required",
+      "contract": "docs/governance/HEPTA_REPOSITORY_RULESET_REQUIRED_V1.json"
+    },
+    "independentReview": {
+      "state": "not_run"
+    },
+    "operatorAcceptance": {
+      "state": "not_run"
+    },
+    "promotion": {
+      "state": "not_run"
+    },
+    "release": {
+      "state": "not_run"
+    }
+  },
+  "authority": {
+    "productionCaller": false,
+    "productionWriter": false,
+    "effectAuthority": false,
+    "externalEffect": false,
+    "modelInvocationAuthority": false,
+    "providerDispatchAuthority": false,
+    "fleetMutationAuthority": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

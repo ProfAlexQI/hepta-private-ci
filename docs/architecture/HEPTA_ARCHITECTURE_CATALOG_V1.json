@@ -1,82 +1,134 @@
 {
-  "schema": "hepta.current-architecture.v1",
-  "schemaVersion": 2,
-  "catalogVersion": 1,
+  "schema": "hepta.architecture-catalog.v1",
+  "schemaVersion": 1,
   "authority": {
-    "status": "generated_current_architecture_view",
+    "status": "sole_editable_architecture_source",
     "humanEntryPoint": "ARCHITECTURE.md",
     "catalog": "docs/architecture/HEPTA_ARCHITECTURE_CATALOG_V1.json",
-    "machineEntryPoint": "docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json",
-    "generator": "scripts/generate-hepta-architecture-views.py",
-    "rustAuthority": [
-      "codex-rs/hepta-contracts/src/authority.rs",
-      "codex-rs/hepta-contracts/src/product_graph.rs",
-      "codex-rs/hepta-contracts/src/operation.rs",
-      "codex-rs/hepta-contracts/src/provider_operation.rs"
+    "generatedViews": [
+      "ARCHITECTURE.md",
+      "docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json",
+      "docs/architecture/DATA_AUTHORITY_MAP.md",
+      "docs/architecture/HEPTA_RUNTIME_PROFILE_MATRIX_V1.json"
     ],
+    "generator": "scripts/generate-hepta-architecture-views.py",
+    "runtimeAuthorityKernel": "codex-rs/hepta-contracts/src/authority.rs",
+    "rustProductGraph": "codex-rs/hepta-contracts/src/product_graph.rs",
     "externalPlanSnapshotsAreAuthority": false,
     "qualificationReceiptsAreProductAuthority": false,
     "draftPullRequestsAreProductAuthority": false
   },
+  "authorityActions": [
+    {
+      "id": "serve_session",
+      "rustVariant": "ServeSession",
+      "externalOrRelease": false
+    },
+    {
+      "id": "read_memory",
+      "rustVariant": "ReadMemory",
+      "externalOrRelease": false
+    },
+    {
+      "id": "mutate_memory_federation",
+      "rustVariant": "MutateMemoryFederation",
+      "externalOrRelease": false
+    },
+    {
+      "id": "mutate_automation",
+      "rustVariant": "MutateAutomation",
+      "externalOrRelease": false
+    },
+    {
+      "id": "write_cognitive_state",
+      "rustVariant": "WriteCognitiveState",
+      "externalOrRelease": false
+    },
+    {
+      "id": "invoke_model",
+      "rustVariant": "InvokeModel",
+      "externalOrRelease": true
+    },
+    {
+      "id": "dispatch_provider",
+      "rustVariant": "DispatchProvider",
+      "externalOrRelease": true
+    },
+    {
+      "id": "external_effect",
+      "rustVariant": "ExternalEffect",
+      "externalOrRelease": true
+    },
+    {
+      "id": "mutate_fleet",
+      "rustVariant": "MutateFleet",
+      "externalOrRelease": true
+    },
+    {
+      "id": "accept_operator",
+      "rustVariant": "AcceptOperator",
+      "externalOrRelease": true
+    },
+    {
+      "id": "promote_release",
+      "rustVariant": "PromoteRelease",
+      "externalOrRelease": true
+    }
+  ],
   "runtimeProfiles": [
     {
       "id": "snapshot_read_only",
+      "rustVariant": "SnapshotReadOnly",
+      "rustConstructor": "snapshot_read_only",
+      "hostsAgentProductGraph": false,
+      "qualificationOnly": false,
       "actions": [
         "read_memory"
       ],
-      "hostsAgentProductGraph": false,
-      "qualificationOnly": false,
-      "requiredServices": [
-        "memory_runtime",
-        "supervisor"
-      ],
-      "optionalServices": [],
-      "disabledServices": [
-        "agentd",
-        "app_server",
-        "automation_runtime",
-        "evidence_store",
-        "matrix_ingress",
-        "provider_effect_adapter",
-        "qualification_plane"
-      ],
-      "qualificationPrerequisites": [],
-      "externalEffects": false,
-      "modelInvocation": false,
-      "promotion": false
+      "services": {
+        "supervisor": "required",
+        "agentd": "disabled",
+        "app_server": "disabled",
+        "memory_runtime": "required",
+        "automation_runtime": "disabled",
+        "matrix_ingress": "disabled",
+        "provider_effect_adapter": "disabled",
+        "evidence_store": "disabled",
+        "qualification_plane": "disabled"
+      },
+      "qualificationPrerequisites": []
     },
     {
       "id": "agent_local",
+      "rustVariant": "AgentLocal",
+      "rustConstructor": "agent_local",
+      "hostsAgentProductGraph": true,
+      "qualificationOnly": false,
       "actions": [
         "serve_session",
         "read_memory",
         "mutate_memory_federation",
         "mutate_automation"
       ],
-      "hostsAgentProductGraph": true,
-      "qualificationOnly": false,
-      "requiredServices": [
-        "agentd",
-        "app_server",
-        "supervisor"
-      ],
-      "optionalServices": [
-        "automation_runtime",
-        "memory_runtime"
-      ],
-      "disabledServices": [
-        "evidence_store",
-        "matrix_ingress",
-        "provider_effect_adapter",
-        "qualification_plane"
-      ],
-      "qualificationPrerequisites": [],
-      "externalEffects": false,
-      "modelInvocation": false,
-      "promotion": false
+      "services": {
+        "supervisor": "required",
+        "agentd": "required",
+        "app_server": "required",
+        "memory_runtime": "optional",
+        "automation_runtime": "optional",
+        "matrix_ingress": "disabled",
+        "provider_effect_adapter": "disabled",
+        "evidence_store": "disabled",
+        "qualification_plane": "disabled"
+      },
+      "qualificationPrerequisites": []
     },
     {
       "id": "qualification_cognitive_write",
+      "rustVariant": "QualificationCognitiveWrite",
+      "rustConstructor": "qualification_cognitive_write",
+      "hostsAgentProductGraph": true,
+      "qualificationOnly": true,
       "actions": [
         "serve_session",
         "read_memory",
@@ -84,109 +136,109 @@
         "mutate_automation",
         "write_cognitive_state"
       ],
-      "hostsAgentProductGraph": true,
-      "qualificationOnly": true,
-      "requiredServices": [
-        "agentd",
-        "app_server",
-        "memory_runtime",
-        "supervisor"
-      ],
-      "optionalServices": [
-        "automation_runtime"
-      ],
-      "disabledServices": [
-        "evidence_store",
-        "matrix_ingress",
-        "provider_effect_adapter",
-        "qualification_plane"
-      ],
+      "services": {
+        "supervisor": "required",
+        "agentd": "required",
+        "app_server": "required",
+        "memory_runtime": "required",
+        "automation_runtime": "optional",
+        "matrix_ingress": "disabled",
+        "provider_effect_adapter": "disabled",
+        "evidence_store": "disabled",
+        "qualification_plane": "disabled"
+      },
       "qualificationPrerequisites": [
         "qualification_plane"
-      ],
-      "externalEffects": false,
-      "modelInvocation": false,
-      "promotion": false
+      ]
     }
   ],
   "components": [
     {
       "id": "supervisor",
+      "rustEnumVariant": "Supervisor",
+      "runtimeGraphMember": true,
       "plane": "control",
       "role": "lifecycle_release_and_grant_owner",
       "durableDomains": [
         "fleet_registry",
         "agent_lifecycle",
         "release_promotion"
-      ],
-      "runtimeGraphMember": true
+      ]
     },
     {
       "id": "agentd",
+      "rustEnumVariant": "Agentd",
+      "runtimeGraphMember": true,
       "plane": "composition",
       "role": "thin_composition_root",
-      "durableDomains": [],
-      "runtimeGraphMember": true
+      "durableDomains": []
     },
     {
       "id": "app_server",
+      "rustEnumVariant": "AppServer",
+      "runtimeGraphMember": true,
       "plane": "execution",
       "role": "session_execution_spine",
       "durableDomains": [
         "thread_session"
-      ],
-      "runtimeGraphMember": true
+      ]
     },
     {
       "id": "memory_runtime",
+      "rustEnumVariant": "MemoryRuntime",
+      "runtimeGraphMember": true,
       "plane": "domain",
       "role": "memory_and_knowledge_owner",
       "durableDomains": [
         "memory_ledger",
         "knowledge_projection"
-      ],
-      "runtimeGraphMember": true
+      ]
     },
     {
       "id": "automation_runtime",
+      "rustEnumVariant": "AutomationRuntime",
+      "runtimeGraphMember": true,
       "plane": "domain",
       "role": "schedule_and_occurrence_owner",
       "durableDomains": [
         "automation_schedule"
-      ],
-      "runtimeGraphMember": true
+      ]
     },
     {
       "id": "matrix_ingress",
+      "rustEnumVariant": "MatrixIngress",
+      "runtimeGraphMember": true,
       "plane": "adapter",
       "role": "matrix_delivery_owner",
       "durableDomains": [
         "ingress_projection"
-      ],
-      "runtimeGraphMember": true
+      ]
     },
     {
       "id": "provider_effect_adapter",
+      "rustEnumVariant": "ProviderEffectAdapter",
+      "runtimeGraphMember": true,
       "plane": "adapter",
       "role": "dormant_external_effect_boundary",
-      "durableDomains": [],
-      "runtimeGraphMember": true
+      "durableDomains": []
     },
     {
       "id": "evidence_store",
+      "rustEnumVariant": null,
+      "runtimeGraphMember": false,
       "plane": "evidence",
       "role": "governance_and_provider_evidence_owner",
       "durableDomains": [
         "governance_provider_evidence"
-      ],
-      "runtimeGraphMember": false
+      ]
     },
     {
       "id": "qualification_plane",
+      "rustEnumVariant": "QualificationPlane",
+      "runtimeGraphMember": false,
       "plane": "qualification",
       "role": "read_only_product_evidence_consumer",
-      "durableDomains": [],
-      "runtimeGraphMember": false
+      "durableDomains": []
     }
   ],
   "productEdges": [
@@ -231,116 +283,128 @@
       "kind": "submits_to"
     }
   ],
-  "dataAuthorities": [
+  "dataDomains": [
     {
-      "domain": "fleet_registry",
+      "id": "fleet_registry",
       "plane": "control",
       "durability": "durable",
       "writer": "supervisor",
       "store": "json_registry",
       "migrationOwner": "supervisor",
-      "rustProductGraph": true
+      "rustProductGraph": true,
+      "rustDomainVariant": "FleetRegistry",
+      "rustWriterVariant": "Supervisor",
+      "rustStoreVariant": "JsonRegistry"
     },
     {
-      "domain": "agent_lifecycle",
+      "id": "agent_lifecycle",
       "plane": "control",
       "durability": "durable",
       "writer": "supervisor",
       "store": "json_registry",
       "migrationOwner": "supervisor",
-      "rustProductGraph": true
+      "rustProductGraph": true,
+      "rustDomainVariant": "AgentLifecycle",
+      "rustWriterVariant": "Supervisor",
+      "rustStoreVariant": "JsonRegistry"
     },
     {
-      "domain": "release_promotion",
+      "id": "release_promotion",
       "plane": "control",
       "durability": "durable",
       "writer": "supervisor",
       "store": "signed_release_state",
       "migrationOwner": "supervisor",
-      "rustProductGraph": false
+      "rustProductGraph": false,
+      "rustDomainVariant": null,
+      "rustWriterVariant": null,
+      "rustStoreVariant": null
     },
     {
-      "domain": "thread_session",
+      "id": "thread_session",
       "plane": "product",
       "durability": "durable",
       "writer": "app_server",
       "store": "agent_private_sqlite",
       "migrationOwner": "app_server",
-      "rustProductGraph": true
+      "rustProductGraph": true,
+      "rustDomainVariant": "ThreadSession",
+      "rustWriterVariant": "AppServer",
+      "rustStoreVariant": "AgentPrivateSqlite"
     },
     {
-      "domain": "memory_ledger",
+      "id": "memory_ledger",
       "plane": "product",
       "durability": "durable",
       "writer": "memory_runtime",
       "store": "agent_private_sqlite",
       "migrationOwner": "memory_runtime",
-      "rustProductGraph": true
+      "rustProductGraph": true,
+      "rustDomainVariant": "MemoryLedger",
+      "rustWriterVariant": "MemoryRuntime",
+      "rustStoreVariant": "AgentPrivateSqlite"
     },
     {
-      "domain": "knowledge_projection",
+      "id": "knowledge_projection",
       "plane": "product",
       "durability": "derived_durable",
       "writer": "memory_runtime",
       "store": "agent_private_sqlite",
       "migrationOwner": "memory_runtime",
-      "rustProductGraph": true
+      "rustProductGraph": true,
+      "rustDomainVariant": "KnowledgeProjection",
+      "rustWriterVariant": "MemoryRuntime",
+      "rustStoreVariant": "AgentPrivateSqlite"
     },
     {
-      "domain": "automation_schedule",
+      "id": "automation_schedule",
       "plane": "product",
       "durability": "durable",
       "writer": "automation_runtime",
       "store": "agent_private_sqlite",
       "migrationOwner": "automation_runtime",
-      "rustProductGraph": true
+      "rustProductGraph": true,
+      "rustDomainVariant": "AutomationSchedule",
+      "rustWriterVariant": "AutomationRuntime",
+      "rustStoreVariant": "AgentPrivateSqlite"
     },
     {
-      "domain": "ingress_projection",
+      "id": "ingress_projection",
       "plane": "adapter",
       "durability": "durable",
       "writer": "matrix_ingress",
       "store": "agent_private_sqlite",
       "migrationOwner": "matrix_ingress",
-      "rustProductGraph": true
+      "rustProductGraph": true,
+      "rustDomainVariant": "IngressProjection",
+      "rustWriterVariant": "MatrixIngress",
+      "rustStoreVariant": "AgentPrivateSqlite"
     },
     {
-      "domain": "runtime_health",
+      "id": "runtime_health",
       "plane": "composition",
       "durability": "ephemeral",
       "writer": "agentd",
       "store": "process_memory",
       "migrationOwner": null,
-      "rustProductGraph": true
+      "rustProductGraph": true,
+      "rustDomainVariant": "RuntimeHealth",
+      "rustWriterVariant": "Agentd",
+      "rustStoreVariant": "ProcessMemory"
     },
     {
-      "domain": "governance_provider_evidence",
+      "id": "governance_provider_evidence",
       "plane": "evidence",
       "durability": "durable",
       "writer": "evidence_store",
       "store": "evidence_sqlite",
       "migrationOwner": "evidence_store",
-      "rustProductGraph": false
+      "rustProductGraph": false,
+      "rustDomainVariant": null,
+      "rustWriterVariant": null,
+      "rustStoreVariant": null
     }
   ],
-  "productGraphScope": {
-    "rustEnforcedDomains": [
-      "fleet_registry",
-      "agent_lifecycle",
-      "thread_session",
-      "memory_ledger",
-      "knowledge_projection",
-      "automation_schedule",
-      "ingress_projection",
-      "runtime_health"
-    ],
-    "externalControlDomains": [
-      "release_promotion"
-    ],
-    "externalEvidenceDomains": [
-      "governance_provider_evidence"
-    ]
-  },
   "crossOwnerProtocol": {
     "transport": "transactional_outbox",
     "delivery": "at_least_once",

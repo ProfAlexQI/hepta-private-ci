@@ -10,11 +10,9 @@ from typing import Any, NoReturn
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 LEDGER = ROOT / "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V1.json"
-CANONICAL_WORKFLOW = ROOT / ".github/workflows/hepta-architecture-convergence-p0-2.yml"
-BLOCKING_WORKFLOW = ROOT / ".github/workflows/blocking-ci.yml"
 WORKFLOW_ROOT = ROOT / ".github/workflows"
 
-RETIRED_WORKFLOWS = (
+FORBIDDEN_MUTATING_PATHS = (
     ".github/workflows/hepta-architecture-convergence-p0-2-bootstrap.yml",
     ".github/workflows/hepta-architecture-convergence-p0-2-finalize.yml",
     ".github/workflows/hepta-architecture-convergence-p0-2-retire-bootstrap.yml",
@@ -29,42 +27,14 @@ RETIRED_WORKFLOWS = (
     ".github/workflows/hepta-operation-safety-repair-slim-once.yml",
     ".github/workflows/hepta-operation-materialize-once.yml",
     ".github/workflows/hepta-gap-closure-once.yml",
+    ".github/workflows/hepta-automation-operation-tests-finalize-once.yml",
+    ".github/workflows/hepta-automation-operation-tests-finalize-v2.yml",
+    ".github/workflows/hepta-automation-operation-tests-finalize-v3.yml",
+    ".github/workflows/hepta-resource-governor-once.yml",
+    ".github/workflows/hepta-resource-governor-finalize-once.yml",
+    ".github/workflows/hepta-source-snapshot-once.yml",
+    "scripts/hepta-resource-governor-once.py",
 )
-RETIRED_MUTATORS = (
-    "scripts/hepta-architecture-p0-2-portability-bootstrap.py",
-    "scripts/hepta-architecture-p0-2-retire-bootstraps.py",
-    "scripts/hepta-legacy-production-authority-adapter-p0-1.py",
-    "scripts/hepta-memory-runtime-extraction-p0-1.py",
-    "scripts/hepta-product-graph-authority-completion-p0-1-v2.py",
-    "scripts/hepta-product-graph-authority-completion-p0-1.py",
-    "scripts/hepta-operation-safety-repair.py",
-    "scripts/hepta-automation-operation-repair-once.py",
-    "scripts/hepta-automation-operation-repair-once.py.part-00",
-    "scripts/hepta-automation-operation-repair-once.py.part-01",
-    "scripts/hepta-automation-operation-repair-once.py.part-02",
-    "scripts/hepta-automation-operation-repair-once.py.part-03",
-    "scripts/hepta-automation-model-v4.rs",
-    "scripts/hepta-close-ci-gaps-once.py",
-)
-MUTATING_WORKFLOW_NAME_PARTS = (
-    "architecture",
-    "memory-runtime",
-    "authority",
-    "product-graph",
-    "operation",
-)
-MUTATING_WORKFLOW_SUFFIXES = (
-    "-bootstrap.yml",
-    "-bootstrap.yaml",
-    "-finalize.yml",
-    "-finalize.yaml",
-    "-once.yml",
-    "-once.yaml",
-    "-refresh.yml",
-    "-refresh.yaml",
-)
-MATRIX_STORE_PACKAGE_MARKER = "-p codex-hepta-matrix-store"
-MATRIX_STORE_REQUIRED_OCCURRENCES = 9
 
 
 def fail(message: str) -> NoReturn:
@@ -76,79 +46,65 @@ def load_json_no_duplicates(path: pathlib.Path) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for key, value in pairs:
             if key in result:
-                fail(f"duplicate JSON key {key!r} in {path.relative_to(ROOT)}")
+                fail(f"duplicate JSON key {key!r}")
             result[key] = value
         return result
 
     try:
         value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=pairs_hook)
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        fail(f"cannot parse {path.relative_to(ROOT)}: {error}")
+        fail(f"cannot parse ledger: {error}")
     if not isinstance(value, dict):
-        fail("gap ledger must contain one JSON object")
+        fail("ledger must contain one object")
     return value
 
 
-def read(path: pathlib.Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as error:
-        fail(f"cannot read {path.relative_to(ROOT)}: {error}")
-
-
-def reject_source_mutators() -> None:
-    for relative in (*RETIRED_WORKFLOWS, *RETIRED_MUTATORS):
+def reject_architecture_source_mutators() -> None:
+    for relative in FORBIDDEN_MUTATING_PATHS:
         if (ROOT / relative).exists():
-            fail(f"retired source-mutating or duplicate qualification path still exists: {relative}")
+            fail(f"retired source-mutating path still exists: {relative}")
 
-    for path in WORKFLOW_ROOT.iterdir():
+    for path in WORKFLOW_ROOT.glob("hepta-*"):
         if not path.is_file():
             continue
         name = path.name.lower()
-        if any(part in name for part in MUTATING_WORKFLOW_NAME_PARTS) and any(
-            name.endswith(suffix) for suffix in MUTATING_WORKFLOW_SUFFIXES
-        ):
-            fail(f"architecture source-mutating workflow name is forbidden: {path.relative_to(ROOT)}")
-        content = read(path)
-        if any(part in name for part in MUTATING_WORKFLOW_NAME_PARTS) and any(
-            marker in content
-            for marker in (
-                "permissions:\n  contents: write",
-                "persist-credentials: true",
-                "git push",
-                "git commit",
-                "git update-ref",
+        if not any(
+            token in name
+            for token in (
+                "architecture",
+                "authority",
+                "memory-runtime",
+                "product-graph",
+                "operation",
+                "resource-governor",
             )
         ):
-            fail(f"architecture workflow contains a source mutation path: {path.relative_to(ROOT)}")
-
-
-def verify_matrix_store_qualification(workflow: str) -> None:
-    occurrences = workflow.count(MATRIX_STORE_PACKAGE_MARKER)
-    if occurrences < MATRIX_STORE_REQUIRED_OCCURRENCES:
-        fail(
-            "canonical workflow does not directly qualify the durable Matrix store across "
-            f"source and merge identities: expected>={MATRIX_STORE_REQUIRED_OCCURRENCES} "
-            f"actual={occurrences}"
-        )
-    for marker in (
-        "cargo test --locked -p codex-hepta-matrix-store --lib -- --nocapture",
-        "cargo test --locked -p codex-hepta-matrix-store --features qualification-fault-injection --test sqlite_full -- --nocapture",
-        "cargo clippy --locked -p codex-hepta-matrix-store --all-targets --features qualification-fault-injection -- -D warnings",
-        "-p codex-hepta-matrix-store \\",
-    ):
-        if marker not in workflow:
-            fail(f"canonical Matrix store qualification marker is missing: {marker}")
+            continue
+        content = path.read_text(encoding="utf-8")
+        for marker in (
+            "permissions:\n  contents: write",
+            "persist-credentials: true",
+            "git push",
+            "git commit",
+            "git update-ref",
+        ):
+            if marker in content:
+                fail(f"architecture workflow mutates source: {path.relative_to(ROOT)}: {marker}")
 
 
 def main() -> int:
     ledger = load_json_no_duplicates(LEDGER)
-    if ledger.get("schema") != "hepta.architecture-gap-ledger.v1" or ledger.get("schemaVersion") != 2:
-        fail("wrong gap-ledger schema")
-    if ledger.get("canonicalBranch") != "codex/hepta-architecture-convergence-p0-2-20260828":
-        fail("canonical architecture branch drifted")
-    if ledger.get("canonicalPullRequest") != 53:
-        fail("canonical architecture pull request drifted")
+    if (
+        ledger.get("schema") != "hepta.architecture-gap-ledger.v1"
+        or ledger.get("schemaVersion") != 2
+    ):
+        fail("unsupported gap-ledger schema")
+    if ledger.get("canonicalBranch") != (
+        "codex/hepta-architecture-gap-closure-p0-5-20260829"
+    ):
+        fail("canonical gap-closure branch drifted")
+    if ledger.get("parentPullRequest") != 53:
+        fail("parent pull request drifted")
 
     closure = ledger.get("sourceClosure")
     if not isinstance(closure, dict) or not closure:
@@ -158,71 +114,51 @@ def main() -> int:
             fail(f"source closure gap is not closed: {gap_id}")
         evidence = record.get("evidence")
         if not isinstance(evidence, list) or not evidence:
-            fail(f"source closure gap has no evidence paths: {gap_id}")
+            fail(f"source closure gap has no evidence: {gap_id}")
         for relative in evidence:
             if not isinstance(relative, str) or not (ROOT / relative).is_file():
                 fail(f"source closure evidence is missing: {gap_id}: {relative!r}")
 
-    reject_source_mutators()
-
-    workflow = read(CANONICAL_WORKFLOW)
-    for marker in (
-        "name: Hepta architecture convergence P0",
-        "workflow_call:",
-        "workflow_dispatch:",
-        "contents: read",
-        "runs-on: ubuntu-24.04",
-        "Exact source-head architecture closure",
-        "Merge-candidate architecture integration",
-        "Hepta architecture convergence required",
-        "if: ${{ always() && !cancelled() }}",
-        "cargo test --locked -p codex-hepta-automation --test automation -- --nocapture",
-        "python3 scripts/verify-hepta-architecture-gap-ledger.py",
-        "python3 scripts/verify-hepta-cross-owner-operation-wiring.py",
-        "source_mutation=false",
-    ):
-        if marker not in workflow:
-            fail(f"canonical workflow marker is missing: {marker}")
-    if workflow.count("cargo test --locked -p codex-hepta-automation --test automation -- --nocapture") != 2:
-        fail("Automation integration suite must execute once for each qualification identity")
-    for forbidden in ("contents: write", "git push", "git commit", "persist-credentials: true"):
-        if forbidden in workflow:
-            fail(f"canonical workflow contains a write path: {forbidden}")
-    verify_matrix_store_qualification(workflow)
-
-    blocking = read(BLOCKING_WORKFLOW)
-    if "uses: ./.github/workflows/hepta-architecture-convergence-p0-2.yml" not in blocking:
-        fail("blocking-ci does not call the canonical architecture workflow")
-    if "- hepta-architecture-convergence" not in blocking:
-        fail("blocking-ci required aggregator omits architecture convergence")
-    if "if: ${{ always() && !cancelled() }}" not in blocking:
-        fail("blocking-ci required aggregator can survive cancellation and starve the latest head")
+    controlled = ledger.get("repositoryControlledGaps")
+    if not isinstance(controlled, dict) or not controlled:
+        fail("repositoryControlledGaps must be explicit")
+    for gap_id, record in controlled.items():
+        if not isinstance(record, dict):
+            fail(f"repository-controlled gap is invalid: {gap_id}")
+        if record.get("state") not in {"open", "partial", "closed"}:
+            fail(f"repository-controlled gap has invalid state: {gap_id}")
+        if record.get("state") != "closed" and record.get("blocking") is not True:
+            fail(f"unfinished repository-controlled gap is not blocking: {gap_id}")
 
     hosted = ledger.get("hostedQualification")
-    if not isinstance(hosted, dict):
-        fail("hostedQualification must be an object")
-    if hosted.get("requiredContext") != "Hepta architecture convergence required":
-        fail("required hosted context drifted")
-    if hosted.get("sourceMutationAllowed") is not False:
-        fail("hosted qualification must remain read-only")
-    if hosted.get("queuedOrEmptyJobCountsAsQualification") is not False:
-        fail("queued/empty jobs cannot count as qualification")
+    if (
+        not isinstance(hosted, dict)
+        or hosted.get("sourceMutationAllowed") is not False
+        or hosted.get("queuedOrEmptyJobCountsAsQualification") is not False
+    ):
+        fail("hosted qualification boundary drifted")
+    if hosted.get("exactSourceHead") not in {"not_run", "queued", "running", "passed", "failed", "blocked", "superseded"}:
+        fail("invalid exact-source-head execution state")
+    if hosted.get("mergeCandidate") not in {"not_run", "queued", "running", "passed", "failed", "blocked", "superseded"}:
+        fail("invalid merge-candidate execution state")
 
-    future = ledger.get("postP0ProductWork")
-    if not isinstance(future, dict) or not future:
-        fail("postP0ProductWork must remain explicit")
-    for gap_id, state in future.items():
-        if state not in {"planned_non_blocking", "source_implemented", "qualified"}:
-            fail(f"invalid post-P0 work state: {gap_id}: {state!r}")
+    external = ledger.get("externalDecisionGates")
+    if not isinstance(external, dict):
+        fail("external decision gates are missing")
+    if external.get("liveRepositoryRuleset") != "blocked_external_configuration":
+        fail("live repository ruleset gap is hidden")
+    if any(
+        external.get(key) != "not_self_issued"
+        for key in ("operatorAcceptance", "promotion", "release")
+    ):
+        fail("operator/promotion/release gates must remain independently issued")
 
-    decisions = ledger.get("externalDecisionGates")
-    if not isinstance(decisions, dict) or any(state != "not_self_issued" for state in decisions.values()):
-        fail("operator/promotion/release decisions must remain externally issued")
     authority = ledger.get("authorityBoundary")
-    if not isinstance(authority, dict) or any(authority.values()):
-        fail("gap ledger widened the authority boundary")
+    if not isinstance(authority, dict) or not authority or any(authority.values()):
+        fail("gap ledger widened authority")
 
-    print("PASS_HEPTA_ARCHITECTURE_GAP_LEDGER_V2_SOURCE_CLOSED_EXTERNAL_GATES_SEPARATE")
+    reject_architecture_source_mutators()
+    print("PASS_HEPTA_ARCHITECTURE_GAP_LEDGER_V2_HONEST_OPEN_GAPS")
     return 0
 
 

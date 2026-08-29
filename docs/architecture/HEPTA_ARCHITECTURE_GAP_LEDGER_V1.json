@@ -1,38 +1,178 @@
 {
   "schema": "hepta.architecture-gap-ledger.v1",
   "schemaVersion": 2,
-  "canonicalBranch": "codex/hepta-architecture-convergence-p0-2-20260828",
-  "canonicalPullRequest": 53,
+  "canonicalBranch": "codex/hepta-architecture-gap-closure-p0-5-20260829",
+  "parentBranch": "codex/hepta-architecture-convergence-p0-2-20260828",
+  "parentPullRequest": 53,
   "sourceClosure": {
-    "canonicalArchitectureAuthority": {"state": "closed", "evidence": ["ARCHITECTURE.md", "docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json", "docs/architecture/HEPTA_DOCUMENT_AUTHORITY_INDEX_V1.json"]},
-    "singleWriterDataOwnership": {"state": "closed", "evidence": ["docs/architecture/DATA_AUTHORITY_MAP.md", "codex-rs/hepta-contracts/src/product_graph.rs"]},
-    "unifiedTypedAuthorityKernel": {"state": "closed", "evidence": ["codex-rs/hepta-contracts/src/authority.rs", "docs/architecture/HEPTA_AUTHORITY_CALLERS_V1.json"]},
-    "legacyProductionLeaseAttenuation": {"state": "closed", "evidence": ["codex-rs/hepta-memory-runtime/src/legacy_authority.rs", "codex-rs/hepta-memory-runtime/src/production_writer.rs", "codex-rs/hepta-agentd/src/production_writer_host.rs"]},
-    "separateExternalEffectCapability": {"state": "closed", "evidence": ["codex-rs/hepta-agentd/src/production_writer_host.rs", "codex-rs/hepta-contracts/src/provider_operation.rs"]},
-    "thinAgentdCompositionRoot": {"state": "closed", "evidence": ["codex-rs/hepta-agentd/src/composition.rs", "codex-rs/hepta-agentd/src/memory_service.rs", "codex-rs/hepta-agentd/src/automation_service.rs", "codex-rs/hepta-agentd/src/app_runtime.rs"]},
-    "physicalMemoryRuntimeBoundary": {"state": "closed", "evidence": ["codex-rs/hepta-memory-runtime/Cargo.toml", "codex-rs/hepta-memory-runtime/src/lib.rs"]},
-    "automationCrossOwnerOperation": {"state": "closed", "evidence": ["codex-rs/hepta-contracts/src/operation.rs", "codex-rs/hepta-automation/src/model.rs", "codex-rs/hepta-automation/src/scheduler.rs"]},
-    "matrixCrossOwnerOperation": {"state": "closed", "evidence": ["codex-rs/hepta-matrix-store/migrations/0005_matrix_operation_journal.sql", "codex-rs/hepta-matrix-store/src/operation.rs", "codex-rs/hepta-matrixd/src/runtime.rs"]},
-    "providerEffectOperationGate": {"state": "closed", "evidence": ["codex-rs/hepta-contracts/src/provider_operation.rs", "codex-rs/hepta-contracts/src/product_graph.rs"]},
-    "actualProductStoreFaultInjection": {"state": "closed", "evidence": ["codex-rs/hepta-matrix-store/tests/sqlite_full.rs"]},
-    "writeEnabledQualificationBootstrapRetired": {"state": "closed", "evidence": [".github/workflows/hepta-architecture-convergence-p0-2.yml", "scripts/verify-hepta-architecture-gap-ledger.py"]},
-    "singleReadOnlyRequiredWorkflow": {"state": "closed", "evidence": [".github/workflows/hepta-architecture-convergence-p0-2.yml", ".github/workflows/blocking-ci.yml"]}
+    "canonicalArchitectureCatalog": {
+      "state": "closed",
+      "evidence": [
+        "docs/architecture/HEPTA_ARCHITECTURE_CATALOG_V1.json",
+        "scripts/generate-hepta-architecture-views.py",
+        "scripts/verify-hepta-architecture-catalog.py"
+      ]
+    },
+    "generatedArchitectureViews": {
+      "state": "closed",
+      "evidence": [
+        "ARCHITECTURE.md",
+        "docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json",
+        "docs/architecture/DATA_AUTHORITY_MAP.md",
+        "docs/architecture/HEPTA_RUNTIME_PROFILE_MATRIX_V1.json"
+      ]
+    },
+    "documentAuthorityModel": {
+      "state": "closed",
+      "evidence": [
+        "docs/architecture/HEPTA_DOCUMENT_AUTHORITY_INDEX_V1.json"
+      ]
+    },
+    "explicitExecutionStatusVocabulary": {
+      "state": "closed",
+      "evidence": [
+        "docs/architecture/HEPTA_ARCHITECTURE_EXECUTION_STATUS_V2.json"
+      ]
+    },
+    "repositoryGovernanceSourceContract": {
+      "state": "closed",
+      "evidence": [
+        "docs/governance/HEPTA_REPOSITORY_RULESET_REQUIRED_V1.json",
+        "scripts/verify-hepta-repository-governance.py",
+        ".github/CODEOWNERS"
+      ]
+    },
+    "singleWriterDataOwnership": {
+      "state": "closed",
+      "evidence": [
+        "docs/architecture/HEPTA_ARCHITECTURE_CATALOG_V1.json",
+        "codex-rs/hepta-contracts/src/product_graph.rs"
+      ]
+    },
+    "unifiedTypedAuthorityKernel": {
+      "state": "closed",
+      "evidence": [
+        "codex-rs/hepta-contracts/src/authority.rs",
+        "docs/architecture/HEPTA_AUTHORITY_CALLERS_V1.json"
+      ]
+    },
+    "legacyProductionLeaseAttenuation": {
+      "state": "closed",
+      "evidence": [
+        "codex-rs/hepta-memory-runtime/src/legacy_authority.rs",
+        "codex-rs/hepta-memory-runtime/src/production_writer.rs",
+        "codex-rs/hepta-agentd/src/production_writer_host.rs"
+      ]
+    },
+    "separateExternalEffectCapability": {
+      "state": "closed",
+      "evidence": [
+        "codex-rs/hepta-agentd/src/production_writer_host.rs",
+        "codex-rs/hepta-contracts/src/provider_operation.rs"
+      ]
+    },
+    "thinAgentdCompositionRoot": {
+      "state": "closed",
+      "evidence": [
+        "codex-rs/hepta-agentd/src/composition.rs",
+        "codex-rs/hepta-agentd/src/memory_service.rs",
+        "codex-rs/hepta-agentd/src/automation_service.rs",
+        "codex-rs/hepta-agentd/src/app_runtime.rs"
+      ]
+    },
+    "physicalMemoryRuntimeBoundary": {
+      "state": "closed",
+      "evidence": [
+        "codex-rs/hepta-memory-runtime/Cargo.toml",
+        "codex-rs/hepta-memory-runtime/src/lib.rs"
+      ]
+    },
+    "automationCrossOwnerOperation": {
+      "state": "closed",
+      "evidence": [
+        "codex-rs/hepta-contracts/src/operation.rs",
+        "codex-rs/hepta-automation/src/model.rs",
+        "codex-rs/hepta-automation/src/scheduler.rs"
+      ]
+    },
+    "matrixCrossOwnerOperation": {
+      "state": "closed",
+      "evidence": [
+        "codex-rs/hepta-matrix-store/migrations/0005_matrix_operation_journal.sql",
+        "codex-rs/hepta-matrix-store/src/operation.rs",
+        "codex-rs/hepta-matrixd/src/runtime.rs"
+      ]
+    },
+    "providerEffectOperationGate": {
+      "state": "closed",
+      "evidence": [
+        "codex-rs/hepta-contracts/src/provider_operation.rs",
+        "codex-rs/hepta-contracts/src/product_graph.rs"
+      ]
+    },
+    "architectureSourceMutatorsRetired": {
+      "state": "closed",
+      "evidence": [
+        ".github/workflows/hepta-architecture-convergence-p0-2.yml",
+        "scripts/verify-hepta-architecture-gap-ledger.py"
+      ]
+    },
+    "singleReadOnlyRequiredWorkflow": {
+      "state": "closed",
+      "evidence": [
+        ".github/workflows/hepta-architecture-convergence-p0-2.yml",
+        ".github/workflows/blocking-ci.yml"
+      ]
+    }
+  },
+  "repositoryControlledGaps": {
+    "runtimeInstanceReadinessGraph": {
+      "state": "open",
+      "blocking": true,
+      "nextTranche": "P0.6"
+    },
+    "realAuthorityEpochAndFenceSource": {
+      "state": "open",
+      "blocking": true,
+      "nextTranche": "P0.6"
+    },
+    "perUseCapabilityRevocation": {
+      "state": "open",
+      "blocking": true,
+      "nextTranche": "P0.6"
+    },
+    "resourceBudgetRuntimeEnforcement": {
+      "state": "open",
+      "blocking": true,
+      "nextTranche": "P0.6"
+    },
+    "memoryBoundedContextPhysicalExtraction": {
+      "state": "open",
+      "blocking": true,
+      "nextTranche": "P0.7"
+    },
+    "productStoreFaultMatrix": {
+      "state": "partial",
+      "blocking": true,
+      "coverage": {
+        "matrix": "source_implemented",
+        "memory": "open",
+        "automation": "open",
+        "evidence": "open"
+      },
+      "nextTranche": "P0.7"
+    }
   },
   "hostedQualification": {
-    "exactSourceHead": "external_gate_pending",
-    "mergeCandidate": "external_gate_pending",
+    "exactSourceHead": "not_run",
+    "mergeCandidate": "not_run",
     "requiredContext": "Hepta architecture convergence required",
     "sourceMutationAllowed": false,
     "queuedOrEmptyJobCountsAsQualification": false
   },
-  "postP0ProductWork": {
-    "matrixOperationContractMigration": "source_implemented",
-    "providerEffectOperationContractMigration": "source_implemented",
-    "memoryBoundedContextPhysicalExtraction": "planned_non_blocking",
-    "actualProductStoreFaultInjection": "source_implemented",
-    "resourceBudgetRuntimeEnforcement": "planned_non_blocking"
-  },
   "externalDecisionGates": {
+    "liveRepositoryRuleset": "blocked_external_configuration",
+    "independentReview": "not_run",
     "operatorAcceptance": "not_self_issued",
     "promotion": "not_self_issued",
     "release": "not_self_issued"

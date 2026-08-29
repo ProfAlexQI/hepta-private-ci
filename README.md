@@ -1,81 +1,42 @@
-<p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
-<p align="center">
-  <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
-</p>
-</br>
-If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="https://developers.openai.com/codex/ide">install in your IDE.</a>
-</br>If you want the desktop app experience, run <code>codex app</code> or visit <a href="https://chatgpt.com/codex?app-landing-page=true">the Codex App page</a>.
-</br>If you are looking for the <em>cloud-based agent</em> from OpenAI, <strong>Codex Web</strong>, go to <a href="https://chatgpt.com/codex">chatgpt.com/codex</a>.</p>
+# Hepta private CI mirror
 
----
+This repository is the hosted qualification and integration mirror for the
+Hepta local-agent architecture built on the upstream Codex codebase. It is not
+a production release channel.
 
-## Quickstart
+## Current authority
 
-### Installing and running Codex CLI
+- Editable architecture facts: `docs/architecture/HEPTA_ARCHITECTURE_CATALOG_V1.json`
+- Generated human view: `ARCHITECTURE.md`
+- Current execution plan: `docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V2.md`
+- Execution status vocabulary: `docs/architecture/HEPTA_ARCHITECTURE_EXECUTION_STATUS_V2.json`
+- Required repository governance: `docs/governance/HEPTA_REPOSITORY_RULESET_REQUIRED_V1.json`
 
-Run the following on Mac or Linux to install Codex CLI:
+Historical plans, Draft pull requests, source receipts and queued Actions runs
+are evidence or development inputs. They cannot mint runtime capabilities,
+operator acceptance, promotion or release.
 
-```shell
-curl -fsSL https://chatgpt.com/codex/install.sh | sh
-```
+## Development rule
 
-Run the following on Windows to install Codex CLI:
-
-```shell
-powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"
-```
-
-The standalone installers download from `https://releases.openai.com/codex` by default and fall back to GitHub Releases if a metadata or asset download is unavailable. To force GitHub Releases, set `CODEX_INSTALLER_USE_RELEASES_OPENAI_COM` to `false` (`0` and `no` are also accepted):
+Change the architecture catalog, then regenerate and verify its views:
 
 ```shell
-curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_INSTALLER_USE_RELEASES_OPENAI_COM=false sh
+python3 scripts/generate-hepta-architecture-views.py --write
+python3 scripts/generate-hepta-architecture-views.py --check
+python3 scripts/verify-hepta-architecture-catalog.py
 ```
 
-```powershell
-$env:CODEX_INSTALLER_USE_RELEASES_OPENAI_COM='false'; irm https://chatgpt.com/codex/install.ps1 | iex
-```
+CI is read-only. It must not commit, push, update refs or rewrite the candidate.
 
-Codex CLI can also be installed via the following package managers:
+## Runtime posture
 
-```shell
-# Install using npm
-npm install -g @openai/codex
-```
+The current local profiles are closed. They do not grant model invocation,
+provider dispatch, external effects, fleet mutation, operator acceptance,
+promotion or release. The qualification cognitive-writer profile is
+build-time-only and remains non-production.
 
-```shell
-# Install using Homebrew
-brew install --cask codex
-```
+## Upstream
 
-Then simply run `codex` to get started.
-
-<details>
-<summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
-
-Each GitHub Release contains many executables, but in practice, you likely want one of these:
-
-- macOS
-  - Apple Silicon/arm64: `codex-aarch64-apple-darwin.tar.gz`
-  - x86_64 (older Mac hardware): `codex-x86_64-apple-darwin.tar.gz`
-- Linux
-  - x86_64: `codex-x86_64-unknown-linux-musl.tar.gz`
-  - arm64: `codex-aarch64-unknown-linux-musl.tar.gz`
-
-Each archive contains a single entry with the platform baked into the name (e.g., `codex-x86_64-unknown-linux-musl`), so you likely want to rename it to `codex` after extracting it.
-
-</details>
-
-### Using Codex with your ChatGPT plan
-
-Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your ChatGPT account to use Codex as part of your Plus, Pro, Business, Edu, or Enterprise plan. [Learn more about what's included in your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-in-chatgpt).
-
-You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
-
-## Docs
-
-- [**Codex Documentation**](https://developers.openai.com/codex)
-- [**Contributing**](./docs/contributing.md)
-- [**Installing & building**](./docs/install.md)
-- [**Open source fund**](./docs/open-source-fund.md)
-
-This repository is licensed under the [Apache-2.0 License](LICENSE).
+Hepta retains the upstream Codex source, licenses and notices. Upstream Codex
+installation and product documentation are not Hepta release or authority
+instructions.

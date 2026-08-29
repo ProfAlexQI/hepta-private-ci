@@ -1,0 +1,108 @@
+{
+  "schema": "hepta.runtime-profile-matrix.v1",
+  "schemaVersion": 1,
+  "catalog": "docs/architecture/HEPTA_ARCHITECTURE_CATALOG_V1.json",
+  "states": [
+    "required",
+    "optional",
+    "disabled"
+  ],
+  "profiles": [
+    {
+      "id": "snapshot_read_only",
+      "hostsAgentProductGraph": false,
+      "qualificationOnly": false,
+      "actions": [
+        "read_memory"
+      ],
+      "services": {
+        "supervisor": "required",
+        "agentd": "disabled",
+        "app_server": "disabled",
+        "memory_runtime": "required",
+        "automation_runtime": "disabled",
+        "matrix_ingress": "disabled",
+        "provider_effect_adapter": "disabled",
+        "evidence_store": "disabled",
+        "qualification_plane": "disabled"
+      },
+      "qualificationPrerequisites": [],
+      "failurePolicy": {
+        "requiredUnavailable": "startup_fail_closed",
+        "optionalUnavailable": "typed_degraded",
+        "disabledPresent": "configuration_error"
+      }
+    },
+    {
+      "id": "agent_local",
+      "hostsAgentProductGraph": true,
+      "qualificationOnly": false,
+      "actions": [
+        "serve_session",
+        "read_memory",
+        "mutate_memory_federation",
+        "mutate_automation"
+      ],
+      "services": {
+        "supervisor": "required",
+        "agentd": "required",
+        "app_server": "required",
+        "memory_runtime": "optional",
+        "automation_runtime": "optional",
+        "matrix_ingress": "disabled",
+        "provider_effect_adapter": "disabled",
+        "evidence_store": "disabled",
+        "qualification_plane": "disabled"
+      },
+      "qualificationPrerequisites": [],
+      "failurePolicy": {
+        "requiredUnavailable": "startup_fail_closed",
+        "optionalUnavailable": "typed_degraded",
+        "disabledPresent": "configuration_error"
+      }
+    },
+    {
+      "id": "qualification_cognitive_write",
+      "hostsAgentProductGraph": true,
+      "qualificationOnly": true,
+      "actions": [
+        "serve_session",
+        "read_memory",
+        "mutate_memory_federation",
+        "mutate_automation",
+        "write_cognitive_state"
+      ],
+      "services": {
+        "supervisor": "required",
+        "agentd": "required",
+        "app_server": "required",
+        "memory_runtime": "required",
+        "automation_runtime": "optional",
+        "matrix_ingress": "disabled",
+        "provider_effect_adapter": "disabled",
+        "evidence_store": "disabled",
+        "qualification_plane": "disabled"
+      },
+      "qualificationPrerequisites": [
+        "qualification_plane"
+      ],
+      "failurePolicy": {
+        "requiredUnavailable": "startup_fail_closed",
+        "optionalUnavailable": "typed_degraded",
+        "disabledPresent": "configuration_error"
+      }
+    }
+  ],
+  "authorityBoundary": {
+    "productionCaller": false,
+    "productionWriter": false,
+    "effectAuthority": false,
+    "externalEffect": false,
+    "modelInvocationAuthority": false,
+    "providerDispatchAuthority": false,
+    "fleetMutationAuthority": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

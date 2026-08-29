@@ -1,17 +1,27 @@
-# Core crate ownership.
-/codex-rs/arg0/ @openai/codex-core-agent-team
-/codex-rs/codex-mcp/ @openai/codex-core-agent-team
-/codex-rs/core/ @openai/codex-core-agent-team
-/codex-rs/exec-server/ @openai/codex-core-agent-team
-/codex-rs/exec-server-protocol/ @openai/codex-core-agent-team
-/codex-rs/ext/extension-api/ @openai/codex-core-agent-team
-/codex-rs/prompts/ @openai/codex-core-agent-team
-/codex-rs/utils/path-uri/ @openai/codex-core-agent-team
+# Default Hepta ownership.
+* @ProfHepta
 
-# Keep macOS AKV signing changes reviewed by Codex maintainers.
-/.github/actions/setup-akv-pkcs11-codesigning/ @openai/codex-core-agent-team
-/.github/scripts/macos-signing/ @openai/codex-core-agent-team
-/.github/workflows/rust-release.yml @openai/codex-core-agent-team
+# Architecture, authority, governance, delivery and security.
+/ARCHITECTURE.md @ProfHepta
+/README.md @ProfHepta
+/SECURITY.md @ProfHepta
+/docs/architecture/ @ProfHepta
+/docs/governance/ @ProfHepta
+/.github/CODEOWNERS @ProfHepta
+/.github/workflows/ @ProfHepta
+/scripts/verify-hepta-* @ProfHepta
+/scripts/generate-hepta-* @ProfHepta
 
-# Keep ownership changes reviewed by the same team.
-/.github/CODEOWNERS @openai/codex-core-agent-team
+# Product trust boundaries.
+/codex-rs/hepta-contracts/ @ProfHepta
+/codex-rs/hepta-agentd/ @ProfHepta
+/codex-rs/hepta-memory-runtime/ @ProfHepta
+/codex-rs/hepta-memory/ @ProfHepta
+/codex-rs/hepta-automation/ @ProfHepta
+/codex-rs/hepta-matrix-store/ @ProfHepta
+/codex-rs/hepta-matrixd/ @ProfHepta
+/codex-rs/hepta-supervisor/ @ProfHepta
+
+# Upstream Codex compatibility surfaces retain Hepta owner review in this mirror.
+/codex-rs/core/ @ProfHepta
+/codex-rs/app-server/ @ProfHepta

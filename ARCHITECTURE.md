@@ -1,14 +1,13 @@
 # Hepta current product architecture
 
-This file is the human entry point for the current Hepta product architecture.
-The machine-readable authority is
-[`docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json`](docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json).
-Rust enforces the authority, product graph, and cross-owner operation contracts in
-`codex-rs/hepta-contracts`.
+> Generated from `docs/architecture/HEPTA_ARCHITECTURE_CATALOG_V1.json`.
+> Change the catalog and run `python3 scripts/generate-hepta-architecture-views.py --write`;
+> CI accepts only byte-identical `--check` output.
 
-External plan snapshots, qualification receipts, historical status documents,
-and Draft pull requests are evidence or development inputs. They are not the
-current product architecture and cannot grant runtime authority.
+The catalog is the sole editable architecture fact source. Rust remains the
+runtime enforcement for typed authority, the Agent product graph and cross-owner
+operations. Historical plans, qualification receipts and Draft pull requests are
+evidence or development inputs; none can mint runtime authority.
 
 ## Runtime topology
 
@@ -20,54 +19,51 @@ Agentd composition root
   ├─ Codex App Server       — thread/session owner
   ├─ Hepta Memory Runtime   — memory/KG owner
   ├─ Hepta Automation       — schedule/occurrence owner
-  └─ local ingress adapters — submit through typed product seams
+  └─ local ingress adapters — typed submissions only
 
-Qualification plane
-  └─ observes product artifacts and runtime evidence only
-     never becomes a dependency or authority source of the product graph
+Evidence store / qualification plane
+  └─ outside the Agent product graph; observes candidate-bound evidence only
 ```
 
-Agentd owns no durable product domain. It validates one closed authority profile,
-constructs one acyclic product graph, holds the process writer lock, starts the
-owned services, monitors generation fencing, and shuts the composition down.
+Agentd owns no durable product domain. It validates one closed authority
+profile, constructs the acyclic product graph, holds the process writer lock,
+binds services, monitors lifecycle generation and shuts down the composition.
 
-## Authority model
+## Runtime profile availability
 
-Runtime calls use typed capabilities from `codex-hepta-contracts`.
-`AuthorityStatus`, qualification booleans, source receipts, or a serialized
-claim are descriptive only and cannot become `Authorized<C>`.
+| Profile | Required services | Optional services | Disabled services | Qualification prerequisites | Qualification only |
+|---|---|---|---|---|---|
+| `snapshot_read_only` | `supervisor`, `memory_runtime` | none | `agentd`, `app_server`, `automation_runtime`, `matrix_ingress`, `provider_effect_adapter`, `evidence_store`, `qualification_plane` | none | no |
+| `agent_local` | `supervisor`, `agentd`, `app_server` | `memory_runtime`, `automation_runtime` | `matrix_ingress`, `provider_effect_adapter`, `evidence_store`, `qualification_plane` | none | no |
+| `qualification_cognitive_write` | `supervisor`, `agentd`, `app_server`, `memory_runtime` | `automation_runtime` | `matrix_ingress`, `provider_effect_adapter`, `evidence_store`, `qualification_plane` | `qualification_plane` | yes |
 
-The currently constructible profiles are closed:
+A missing required service fails startup closed. A missing optional service
+produces an explicit degraded state. A disabled service appearing in the runtime
+is a configuration error; source presence never activates it.
 
-- `snapshot_read_only`: memory reads only;
-- `agent_local`: session serving, memory reads, memory-federation control, and
-  automation control;
-- `qualification_cognitive_write`: the Agent-local profile plus a typed,
-  build-time-only cognitive writer capability.
+## Authority
 
-None of these profiles grants model invocation, provider dispatch, external
-effects, fleet mutation, operator acceptance, promotion, or release.
+Runtime calls consume typed `Authorized<C>` witnesses. Serialized claims,
+qualification booleans and source receipts are descriptive only. Current local
+profiles cannot grant model invocation, provider dispatch, external effects,
+fleet mutation, operator acceptance, promotion or release.
 
 ## Data ownership
 
-Each durable domain has exactly one writer. Cross-owner changes use a durable
-command/outbox/acknowledgement protocol and never dual-write another owner's
-store. The canonical map is documented in
-[`docs/architecture/DATA_AUTHORITY_MAP.md`](docs/architecture/DATA_AUTHORITY_MAP.md).
+The generated `docs/architecture/DATA_AUTHORITY_MAP.md` distinguishes the
+Agent product graph from external control/evidence planes. Every domain has one
+writer and one migration owner. Cross-owner changes use durable
+command/outbox/acknowledgement semantics and never dual-write another owner.
 
 ## Recovery
 
 Recovery establishes release and lifecycle identity before opening Agent-private
-stores. Product composition occurs only after migration, integrity, operation,
-and outbox checks. The complete ordering and fail-closed states are documented
-in [`docs/architecture/RECOVERY_ORDER.md`](docs/architecture/RECOVERY_ORDER.md).
+stores, then validates migrations, integrity, operation journals and outboxes
+before composition. See `docs/architecture/RECOVERY_ORDER.md`.
 
 ## Qualification identities
 
-Two evidence identities are intentionally separate:
-
-1. **source head** — proves the exact proposed commit and tree;
-2. **merge candidate** — proves the candidate combined with its target branch.
-
-A green source-only verifier, queued job, `runner_id=0`, `steps=[]`, generated
-artifact, or qualification fixture is not product activation evidence.
+Source head and merge candidate are separate evidence identities. A queued job,
+`runner_id=0`, `steps=[]`, generated artifact or source-only verifier is not
+executable qualification. Operator acceptance and promotion are later,
+independently issued decisions.

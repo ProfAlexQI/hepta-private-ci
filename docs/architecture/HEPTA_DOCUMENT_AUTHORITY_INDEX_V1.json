@@ -1,38 +1,40 @@
 {
   "schema": "hepta.document-authority-index.v1",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "canonical": {
-    "architectureHuman": "ARCHITECTURE.md",
-    "architectureMachine": "docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json",
-    "dataAuthority": "docs/architecture/DATA_AUTHORITY_MAP.md",
+    "architectureCatalog": "docs/architecture/HEPTA_ARCHITECTURE_CATALOG_V1.json",
+    "architectureHumanGenerated": "ARCHITECTURE.md",
+    "architectureMachineGenerated": "docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json",
+    "runtimeProfileMatrixGenerated": "docs/architecture/HEPTA_RUNTIME_PROFILE_MATRIX_V1.json",
+    "dataAuthorityGenerated": "docs/architecture/DATA_AUTHORITY_MAP.md",
+    "executionStatus": "docs/architecture/HEPTA_ARCHITECTURE_EXECUTION_STATUS_V2.json",
     "recoveryOrder": "docs/architecture/RECOVERY_ORDER.md",
+    "currentPlan": "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V2.md",
+    "repositoryRulesetContract": "docs/governance/HEPTA_REPOSITORY_RULESET_REQUIRED_V1.json",
     "authorityKernel": "codex-rs/hepta-contracts/src/authority.rs",
     "productGraph": "codex-rs/hepta-contracts/src/product_graph.rs",
     "operationContract": "codex-rs/hepta-contracts/src/operation.rs"
   },
-  "historicalEvidenceRoots": [
-    {
-      "path": "docs/hepta-vnext/dropbox-current-2026-08-27",
-      "classification": "captured_external_plan_and_qualification_evidence",
-      "currentArchitectureAuthority": false,
-      "runtimeAuthority": false,
-      "promotionAuthority": false
-    },
-    {
-      "path": "plans",
-      "classification": "domain_development_and_qualification_history",
-      "currentArchitectureAuthority": false,
-      "runtimeAuthority": false,
-      "promotionAuthority": false
-    },
-    {
-      "path": "docs/ui",
-      "classification": "ui_domain_contracts_and_evidence",
-      "currentArchitectureAuthority": false,
-      "runtimeAuthority": false,
-      "promotionAuthority": false
-    }
-  ],
+  "classification": {
+    "normativeEditable": [
+      "docs/architecture/HEPTA_ARCHITECTURE_CATALOG_V1.json",
+      "docs/architecture/HEPTA_ARCHITECTURE_EXECUTION_STATUS_V2.json",
+      "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V2.md",
+      "docs/governance/HEPTA_REPOSITORY_RULESET_REQUIRED_V1.json",
+      "docs/architecture/RECOVERY_ORDER.md"
+    ],
+    "generatedReadOnly": [
+      "ARCHITECTURE.md",
+      "docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json",
+      "docs/architecture/HEPTA_RUNTIME_PROFILE_MATRIX_V1.json",
+      "docs/architecture/DATA_AUTHORITY_MAP.md"
+    ],
+    "historicalEvidenceRoots": [
+      "docs/hepta-vnext/dropbox-current-2026-08-27",
+      "plans",
+      "docs/ui"
+    ]
+  },
   "pullRequestPolicy": {
     "draftPullRequestIsAuthority": false,
     "sourcePresenceIsQualification": false,
