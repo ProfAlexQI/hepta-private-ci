@@ -1,0 +1,168 @@
+name: Hepta architecture product-test diagnostic
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-convergence-p0-2-20260828
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-architecture-product-test-diagnostic-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnostic:
+    name: Isolate architecture product-test blockers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - id: authority
+        name: Test authority contracts
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-contracts authority::tests -- --nocapture
+
+      - id: operation
+        name: Test operation contracts
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-contracts operation::tests -- --nocapture
+
+      - id: product_graph
+        name: Test product graph contracts
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-contracts product_graph::tests -- --nocapture
+
+      - id: provider_operation
+        name: Test provider operation contracts
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-contracts provider_operation::tests -- --nocapture
+
+      - id: cross_owner
+        name: Test cross-owner fault matrix
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-contracts --test cross_owner_fault_matrix -- --nocapture
+
+      - id: memory_runtime
+        name: Test memory runtime
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
+
+      - id: automation_lib
+        name: Test automation library
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-automation --lib -- --nocapture
+
+      - id: automation_integration
+        name: Test automation integration
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-automation --test automation -- --nocapture
+
+      - id: agentd
+        name: Test agentd composition
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
+
+      - id: matrix_store_lib
+        name: Test matrix store library
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-matrix-store --lib -- --nocapture
+
+      - id: matrix_store_sqlite
+        name: Test matrix store SQLite fault matrix
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-matrix-store --features qualification-fault-injection --test sqlite_full -- --nocapture
+
+      - id: matrixd
+        name: Test matrixd library
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-matrixd --lib -- --nocapture
+
+      - id: package_graph
+        name: Check converged product package graph
+        continue-on-error: true
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo check --locked \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-automation \
+            -p codex-hepta-agentd \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-matrix-store \
+            -p codex-hepta-matrixd \
+            -p codex-hepta-native-gateway
+
+      - name: Assert every diagnostic lane passed
+        env:
+          AUTHORITY: ${{ steps.authority.outcome }}
+          OPERATION: ${{ steps.operation.outcome }}
+          PRODUCT_GRAPH: ${{ steps.product_graph.outcome }}
+          PROVIDER_OPERATION: ${{ steps.provider_operation.outcome }}
+          CROSS_OWNER: ${{ steps.cross_owner.outcome }}
+          MEMORY_RUNTIME: ${{ steps.memory_runtime.outcome }}
+          AUTOMATION_LIB: ${{ steps.automation_lib.outcome }}
+          AUTOMATION_INTEGRATION: ${{ steps.automation_integration.outcome }}
+          AGENTD: ${{ steps.agentd.outcome }}
+          MATRIX_STORE_LIB: ${{ steps.matrix_store_lib.outcome }}
+          MATRIX_STORE_SQLITE: ${{ steps.matrix_store_sqlite.outcome }}
+          MATRIXD: ${{ steps.matrixd.outcome }}
+          PACKAGE_GRAPH: ${{ steps.package_graph.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            "authority=$AUTHORITY" \
+            "operation=$OPERATION" \
+            "product_graph=$PRODUCT_GRAPH" \
+            "provider_operation=$PROVIDER_OPERATION" \
+            "cross_owner=$CROSS_OWNER" \
+            "memory_runtime=$MEMORY_RUNTIME" \
+            "automation_lib=$AUTOMATION_LIB" \
+            "automation_integration=$AUTOMATION_INTEGRATION" \
+            "agentd=$AGENTD" \
+            "matrix_store_lib=$MATRIX_STORE_LIB" \
+            "matrix_store_sqlite=$MATRIX_STORE_SQLITE" \
+            "matrixd=$MATRIXD" \
+            "package_graph=$PACKAGE_GRAPH" | tee -a "$GITHUB_STEP_SUMMARY"
+          for result in \
+            "$AUTHORITY" "$OPERATION" "$PRODUCT_GRAPH" "$PROVIDER_OPERATION" \
+            "$CROSS_OWNER" "$MEMORY_RUNTIME" "$AUTOMATION_LIB" \
+            "$AUTOMATION_INTEGRATION" "$AGENTD" "$MATRIX_STORE_LIB" \
+            "$MATRIX_STORE_SQLITE" "$MATRIXD" "$PACKAGE_GRAPH"; do
+            test "$result" = success
+          done
