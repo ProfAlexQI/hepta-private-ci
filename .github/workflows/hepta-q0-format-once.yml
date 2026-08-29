@@ -1,0 +1,73 @@
+name: Temporary Hepta Q0.1 formatter
+
+on:
+  push:
+    branches:
+      - "automation/hepta-q0-1-format-20260830"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-q0-format-once
+  cancel-in-progress: false
+
+jobs:
+  format-q0-sources:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout formatter branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 2
+
+      - name: Set up locked uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: 0.11.3
+
+      - name: Install locked Rust formatter
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+
+      - name: Apply repository formatters
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --frozen --project scripts ruff format scripts
+          (
+            cd codex-rs
+            cargo +1.95.0 fmt -- --config imports_granularity=Item
+          )
+          git diff --check
+
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -gt 0
+          printf '%s\n' "${changed[@]}"
+          for path in "${changed[@]}"; do
+            case "$path" in
+              scripts/*.py|scripts/**/*.py|codex-rs/*.rs|codex-rs/**/*.rs) ;;
+              *) echo "unexpected formatted path: $path" >&2; exit 1 ;;
+            esac
+          done
+
+          uv run --frozen --project scripts ruff format --check scripts
+          (
+            cd codex-rs
+            cargo +1.95.0 fmt -- --config imports_granularity=Item --check
+          )
+
+      - name: Commit formatter output
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts codex-rs
+          git diff --cached --check
+          git commit -m "chore(format): normalize Q0 Python and Rust sources"
+          git push origin HEAD:automation/hepta-q0-1-format-20260830
