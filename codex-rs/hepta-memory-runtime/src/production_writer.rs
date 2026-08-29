@@ -249,7 +249,7 @@ mod tests {
                 lease(),
                 &AllowVerifier,
                 &agent_id(),
-                3,
+                1,
             ),
             "create typed authorization",
         );
@@ -259,13 +259,13 @@ mod tests {
                 authorization,
                 &AllowVerifier,
                 "production:runtime:test",
-                3,
+                1,
             )
             .await,
             "open typed production writer runtime",
         );
         assert!(runtime.cognitive_write_capability().is_external());
-        assert_eq!(runtime.cognitive_write_capability().generation(), 3);
+        assert_eq!(runtime.cognitive_write_capability().generation(), 1);
         must(runtime.writer().release().await, "release writer lease");
     }
 
