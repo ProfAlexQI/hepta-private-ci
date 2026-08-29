@@ -1,0 +1,180 @@
+name: Hepta inference INF-3 through INF-5 source publisher
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-gap-closure-scratch-check-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf345-publish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-inf345-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Qualify and publish scheduling, routing, and semantic contracts
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    env:
+      TARGET_BRANCH: codex/hepta-inference-gap-closure-20260829
+      EXPECTED_PARENT: 38d3f67f91eca4b25430dbf5f5d3af532edce450
+      PAYLOAD_SHA256: b93358164507b857bd2eddf7ae6aeaf4a8e67a81c13d652b57f36ff7f892b4c5
+      PAYLOAD_BASE64: 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
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          ref: ${{ env.EXPECTED_PARENT }}
+          fetch-depth: 0
+
+      - name: Verify exact immutable parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_PARENT"
+          test -z "$(git status --porcelain)"
+          git fetch --no-tags origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_PARENT"
+
+      - name: Materialize bounded source payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/inf345-source.tar.gz"
+          printf '%s' "$PAYLOAD_BASE64" | base64 --decode > "$archive"
+          test "$(shasum -a 256 "$archive" | awk '{print $1}')" = "$PAYLOAD_SHA256"
+          python3 - "$archive" <<'PY2'
+          import pathlib, sys, tarfile
+          archive = pathlib.Path(sys.argv[1])
+          expected = {
+              "codex-rs/hepta-infer-core/src/lib.rs",
+              "codex-rs/hepta-infer-core/src/scheduler.rs",
+              "codex-rs/hepta-infer-core/src/qualification.rs",
+              "codex-rs/hepta-infer-core/src/semantic.rs",
+          }
+          with tarfile.open(archive, "r:gz") as handle:
+              files = {member.name.removeprefix("./") for member in handle.getmembers() if member.isfile()}
+              if files != expected:
+                  raise SystemExit(f"payload paths drift: {sorted(files)}")
+              for member in handle.getmembers():
+                  path = pathlib.PurePosixPath(member.name)
+                  if path.is_absolute() or ".." in path.parts or member.issym() or member.islnk():
+                      raise SystemExit(f"unsafe archive entry: {member.name}")
+              handle.extractall(path=".")
+          PY2
+          git diff --check
+
+      - name: Enforce source and authority shape
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only | sort | paste -sd, -)" = "codex-rs/hepta-infer-core/src/lib.rs,codex-rs/hepta-infer-core/src/qualification.rs,codex-rs/hepta-infer-core/src/scheduler.rs,codex-rs/hepta-infer-core/src/semantic.rs"
+          grep -F 'AdmissionScheduler' codex-rs/hepta-infer-core/src/scheduler.rs >/dev/null
+          grep -F 'CacheScopeKey' codex-rs/hepta-infer-core/src/scheduler.rs >/dev/null
+          grep -F 'ResourceCircuitBreaker' codex-rs/hepta-infer-core/src/scheduler.rs >/dev/null
+          grep -F 'QualificationRouter' codex-rs/hepta-infer-core/src/qualification.rs >/dev/null
+          grep -F 'KnownGapNotRouted' codex-rs/hepta-infer-core/src/qualification.rs >/dev/null
+          grep -F 'RunStartSnapshotBinding' codex-rs/hepta-infer-core/src/semantic.rs >/dev/null
+          grep -F 'TypedSemanticEnvelope' codex-rs/hepta-infer-core/src/semantic.rs >/dev/null
+          ! grep -R -F 'raw_prompt' codex-rs/hepta-infer-core/src/{scheduler,qualification,semantic}.rs
+          ! grep -R -F 'TcpListener' codex-rs/hepta-infer-core/src/{scheduler,qualification,semantic}.rs
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Format exact inference packages
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
+          cargo fmt \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd -- --check
+
+      - name: Verify inherited source and authority contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/hepta-inference-inf0-source-gate.py
+          python3 scripts/hepta-inference-inf0-source-gate.py
+
+      - name: Locked check
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo check --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
+
+      - name: All-target tests
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo test --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
+
+      - name: Strict Clippy
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo clippy --locked --all-targets --no-deps \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd -- -D warnings
+
+      - name: Create bounded source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            codex-rs/hepta-infer-core/src/lib.rs \
+            codex-rs/hepta-infer-core/src/scheduler.rs \
+            codex-rs/hepta-infer-core/src/qualification.rs \
+            codex-rs/hepta-infer-core/src/semantic.rs
+          test -z "$(git diff --name-only)"
+          git commit -m "feat(inference): add INF-3 scheduling INF-4 routing and INF-5 semantics"
+          echo "CANDIDATE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "CANDIDATE_TREE=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_ENV"
+
+      - name: Revalidate and fast-forward target branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_PARENT"
+          git push origin HEAD:"$TARGET_BRANCH"
+
+      - name: Record fail-closed publisher result
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Hepta inference INF-3 through INF-5 publisher"
+            echo
+            echo "- expected parent: $EXPECTED_PARENT"
+            echo "- candidate: ${CANDIDATE_SHA:-not-created}"
+            echo "- candidate tree: ${CANDIDATE_TREE:-not-created}"
+            echo "- qualification_only: true"
+            echo "- measured production route: false"
+            echo "- Memory/KG/effect authority: false"
+            echo "- operator acceptance: false"
+            echo "- promotion: false"
+            echo "- release: false"
+          } >> "$GITHUB_STEP_SUMMARY"
