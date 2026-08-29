@@ -1,0 +1,42 @@
+{
+  "schema": "hepta.inference.inf1_clean_source_receipt.v1",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
+  "parent_inf0c_capability_receipt": "cd3344d767667b177d6d21c7198bade228d010bb",
+  "source_candidate_commit": "715c48bcdf2a322da683f2bebb182d0856158930",
+  "source_candidate_tree": "0cc6642544fe90b39cd09d06386a8302751a719f",
+  "qualified_payload_identity": {
+    "donor_source_commit": "0ba5b438e72ddb90b0468f3dbfdffa0c0801e9d5",
+    "donor_workflow_run_id": 33235675152,
+    "donor_job_id": 99056119977,
+    "cargo_toml_blob": "94aa40015dfef79330aea78e68188607ade54dff",
+    "cargo_lock_blob": "c0139ec6fe4c0d2adaf01cd9b3178e583913ad65",
+    "hepta_infer_core_tree": "d3ef4b70591af8f93d4188f71567ea3ce01a830e",
+    "hepta_inferd_tree": "0b0564317ec4bcbf254559a2961526c2699a74ac",
+    "source_gate_blob": "e74444a10fb809d7e7f34d5518a1bb64f037d48a",
+    "status_blob": "cf40dceb4df487289ee4db3bb3db65f445dc948f",
+    "donor_fmt_check_test_clippy": "PASS",
+    "clean_exact_head_requalification": "NOT_RUN"
+  },
+  "claim": "SOURCE_PRESENT_NOT_RUN",
+  "source_qualified": false,
+  "runtime_activated": false,
+  "product_wired": false,
+  "production_qualified": false,
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
