@@ -253,7 +253,7 @@ def verify_required_gate() -> None:
         "python3 scripts/verify-hepta-cross-owner-operation-wiring.py",
         "cargo test --locked -p codex-hepta-contracts provider_operation::tests",
         "cargo test --locked -p codex-hepta-matrix-store --test sqlite_full",
-        "runs-on: ubuntu-24.04-arm",
+        "runs-on: ubuntu-24.04",
         "Hepta architecture convergence required",
     ):
         if marker not in workflow:
