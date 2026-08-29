@@ -461,6 +461,10 @@ impl<D: ProcessDriver> Supervisor<D> {
     /// independent production grant is the only object that carries
     /// production authority.  This method queues the existing drain/start
     /// state machine and records a fsynced intent before touching the child.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the production grant boundary keeps every authority and time witness explicit"
+    )]
     pub fn apply_production_grant(
         &mut self,
         agent_id: &AgentId,
