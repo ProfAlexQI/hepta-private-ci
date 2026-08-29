@@ -1,0 +1,187 @@
+name: Hepta Q0 format and dependency diagnostic
+
+on:
+  push:
+    branches:
+      - codex/hepta-intelligence-plan-v3-20260828
+    paths:
+      - .github/workflows/hepta-q0-format-deny-diagnostic.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-q0-format-deny-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Format workspace and diagnose cargo-deny
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact carrier
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Assert exact carrier identity
+        shell: bash
+        env:
+          EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
+          EXPECTED_PARENT: a5bcf23ee0c9e79cceaaae49da7e7fa3673975b9
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "ProfHepta/hepta-private-ci"
+          test "$GITHUB_REF_NAME" = "$EXPECTED_BRANCH"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+
+      - name: Restore complete workspace manifest coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path(".github/scripts/verify_cargo_workspace_manifests.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''def cargo_manifests() -> list[Path]:
+              workspace_manifest = load_manifest(CARGO_RS_ROOT / "Cargo.toml")
+              workspace = workspace_manifest.get("workspace")
+              members = workspace.get("members") if isinstance(workspace, dict) else None
+              if not isinstance(members, list) or not all(
+                  isinstance(member, str) for member in members
+              ):
+                  raise ValueError(
+                      "codex-rs/Cargo.toml must define a list of string workspace members"
+                  )
+
+              manifests: set[Path] = set()
+              for member in members:
+                  if not member or Path(member).is_absolute() or ".." in Path(member).parts:
+                      raise ValueError(f"invalid Cargo workspace member: {member!r}")
+                  matches = sorted(CARGO_RS_ROOT.glob(f"{member}/Cargo.toml"))
+                  if not matches:
+                      raise ValueError(
+                          f"Cargo workspace member {member!r} has no matching manifest"
+                      )
+                  manifests.update(matches)
+              return sorted(manifests)
+          '''
+          new = '''def cargo_manifests() -> list[Path]:
+              return sorted(
+                  path
+                  for path in CARGO_RS_ROOT.rglob("Cargo.toml")
+                  if path != CARGO_RS_ROOT / "Cargo.toml"
+                  and "third_party" not in path.relative_to(CARGO_RS_ROOT).parts
+              )
+          '''
+          if text.count(old) != 1:
+              raise AssertionError("expected exactly one explicit-member scanner")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
+          python3 .github/scripts/verify_cargo_workspace_manifests.py
+          python3 -m py_compile .github/scripts/verify_cargo_workspace_manifests.py
+          git diff --check
+
+      - name: Apply canonical workspace formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd codex-rs
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cd ..
+          git diff --check
+
+          mapfile -t changed < <(git diff --name-only | LC_ALL=C sort)
+          test "${#changed[@]}" -gt 1
+          for path in "${changed[@]}"; do
+            case "$path" in
+              .github/scripts/verify_cargo_workspace_manifests.py|codex-rs/*.rs|codex-rs/*/*.rs|codex-rs/*/*/*.rs|codex-rs/*/*/*/*.rs|codex-rs/*/*/*/*/*.rs|codex-rs/*/*/*/*/*/*.rs) ;;
+              *) printf 'unexpected formatter change: %s\n' "$path" >&2; exit 1 ;;
+            esac
+          done
+          printf 'FORMAT_CHANGED_FILES=%s\n' "${#changed[@]}"
+          printf '%s\n' "${changed[@]}"
+
+      - name: Diagnose exact all-features dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' '--- direct manifest matches ---'
+          rg -n --hidden --glob 'Cargo.toml' 'aws-lc-rs|1\.13\.3' codex-rs || true
+          printf '%s\n' '--- locked aws-lc entries ---'
+          awk '
+            /^\[\[package\]\]$/ { block=$0 ORS; capture=1; next }
+            capture { block=block $0 ORS }
+            capture && /^$/ {
+              if (block ~ /name = "aws-lc-(rs|sys)"/) printf "%s", block
+              block=""; capture=0
+            }
+          ' codex-rs/Cargo.lock
+
+          set +e
+          (
+            cd codex-rs
+            cargo metadata --all-features --format-version=1 --no-deps >/tmp/hepta-metadata.json
+          ) 2>&1 | tee /tmp/hepta-metadata.log
+          metadata_code=${PIPESTATUS[0]}
+          set -e
+          printf 'CARGO_METADATA_ALL_FEATURES_EXIT=%s\n' "$metadata_code"
+
+      - name: Probe cargo-deny against the modified exact head
+        id: deny
+        continue-on-error: true
+        uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
+        with:
+          rust-version: 1.95.0
+          manifest-path: ./codex-rs/Cargo.toml
+
+      - name: Record diagnostic outcome
+        shell: bash
+        env:
+          DENY_OUTCOME: ${{ steps.deny.outcome }}
+        run: |
+          set -euo pipefail
+          printf 'CARGO_DENY_DIAGNOSTIC_OUTCOME=%s\n' "$DENY_OUTCOME"
+
+      - name: Commit verified formatting and scanner repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/hepta-q0-format-deny-diagnostic.yml
+          rm -rf .github/scripts/__pycache__
+          cargo_fmt_status=0
+          (cd codex-rs && cargo fmt --all -- --check) || cargo_fmt_status=$?
+          test "$cargo_fmt_status" = 0
+          python3 .github/scripts/verify_cargo_workspace_manifests.py
+          git diff --check
+
+          mapfile -t changed < <(git diff --name-only | LC_ALL=C sort)
+          test "${#changed[@]}" -gt 2
+          for path in "${changed[@]}"; do
+            case "$path" in
+              .github/scripts/verify_cargo_workspace_manifests.py|.github/workflows/hepta-q0-format-deny-diagnostic.yml|codex-rs/*.rs|codex-rs/*/*.rs|codex-rs/*/*/*.rs|codex-rs/*/*/*/*.rs|codex-rs/*/*/*/*/*.rs|codex-rs/*/*/*/*/*/*.rs) ;;
+              *) printf 'unexpected commit path: %s\n' "$path" >&2; exit 1 ;;
+            esac
+          done
+
+          remote_head="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1)"
+          test "$remote_head" = "$GITHUB_SHA"
+          git config user.name "hepta-q0-bot"
+          git config user.email "hepta-q0-bot@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(ci): restore full manifest scan and format workspace"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
