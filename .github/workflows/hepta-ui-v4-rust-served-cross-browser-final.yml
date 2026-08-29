@@ -16,9 +16,9 @@ concurrency:
 env:
   HEPTA_CANDIDATE_SHA: 7f38e460fab501112cc9ff9a0e9a4fbc4169e011
   HEPTA_CANDIDATE_TREE: a1c07a0700aedf47c82e490a47670f56cdd1533d
-  HEPTA_BROWSER_AUDITOR_SHA: 05da4bd3d8e182ecf457817840ad3f57a9bcaa97
+  HEPTA_BROWSER_AUDITOR_SHA: 8419246036521f7e0d87373ec5dad8eb093882d5
   HEPTA_BROWSER_CARGO_BLOB: 2e8e6dfad538018bfab0f623116103a67962b4d0
-  HEPTA_BROWSER_SERVER_BLOB: aeb13ff1ead90b1d17092ba9b204e4503897696c
+  HEPTA_BROWSER_SERVER_BLOB: f7f4bff4f8d99615ae1b2bcfb383e82f224984b6
   HEPTA_BROWSER_PROBE_BLOB: 8788e2bf219c9b7b1aa2b0f6dad636bcbc6f729b
   HEPTA_RUST_TOOLCHAIN: "1.95.0"
   PLAYWRIGHT_VERSION: "1.55.0"
@@ -62,12 +62,9 @@ jobs:
           test "$(git rev-parse "$HEPTA_BROWSER_AUDITOR_SHA:tools/hepta-ui-rust-served-browser-probe/src/main.rs")" = "$HEPTA_BROWSER_SERVER_BLOB"
           test "$(git rev-parse "$HEPTA_BROWSER_AUDITOR_SHA:scripts/hepta-ui-v4-rust-served-browser-engine.cjs")" = "$HEPTA_BROWSER_PROBE_BLOB"
           mkdir -p tools/hepta-ui-rust-served-browser-probe/src scripts
-          git show "$HEPTA_BROWSER_AUDITOR_SHA:tools/hepta-ui-rust-served-browser-probe/Cargo.toml" \
-            > tools/hepta-ui-rust-served-browser-probe/Cargo.toml
-          git show "$HEPTA_BROWSER_AUDITOR_SHA:tools/hepta-ui-rust-served-browser-probe/src/main.rs" \
-            > tools/hepta-ui-rust-served-browser-probe/src/main.rs
-          git show "$HEPTA_BROWSER_AUDITOR_SHA:scripts/hepta-ui-v4-rust-served-browser-engine.cjs" \
-            > scripts/hepta-ui-v4-rust-served-browser-engine.cjs
+          git show "$HEPTA_BROWSER_AUDITOR_SHA:tools/hepta-ui-rust-served-browser-probe/Cargo.toml" > tools/hepta-ui-rust-served-browser-probe/Cargo.toml
+          git show "$HEPTA_BROWSER_AUDITOR_SHA:tools/hepta-ui-rust-served-browser-probe/src/main.rs" > tools/hepta-ui-rust-served-browser-probe/src/main.rs
+          git show "$HEPTA_BROWSER_AUDITOR_SHA:scripts/hepta-ui-v4-rust-served-browser-engine.cjs" > scripts/hepta-ui-v4-rust-served-browser-engine.cjs
 
       - name: Install Rust 1.95
         uses: dtolnay/rust-toolchain@stable
@@ -222,16 +219,7 @@ jobs:
             expected.each do |key|
               receipt=receipts[key]
               next failures << "missing #{key}" unless receipt
-              valid=receipt["status"]=="PASS_RUST_SERVED_BROWSER_ENGINE" &&
-                receipt.dig("candidate","commit")==commit && receipt.dig("candidate","tree")==tree &&
-                receipt["candidateBound"]==true && receipt["synthetic"]==false && receipt["fixture"]==false &&
-                receipt["rustServedRuntime"]==true && receipt["networkAuditPassed"]==true &&
-                receipt["consoleErrorCount"]==0 && receipt["pageErrorCount"]==0 &&
-                receipt["crossOriginRequestCount"]==0 && receipt["nonGetRequestCount"]==0 &&
-                receipt["screenshotSha256"].to_s.match?(/\A[0-9a-f]{64}\z/) &&
-                receipt["servedJavascriptSha256"].to_s.match?(/\A[0-9a-f]{64}\z/) &&
-                Array(receipt["failures"]).empty? && receipt.fetch("authority",{}).values.all?{|value| value==false} &&
-                receipt.fetch("boundary",{}).values.all?{|value| value==false}
+              valid=receipt["status"]=="PASS_RUST_SERVED_BROWSER_ENGINE" && receipt.dig("candidate","commit")==commit && receipt.dig("candidate","tree")==tree && receipt["candidateBound"]==true && receipt["synthetic"]==false && receipt["fixture"]==false && receipt["rustServedRuntime"]==true && receipt["networkAuditPassed"]==true && receipt["consoleErrorCount"]==0 && receipt["pageErrorCount"]==0 && receipt["crossOriginRequestCount"]==0 && receipt["nonGetRequestCount"]==0 && receipt["screenshotSha256"].to_s.match?(/\A[0-9a-f]{64}\z/) && receipt["servedJavascriptSha256"].to_s.match?(/\A[0-9a-f]{64}\z/) && Array(receipt["failures"]).empty? && receipt.fetch("authority",{}).values.all?{|value| value==false} && receipt.fetch("boundary",{}).values.all?{|value| value==false}
               failures << "#{key}: receipt rejected" unless valid
               screenshots[key]=receipt["screenshotSha256"]
               js_hashes << receipt["servedJavascriptSha256"]
@@ -242,31 +230,8 @@ jobs:
             end
             failures << "Rust-served JavaScript digest drift" unless js_hashes.uniq.length==1
             pass=failures.empty?
-            qualification={
-              "rustServedRuntime"=>pass,"chromiumRuntime"=>pass,"edgeRuntime"=>pass,
-              "firefoxRuntime"=>pass,"webkitLinuxRuntime"=>pass,"webkitMacosRuntime"=>pass,
-              "crossBrowserEngineMatrix"=>pass,"networkAuditPassed"=>pass,
-              "physicalBrowserAcceptance"=>false,"safariProductValidation"=>false,
-              "deviceValidation"=>false,"productWired"=>false,"productCargoFeatureDeclared"=>false,
-              "productModuleRegistered"=>false,"productLifecycleWired"=>false,
-              "automaticBindingAllowed"=>false,"productHostMayBind"=>false,
-              "productBound"=>false,"systemMaterialBound"=>false,"nativeProductRuntime"=>false,
-              "productionAuthority"=>false
-            }
-            payload={
-              "schema"=>"hepta.ui.v4.rust-served-cross-browser-matrix.v1",
-              "status"=>pass ? "PASS_RUST_SERVED_CROSS_BROWSER_MATRIX" : "FAIL_RUST_SERVED_CROSS_BROWSER_MATRIX",
-              "candidate"=>{"commit"=>commit,"tree"=>tree},
-              "auditor"=>{"commit"=>ENV.fetch("GITHUB_SHA")},
-              "candidateBound"=>true,"synthetic"=>false,"fixture"=>false,
-              "qualification"=>qualification,
-              "consoleErrorCount"=>totals["console"],"pageErrorCount"=>totals["page"],
-              "crossOriginRequestCount"=>totals["crossOrigin"],"nonGetRequestCount"=>totals["nonGet"],
-              "screenshotSha256"=>screenshots,"servedJavascriptSha256"=>js_hashes.uniq.first,
-              "authority"=>{"network"=>false,"mutation"=>false,"effect"=>false,"liveAdapter"=>false,
-                "production"=>false,"operatorAcceptance"=>false,"promotion"=>false,"release"=>false},
-              "failures"=>failures.uniq.first(64)
-            }
+            qualification={"rustServedRuntime"=>pass,"chromiumRuntime"=>pass,"edgeRuntime"=>pass,"firefoxRuntime"=>pass,"webkitLinuxRuntime"=>pass,"webkitMacosRuntime"=>pass,"crossBrowserEngineMatrix"=>pass,"networkAuditPassed"=>pass,"physicalBrowserAcceptance"=>false,"safariProductValidation"=>false,"deviceValidation"=>false,"productWired"=>false,"productCargoFeatureDeclared"=>false,"productModuleRegistered"=>false,"productLifecycleWired"=>false,"automaticBindingAllowed"=>false,"productHostMayBind"=>false,"productBound"=>false,"systemMaterialBound"=>false,"nativeProductRuntime"=>false,"productionAuthority"=>false}
+            payload={"schema"=>"hepta.ui.v4.rust-served-cross-browser-matrix.v1","status"=>pass ? "PASS_RUST_SERVED_CROSS_BROWSER_MATRIX" : "FAIL_RUST_SERVED_CROSS_BROWSER_MATRIX","candidate"=>{"commit"=>commit,"tree"=>tree},"auditor"=>{"commit"=>ENV.fetch("GITHUB_SHA")},"candidateBound"=>true,"synthetic"=>false,"fixture"=>false,"qualification"=>qualification,"consoleErrorCount"=>totals["console"],"pageErrorCount"=>totals["page"],"crossOriginRequestCount"=>totals["crossOrigin"],"nonGetRequestCount"=>totals["nonGet"],"screenshotSha256"=>screenshots,"servedJavascriptSha256"=>js_hashes.uniq.first,"authority"=>{"network"=>false,"mutation"=>false,"effect"=>false,"liveAdapter"=>false,"production"=>false,"operatorAcceptance"=>false,"promotion"=>false,"release"=>false},"failures"=>failures.uniq.first(64)}
             File.write("artifacts/output/receipt.json",JSON.pretty_generate(payload)+"\n")
             abort failures.join("; ") unless pass
           '
