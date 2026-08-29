@@ -1,0 +1,1504 @@
+{
+  "allowed_changed_paths": [
+    ".github/workflows/hepta-intelligence-a0-authority.yml",
+    ".github/workflows/hepta-intelligence-execution-spec.yml",
+    ".github/workflows/hepta-intelligence-master-plan.yml",
+    "plans/hepta-intelligence/AGENTS.md",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json",
+    "scripts/hepta-intelligence-current-truth.py",
+    "scripts/verify-hepta-intelligence-a0-authority.py",
+    "scripts/verify-hepta-intelligence-document-authority.py",
+    "scripts/verify-hepta-intelligence-master-plan.py"
+  ],
+  "authority": {
+    "callers_ratchet": false,
+    "default_open_wired": false,
+    "external_effects": false,
+    "learning_write_authority": false,
+    "memory_write_authority": false,
+    "model_runtime_authority": false,
+    "operator_acceptance": false,
+    "outbox_dispatch_authority": false,
+    "product_module_registered": false,
+    "production_authority": false,
+    "projection_write_authority": false,
+    "promotion": false,
+    "provider_dispatch_authority": false,
+    "release_authority": false,
+    "runtime_wired": false,
+    "tool_registered": false
+  },
+  "base": {
+    "branch": "codex/hepta-intelligence-plan-v3-20260828",
+    "head": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+    "parent": "aeb8ac0bfb30d570a16c4914b6e4b31ce035dd62",
+    "q0_candidate_qualified": true,
+    "tree": "ca455a9ef797cd95164c880c7b8faba80b305589"
+  },
+  "branch": "codex/hepta-intelligence-a0-authority-gap-closure-20260829",
+  "candidate_head_binding": "GITHUB_SHA_AT_EXECUTABLE_QUALIFICATION",
+  "candidate_id": "HEPTA_INTELLIGENCE_A0_AUTHORITY_AND_MULTIMODAL_PLAN_GAP_CLOSURE_V4_5",
+  "candidate_provenance_policy": {
+    "candidate_workflow_may_write_source": false,
+    "commit_must_have_exactly_one_parent": true,
+    "publisher_must_be_separate_from_candidate_workflow": true,
+    "replacement_parent": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+    "superseded_head_evidence_reusable": false
+  },
+  "classification": "SOURCE_ONLY_GOVERNANCE_CANDIDATE",
+  "excluded_side_stack_pr_numbers": [
+    28,
+    30,
+    34,
+    40,
+    45,
+    49,
+    54,
+    58,
+    64
+  ],
+  "expected_changed_path_count": 17,
+  "expected_parent": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+  "external_unmerged_dependency_pr_numbers": [
+    53
+  ],
+  "gap_closure_ledger": {
+    "allowed_classifications": [
+      "CLOSED_SOURCE_CONTROLLED",
+      "OPEN_SOURCE_CONTROLLED",
+      "BLOCKED_EXTERNAL_EVIDENCE",
+      "BLOCKED_UPSTREAM",
+      "STOP_CONDITION"
+    ],
+    "as_of_utc": null,
+    "entries": [
+      {
+        "acceptance_tests": [
+          "PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_5_SOURCE_ONLY",
+          "PASS_HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_V4_5",
+          "PASS_HEPTA_INTELLIGENCE_CURRENT_TRUTH_V1",
+          "PASS_HEPTA_INTELLIGENCE_EXECUTION_SPEC_V1_3_SOURCE_ONLY"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [],
+        "classification": "OPEN_SOURCE_CONTROLLED",
+        "closure_evidence": [
+          "byte-exact plan/spec digests",
+          "eight-input authority registry",
+          "strict duplicate-key rejecting validation",
+          "exact lifecycle and gap-DAG validation"
+        ],
+        "gap_id": "A0-DOC-001",
+        "next_action": "Publish one exact-parent replacement and execute all source/compatibility gates",
+        "owner_class": "A0_DOCUMENTATION_AND_SCHEMA",
+        "receipt_type": "A0SourceEvidenceReceiptV2",
+        "resume_predicate": "replacement is the sole child of Q0 and every registered digest recomputes",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "SOURCE_REPAIR_GENERATED_AWAITING_EXACT_HEAD_EVIDENCE",
+        "title": "Canonical A0 authority documents and machine registries must be mutually consistent"
+      },
+      {
+        "acceptance_tests": [
+          "all three A0 workflows contain the same 17-path trigger manifest",
+          "runner_id > 0 and steps are non-empty",
+          "source_writeback=false"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "A0-DOC-001"
+        ],
+        "classification": "OPEN_SOURCE_CONTROLLED",
+        "closure_evidence": [
+          "exact repository/branch/head/tree/parent and workflow blob binding"
+        ],
+        "gap_id": "A0-TRIGGER-001",
+        "next_action": "Observe fresh exact-head workflow runs after branch replacement",
+        "owner_class": "SOURCE_PUBLISHER_AND_CI",
+        "receipt_type": "A0WorkflowTriggerReceiptV1",
+        "resume_predicate": "workflow run head equals the current exact A0 head",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "FRESH_REPLACEMENT_AND_RUN_REQUIRED",
+        "title": "Every exact A0 replacement must trigger the complete read-only validation surface"
+      },
+      {
+        "acceptance_tests": [
+          "source and observer jobs complete successfully on real runners",
+          "downloaded artifact archive SHA-256 matches API metadata",
+          "safe ZIP manifest rejects traversal, links and duplicate paths",
+          "receipt binds workflow blob, run, job, runner, steps, artifact expiry and extracted hashes",
+          "a0_candidate_qualified remains false"
+        ],
+        "authority_effect": "SOURCE_EVIDENCE_ONLY",
+        "blocked_by": [
+          "A0-TRIGGER-001"
+        ],
+        "classification": "OPEN_SOURCE_CONTROLLED",
+        "closure_evidence": [
+          "unique unexpired source and observer artifacts"
+        ],
+        "gap_id": "A0-EVIDENCE-001",
+        "next_action": "Run the artifact-only source producer and cross-job observer",
+        "owner_class": "CI_EVIDENCE",
+        "receipt_type": "A0ExactHeadEvidenceReceiptV2",
+        "resume_predicate": "current exact-head source artifact exists and is unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "BLOCKED_BY_A0_TRIGGER",
+        "title": "A0 requires safe, independently observable exact-head source evidence"
+      },
+      {
+        "acceptance_tests": [
+          "signed unexpired A0IndependentReviewReceiptV1",
+          "reviewer differs from implementer and source publisher",
+          "receipt binds exact head/tree/workflow/artifacts and dispositions"
+        ],
+        "authority_effect": "NO_RUNTIME_OR_PRODUCTION_AUTHORITY",
+        "blocked_by": [
+          "A0-EVIDENCE-001"
+        ],
+        "classification": "BLOCKED_EXTERNAL_EVIDENCE",
+        "closure_evidence": [
+          "GitHub review plus cryptographic review receipt"
+        ],
+        "gap_id": "A0-REVIEW-001",
+        "next_action": "Request review from an authorized distinct identity",
+        "owner_class": "INDEPENDENT_REVIEWER",
+        "receipt_type": "A0IndependentReviewReceiptV1",
+        "resume_predicate": "exact-head evidence is complete and remains unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "DISTINCT_REVIEWER_REQUIRED",
+        "title": "A distinct reviewer must assess the exact A0 source and evidence package"
+      },
+      {
+        "acceptance_tests": [
+          "CanonicalSelectionReceiptV1",
+          "RepositoryCheckAttributionReceiptV1 covers every selected required check",
+          "unknown classification fails closed",
+          "all repository-controlled checks pass or have independent policy exclusion"
+        ],
+        "authority_effect": "MERGE_ELIGIBILITY_ONLY",
+        "blocked_by": [
+          "A0-REVIEW-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "selected merge SHA and exact required-check terminal metadata"
+        ],
+        "gap_id": "A0-MERGE-001",
+        "next_action": "Select one candidate and attribute every required merge-context check",
+        "owner_class": "CANONICAL_SELECTOR_AND_REPOSITORY_INTEGRATION",
+        "receipt_type": "RepositoryCheckAttributionReceiptV1",
+        "resume_predicate": "independent review and canonical selection are valid for the exact candidate",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "BLOCKED_BY_REVIEW_AND_SELECTION",
+        "title": "A canonical selector must admit one synthetic merge candidate after complete check attribution"
+      },
+      {
+        "acceptance_tests": [
+          "nine-package DAG",
+          "Cargo/Bazel parity",
+          "no-behavior-change receipt"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "A0-MERGE-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "package ownership and forbidden dependency manifest"
+        ],
+        "gap_id": "B0-BOUNDARY-001",
+        "next_action": "Extract B0.1 contracts after A0 admission",
+        "owner_class": "B0_ARCHITECTURE",
+        "receipt_type": "B0BoundaryClosureReceiptV1",
+        "resume_predicate": "selected A0 merge candidate is admitted",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "BLOCKED_BY_A0_MERGE_ADMISSION",
+        "title": "Learning, mutation, retrieval and evaluation ownership remains coupled"
+      },
+      {
+        "acceptance_tests": [
+          "append/replay properties",
+          "credit conservation",
+          "unlearning lineage"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "B0-BOUNDARY-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "bounded durable causal contracts and storage evidence"
+        ],
+        "gap_id": "C0-LEDGER-001",
+        "next_action": "Implement default-off C0 after B0 qualification",
+        "owner_class": "C0_LEARNING_LEDGER",
+        "receipt_type": "C0LearningLedgerReceiptV1",
+        "resume_predicate": "B0 boundary receipt is exact and unexpired",
+        "rollback_pointer": null,
+        "status": "BLOCKED_BY_B0",
+        "title": "No canonical durable LearningEpisode causal ledger exists"
+      },
+      {
+        "acceptance_tests": [
+          "atomic store/journal/outbox",
+          "store-derived receipts",
+          "E3 kill/retry"
+        ],
+        "authority_effect": "NONE_UNTIL_SEPARATE_RUNTIME_TRANCHE",
+        "blocked_by": [
+          "B0-BOUNDARY-001",
+          "C0-LEDGER-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "transaction and reconciliation campaign"
+        ],
+        "gap_id": "M0-COORDINATOR-001",
+        "next_action": "Implement the host-owned coordinator after B0/C0",
+        "owner_class": "M0_MUTATION_COORDINATOR",
+        "receipt_type": "M0CoordinatorReceiptV1",
+        "resume_predicate": "B0 and C0 receipts remain valid",
+        "rollback_pointer": null,
+        "status": "BLOCKED_BY_B0_AND_C0",
+        "title": "Mutation effects are not yet owned by a transactional host coordinator"
+      },
+      {
+        "acceptance_tests": [
+          "checkpoint hash",
+          "archive/restore",
+          "corruption campaign",
+          "bounded RTO"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "M0-COORDINATOR-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "independent E3 recovery evidence"
+        ],
+        "gap_id": "J0-LIFECYCLE-001",
+        "next_action": "Freeze storage ownership, then implement lifecycle controls",
+        "owner_class": "J0_JOURNAL_STORAGE",
+        "receipt_type": "J0LifecycleRecoveryReceiptV1",
+        "resume_predicate": "M0 storage ownership is exact and qualified",
+        "rollback_pointer": null,
+        "status": "BLOCKED_BY_M0",
+        "title": "The journal lacks bounded checkpoint, archive, recovery and capacity lifecycle"
+      },
+      {
+        "acceptance_tests": [
+          "side-stack selection",
+          "restacked qualification",
+          "real semantic artifact"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "A0-MERGE-001",
+          "B0-BOUNDARY-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "product workspace and exact artifact binding"
+        ],
+        "gap_id": "R1-RETRIEVAL-001",
+        "next_action": "Apply include/rewrite/split decisions after B0",
+        "owner_class": "R1_RETRIEVAL",
+        "receipt_type": "R1RetrievalIntegrationReceiptV1",
+        "resume_predicate": "A0 and B0 are admitted",
+        "rollback_pointer": null,
+        "status": "BLOCKED_BY_A0_AND_B0",
+        "title": "No selected product-integrated grounded semantic retrieval candidate exists"
+      },
+      {
+        "acceptance_tests": [
+          "immutable corpus",
+          "independent labels/adjudication",
+          "license/privacy approval"
+        ],
+        "authority_effect": "EFFICACY_EVIDENCE_ONLY",
+        "blocked_by": [
+          "R1-RETRIEVAL-001"
+        ],
+        "classification": "BLOCKED_EXTERNAL_EVIDENCE",
+        "closure_evidence": [
+          "signed governed corpus package"
+        ],
+        "gap_id": "R1-CORPUS-001",
+        "next_action": "Supply a real governed corpus package",
+        "owner_class": "DATA_GOVERNANCE_AND_REVIEWERS",
+        "receipt_type": "ReviewedCorpusEvidencePackageV1",
+        "resume_predicate": "selected retrieval validator is executable-qualified",
+        "rollback_pointer": null,
+        "status": "REVIEWED_CORPUS_REQUIRED",
+        "title": "Reviewed multilingual retrieval efficacy corpus and signatures are absent"
+      },
+      {
+        "acceptance_tests": [
+          "sparse/inhibition/homeostasis",
+          "calibration/OOD",
+          "lesion/ablation"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "C0-LEDGER-001",
+          "R1-RETRIEVAL-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "next-snapshot adapter and rollback evidence"
+        ],
+        "gap_id": "N1-NEURON-001",
+        "next_action": "Remain N0 until C0 and R1 close",
+        "owner_class": "N1_ADAPTIVE_SIGNAL",
+        "receipt_type": "NeuronSignalQualificationReceiptV1",
+        "resume_predicate": "C0 and R1 receipts remain valid",
+        "rollback_pointer": null,
+        "status": "N0_ONLY",
+        "title": "H5 has no qualified adaptive signal implementation"
+      },
+      {
+        "acceptance_tests": [
+          "PolicyDecisionReceiptV2",
+          "support/propensity",
+          "OOD/abstain/veto"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "N1-NEURON-001",
+          "C0-LEDGER-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "held-out calibration and subgroup safety"
+        ],
+        "gap_id": "I1-INTUITION-001",
+        "next_action": "Remain I0 until N1 and C0 close",
+        "owner_class": "I1_FAST_POLICY",
+        "receipt_type": "I1PolicyQualificationReceiptV1",
+        "resume_predicate": "N1 and C0 receipts remain valid",
+        "rollback_pointer": null,
+        "status": "I0_ONLY",
+        "title": "H6 lacks a calibrated fast policy with complete candidates and logged propensities"
+      },
+      {
+        "acceptance_tests": [
+          "ESS/IPS/SNIPS/DR",
+          "confidence intervals",
+          "retention/unlearning"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "C0-LEDGER-001",
+          "I1-INTUITION-001",
+          "R1-CORPUS-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "candidate LCB > baseline UCB and signed rollback artifact"
+        ],
+        "gap_id": "L1-LEARNING-001",
+        "next_action": "Do not claim closed-loop learning before all causal gates pass",
+        "owner_class": "L1_CAUSAL_EVALUATION",
+        "receipt_type": "EvaluationReceiptV2",
+        "resume_predicate": "C0, I1 and corpus evidence are valid",
+        "rollback_pointer": null,
+        "status": "L0_STATIC_SHADOW",
+        "title": "No longitudinal causal evaluation or signed next-snapshot artifact exists"
+      },
+      {
+        "acceptance_tests": [
+          "MemoryRetrievalRank shadow/canary",
+          "kill switch",
+          "rollback rehearsal"
+        ],
+        "authority_effect": "SEPARATE_OPERATOR_AND_CALLERS_DECISION_REQUIRED",
+        "blocked_by": [
+          "L1-LEARNING-001",
+          "A0-MERGE-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "independent operator acceptance"
+        ],
+        "gap_id": "C1-CLOSED-LOOP-001",
+        "next_action": "Keep runtime and learning authority false",
+        "owner_class": "C1_CONTROLLED_RUNTIME",
+        "receipt_type": "C1ClosedLoopReceiptV1",
+        "resume_predicate": "L1 and merge admission are valid",
+        "rollback_pointer": null,
+        "status": "NOT_AUTHORIZED",
+        "title": "The low-risk read-only closed loop is not implemented or authorized"
+      },
+      {
+        "acceptance_tests": [
+          "bound inventory",
+          "reproducible benchmark",
+          "resource/energy receipt"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [],
+        "classification": "BLOCKED_EXTERNAL_EVIDENCE",
+        "closure_evidence": [
+          "real hardware measurement package"
+        ],
+        "gap_id": "EXT-HARDWARE-001",
+        "next_action": "Collect measurements after a runnable candidate exists",
+        "owner_class": "HARDWARE_EVALUATION",
+        "receipt_type": "SemanticArtifactEvidencePackageV1",
+        "resume_predicate": "runnable artifact and target hardware are available",
+        "rollback_pointer": null,
+        "status": "HARDWARE_EVIDENCE_REQUIRED",
+        "title": "Real target-hardware latency, memory and energy evidence is absent"
+      },
+      {
+        "acceptance_tests": [
+          "OperatorAcceptancePackageV1",
+          "CALLERS receipt",
+          "promotion/release decision"
+        ],
+        "authority_effect": "EXTERNAL_ONLY",
+        "blocked_by": [
+          "C1-CLOSED-LOOP-001",
+          "EXT-HARDWARE-001"
+        ],
+        "classification": "BLOCKED_EXTERNAL_EVIDENCE",
+        "closure_evidence": [
+          "independent signed operator package"
+        ],
+        "gap_id": "EXT-OPERATOR-001",
+        "next_action": "Never synthesize or self-grant operator authority",
+        "owner_class": "OPERATOR_AND_RELEASE",
+        "receipt_type": "OperatorAcceptancePackageV1",
+        "resume_predicate": "C1 and hardware evidence are complete",
+        "rollback_pointer": null,
+        "status": "OPERATOR_REQUIRED",
+        "title": "Operator acceptance, CALLERS ratchet, promotion and release decisions are absent"
+      }
+    ],
+    "invariants": {
+      "blocked_by_graph_must_be_acyclic": true,
+      "duplicate_gap_definition_allowed": false,
+      "external_evidence_may_be_synthesized": false,
+      "fixture_may_close_external_gap": false,
+      "positive_authority_allowed": false,
+      "source_closed_requires_exact_head_evidence": true,
+      "unknown_gap_fails_closed": true
+    },
+    "schema": "hepta_intelligence_gap_closure_ledger_v1",
+    "source_snapshot_timestamp_policy": "COMMIT_BOUND_AT_EXTERNAL_EVIDENCE_RECEIPT"
+  },
+  "gap_identity_registry": {
+    "all_unique_definition_ids": [
+      "A0-DOC-001",
+      "A0-DOC-MM-001",
+      "A0-EVIDENCE-001",
+      "A0-HEAD-TRUTH-001",
+      "A0-MERGE-001",
+      "A0-REVIEW-001",
+      "A0-SELECT-001",
+      "A0-TRIGGER-001",
+      "B0-BOUNDARY-001",
+      "B0-SCOPE-001",
+      "C0-LEDGER-001",
+      "C1-CLOSED-LOOP-001",
+      "EXT-HARDWARE-001",
+      "EXT-OPERATOR-001",
+      "I1-INTUITION-001",
+      "J0-LIFECYCLE-001",
+      "L1-LEARNING-001",
+      "M0-COORDINATOR-001",
+      "MM0-ASSET-CONTRACT-001",
+      "MM0-DELETION-CONTRACT-001",
+      "MM0-DERIVATIVE-CONTRACT-001",
+      "MM0-EMBEDDING-SPACE-001",
+      "MM0-MODEL-CONTRACT-001",
+      "MM0-QUERY-REVALIDATION-001",
+      "MM0-SEGMENT-CONTRACT-001",
+      "MM1-DERIVATION-GRAPH-001",
+      "MM1-MIGRATION-001",
+      "MM1-OBJECT-STORE-001",
+      "MM1-QUOTA-BACKPRESSURE-001",
+      "MM2-EXTRACTOR-001",
+      "MM2-PRIVACY-001",
+      "MM2-SANDBOX-001",
+      "MM3-INDEX-001",
+      "MM3-LOCAL-MODEL-001",
+      "MM3-TYPED-PROVIDER-001",
+      "MM4-FUSION-001",
+      "MM4-RERANK-001",
+      "MM4-REVALIDATE-001",
+      "MM5-CONSOLIDATION-001",
+      "MM5-CONTEXT-001",
+      "MM6-EFFICACY-001",
+      "MM6-HARDWARE-001",
+      "MM6-OPERATOR-001",
+      "MM6-SECURITY-001",
+      "MM6-SOAK-001",
+      "MM6-UNLEARNING-001",
+      "N1-NEURON-001",
+      "R1-CORPUS-001",
+      "R1-RETRIEVAL-001"
+    ],
+    "duplicate_definition_count": 0,
+    "global_gap_ids": [
+      "A0-DOC-001",
+      "A0-EVIDENCE-001",
+      "A0-MERGE-001",
+      "A0-REVIEW-001",
+      "A0-TRIGGER-001",
+      "B0-BOUNDARY-001",
+      "C0-LEDGER-001",
+      "C1-CLOSED-LOOP-001",
+      "EXT-HARDWARE-001",
+      "EXT-OPERATOR-001",
+      "I1-INTUITION-001",
+      "J0-LIFECYCLE-001",
+      "L1-LEARNING-001",
+      "M0-COORDINATOR-001",
+      "N1-NEURON-001",
+      "R1-CORPUS-001",
+      "R1-RETRIEVAL-001"
+    ],
+    "multimodal_gap_ids": [
+      "A0-DOC-MM-001",
+      "A0-HEAD-TRUTH-001",
+      "A0-SELECT-001",
+      "B0-SCOPE-001",
+      "MM0-ASSET-CONTRACT-001",
+      "MM0-DELETION-CONTRACT-001",
+      "MM0-DERIVATIVE-CONTRACT-001",
+      "MM0-EMBEDDING-SPACE-001",
+      "MM0-MODEL-CONTRACT-001",
+      "MM0-QUERY-REVALIDATION-001",
+      "MM0-SEGMENT-CONTRACT-001",
+      "MM1-DERIVATION-GRAPH-001",
+      "MM1-MIGRATION-001",
+      "MM1-OBJECT-STORE-001",
+      "MM1-QUOTA-BACKPRESSURE-001",
+      "MM2-EXTRACTOR-001",
+      "MM2-PRIVACY-001",
+      "MM2-SANDBOX-001",
+      "MM3-INDEX-001",
+      "MM3-LOCAL-MODEL-001",
+      "MM3-TYPED-PROVIDER-001",
+      "MM4-FUSION-001",
+      "MM4-RERANK-001",
+      "MM4-REVALIDATE-001",
+      "MM5-CONSOLIDATION-001",
+      "MM5-CONTEXT-001",
+      "MM6-EFFICACY-001",
+      "MM6-HARDWARE-001",
+      "MM6-OPERATOR-001",
+      "MM6-SECURITY-001",
+      "MM6-SOAK-001",
+      "MM6-UNLEARNING-001"
+    ],
+    "multimodal_inherited_global_gap_ids": [
+      "A0-EVIDENCE-001",
+      "A0-MERGE-001",
+      "A0-REVIEW-001",
+      "A0-TRIGGER-001",
+      "B0-BOUNDARY-001",
+      "C0-LEDGER-001",
+      "J0-LIFECYCLE-001",
+      "M0-COORDINATOR-001",
+      "R1-CORPUS-001",
+      "R1-RETRIEVAL-001"
+    ],
+    "projected_multimodal_surface_count": 42,
+    "schema": "hepta_intelligence_gap_identity_registry_v1",
+    "unknown_gap_fails_closed": true
+  },
+  "multimodal_memory_gap_ledger": {
+    "allowed_repository_statuses": [
+      "CLOSED_SOURCE_CONTROLLED",
+      "OPEN_SOURCE_CONTROLLED",
+      "BLOCKED_EXTERNAL_EVIDENCE",
+      "BLOCKED_UPSTREAM",
+      "STOP_CONDITION"
+    ],
+    "as_of_date": null,
+    "audited_q0": {
+      "head": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+      "parent": "aeb8ac0bfb30d570a16c4914b6e4b31ce035dd62",
+      "tree": "ca455a9ef797cd95164c880c7b8faba80b305589"
+    },
+    "authority": {
+      "callers": false,
+      "canonical_selection": false,
+      "current_plan": false,
+      "merge": false,
+      "operator": false,
+      "production": false,
+      "promotion": false,
+      "release": false,
+      "runtime": false
+    },
+    "claim_boundary": {
+      "cross_modal_retrieval_qualified": false,
+      "full_repository_merge_green": false,
+      "multimodal_efficacy_proven": false,
+      "multimodal_memory": "MM0_SPECIFIED_ONLY",
+      "native_media_memory_wired": false,
+      "production_authority": false
+    },
+    "duplicate_definitions_allowed": false,
+    "entries": [
+      {
+        "acceptance_tests": [
+          "A0-HEAD-TRUTH-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [],
+        "classification": "OPEN_SOURCE_CONTROLLED",
+        "closure_evidence": [
+          "receipt-bound evidence for A0-HEAD-TRUTH-001"
+        ],
+        "gap_id": "A0-HEAD-TRUTH-001",
+        "next_action": "Execute the first unblocked acceptance test for A0-HEAD-TRUTH-001",
+        "owner_class": "A0_MULTIMODAL_GOVERNANCE",
+        "payload_status": "PR_UPDATE_AFTER_HEAD",
+        "receipt_type": "A0MultimodalGovernanceReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PR_UPDATE_AFTER_HEAD",
+        "title": "Close multimodal memory gap: A0 Head Truth"
+      },
+      {
+        "acceptance_tests": [
+          "A0-DOC-MM-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "A0 executable qualification"
+        ],
+        "classification": "OPEN_SOURCE_CONTROLLED",
+        "closure_evidence": [
+          "receipt-bound evidence for A0-DOC-MM-001"
+        ],
+        "gap_id": "A0-DOC-MM-001",
+        "next_action": "Execute the first unblocked acceptance test for A0-DOC-MM-001",
+        "owner_class": "A0_MULTIMODAL_GOVERNANCE",
+        "payload_status": "SOURCE_AWAITING_EVIDENCE",
+        "receipt_type": "A0MultimodalGovernanceReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "SOURCE_AWAITING_EVIDENCE",
+        "title": "Close multimodal memory gap: A0 Doc Mm"
+      },
+      {
+        "acceptance_tests": [
+          "A0-SELECT-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "A0-REVIEW-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for A0-SELECT-001"
+        ],
+        "gap_id": "A0-SELECT-001",
+        "next_action": "Execute the first unblocked acceptance test for A0-SELECT-001",
+        "owner_class": "A0_MULTIMODAL_GOVERNANCE",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "A0MultimodalGovernanceReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: A0 Select"
+      },
+      {
+        "acceptance_tests": [
+          "B0-SCOPE-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "B0-BOUNDARY-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for B0-SCOPE-001"
+        ],
+        "gap_id": "B0-SCOPE-001",
+        "next_action": "Execute the first unblocked acceptance test for B0-SCOPE-001",
+        "owner_class": "B0_MULTIMODAL_BOUNDARY",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "B0MultimodalBoundaryReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: B0 Scope"
+      },
+      {
+        "acceptance_tests": [
+          "MM0-ASSET-CONTRACT-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "A0-SELECT-001",
+          "B0-BOUNDARY-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM0-ASSET-CONTRACT-001"
+        ],
+        "gap_id": "MM0-ASSET-CONTRACT-001",
+        "next_action": "Execute the first unblocked acceptance test for MM0-ASSET-CONTRACT-001",
+        "owner_class": "MM0_CONTRACTS",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MM0ContractQualificationReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm0 Asset Contract"
+      },
+      {
+        "acceptance_tests": [
+          "MM0-SEGMENT-CONTRACT-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM0-ASSET-CONTRACT-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM0-SEGMENT-CONTRACT-001"
+        ],
+        "gap_id": "MM0-SEGMENT-CONTRACT-001",
+        "next_action": "Execute the first unblocked acceptance test for MM0-SEGMENT-CONTRACT-001",
+        "owner_class": "MM0_CONTRACTS",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MM0ContractQualificationReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm0 Segment Contract"
+      },
+      {
+        "acceptance_tests": [
+          "MM0-DERIVATIVE-CONTRACT-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM0-ASSET-CONTRACT-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM0-DERIVATIVE-CONTRACT-001"
+        ],
+        "gap_id": "MM0-DERIVATIVE-CONTRACT-001",
+        "next_action": "Execute the first unblocked acceptance test for MM0-DERIVATIVE-CONTRACT-001",
+        "owner_class": "MM0_CONTRACTS",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MM0ContractQualificationReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm0 Derivative Contract"
+      },
+      {
+        "acceptance_tests": [
+          "MM0-MODEL-CONTRACT-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "B0-BOUNDARY-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM0-MODEL-CONTRACT-001"
+        ],
+        "gap_id": "MM0-MODEL-CONTRACT-001",
+        "next_action": "Execute the first unblocked acceptance test for MM0-MODEL-CONTRACT-001",
+        "owner_class": "MM0_CONTRACTS",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MM0ContractQualificationReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm0 Model Contract"
+      },
+      {
+        "acceptance_tests": [
+          "MM0-EMBEDDING-SPACE-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM0-MODEL-CONTRACT-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM0-EMBEDDING-SPACE-001"
+        ],
+        "gap_id": "MM0-EMBEDDING-SPACE-001",
+        "next_action": "Execute the first unblocked acceptance test for MM0-EMBEDDING-SPACE-001",
+        "owner_class": "MM0_CONTRACTS",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MM0ContractQualificationReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm0 Embedding Space"
+      },
+      {
+        "acceptance_tests": [
+          "MM0-QUERY-REVALIDATION-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM0-EMBEDDING-SPACE-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM0-QUERY-REVALIDATION-001"
+        ],
+        "gap_id": "MM0-QUERY-REVALIDATION-001",
+        "next_action": "Execute the first unblocked acceptance test for MM0-QUERY-REVALIDATION-001",
+        "owner_class": "MM0_CONTRACTS",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MM0ContractQualificationReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm0 Query Revalidation"
+      },
+      {
+        "acceptance_tests": [
+          "MM0-DELETION-CONTRACT-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM0-ASSET-CONTRACT-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM0-DELETION-CONTRACT-001"
+        ],
+        "gap_id": "MM0-DELETION-CONTRACT-001",
+        "next_action": "Execute the first unblocked acceptance test for MM0-DELETION-CONTRACT-001",
+        "owner_class": "MM0_CONTRACTS",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MM0ContractQualificationReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm0 Deletion Contract"
+      },
+      {
+        "acceptance_tests": [
+          "MM1-OBJECT-STORE-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM0-ASSET-CONTRACT-001",
+          "M0-COORDINATOR-001",
+          "J0-LIFECYCLE-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM1-OBJECT-STORE-001"
+        ],
+        "gap_id": "MM1-OBJECT-STORE-001",
+        "next_action": "Execute the first unblocked acceptance test for MM1-OBJECT-STORE-001",
+        "owner_class": "MM1_ASSET_LEDGER",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MM1AssetLedgerReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm1 Object Store"
+      },
+      {
+        "acceptance_tests": [
+          "MM1-DERIVATION-GRAPH-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM1-OBJECT-STORE-001",
+          "MM0-DERIVATIVE-CONTRACT-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM1-DERIVATION-GRAPH-001"
+        ],
+        "gap_id": "MM1-DERIVATION-GRAPH-001",
+        "next_action": "Execute the first unblocked acceptance test for MM1-DERIVATION-GRAPH-001",
+        "owner_class": "MM1_ASSET_LEDGER",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MM1AssetLedgerReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm1 Derivation Graph"
+      },
+      {
+        "acceptance_tests": [
+          "MM1-MIGRATION-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM1-OBJECT-STORE-001",
+          "B0-SCOPE-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM1-MIGRATION-001"
+        ],
+        "gap_id": "MM1-MIGRATION-001",
+        "next_action": "Execute the first unblocked acceptance test for MM1-MIGRATION-001",
+        "owner_class": "MM1_ASSET_LEDGER",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MM1AssetLedgerReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm1 Migration"
+      },
+      {
+        "acceptance_tests": [
+          "MM1-QUOTA-BACKPRESSURE-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM1-OBJECT-STORE-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM1-QUOTA-BACKPRESSURE-001"
+        ],
+        "gap_id": "MM1-QUOTA-BACKPRESSURE-001",
+        "next_action": "Execute the first unblocked acceptance test for MM1-QUOTA-BACKPRESSURE-001",
+        "owner_class": "MM1_ASSET_LEDGER",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MM1AssetLedgerReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm1 Quota Backpressure"
+      },
+      {
+        "acceptance_tests": [
+          "MM2-SANDBOX-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM1-OBJECT-STORE-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM2-SANDBOX-001"
+        ],
+        "gap_id": "MM2-SANDBOX-001",
+        "next_action": "Execute the first unblocked acceptance test for MM2-SANDBOX-001",
+        "owner_class": "MM2_SANDBOX_EXTRACTION",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MM2SandboxExtractionReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm2 Sandbox"
+      },
+      {
+        "acceptance_tests": [
+          "MM2-EXTRACTOR-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM2-SANDBOX-001",
+          "MM0-MODEL-CONTRACT-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM2-EXTRACTOR-001"
+        ],
+        "gap_id": "MM2-EXTRACTOR-001",
+        "next_action": "Execute the first unblocked acceptance test for MM2-EXTRACTOR-001",
+        "owner_class": "MM2_SANDBOX_EXTRACTION",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MM2SandboxExtractionReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm2 Extractor"
+      },
+      {
+        "acceptance_tests": [
+          "MM2-PRIVACY-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM2-SANDBOX-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM2-PRIVACY-001"
+        ],
+        "gap_id": "MM2-PRIVACY-001",
+        "next_action": "Execute the first unblocked acceptance test for MM2-PRIVACY-001",
+        "owner_class": "MM2_SANDBOX_EXTRACTION",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MM2SandboxExtractionReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm2 Privacy"
+      },
+      {
+        "acceptance_tests": [
+          "MM3-LOCAL-MODEL-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM2-EXTRACTOR-001"
+        ],
+        "classification": "BLOCKED_EXTERNAL_EVIDENCE",
+        "closure_evidence": [
+          "receipt-bound evidence for MM3-LOCAL-MODEL-001"
+        ],
+        "gap_id": "MM3-LOCAL-MODEL-001",
+        "next_action": "Execute the first unblocked acceptance test for MM3-LOCAL-MODEL-001",
+        "owner_class": "MM3_MODEL_AND_INDEX",
+        "payload_status": "EXTERNAL_REQUIRED",
+        "receipt_type": "SemanticArtifactEvidencePackageV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "EXTERNAL_REQUIRED",
+        "title": "Close multimodal memory gap: Mm3 Local Model"
+      },
+      {
+        "acceptance_tests": [
+          "MM3-TYPED-PROVIDER-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM0-EMBEDDING-SPACE-001",
+          "MM3-LOCAL-MODEL-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM3-TYPED-PROVIDER-001"
+        ],
+        "gap_id": "MM3-TYPED-PROVIDER-001",
+        "next_action": "Execute the first unblocked acceptance test for MM3-TYPED-PROVIDER-001",
+        "owner_class": "MM3_MODEL_AND_INDEX",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "SemanticArtifactEvidencePackageV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm3 Typed Provider"
+      },
+      {
+        "acceptance_tests": [
+          "MM3-INDEX-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM3-TYPED-PROVIDER-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM3-INDEX-001"
+        ],
+        "gap_id": "MM3-INDEX-001",
+        "next_action": "Execute the first unblocked acceptance test for MM3-INDEX-001",
+        "owner_class": "MM3_MODEL_AND_INDEX",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "SemanticArtifactEvidencePackageV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm3 Index"
+      },
+      {
+        "acceptance_tests": [
+          "MM4-FUSION-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM3-INDEX-001",
+          "R1-RETRIEVAL-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM4-FUSION-001"
+        ],
+        "gap_id": "MM4-FUSION-001",
+        "next_action": "Execute the first unblocked acceptance test for MM4-FUSION-001",
+        "owner_class": "MM4_CROSS_MODAL_RETRIEVAL",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MultimodalRetrievalReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm4 Fusion"
+      },
+      {
+        "acceptance_tests": [
+          "MM4-RERANK-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM4-FUSION-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM4-RERANK-001"
+        ],
+        "gap_id": "MM4-RERANK-001",
+        "next_action": "Execute the first unblocked acceptance test for MM4-RERANK-001",
+        "owner_class": "MM4_CROSS_MODAL_RETRIEVAL",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MultimodalRetrievalReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm4 Rerank"
+      },
+      {
+        "acceptance_tests": [
+          "MM4-REVALIDATE-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM4-FUSION-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM4-REVALIDATE-001"
+        ],
+        "gap_id": "MM4-REVALIDATE-001",
+        "next_action": "Execute the first unblocked acceptance test for MM4-REVALIDATE-001",
+        "owner_class": "MM4_CROSS_MODAL_RETRIEVAL",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MultimodalRetrievalReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm4 Revalidate"
+      },
+      {
+        "acceptance_tests": [
+          "MM5-CONSOLIDATION-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM4-REVALIDATE-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM5-CONSOLIDATION-001"
+        ],
+        "gap_id": "MM5-CONSOLIDATION-001",
+        "next_action": "Execute the first unblocked acceptance test for MM5-CONSOLIDATION-001",
+        "owner_class": "MM5_CONSOLIDATION_CONTEXT",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "ContextCompilationReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm5 Consolidation"
+      },
+      {
+        "acceptance_tests": [
+          "MM5-CONTEXT-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM5-CONSOLIDATION-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM5-CONTEXT-001"
+        ],
+        "gap_id": "MM5-CONTEXT-001",
+        "next_action": "Execute the first unblocked acceptance test for MM5-CONTEXT-001",
+        "owner_class": "MM5_CONSOLIDATION_CONTEXT",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "ContextCompilationReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm5 Context"
+      },
+      {
+        "acceptance_tests": [
+          "MM6-UNLEARNING-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM5-CONTEXT-001",
+          "C0-LEDGER-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "receipt-bound evidence for MM6-UNLEARNING-001"
+        ],
+        "gap_id": "MM6-UNLEARNING-001",
+        "next_action": "Execute the first unblocked acceptance test for MM6-UNLEARNING-001",
+        "owner_class": "MM6_SECURITY_EFFICACY",
+        "payload_status": "PLANNED_BLOCKED",
+        "receipt_type": "MultimodalEfficacyReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "PLANNED_BLOCKED",
+        "title": "Close multimodal memory gap: Mm6 Unlearning"
+      },
+      {
+        "acceptance_tests": [
+          "MM6-SECURITY-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM5-CONTEXT-001"
+        ],
+        "classification": "BLOCKED_EXTERNAL_EVIDENCE",
+        "closure_evidence": [
+          "receipt-bound evidence for MM6-SECURITY-001"
+        ],
+        "gap_id": "MM6-SECURITY-001",
+        "next_action": "Execute the first unblocked acceptance test for MM6-SECURITY-001",
+        "owner_class": "MM6_SECURITY_EFFICACY",
+        "payload_status": "EXTERNAL_REQUIRED",
+        "receipt_type": "MultimodalEfficacyReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "EXTERNAL_REQUIRED",
+        "title": "Close multimodal memory gap: Mm6 Security"
+      },
+      {
+        "acceptance_tests": [
+          "MM6-EFFICACY-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM5-CONTEXT-001"
+        ],
+        "classification": "BLOCKED_EXTERNAL_EVIDENCE",
+        "closure_evidence": [
+          "receipt-bound evidence for MM6-EFFICACY-001"
+        ],
+        "gap_id": "MM6-EFFICACY-001",
+        "next_action": "Execute the first unblocked acceptance test for MM6-EFFICACY-001",
+        "owner_class": "MM6_SECURITY_EFFICACY",
+        "payload_status": "EXTERNAL_REQUIRED",
+        "receipt_type": "MultimodalEfficacyReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "EXTERNAL_REQUIRED",
+        "title": "Close multimodal memory gap: Mm6 Efficacy"
+      },
+      {
+        "acceptance_tests": [
+          "MM6-HARDWARE-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM3-LOCAL-MODEL-001"
+        ],
+        "classification": "BLOCKED_EXTERNAL_EVIDENCE",
+        "closure_evidence": [
+          "receipt-bound evidence for MM6-HARDWARE-001"
+        ],
+        "gap_id": "MM6-HARDWARE-001",
+        "next_action": "Execute the first unblocked acceptance test for MM6-HARDWARE-001",
+        "owner_class": "MM6_SECURITY_EFFICACY",
+        "payload_status": "EXTERNAL_REQUIRED",
+        "receipt_type": "MultimodalEfficacyReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "EXTERNAL_REQUIRED",
+        "title": "Close multimodal memory gap: Mm6 Hardware"
+      },
+      {
+        "acceptance_tests": [
+          "MM6-SOAK-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM6-UNLEARNING-001",
+          "MM6-SECURITY-001"
+        ],
+        "classification": "BLOCKED_EXTERNAL_EVIDENCE",
+        "closure_evidence": [
+          "receipt-bound evidence for MM6-SOAK-001"
+        ],
+        "gap_id": "MM6-SOAK-001",
+        "next_action": "Execute the first unblocked acceptance test for MM6-SOAK-001",
+        "owner_class": "MM6_SECURITY_EFFICACY",
+        "payload_status": "EXTERNAL_REQUIRED",
+        "receipt_type": "MultimodalEfficacyReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "EXTERNAL_REQUIRED",
+        "title": "Close multimodal memory gap: Mm6 Soak"
+      },
+      {
+        "acceptance_tests": [
+          "MM6-OPERATOR-001 bounded contract or external package",
+          "exact scope/source/model/index lineage",
+          "negative authority and rollback evidence"
+        ],
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "MM6-EFFICACY-001",
+          "MM6-HARDWARE-001",
+          "MM6-SOAK-001"
+        ],
+        "classification": "BLOCKED_EXTERNAL_EVIDENCE",
+        "closure_evidence": [
+          "receipt-bound evidence for MM6-OPERATOR-001"
+        ],
+        "gap_id": "MM6-OPERATOR-001",
+        "next_action": "Execute the first unblocked acceptance test for MM6-OPERATOR-001",
+        "owner_class": "MM6_SECURITY_EFFICACY",
+        "payload_status": "EXTERNAL_REQUIRED",
+        "receipt_type": "MultimodalEfficacyReceiptV1",
+        "resume_predicate": "all blocked_by receipts are exact, valid and unexpired",
+        "rollback_pointer": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "status": "EXTERNAL_REQUIRED",
+        "title": "Close multimodal memory gap: Mm6 Operator"
+      }
+    ],
+    "entry_contract": {
+      "closure_requires": "exact package receipt + independent evidence class required by DoD",
+      "dependency_field": "blocked_by",
+      "details": "HEPTA_INTELLIGENCE_MASTER_PLAN.md sections 7-13 and execution spec sections 16-24",
+      "required_fields": [
+        "gap_id",
+        "repository_status",
+        "payload_status"
+      ],
+      "unknown_gap": "FAIL_CLOSED"
+    },
+    "inherited_global_gap_ids": [
+      "A0-EVIDENCE-001",
+      "A0-MERGE-001",
+      "A0-REVIEW-001",
+      "A0-TRIGGER-001",
+      "B0-BOUNDARY-001",
+      "C0-LEDGER-001",
+      "J0-LIFECYCLE-001",
+      "M0-COORDINATOR-001",
+      "R1-CORPUS-001",
+      "R1-RETRIEVAL-001"
+    ],
+    "projected_gap_count": 42,
+    "repository": "ProfHepta/hepta-private-ci",
+    "schema": "hepta_multimodal_memory_gap_ledger_v2",
+    "source_snapshot": {
+      "candidate_branch": "codex/hepta-intelligence-a0-authority-gap-closure-20260829",
+      "candidate_head": "BOUND_AT_EXECUTABLE_RECEIPT",
+      "candidate_tree": "BOUND_AT_EXECUTABLE_RECEIPT",
+      "classification": "SOURCE_CONTRACT_NOT_LIVE_EVIDENCE",
+      "live_status_embedded": false,
+      "timestamp_policy": "COMMIT_BOUND_AT_EXECUTABLE_RECEIPT"
+    },
+    "source_snapshot_timestamp_policy": "COMMIT_BOUND_AT_EXTERNAL_EVIDENCE_RECEIPT",
+    "version": "2.0.0"
+  },
+  "operational_documents": [
+    {
+      "classification": "SUBORDINATE_EXECUTION_SPEC",
+      "content_sha256": "4fdab608d11a897e11e6600e167cd6618ee61299f7d806ae462328acc036c5d6",
+      "current_plan_authority": false,
+      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md",
+      "production_authority": false,
+      "promotion_authority": false,
+      "version": "1.2.0"
+    }
+  ],
+  "repository": "ProfHepta/hepta-private-ci",
+  "repository_check_classifications": [
+    "PASS",
+    "INTRODUCED_BY_CANDIDATE",
+    "PRE_EXISTING_ON_BASE",
+    "MERGE_INTERACTION",
+    "RUNNER_OR_PLATFORM_INFRA",
+    "CANCELLED_OR_SUPERSEDED",
+    "NOT_REQUIRED_BY_SELECTED_POLICY",
+    "UNKNOWN_FAIL_CLOSED"
+  ],
+  "schema": "hepta_intelligence_integration_candidate_v1",
+  "source_freeze": {
+    "h5_h6_h7_runtime_allowed": false,
+    "model_provider_effects_allowed": false,
+    "multimodal_runtime_allowed": false,
+    "product_callers_allowed": false,
+    "rust_runtime_changes_allowed": false,
+    "sql_migrations_allowed": false
+  },
+  "source_snapshot_timestamp_policy": "COMMIT_BOUND_AT_EXTERNAL_EVIDENCE_RECEIPT"
+}
