@@ -8,6 +8,7 @@ mod error;
 mod model;
 mod registry;
 mod release;
+mod runtime_bootstrap_registry;
 mod runtime_launch;
 
 pub use error::FleetRegistryError;
@@ -29,6 +30,10 @@ pub use release::RegisteredRelease;
 pub use release::ReleaseId;
 pub use release::ReleaseMetadata;
 pub use release::ReleaseProgramMetadata;
+pub use runtime_bootstrap_registry::RUNTIME_BOOTSTRAP_REGISTRY_MAX_BYTES;
+pub use runtime_bootstrap_registry::RUNTIME_RELEASE_PROVENANCE_SCHEMA_VERSION;
+pub use runtime_bootstrap_registry::ResolvedRuntimeRelease;
+pub use runtime_bootstrap_registry::RuntimeReleaseProvenance;
 pub use runtime_launch::RUNTIME_LAUNCH_BINDING_SCHEMA_VERSION;
 pub use runtime_launch::RuntimeLaunchBinding;
 pub use runtime_launch::RuntimeLaunchBindingError;
