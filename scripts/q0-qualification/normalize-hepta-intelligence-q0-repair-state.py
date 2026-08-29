@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
-"""Normalize semantically absorbed Q0 repairs before replaying the frozen tail.
+"""Normalize semantically absorbed Q0 repairs before frozen replay.
 
-The frozen v7 manual-repair tail is intentionally literal. Later hardening
-absorbed several of the same safety properties with equivalent formatting or
-wording, so an old/new string matcher cannot prove idempotence. This adapter
-is deliberately narrow: every supported repair has an explicit path and a
-finite set of exact states. Equivalent safe states are canonicalized to the
-frozen tail's exact output; partial, duplicated, or unknown states fail closed.
+The Q0 reconstruct and supplemental scripts are intentionally literal so a
+partial repair fails closed. Later hardening may already contain the same safe
+result with equivalent wording or rustfmt shape. This adapter has no runtime
+or authority role. It recognizes only finite, exact states and temporarily
+restores already-applied supplemental outputs to their declared inputs; the
+frozen scripts then replay them and produce one canonical candidate. Unknown,
+mixed, duplicated, or partial states remain hard failures.
 """
 
 from __future__ import annotations
 
+import ast
+import re
 from pathlib import Path
 
 LEASE_TARGET = Path("codex-rs/hepta-memory/src/local_lease_outbox.rs")
 LEASE_FUNCTION_START = "pub(crate) async fn load_lease_chain("
 LEASE_FUNCTION_END = "/// Return every fence tuple granted anywhere in the lease history."
+SUPPLEMENTAL = Path(".github/scripts/hepta-intelligence-q0-supplemental-repair-v1.py")
 
 LEASE_OLD_UNSAFE = (
     "        if index > 0 {\n"
@@ -161,15 +165,185 @@ def normalize_assertion_block(path_text: str, expressions: tuple[str, ...]) -> s
     return state
 
 
+def literal(node: ast.AST, label: str):
+    try:
+        return ast.literal_eval(node)
+    except (ValueError, TypeError) as error:
+        raise SystemExit(f"supplemental {label} is not a literal: {ast.dump(node)}") from error
+
+
+def top_level_repair_calls() -> list[ast.Call]:
+    source = SUPPLEMENTAL.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(SUPPLEMENTAL))
+    calls: list[ast.Call] = []
+    for statement in tree.body:
+        if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
+            continue
+        call = statement.value
+        if not isinstance(call.func, ast.Name):
+            continue
+        if call.func.id in {"replace_exact", "insert_expect_before_function"}:
+            calls.append(call)
+    if not calls:
+        raise SystemExit("supplemental repair contains no top-level exact operations")
+    return calls
+
+
+def assertion_list_form(old: str) -> str | None:
+    expressions: list[str] = []
+    indent: str | None = None
+    for line in old.splitlines():
+        match = re.fullmatch(r"(?P<indent>[ \t]*)assert!\((?P<expression>.+)\);", line)
+        if match is None:
+            return None
+        if indent is None:
+            indent = match.group("indent")
+        elif indent != match.group("indent"):
+            return None
+        expressions.append(match.group("expression"))
+    if not expressions or indent is None:
+        return None
+    return "\n".join(
+        f"{indent}const {{ assert!({expression}); }}" for expression in expressions
+    )
+
+
+def rollback_exact_output(path_text: str, old: str, new: str, expected: int) -> str:
+    if expected < 1 or old == new or not old:
+        raise SystemExit(f"invalid supplemental replacement contract for {path_text}")
+    path = Path(path_text)
+    text = path.read_text(encoding="utf-8")
+
+    absorbed_assertions = assertion_list_form(old)
+    if absorbed_assertions is not None:
+        absorbed_count = text.count(absorbed_assertions)
+        if absorbed_count not in {0, expected}:
+            raise SystemExit(
+                f"{path_text}: mixed absorbed assertion state; "
+                f"expected 0 or {expected}, found {absorbed_count}"
+            )
+        if absorbed_count == expected:
+            path.write_text(text.replace(absorbed_assertions, old, expected), encoding="utf-8")
+            return "absorbed_assertions_to_old"
+
+    text = path.read_text(encoding="utf-8")
+    old_count = text.count(old)
+    new_count = text.count(new) if new else 0
+    if old in new and 0 < new_count < expected:
+        raise SystemExit(
+            f"{path_text}: mixed old/new supplemental state; old={old_count} new={new_count}"
+        )
+
+    if new and new_count == expected:
+        without_new = text.replace(new, "", expected)
+        if without_new.count(old) != 0:
+            raise SystemExit(
+                f"{path_text}: new state coexists with an old supplemental state"
+            )
+        path.write_text(text.replace(new, old, expected), encoding="utf-8")
+        return "canonical_new_to_old"
+
+    if old_count == expected and new_count == 0:
+        return "old_ready"
+
+    raise SystemExit(
+        f"{path_text}: supplemental replacement is partial or unknown; "
+        f"old={old_count} new={new_count} expected={expected}"
+    )
+
+
+def rollback_inserted_expect(
+    path_text: str,
+    function_name: str,
+    lint: str,
+    reason: str,
+) -> str:
+    path = Path(path_text)
+    text = path.read_text(encoding="utf-8")
+    pattern = re.compile(
+        rf"(?m)^(?P<indent>[ \t]*)(?P<signature>"
+        rf"(?:(?:pub(?:\([^\)]*\))?)[ \t]+)?"
+        rf"(?:async[ \t]+)?fn[ \t]+{re.escape(function_name)}"
+        rf"(?:<[^\n]*?>)?[ \t]*\()"
+    )
+    matches = list(pattern.finditer(text))
+    if len(matches) != 1:
+        raise SystemExit(
+            f"{path_text}: expected one function {function_name}, found {len(matches)}"
+        )
+    match = matches[0]
+    indent = match.group("indent")
+    exact = (
+        f"{indent}#[expect(\n"
+        f"{indent}    clippy::{lint},\n"
+        f'{indent}    reason = "{reason}"\n'
+        f"{indent})]\n"
+    )
+    one_line = f'{indent}#[expect(clippy::{lint}, reason = "{reason}")]\n'
+    allow_line = f'{indent}#[allow(clippy::{lint}, reason = "{reason}")]\n'
+    prefix = text[: match.start()]
+    forms = [form for form in (exact, one_line, allow_line) if prefix.endswith(form)]
+    if len(forms) > 1:
+        raise SystemExit(f"{path_text}: ambiguous pre-existing Clippy attribute")
+    if forms:
+        form = forms[0]
+        path.write_text(prefix[: -len(form)] + text[match.start() :], encoding="utf-8")
+        return "attribute_to_unannotated"
+
+    nearby = prefix[-2048:]
+    if f"clippy::{lint}" in nearby and reason in nearby:
+        raise SystemExit(
+            f"{path_text}: equivalent Clippy attribute exists in an unknown shape"
+        )
+    return "unannotated_ready"
+
+
+def precondition_supplemental_replay() -> dict[str, str]:
+    states: dict[str, str] = {}
+    ordinal = 0
+    for call in top_level_repair_calls():
+        ordinal += 1
+        name = call.func.id if isinstance(call.func, ast.Name) else "unknown"
+        if name == "replace_exact":
+            if len(call.args) < 3:
+                raise SystemExit("supplemental replace_exact call has fewer than three args")
+            path_text = literal(call.args[0], "path")
+            old = literal(call.args[1], "old text")
+            new = literal(call.args[2], "new text")
+            expected = 1
+            for keyword in call.keywords:
+                if keyword.arg == "expected":
+                    expected = literal(keyword.value, "expected count")
+            if not all(isinstance(value, str) for value in (path_text, old, new)):
+                raise SystemExit("supplemental replacement literals have invalid types")
+            if not isinstance(expected, int):
+                raise SystemExit("supplemental expected count is not an integer")
+            state = rollback_exact_output(path_text, old, new, expected)
+        elif name == "insert_expect_before_function":
+            if len(call.args) != 4:
+                raise SystemExit("supplemental insert-expect call must have four args")
+            values = [literal(argument, "insert-expect argument") for argument in call.args]
+            if not all(isinstance(value, str) for value in values):
+                raise SystemExit("supplemental insert-expect literals have invalid types")
+            state = rollback_inserted_expect(*values)
+            path_text = values[0]
+        else:
+            raise SystemExit(f"unsupported supplemental operation {name}")
+        states[f"{ordinal:02d}:{path_text}:{name}"] = state
+    return states
+
+
 def main() -> None:
     lease_state = normalize_lease_predecessor_guard()
     assertion_states = {
         path: normalize_assertion_block(path, expressions)
         for path, expressions in ASSERTION_BLOCKS.items()
     }
+    supplemental_states = precondition_supplemental_replay()
     print(
-        "PASS_Q0_ABSORBED_REPAIR_NORMALIZATION "
-        f"lease={lease_state} assertions={assertion_states}"
+        "PASS_Q0_FULL_REPAIR_PRECONDITION "
+        f"lease={lease_state} assertions={assertion_states} "
+        f"supplemental={supplemental_states}"
     )
 
 
