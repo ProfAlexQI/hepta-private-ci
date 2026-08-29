@@ -1,4 +1,4 @@
-name: p034-payload-inspect-macos-v4
+name: p034-payload-inspect-windows-v5
 
 on:
   push:
@@ -11,12 +11,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: p034-payload-inspect-macos-v4-${{ github.sha }}
+  group: p034-payload-inspect-windows-v5-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
   inspect:
-    runs-on: macos-15
+    runs-on: windows-2025
     timeout-minutes: 30
     env:
       PAYLOAD_SHA256: 0a3c110310edaf463bd7fd4a31148e3cb8dcbdbebc9f38700d94bfcdd5059373
@@ -27,9 +27,10 @@ jobs:
           fetch-depth: 1
 
       - name: Decode, verify, and safely extract exact payload
+        shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
+          python - <<'PY'
           import base64
           import hashlib
           import json
@@ -87,7 +88,7 @@ jobs:
                       }
                   )
           receipt = {
-              "schema": "hepta_intelligence_p0_3_4_payload_inspection_v4",
+              "schema": "hepta_intelligence_p0_3_4_payload_inspection_v5",
               "payload_sha256": actual,
               "member_count": len(members),
               "file_count": len(files),
@@ -117,7 +118,7 @@ jobs:
       - name: Upload exact P0.3.4 payload evidence
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-p0-3-4-payload-${{ github.sha }}-macos
+          name: hepta-p0-3-4-payload-${{ github.sha }}-windows
           path: artifacts/p034-payload
           if-no-files-found: error
           retention-days: 7
