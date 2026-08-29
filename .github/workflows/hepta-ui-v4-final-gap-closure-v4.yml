@@ -25,7 +25,7 @@ env:
   HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 concurrency:
-  group: hepta-ui-v4-final-gap-v4-${{ github.event.pull_request.number || github.ref }}
+  group: hepta-ui-v4-final-gap-v4-${{ github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
