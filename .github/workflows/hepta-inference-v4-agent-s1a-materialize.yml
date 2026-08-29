@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = 0252925bfee0fc257dc9df75d9cb095c6b1f945a
+          test "$(git rev-parse HEAD^)" = 521d910b818ac447a5f7ba71695b8714ec0bb818
           test "$(git branch --show-current)" = agent/hepta-inference-v4-s1-staging-20260830
           test -z "$(git status --porcelain)"
 
@@ -55,7 +55,7 @@ jobs:
         working-directory: codex-rs
         run: |
           set -euo pipefail
-          cargo metadata --no-deps --format-version 1 > "$RUNNER_TEMP/s1a-metadata-unlocked.json"
+          cargo metadata --format-version 1 > "$RUNNER_TEMP/s1a-metadata-unlocked.json"
           cargo fmt -p codex-hepta-infer-core
           cargo metadata --locked --no-deps --format-version 1 > "$RUNNER_TEMP/s1a-metadata-locked.json"
           cargo check --locked --all-targets -p codex-hepta-infer-core
@@ -73,7 +73,6 @@ jobs:
             .github/workflows/hepta-inference-v4-agent-s1a-materialize.yml \
             .github/workflows/hepta-inference-v4-agent-source-export.yml
           python3 - <<'PY'
-          from pathlib import Path
           import subprocess
 
           allowed = {
