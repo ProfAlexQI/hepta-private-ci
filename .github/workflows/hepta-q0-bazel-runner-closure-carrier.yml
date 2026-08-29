@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SOURCE_SHA: b1c8d35120866ca5e886946e627e9744a2438f77
+  SOURCE_SHA: 7fd9494b55621ac7d6f212280e20761a2b1605d2
   TARGET_BRANCH: codex/hepta-intelligence-plan-v3-20260828
   CARRIER_PATH: .github/workflows/hepta-q0-bazel-runner-closure-carrier.yml
   BAZEL_WORKFLOW: .github/workflows/bazel.yml
