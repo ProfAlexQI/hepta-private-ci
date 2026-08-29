@@ -1,0 +1,148 @@
+name: Drain superseded CI runs
+
+on:
+  push:
+    branches:
+      - ops/drain-stale-ci-20260829
+    paths:
+      - .github/workflows/drain-stale-ci-20260829.yml
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  drain:
+    name: Cancel stale runs and nonessential AuthBus competitors
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    env:
+      FOCUS_BRANCH: integration/vnext-main-full-ci-authbus-p1-2-20260828
+      FOCUS_RUN_ID: "33233070831"
+    steps:
+      - name: Cancel superseded and nonessential competing runs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          self_run = int(os.environ["GITHUB_RUN_ID"])
+          focus_branch = os.environ["FOCUS_BRANCH"]
+          focus_run = int(os.environ["FOCUS_RUN_ID"])
+          statuses = ("queued", "in_progress", "waiting", "requested", "pending")
+          nonessential_focus_workflows = {
+              "blocking-ci",
+              "rust-ci-full",
+              "AuthBus P0 qualification",
+              "hepta-vnext qualification",
+          }
+
+          def request(path: str, method: str = "GET") -> tuple[int, dict | None]:
+              req = urllib.request.Request(
+                  f"https://api.github.com/repos/{repository}{path}",
+                  method=method,
+                  data=b"{}" if method != "GET" else None,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "Content-Type": "application/json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as response:
+                      body = response.read()
+                      return response.status, json.loads(body) if body else None
+              except urllib.error.HTTPError as error:
+                  body = error.read().decode("utf-8", errors="replace")
+                  if error.code in {404, 409}:
+                      return error.code, json.loads(body) if body else None
+                  raise
+
+          branch_cache: dict[str, str | None] = {}
+
+          def branch_head(branch: str) -> str | None:
+              if branch in branch_cache:
+                  return branch_cache[branch]
+              quoted = urllib.parse.quote(branch, safe="")
+              status, payload = request(f"/git/ref/heads/{quoted}")
+              value = None if status == 404 else str(payload["object"]["sha"])
+              branch_cache[branch] = value
+              return value
+
+          active: dict[int, dict] = {}
+          for status in statuses:
+              page = 1
+              while True:
+                  _, payload = request(
+                      f"/actions/runs?status={status}&per_page=100&page={page}"
+                  )
+                  runs = payload.get("workflow_runs", [])
+                  for run in runs:
+                      active[int(run["id"])] = run
+                  if len(runs) < 100:
+                      break
+                  page += 1
+
+          cancelled: list[dict] = []
+          kept: list[dict] = []
+          for run_id, run in sorted(active.items()):
+              if run_id in {self_run, focus_run}:
+                  kept.append({"id": run_id, "reason": "protected", "name": run["name"]})
+                  continue
+              branch = run.get("head_branch") or ""
+              head_sha = run.get("head_sha") or ""
+              current = branch_head(branch) if branch else None
+              stale = not branch or current is None or head_sha != current
+              focus_competitor = (
+                  branch == focus_branch
+                  and head_sha == current
+                  and run.get("name") in nonessential_focus_workflows
+              )
+              if not stale and not focus_competitor:
+                  kept.append({"id": run_id, "reason": "current", "name": run["name"]})
+                  continue
+              status, _ = request(f"/actions/runs/{run_id}/cancel", method="POST")
+              cancelled.append(
+                  {
+                      "id": run_id,
+                      "name": run.get("name"),
+                      "branch": branch,
+                      "head_sha": head_sha,
+                      "current_sha": current,
+                      "reason": "focus_competitor" if focus_competitor else "superseded",
+                      "http_status": status,
+                  }
+              )
+
+          _, focus = request(f"/actions/runs/{focus_run}")
+          print(
+              json.dumps(
+                  {
+                      "schema": "hepta.ci.queue-drain.v1",
+                      "focus_run": {
+                          "id": focus_run,
+                          "status": focus.get("status"),
+                          "conclusion": focus.get("conclusion"),
+                          "head_sha": focus.get("head_sha"),
+                      },
+                      "cancelled": cancelled,
+                      "kept_count": len(kept),
+                  },
+                  sort_keys=True,
+                  indent=2,
+              )
+          )
+          PY
