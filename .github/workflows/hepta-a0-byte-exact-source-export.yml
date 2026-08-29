@@ -1,0 +1,55 @@
+name: Hepta A0 byte-exact source export
+
+on:
+  push:
+    branches:
+      - codex/hepta-intelligence-q0-gap-closure-staging-20260829
+  pull_request:
+    branches:
+      - codex/hepta-intelligence-a0-authority-gap-closure-20260829
+    paths:
+      - .github/workflows/hepta-a0-byte-exact-source-export.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact A0 candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: a7e407fd3e4b4f092f771e0428f275b7eb5a9870
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Prove exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "a7e407fd3e4b4f092f771e0428f275b7eb5a9870"
+          test "$(git rev-parse HEAD^{tree})" = "ff17a38f047046bb8106d12432900ed9f780ed4f"
+      - name: Build bounded source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/hepta-a0-source-a7e407fd3e4b4f092f771e0428f275b7eb5a9870.tgz"
+          tar -czf "$archive" \
+            plans/hepta-intelligence \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/hepta-intelligence-status-compat.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py \
+            .github/workflows/hepta-intelligence-a0-authority.yml \
+            .github/workflows/hepta-intelligence-master-plan.yml
+          sha256sum "$archive" > "$archive.sha256"
+      - name: Upload bounded source snapshot
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-a0-source-a7e407fd3e4b4f092f771e0428f275b7eb5a9870
+          path: |
+            ${{ runner.temp }}/hepta-a0-source-a7e407fd3e4b4f092f771e0428f275b7eb5a9870.tgz
+            ${{ runner.temp }}/hepta-a0-source-a7e407fd3e4b4f092f771e0428f275b7eb5a9870.tgz.sha256
+          if-no-files-found: error
+          retention-days: 1
