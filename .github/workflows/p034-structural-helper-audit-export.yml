@@ -22,7 +22,7 @@ env:
 
 jobs:
   export:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     steps:
       - name: Checkout exact helper head
