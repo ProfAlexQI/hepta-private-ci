@@ -23,6 +23,8 @@
     "matrixSqliteFullFaultSource": true,
     "matrixSqliteFullSameConnectionSeam": true,
     "operationSafetySourceMaterialized": true,
+    "automationOperationIntegrationFixtures": true,
+    "automationOperationStrictClippySourceFix": true,
     "temporaryOperationMutatorsRetired": true,
     "singleWriterDataAuthorityMap": true,
     "failClosedRecoveryOrder": true,
