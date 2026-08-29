@@ -1,0 +1,116 @@
+name: Hepta inference INF-1 materialize and repair v4
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf1-source-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf1-materialize-repair-v4.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-inf1-materialize-repair-v4
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    env:
+      BRANCH: codex/hepta-inference-inf1-source-20260829
+      SELF: .github/workflows/hepta-inference-inf1-materialize-repair-v4.yml
+      EXPECTED_PARENT: ac1d60f79598bcecf966e904ceaa4a20f7ca13a2
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+
+      - name: Verify exact trigger commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          test -z "$(git status --porcelain)"
+
+      - name: Materialize and apply deterministic repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-materialize.py
+          python3 scripts/hepta-inference-inf1-connection-isolation-repair-v4.py
+          python3 -m py_compile \
+            scripts/hepta-inference-inf1-bootstrap.py \
+            scripts/hepta-inference-inf1-source-gate.py \
+            scripts/hepta-inference-inf1-connection-isolation-repair-v4.py
+          python3 -m json.tool \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_STATUS_V1.json >/dev/null
+          ! grep -R -F "OpenOptionsExt" codex-rs/hepta-inferd/src
+
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Integrate exact workspace source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-bootstrap.py --apply
+          python3 scripts/hepta-inference-inf1-bootstrap.py --verify
+
+      - name: Format, check, test and strict Clippy
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile
+          cargo fmt -p codex-hepta-infer-core -p codex-hepta-inferd
+          cargo fmt -p codex-hepta-infer-core -p codex-hepta-inferd -- --check
+          timeout 20m cargo check --locked -p codex-hepta-infer-core -p codex-hepta-inferd
+          timeout 20m cargo test --locked -p codex-hepta-infer-core
+          timeout 20m cargo test --locked -p codex-hepta-inferd -- --test-threads=1
+          timeout 20m cargo clippy --locked --all-targets --no-deps \
+            -p codex-hepta-infer-core -p codex-hepta-inferd -- -D warnings
+
+      - name: Verify source and negative authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-source-gate.py \
+            | tee "$RUNNER_TEMP/hepta-inference-inf1-source-gate.txt"
+          git diff --check
+
+      - name: Commit exact materialized source and fast-forward
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            codex-rs/Cargo.toml codex-rs/Cargo.lock \
+            codex-rs/hepta-infer-core codex-rs/hepta-inferd \
+            scripts/hepta-inference-inf1-source-gate.py \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_STATUS_V1.json
+          git commit -m "feat(inference): materialize minimal INF-1 UDS controller"
+          source_commit="$(git rev-parse HEAD)"
+          source_tree="$(git rev-parse 'HEAD^{tree}')"
+          git fetch --no-tags origin "$BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          git push origin HEAD:"$BRANCH"
+          {
+            echo "PASS_HEPTA_INFERENCE_INF1_MATERIALIZED_SOURCE"
+            echo "source_commit=$source_commit"
+            echo "source_tree=$source_tree"
+            echo "core_tests=7_pass"
+            echo "daemon_tests=4_pass"
+            echo "strict_clippy=pass"
+            echo "qualified=false"
+            echo "production_authority=false"
+          } >> "$GITHUB_STEP_SUMMARY"
