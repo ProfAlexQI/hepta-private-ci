@@ -17,6 +17,7 @@ mod production_authority_adapter;
 mod production_writer_host;
 mod qualification_writer;
 mod runtime;
+mod runtime_bootstrap;
 mod runtime_profile;
 mod state;
 
@@ -45,6 +46,7 @@ pub use config::HEPTA_AGENT_RUN_ROOT_ENV;
 pub use error::AgentdError;
 pub use production_writer_host::AgentdProductionWriterHost;
 pub use runtime::run;
+pub use runtime_bootstrap::RuntimeBootstrapAdmission;
 
 use control::AgentdControlServer;
 use event_buffer::EventBuffer;
