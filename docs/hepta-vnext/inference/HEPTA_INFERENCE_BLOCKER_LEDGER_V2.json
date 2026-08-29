@@ -1,0 +1,309 @@
+{
+  "schema": "hepta.inference.blocker_ledger.v2",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V4",
+  "plan_version": "4.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "development_pr": 73,
+  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "source_binding": {
+    "mode": "tracked ledger binds observed parent; exact candidate evidence is CI-generated",
+    "observed_parent_commit": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
+    "observed_parent_tree": "4bbc59481ca90ccd62e702baa3b865a221d4b2e5"
+  },
+  "blockers": [
+    {
+      "id": "INF-B001",
+      "severity": "P0",
+      "package": "INF-Q0",
+      "gap_class": "EXACT_HEAD_EXECUTION",
+      "title": "current exact head fails Rust formatting on all required platforms",
+      "status": "EXECUTED_FAILED",
+      "evidence": {
+        "head": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
+        "runs": [
+          33265631214,
+          33265631127
+        ],
+        "failed_step": "cargo fmt --check"
+      },
+      "acceptance": [
+        "rustfmt diff applied",
+        "locked check/test/strict clippy execute",
+        "all required platform jobs succeed"
+      ]
+    },
+    {
+      "id": "INF-B002",
+      "severity": "P0",
+      "package": "INF-Q0",
+      "gap_class": "REPOSITORY_SOURCE",
+      "title": "historical INF-0C source gates are re-evaluated against descendant current status",
+      "status": "SOURCE_PRESENT_NOT_QUALIFIED",
+      "evidence": {
+        "run": 33265631140,
+        "reason": "trusted_control_helper_source_complete false in historical gate"
+      },
+      "acceptance": [
+        "historical receipt validation is immutable and ancestor-bound",
+        "current aggregate does not depend on stale stage truth",
+        "real provider gate remains strict"
+      ]
+    },
+    {
+      "id": "INF-B003",
+      "severity": "P0",
+      "package": "INF-D0",
+      "gap_class": "REPOSITORY_SOURCE",
+      "title": "multiple current plans and status documents drift without a canonical pointer",
+      "status": "SOURCE_PRESENT_NOT_QUALIFIED",
+      "acceptance": [
+        "one current-plan pointer",
+        "V4 truth files agree",
+        "historical documents remain read-only"
+      ]
+    },
+    {
+      "id": "INF-B004",
+      "severity": "P0",
+      "package": "INF-S1",
+      "gap_class": "REPOSITORY_SOURCE",
+      "title": "daemon does not mint per-request capability bound to worker session and generations",
+      "status": "NOT_STARTED",
+      "acceptance": [
+        "CSPRNG epoch/session secret",
+        "one-time request grant",
+        "secret never serialized or logged",
+        "stale grant rejection"
+      ]
+    },
+    {
+      "id": "INF-B005",
+      "severity": "P0",
+      "package": "INF-S1",
+      "gap_class": "REPOSITORY_SOURCE",
+      "title": "authenticated private worker channel is absent",
+      "status": "NOT_STARTED",
+      "acceptance": [
+        "private typed protocol",
+        "worker handshake/session fence",
+        "wrong peer/session/capability denied",
+        "public endpoint remains unprivileged"
+      ]
+    },
+    {
+      "id": "INF-B006",
+      "severity": "P1",
+      "package": "INF-S1",
+      "gap_class": "REPOSITORY_SOURCE",
+      "title": "operator commands have no independent capability endpoint",
+      "status": "NOT_STARTED",
+      "acceptance": [
+        "operator endpoint disabled by default",
+        "separate capability",
+        "public same-UID peer denied",
+        "no activation authority"
+      ]
+    },
+    {
+      "id": "INF-B007",
+      "severity": "P0",
+      "package": "INF-S2",
+      "gap_class": "REPOSITORY_SOURCE",
+      "title": "running cancellation lacks worker ACK, timeout kill and process wait",
+      "status": "NOT_STARTED",
+      "acceptance": [
+        "CancelRequested/Dispatched/Ack states",
+        "timeout kills child and waits",
+        "generation rollover",
+        "stale event denial",
+        "accurate receipt disposition"
+      ]
+    },
+    {
+      "id": "INF-B008",
+      "severity": "P1",
+      "package": "INF-S3",
+      "gap_class": "REPOSITORY_SOURCE",
+      "title": "receipt store has no retention or crash-safe compaction policy",
+      "status": "NOT_STARTED",
+      "acceptance": [
+        "age policy",
+        "operator-only compaction",
+        "tombstone receipt",
+        "crash recovery",
+        "young/active receipts preserved"
+      ]
+    },
+    {
+      "id": "INF-B009",
+      "severity": "P1",
+      "package": "INF-S4",
+      "gap_class": "REPOSITORY_SOURCE",
+      "title": "dispatch scheduler and reservation ledger are absent",
+      "status": "NOT_STARTED",
+      "acceptance": [
+        "deterministic EDF/WFQ",
+        "global/tenant/tuple reservations",
+        "exactly-once release",
+        "starvation bound",
+        "no cache in first tranche"
+      ]
+    },
+    {
+      "id": "INF-B010",
+      "severity": "P0",
+      "package": "INF-R1",
+      "gap_class": "REPOSITORY_SOURCE",
+      "title": "adapter contract is not an executable provider host behind daemon",
+      "status": "NOT_STARTED",
+      "acceptance": [
+        "fixed manifest",
+        "bounded loopback execution",
+        "version/model/content verification",
+        "inventory fence",
+        "hermetic provider E2E",
+        "no install/switch/fallback"
+      ]
+    },
+    {
+      "id": "INF-B011",
+      "severity": "P0",
+      "package": "INF-E1",
+      "gap_class": "REAL_SOFTWARE_EVIDENCE",
+      "title": "real fixed provider and model execution evidence is absent",
+      "status": "BLOCKED_EXTERNAL_EVIDENCE",
+      "dependencies": [
+        "pre-installed provider",
+        "fixed model tuple",
+        "assigned runner"
+      ],
+      "acceptance": [
+        "real process",
+        "real semantic output",
+        "inventory before equals after",
+        "digest-bound artifact"
+      ]
+    },
+    {
+      "id": "INF-B012",
+      "severity": "P0",
+      "package": "INF-R2",
+      "gap_class": "REPOSITORY_SOURCE",
+      "title": "native worker remains in-process contracts rather than isolated child process",
+      "status": "NOT_STARTED",
+      "acceptance": [
+        "worker-host crate/process",
+        "private session/grant protocol",
+        "pinned ABI loader",
+        "fake backend process E2E",
+        "crash/OOM/cancel/kill fixtures"
+      ]
+    },
+    {
+      "id": "INF-B013",
+      "severity": "P0",
+      "package": "INF-E2",
+      "gap_class": "EXACT_DEVICE_EVIDENCE",
+      "title": "real pinned runtime, GGUF and exact-device execution evidence is absent",
+      "status": "BLOCKED_EXTERNAL_EVIDENCE",
+      "dependencies": [
+        "pinned runtime build",
+        "fixed GGUF/tokenizer/template",
+        "target-device runner"
+      ],
+      "acceptance": [
+        "real model load",
+        "at least one UTF-8 token",
+        "cancel/crash/OOM evidence",
+        "runtime/model/device digests"
+      ]
+    },
+    {
+      "id": "INF-B014",
+      "severity": "P0",
+      "package": "INF-R3",
+      "gap_class": "REPOSITORY_SOURCE",
+      "title": "typed product shadow bridge and kill switch are absent",
+      "status": "NOT_STARTED",
+      "acceptance": [
+        "SHADOW_COMPARE_ONLY",
+        "primary unchanged",
+        "typed non-authoritative output",
+        "no state/effect writes",
+        "kill switch and rollback fixture"
+      ]
+    },
+    {
+      "id": "INF-B015",
+      "severity": "P0",
+      "package": "INF-E3",
+      "gap_class": "EXACT_DEVICE_EVIDENCE",
+      "title": "exact-device performance privacy and rollback evidence is absent",
+      "status": "BLOCKED_EXTERNAL_EVIDENCE",
+      "acceptance": [
+        "TTFT/throughput/RSS/VRAM/cancel/unload",
+        "privacy review",
+        "shadow rollback",
+        "tuple-scoped receipt"
+      ]
+    },
+    {
+      "id": "INF-B016",
+      "severity": "P0",
+      "package": "INF-A1",
+      "gap_class": "INDEPENDENT_AUTHORITY",
+      "title": "independent operator acceptance promotion and release are absent",
+      "status": "BLOCKED_EXTERNAL_EVIDENCE",
+      "acceptance": [
+        "independent operator",
+        "separate authorized commit",
+        "no self-merge",
+        "promotion and release receipts"
+      ]
+    }
+  ],
+  "summary": {
+    "repository_source_open": [
+      "INF-B002",
+      "INF-B003",
+      "INF-B004",
+      "INF-B005",
+      "INF-B006",
+      "INF-B007",
+      "INF-B008",
+      "INF-B009",
+      "INF-B010",
+      "INF-B012",
+      "INF-B014"
+    ],
+    "exact_head_execution_open": [
+      "INF-B001"
+    ],
+    "external_evidence_open": [
+      "INF-B011",
+      "INF-B013",
+      "INF-B015"
+    ],
+    "independent_authority_open": [
+      "INF-B016"
+    ],
+    "qualified": false
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

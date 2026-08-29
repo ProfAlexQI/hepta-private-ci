@@ -1,0 +1,83 @@
+{
+  "schema": "hepta.inference.implementation_status.v3",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V4",
+  "plan_version": "4.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "development_pr": 73,
+  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "source_binding": {
+    "mode": "tracked implementation status binds observed parent; exact candidate is CI-generated",
+    "observed_parent_commit": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
+    "observed_parent_tree": "4bbc59481ca90ccd62e702baa3b865a221d4b2e5"
+  },
+  "status": "SOURCE_PRESENT_NOT_QUALIFIED",
+  "workspace_packages": {
+    "codex_hepta_infer_core": true,
+    "codex_hepta_infer_client": true,
+    "codex_hepta_inferd": true,
+    "codex_hepta_infer_worker_host": false
+  },
+  "implemented_source": {
+    "canonical_bounded_cbor": true,
+    "owner_local_public_uds": true,
+    "same_user_peer_check": true,
+    "public_message_role_enforcement": true,
+    "unprivileged_client_surface": true,
+    "queue_inflight_running_accounting": true,
+    "deadline_sweep": true,
+    "domain_separated_token_chain": true,
+    "token_count_and_limit_enforcement": true,
+    "connection_semaphore": true,
+    "frame_and_response_timeouts": true,
+    "atomic_receipt_parent_sync": true,
+    "receipt_startup_recovery": true,
+    "receipt_file_and_byte_budget": true,
+    "terminal_controller_eviction_after_persist": true,
+    "durable_request_id_replay_guard": true,
+    "fixed_adapter_tuple_contract": true,
+    "native_abi_manifest_shared_region_contract": true,
+    "in_process_worker_supervisor_contract": true
+  },
+  "not_implemented_source": {
+    "request_capability_secret_and_digest": false,
+    "worker_session_nonce": false,
+    "private_worker_protocol_and_endpoint": false,
+    "private_operator_protocol_and_endpoint": false,
+    "cancel_requested_dispatched_ack_timeout_states": false,
+    "real_child_process_owner_and_kill_wait": false,
+    "receipt_ttl_tombstone_compaction": false,
+    "deterministic_edf_wfq_scheduler": false,
+    "reservation_ledger": false,
+    "provider_execution_host": false,
+    "isolated_worker_host_process": false,
+    "real_native_abi_loader": false,
+    "typed_product_shadow_bridge": false
+  },
+  "execution_status": {
+    "v4_source_truth": "NOT_EXECUTED",
+    "formatting": "FAILED_ON_OBSERVED_PARENT",
+    "locked_check": "NOT_EXECUTED_FOR_CURRENT_CANDIDATE",
+    "all_target_tests": "NOT_EXECUTED_FOR_CURRENT_CANDIDATE",
+    "strict_clippy": "NOT_EXECUTED_FOR_CURRENT_CANDIDATE",
+    "real_provider": "NOT_EXECUTED",
+    "real_native_model": "NOT_EXECUTED",
+    "exact_device": "NOT_EXECUTED"
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

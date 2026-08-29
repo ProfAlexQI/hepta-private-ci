@@ -1,0 +1,204 @@
+{
+  "schema": "hepta.inference.v4.closure_evidence_contract.v1",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V4",
+  "plan_version": "4.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "development_pr": 73,
+  "source_binding": {
+    "mode": "contract binds observed parent; execution receipts bind exact candidate",
+    "observed_parent_commit": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
+    "observed_parent_tree": "4bbc59481ca90ccd62e702baa3b865a221d4b2e5"
+  },
+  "claim_classes": [
+    {
+      "id": "REPOSITORY_SOURCE",
+      "requires_real_model": false,
+      "maximum_status": "EXECUTED_PASSED_QUALIFICATION_ONLY"
+    },
+    {
+      "id": "REAL_SOFTWARE_EVIDENCE",
+      "requires_real_model": true,
+      "maximum_status": "EXECUTED_PASSED_QUALIFICATION_ONLY"
+    },
+    {
+      "id": "EXACT_DEVICE_EVIDENCE",
+      "requires_real_model": true,
+      "requires_target_device": true,
+      "maximum_status": "EXECUTED_PASSED_QUALIFICATION_ONLY"
+    },
+    {
+      "id": "PRODUCT_SHADOW",
+      "requires_real_model": true,
+      "requires_shadow_only": true,
+      "maximum_status": "SHADOW_QUALIFIED"
+    },
+    {
+      "id": "INDEPENDENT_AUTHORITY",
+      "requires_independent_operator": true,
+      "maximum_status": "RELEASED"
+    }
+  ],
+  "current_source_gate": {
+    "required_paths": [
+      ".github/workflows/hepta-inference-gap-closure.yml",
+      ".github/workflows/hepta-inference-v2-remaining-source.yml",
+      "scripts/hepta-inference-v4-source-truth.py",
+      "docs/hepta-vnext/inference/HEPTA_INFERENCE_CURRENT_PLAN_V1.json",
+      "docs/hepta-vnext/inference/HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V4.md",
+      "docs/hepta-vnext/inference/HEPTA_INFERENCE_CURRENT_STATUS_V4.json",
+      "docs/hepta-vnext/inference/HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V3.json",
+      "docs/hepta-vnext/inference/HEPTA_INFERENCE_STAGE_MATRIX_V5.json",
+      "docs/hepta-vnext/inference/HEPTA_INFERENCE_BLOCKER_LEDGER_V2.json",
+      "docs/hepta-vnext/inference/HEPTA_INFERENCE_V4_CLOSURE_EVIDENCE_CONTRACT_V1.json",
+      "codex-rs/hepta-infer-core",
+      "codex-rs/hepta-infer-client",
+      "codex-rs/hepta-inferd"
+    ],
+    "toolchain": "1.95.0",
+    "commands": [
+      "cargo fmt -p codex-hepta-infer-core -p codex-hepta-infer-client -p codex-hepta-inferd -- --check",
+      "cargo check --locked --all-targets -p codex-hepta-infer-core -p codex-hepta-infer-client -p codex-hepta-inferd",
+      "cargo test --locked --all-targets -p codex-hepta-infer-core -p codex-hepta-infer-client -p codex-hepta-inferd",
+      "cargo clippy --locked --all-targets --no-deps -p codex-hepta-infer-core -p codex-hepta-infer-client -p codex-hepta-inferd -- -D warnings"
+    ],
+    "required_platforms": [
+      "linux-x64",
+      "linux-arm64",
+      "macos-intel"
+    ],
+    "non_empty_steps_required": true,
+    "runner_id_nonzero_required": true,
+    "skipped_is_pass": false
+  },
+  "repository_source_receipt_fields": [
+    "repository",
+    "pull_request_number",
+    "head",
+    "tree",
+    "parent",
+    "plan_digest",
+    "current_pointer_digest",
+    "status_digest",
+    "stage_matrix_digest",
+    "implementation_digest",
+    "blocker_ledger_digest",
+    "evidence_contract_digest",
+    "cargo_lock_digest",
+    "workflow_digests",
+    "runner_os",
+    "runner_arch",
+    "rustc_version",
+    "cargo_version",
+    "source_inventory",
+    "fmt",
+    "check",
+    "tests",
+    "clippy"
+  ],
+  "private_channel_test_classes": [
+    "public worker and operator denial",
+    "worker challenge response",
+    "wrong session capability generation and peer denial",
+    "grant one-time use",
+    "secret absent from Debug protocol receipt and logs",
+    "restart invalidates every old grant"
+  ],
+  "cancel_test_classes": [
+    "queued cancel",
+    "running cancel acknowledged",
+    "running cancel timeout child kill and wait",
+    "worker crash during cancel",
+    "generation rollover",
+    "stale token and completion rejection"
+  ],
+  "retention_test_classes": [
+    "young receipt retained",
+    "expired receipt selected",
+    "active receipt never selected",
+    "tombstone then delete",
+    "crash recovery at every phase",
+    "budget remains fail closed"
+  ],
+  "real_provider_required_fields": [
+    "provider_id",
+    "provider_version",
+    "provider_binary_digest_or_install_identity",
+    "model_id",
+    "model_artifact_digest_if_available",
+    "tokenizer_digest_if_available",
+    "chat_template_digest_if_available",
+    "inventory_digest_before",
+    "inventory_digest_after",
+    "request_fixture_digest",
+    "semantic_result_digest",
+    "output_token_count",
+    "termination_reason",
+    "cancel_disposition",
+    "proxy_disabled",
+    "redirect_disabled",
+    "implicit_install_disabled",
+    "implicit_model_switch_disabled",
+    "remote_fallback_attempted"
+  ],
+  "native_worker_required_fields": [
+    "worker_binary_sha256",
+    "backend_abi_version",
+    "runtime_upstream_commit",
+    "runtime_build_flags_digest",
+    "runtime_sbom_digest",
+    "runtime_license_digest",
+    "model_digest",
+    "tokenizer_digest",
+    "chat_template_digest",
+    "gguf_digest",
+    "quantization",
+    "device_profile_digest",
+    "driver_runtime",
+    "backend_generation",
+    "worker_session_digest",
+    "request_fixture_digest",
+    "token_chain_digest",
+    "output_token_count",
+    "cancel_acknowledged",
+    "forced_worker_termination",
+    "stale_event_rejection",
+    "remote_fallback_attempted"
+  ],
+  "product_shadow_required_claims": {
+    "route_mode": "SHADOW_COMPARE_ONLY",
+    "primary_route_changed": false,
+    "shadow_output_authoritative": false,
+    "memory_write": false,
+    "shared_kg_write": false,
+    "provider_effect": false,
+    "route_write": false,
+    "kill_switch_tested": true,
+    "rollback_tested": true
+  },
+  "forbidden_substitutions": [
+    "fixture token for real model token",
+    "HTTP mock for real provider",
+    "in-process supervisor for child worker execution",
+    "transport disconnect for cancel acknowledgement",
+    "cross compile for target execution",
+    "source aggregate for product/operator qualification",
+    "same author for independent operator acceptance"
+  ],
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

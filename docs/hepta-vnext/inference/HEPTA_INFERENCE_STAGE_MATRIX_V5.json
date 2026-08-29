@@ -1,0 +1,252 @@
+{
+  "schema": "hepta.inference.stage_matrix.v5",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V4",
+  "plan_version": "4.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "development_pr": 73,
+  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "source_binding": {
+    "mode": "tracked matrix binds observed parent; exact candidate evidence is CI-generated",
+    "observed_parent_commit": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
+    "observed_parent_tree": "4bbc59481ca90ccd62e702baa3b865a221d4b2e5"
+  },
+  "packages": [
+    {
+      "id": "INF-0A",
+      "name": "historical source rebind and plan freeze",
+      "status": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "gap_class": "HISTORICAL",
+      "qualified_for_current_candidate": true
+    },
+    {
+      "id": "INF-0B",
+      "name": "historical backend-neutral contracts",
+      "status": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "gap_class": "HISTORICAL",
+      "qualified_for_current_candidate": true
+    },
+    {
+      "id": "INF-0C",
+      "name": "historical compatibility evidence",
+      "status": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "gap_class": "HISTORICAL",
+      "qualified_for_current_candidate": true
+    },
+    {
+      "id": "INF-1",
+      "name": "minimal public UDS controller",
+      "status": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "gap_class": "HISTORICAL",
+      "qualified_for_current_candidate": true
+    },
+    {
+      "id": "INF-H1",
+      "name": "public worker/operator denial source",
+      "status": "SOURCE_PRESENT_NOT_QUALIFIED",
+      "gap_class": "REPOSITORY_SOURCE",
+      "qualified_for_current_candidate": false
+    },
+    {
+      "id": "INF-H2",
+      "name": "inflight/running/deadline source",
+      "status": "SOURCE_PRESENT_NOT_QUALIFIED",
+      "gap_class": "REPOSITORY_SOURCE",
+      "qualified_for_current_candidate": false
+    },
+    {
+      "id": "INF-H3",
+      "name": "token integrity source",
+      "status": "SOURCE_PRESENT_NOT_QUALIFIED",
+      "gap_class": "REPOSITORY_SOURCE",
+      "qualified_for_current_candidate": false
+    },
+    {
+      "id": "INF-H4",
+      "name": "connection/journal/recovery source",
+      "status": "SOURCE_PRESENT_NOT_QUALIFIED",
+      "gap_class": "REPOSITORY_SOURCE",
+      "qualified_for_current_candidate": false
+    },
+    {
+      "id": "INF-D0",
+      "name": "V4 documentation and single current truth",
+      "status": "SOURCE_PRESENT_NOT_QUALIFIED",
+      "gap_class": "REPOSITORY_SOURCE",
+      "qualified_for_current_candidate": false
+    },
+    {
+      "id": "INF-Q0",
+      "name": "exact-head qualification and historical gate isolation",
+      "status": "EXECUTED_FAILED",
+      "gap_class": "EXACT_HEAD_EXECUTION",
+      "qualified_for_current_candidate": false
+    },
+    {
+      "id": "INF-S1",
+      "name": "request capability and private role channels",
+      "status": "NOT_STARTED",
+      "gap_class": "REPOSITORY_SOURCE",
+      "qualified_for_current_candidate": false
+    },
+    {
+      "id": "INF-S2",
+      "name": "worker cancellation acknowledgement and kill",
+      "status": "NOT_STARTED",
+      "gap_class": "REPOSITORY_SOURCE",
+      "qualified_for_current_candidate": false
+    },
+    {
+      "id": "INF-S3",
+      "name": "receipt retention and compaction",
+      "status": "NOT_STARTED",
+      "gap_class": "REPOSITORY_SOURCE",
+      "qualified_for_current_candidate": false
+    },
+    {
+      "id": "INF-S4",
+      "name": "scheduler and reservation ledger",
+      "status": "NOT_STARTED",
+      "gap_class": "REPOSITORY_SOURCE",
+      "qualified_for_current_candidate": false
+    },
+    {
+      "id": "INF-R1",
+      "name": "provider runtime host behind daemon",
+      "status": "NOT_STARTED",
+      "gap_class": "REPOSITORY_SOURCE",
+      "qualified_for_current_candidate": false
+    },
+    {
+      "id": "INF-R2",
+      "name": "isolated native worker host",
+      "status": "NOT_STARTED",
+      "gap_class": "REPOSITORY_SOURCE",
+      "qualified_for_current_candidate": false
+    },
+    {
+      "id": "INF-E1",
+      "name": "real provider fixed tuple evidence",
+      "status": "BLOCKED_EXTERNAL_EVIDENCE",
+      "gap_class": "REAL_SOFTWARE_EVIDENCE",
+      "qualified_for_current_candidate": false
+    },
+    {
+      "id": "INF-E2",
+      "name": "real native model exact-device evidence",
+      "status": "BLOCKED_EXTERNAL_EVIDENCE",
+      "gap_class": "EXACT_DEVICE_EVIDENCE",
+      "qualified_for_current_candidate": false
+    },
+    {
+      "id": "INF-R3",
+      "name": "typed product shadow bridge",
+      "status": "NOT_STARTED",
+      "gap_class": "REPOSITORY_SOURCE",
+      "qualified_for_current_candidate": false
+    },
+    {
+      "id": "INF-E3",
+      "name": "performance privacy rollback evidence",
+      "status": "BLOCKED_EXTERNAL_EVIDENCE",
+      "gap_class": "EXACT_DEVICE_EVIDENCE",
+      "qualified_for_current_candidate": false
+    },
+    {
+      "id": "INF-A1",
+      "name": "independent acceptance promotion release",
+      "status": "BLOCKED_EXTERNAL_EVIDENCE",
+      "gap_class": "INDEPENDENT_AUTHORITY",
+      "qualified_for_current_candidate": false
+    }
+  ],
+  "dependency_edges": [
+    [
+      "INF-D0",
+      "INF-Q0"
+    ],
+    [
+      "INF-Q0",
+      "INF-S1"
+    ],
+    [
+      "INF-S1",
+      "INF-S2"
+    ],
+    [
+      "INF-S1",
+      "INF-S3"
+    ],
+    [
+      "INF-S1",
+      "INF-S4"
+    ],
+    [
+      "INF-S2",
+      "INF-R1"
+    ],
+    [
+      "INF-S2",
+      "INF-R2"
+    ],
+    [
+      "INF-S4",
+      "INF-R1"
+    ],
+    [
+      "INF-S4",
+      "INF-R2"
+    ],
+    [
+      "INF-R1",
+      "INF-E1"
+    ],
+    [
+      "INF-R2",
+      "INF-E2"
+    ],
+    [
+      "INF-E1",
+      "INF-R3"
+    ],
+    [
+      "INF-E2",
+      "INF-R3"
+    ],
+    [
+      "INF-R3",
+      "INF-E3"
+    ],
+    [
+      "INF-E3",
+      "INF-A1"
+    ]
+  ],
+  "global_claims": {
+    "repository_source_closed": false,
+    "exact_head_source_qualified": false,
+    "real_provider_executed": false,
+    "real_native_worker_executed": false,
+    "product_shadow_qualified": false,
+    "hardware_qualified": false,
+    "operator_accepted": false,
+    "promoted": false,
+    "released": false
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

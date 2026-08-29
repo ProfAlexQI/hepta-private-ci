@@ -1,0 +1,49 @@
+{
+  "schema": "hepta.inference.current_plan.v1",
+  "active_plan_id": "HEPTA-INFERENCE-RUNTIME-V4",
+  "active_plan_version": "4.0.0",
+  "active_plan_path": "docs/hepta-vnext/inference/HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V4.md",
+  "repository": "ProfHepta/hepta-private-ci",
+  "canonical_default_branch": "integration/vnext-main-20260811",
+  "development_pr": 73,
+  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "development_base_commit": "6f3286f99f5576b4cc545003889437bf388bb28a",
+  "source_binding": {
+    "mode": "tracked current pointer binds observed parent; exact candidate head/tree are CI-generated",
+    "observed_parent_commit": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
+    "observed_parent_tree": "4bbc59481ca90ccd62e702baa3b865a221d4b2e5"
+  },
+  "supersedes_for_current_execution": [
+    "HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V3.md",
+    "HEPTA_INFERENCE_CURRENT_STATUS_V3.json",
+    "HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V2.json",
+    "HEPTA_INFERENCE_STAGE_MATRIX_V4.json",
+    "HEPTA_INFERENCE_BLOCKER_LEDGER_V1.json",
+    "HEPTA_INFERENCE_V3_CLOSURE_EVIDENCE_CONTRACT_V1.json"
+  ],
+  "current_truth": {
+    "status": "HEPTA_INFERENCE_CURRENT_STATUS_V4.json",
+    "implementation": "HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V3.json",
+    "stage_matrix": "HEPTA_INFERENCE_STAGE_MATRIX_V5.json",
+    "blocker_ledger": "HEPTA_INFERENCE_BLOCKER_LEDGER_V2.json",
+    "evidence_contract": "HEPTA_INFERENCE_V4_CLOSURE_EVIDENCE_CONTRACT_V1.json"
+  },
+  "status": "SOURCE_BOUND_ACTIVE_PLAN",
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

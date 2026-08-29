@@ -1,0 +1,120 @@
+{
+  "schema": "hepta.inference.current_status.v4",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V4",
+  "plan_version": "4.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "canonical_default_branch": "integration/vnext-main-20260811",
+  "canonical_default_head_observed": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+  "development_pr": 73,
+  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "development_base_commit": "6f3286f99f5576b4cc545003889437bf388bb28a",
+  "source_binding": {
+    "mode": "tracked status binds observed parent; exact candidate head/tree are emitted only by CI",
+    "observed_parent_commit": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
+    "observed_parent_tree": "4bbc59481ca90ccd62e702baa3b865a221d4b2e5"
+  },
+  "current_status": "EXECUTED_FAILED",
+  "maximum_valid_claim": "SOURCE_PRESENT_NOT_QUALIFIED",
+  "current_packages": [
+    "INF-D0",
+    "INF-Q0"
+  ],
+  "truth_documents": {
+    "current_plan": "HEPTA_INFERENCE_CURRENT_PLAN_V1.json",
+    "active_plan": "HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V4.md",
+    "implementation_status": "HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V3.json",
+    "stage_matrix": "HEPTA_INFERENCE_STAGE_MATRIX_V5.json",
+    "blocker_ledger": "HEPTA_INFERENCE_BLOCKER_LEDGER_V2.json",
+    "evidence_contract": "HEPTA_INFERENCE_V4_CLOSURE_EVIDENCE_CONTRACT_V1.json"
+  },
+  "observed_exact_head_execution": {
+    "head": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
+    "tree": "4bbc59481ca90ccd62e702baa3b865a221d4b2e5",
+    "source_truth": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+    "rust_linux_x64": "EXECUTED_FAILED_FORMATTING",
+    "rust_linux_arm64": "EXECUTED_FAILED_FORMATTING",
+    "rust_macos_intel": "EXECUTED_FAILED_FORMATTING",
+    "locked_check": "SKIPPED_AFTER_FORMATTING_FAILURE",
+    "all_target_tests": "SKIPPED_AFTER_FORMATTING_FAILURE",
+    "strict_clippy": "SKIPPED_AFTER_FORMATTING_FAILURE",
+    "runs": {
+      "single_platform": 33265631214,
+      "multi_platform": 33265631127,
+      "historical_protocol": 33265631140
+    }
+  },
+  "source_present_not_qualified": {
+    "public_worker_operator_role_denial": true,
+    "global_and_tenant_inflight_running_bounds": true,
+    "deadline_sweep": true,
+    "token_chain_count_and_limit_enforcement": true,
+    "connection_semaphore_and_io_timeouts": true,
+    "atomic_receipt_recovery_and_budget": true,
+    "terminal_memory_release_after_durable_persist": true,
+    "durable_request_id_replay_guard": true
+  },
+  "repository_source_gaps": {
+    "v4_current_truth_gate": false,
+    "exact_head_format_check": false,
+    "historical_current_gate_isolation": false,
+    "daemon_minted_request_capability": false,
+    "authenticated_private_worker_channel": false,
+    "authenticated_private_operator_channel": false,
+    "worker_session_nonce": false,
+    "running_cancel_ack_and_forced_kill": false,
+    "receipt_retention_or_compaction": false,
+    "scheduler_and_reservation_ledger": false,
+    "provider_runtime_host_behind_daemon": false,
+    "isolated_worker_host_process": false,
+    "product_shadow_bridge": false
+  },
+  "external_evidence_gaps": {
+    "real_provider_fixed_tuple_execution": false,
+    "real_native_model_execution": false,
+    "exact_device_performance": false,
+    "privacy_review": false,
+    "independent_operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  },
+  "claims": {
+    "source_candidate_present": true,
+    "source_candidate_qualified": false,
+    "real_provider_executed": false,
+    "real_native_model_executed": false,
+    "hardware_qualified": false,
+    "product_wired": false,
+    "runtime_activated": false,
+    "production_qualified": false,
+    "operator_accepted": false,
+    "promoted": false,
+    "released": false
+  },
+  "next_packages": [
+    "INF-Q0",
+    "INF-S1",
+    "INF-S2",
+    "INF-S3",
+    "INF-S4",
+    "INF-R1",
+    "INF-R2",
+    "INF-R3"
+  ],
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
