@@ -1,0 +1,43 @@
+{
+  "schema": "hepta.ui.external-evidence-ledger.v1",
+  "candidate": {
+    "commit": "304143bf362e6cc8369158309b7b9c7c9c3d3868",
+    "tree": "a28c7808e64e2cfa21a8ed3fcbc5525cbbfbac3f"
+  },
+  "status": "BLOCKED_EXTERNAL_EVIDENCE_REQUIRED",
+  "syntheticEvidenceAllowed": false,
+  "slots": [
+    {
+      "id": "windowsDevice",
+      "state": "REQUIRED_NOT_PRESENT",
+      "physical": true
+    },
+    {
+      "id": "operatorAcceptance",
+      "state": "REQUIRED_NOT_PRESENT",
+      "humanSigned": true
+    },
+    {
+      "id": "macosDevice",
+      "state": "REQUIRED_NOT_PRESENT",
+      "physical": true
+    },
+    {
+      "id": "iosDevice",
+      "state": "REQUIRED_NOT_PRESENT",
+      "physical": true
+    },
+    {
+      "id": "androidDevice",
+      "state": "REQUIRED_NOT_PRESENT",
+      "physical": true
+    },
+    {
+      "id": "browserHumanAcceptance",
+      "state": "REQUIRED_NOT_PRESENT",
+      "humanSigned": true
+    }
+  ],
+  "externalEvidenceComplete": false,
+  "allGapsClosed": false
+}

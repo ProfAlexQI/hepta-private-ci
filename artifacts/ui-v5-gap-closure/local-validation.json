@@ -1,0 +1,67 @@
+{
+  "python3 -m py_compile /Users/runner/work/_temp/apply-hepta-ui-v5-gap-closure.py": {
+    "status": "PASS",
+    "stdout": ""
+  },
+  "bash -n scripts/hepta-ci-baseline-contract": {
+    "status": "PASS",
+    "stdout": ""
+  },
+  "ruby -c scripts/hepta-ui-v4-exact-candidate-materialization-gate": {
+    "status": "PASS",
+    "stdout": "Syntax OK\n"
+  },
+  "ruby -c scripts/hepta-ui-v4-apply-makepad-windows-ack-patch": {
+    "status": "PASS",
+    "stdout": "Syntax OK\n"
+  },
+  "ruby -c scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch": {
+    "status": "PASS",
+    "stdout": "Syntax OK\n"
+  },
+  "ruby -e require \"yaml\"; ARGV.each { |p| YAML.parse_file(p) } .github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml .github/workflows/hepta-ui-v4-windows-material-profile-aggregate.yml .github/workflows/windows-msvc-bazel.yml": {
+    "status": "PASS",
+    "stdout": ""
+  },
+  "git diff --check": {
+    "status": "PASS",
+    "stdout": ""
+  },
+  "json:docs/ui/HEPTA_UI_ACTIVE_PLAN_V5.json": {
+    "status": "PASS"
+  },
+  "json:docs/ui/HEPTA_UI_REPOSITORY_GAP_LEDGER_V1.json": {
+    "status": "PASS"
+  },
+  "json:docs/ui/HEPTA_UI_EXTERNAL_EVIDENCE_LEDGER_V1.json": {
+    "status": "PASS"
+  },
+  "changedPaths": [
+    ".github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml",
+    ".github/workflows/hepta-ui-v4-windows-material-profile-aggregate.yml",
+    ".github/workflows/windows-msvc-bazel.yml",
+    "codex-rs/analytics/src/analytics_client_tests.rs",
+    "codex-rs/app-server-protocol/src/protocol/v2/turn.rs",
+    "codex-rs/core-plugins/src/manager_tests.rs",
+    "codex-rs/exec-server/src/client.rs",
+    "codex-rs/memories/mcp/src/server.rs",
+    "codex-rs/thread-store/src/local/mod.rs",
+    "codex-rs/thread-store/src/local/read_thread.rs",
+    "codex-rs/tools/src/mcp_tool_tests.rs",
+    "codex-rs/tools/src/responses_api_tests.rs",
+    "docs/ui/HEPTA_UI_ACTIVE_PLAN_V5.json",
+    "docs/ui/HEPTA_UI_DEVELOPMENT_PLAN_V5_2026-08-29.md",
+    "docs/ui/HEPTA_UI_EXTERNAL_EVIDENCE_LEDGER_V1.json",
+    "docs/ui/HEPTA_UI_REPOSITORY_GAP_LEDGER_V1.json",
+    "scripts/hepta-ci-baseline-contract",
+    "scripts/hepta-ui-v4-apply-makepad-windows-ack-patch",
+    "scripts/hepta-ui-v4-exact-candidate-materialization-gate",
+    "scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch"
+  ],
+  "base": {
+    "commit": "304143bf362e6cc8369158309b7b9c7c9c3d3868",
+    "tree": "a28c7808e64e2cfa21a8ed3fcbc5525cbbfbac3f"
+  },
+  "qualified": false,
+  "reason": "Hosted exact-head execution and external evidence are not produced by a local applicator."
+}

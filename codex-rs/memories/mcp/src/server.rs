@@ -90,13 +90,12 @@ impl<B: MemoriesBackend> MemoriesMcpServer<B> {
 
 impl<B: MemoriesBackend> ServerHandler for MemoriesMcpServer<B> {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some(
-                "Use these tools to list, read, and search Hepta memory files.".to_string(),
-            ),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            ..ServerInfo::default()
-        }
+        let mut info = ServerInfo::default();
+        info.instructions = Some(
+            "Use these tools to list, read, and search Hepta memory files.".to_string(),
+        );
+        info.capabilities = ServerCapabilities::builder().enable_tools().build();
+        info
     }
 
     fn list_tools(
@@ -176,12 +175,10 @@ impl<B: MemoriesBackend> ServerHandler for MemoriesMcpServer<B> {
             }
         };
 
-        Ok(CallToolResult {
-            content: vec![Content::text(structured_content.to_string())],
-            structured_content: Some(structured_content),
-            is_error: Some(false),
-            meta: None,
-        })
+        let text = Content::text(structured_content.to_string());
+        let mut result = CallToolResult::structured(structured_content);
+        result.content = vec![text];
+        Ok(result)
     }
 }
 

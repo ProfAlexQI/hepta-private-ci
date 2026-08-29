@@ -608,6 +608,9 @@ mod tests {
             .await
             .expect("state db upsert should succeed");
 
+        let expected_rollout_path = std::fs::canonicalize(&active_path)
+            .expect("canonicalize active rollout path");
+
         let thread_by_path = store
             .read_thread_by_rollout_path(
                 active_path.clone(),
@@ -626,7 +629,7 @@ mod tests {
             .expect("read paginated thread by id");
 
         for thread in [thread_by_path, thread_by_id] {
-            assert_eq!(thread.rollout_path, Some(active_path.clone()));
+            assert_eq!(thread.rollout_path, Some(expected_rollout_path.clone()));
             assert_eq!(thread.preview, "sqlite preview");
             assert_eq!(
                 thread.first_user_message.as_deref(),

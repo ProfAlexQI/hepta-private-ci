@@ -1,0 +1,154 @@
+name: hepta-ui-v4-windows-material-profile-aggregate
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-windows-material-profile-aggregate-*"
+  pull_request:
+    paths:
+      - "apps/hepta-native/src/shared/hepta_windows_material_profile_aggregate.rs"
+      - "apps/hepta-native/src/shared/hepta_windows_transient_material_host.rs"
+      - "apps/hepta-native/src/shared/mod.rs"
+      - "docs/ui/HEPTA_WINDOWS_MATERIAL_PROFILE_AGGREGATE_V1.json"
+      - "docs/ui/schemas/hepta.ui.v4.windows-material-profile-aggregate.v1.schema.json"
+      - "docs/ui/HEPTA_UI_V4_TRANCHE_14_WINDOWS_PROFILE_AGGREGATE_2026-08-28.md"
+      - "scripts/hepta-ui-v4-windows-material-profile-aggregate-gate"
+      - ".github/workflows/hepta-ui-v4-windows-material-profile-aggregate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+concurrency:
+  group: hepta-ui-v4-windows-material-profile-aggregate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: Windows transient host and profile aggregate source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact checkout identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+
+      - name: Validate formats and source boundary
+        run: |
+          ruby -c scripts/hepta-ui-v4-windows-material-profile-aggregate-gate
+          ruby -rjson -e 'ARGV.each { |path| JSON.parse(File.read(path)) }' \
+            docs/ui/HEPTA_WINDOWS_MATERIAL_PROFILE_AGGREGATE_V1.json \
+            docs/ui/schemas/hepta.ui.v4.windows-material-profile-aggregate.v1.schema.json
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-windows-material-profile-aggregate.yml")'
+          ruby scripts/hepta-ui-v4-windows-material-profile-aggregate-gate \
+            | tee windows-material-profile-aggregate-source.json
+
+      - name: Verify fail-closed receipt
+        run: |
+          ruby -rjson -e '
+            receipt = JSON.parse(File.read("windows-material-profile-aggregate-source.json"))
+            abort "unexpected source status" unless receipt.fetch("status") == "PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE_SOURCE_ONLY"
+            receipt.each do |key, value|
+              next unless key.end_with?("validation") || key.end_with?("authority") || %w[product_integration_eligible product_bound transient_system_material_binding complete_profile_binding system_material_binding operator_acceptance promotion release].include?(key)
+              abort "#{key} escaped source-only boundary" unless value == false
+            end
+          '
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hepta-ui-v4-windows-profile-aggregate-source-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: windows-material-profile-aggregate-source.json
+          if-no-files-found: error
+          retention-days: 14
+
+  native-compile:
+    name: Windows transient host and profile aggregate compile (${{ matrix.os }})
+    needs: source-contract
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Enable Windows long paths before checkout
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global core.longpaths true
+
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact checkout identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+
+      - name: Install Linux Native build dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential \
+            pkg-config \
+            clang \
+            ca-certificates \
+            libssl-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxkbcommon-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxinerama-dev \
+            libasound2-dev \
+            libpulse-dev \
+            libwayland-dev \
+            wayland-protocols \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev \
+            libgles2-mesa-dev \
+            libglx-dev \
+            libdrm-dev \
+            libgbm-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+
+      - name: Format and compile
+        run: |
+          cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
+          cargo check --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features
+
+      - name: Focused host and aggregate tests
+        shell: bash
+        run: |
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_windows_transient_material_host::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_windows_material_profile_aggregate::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_window_visual_ack::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_windows_backend_ack_bridge::tests -- --nocapture

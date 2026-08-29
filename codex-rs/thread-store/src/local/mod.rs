@@ -786,9 +786,9 @@ mod tests {
                 .path()
                 .join("thread-writer-locks")
                 .join(format!("{thread_id}.lock"));
-            assert_eq!(
+            assert!(
                 lock_path.exists(),
-                matches!(history_mode, ThreadHistoryMode::Paginated)
+                "every live local writer must hold a process-coordinated writer lock"
             );
             store
                 .discard_thread(thread_id)

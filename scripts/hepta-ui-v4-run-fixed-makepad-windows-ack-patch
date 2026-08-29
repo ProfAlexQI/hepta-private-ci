@@ -7,7 +7,7 @@ require "pathname"
 require "rbconfig"
 require "tempfile"
 
-EXPECTED_PATCHER_BLOB = "369e607f4f80d08d739d2f83778fb4e37aa50d4e"
+EXPECTED_PATCHER_BLOB = "5d1e606c04f33dfa332c8691b042ca2ad466edc5"
 
 ORIGINAL_FUNCTION = <<~'RUBY'.freeze
 def replace_once!(path, before, after, label)
@@ -106,7 +106,10 @@ def repaired_source(repo_root)
   fixed_source
 end
 
-def run_self_test
+def run_self_test(fixed_source)
+  raise "correlated CxOsOp Debug arm is missing" unless
+    fixed_source.include?("correlated CxOsOp Debug arm") &&
+      fixed_source.include?("Self::SetWindowVisualsCorrelated { .. }")
   sandbox = Module.new
   sandbox.const_set(:PatchError, Class.new(StandardError))
   sandbox.module_eval(REPAIRED_FUNCTION, "(repaired matcher)", 1)
@@ -148,6 +151,7 @@ def run_self_test
     ambiguous_match_rejected: true,
     replacement_backslashes_preserved: true,
     changed_file_paths_chomped: true,
+    correlated_debug_arm_added: true,
     production_authority: false,
     effect_authority: false,
     release: false
@@ -156,8 +160,8 @@ end
 
 repo_root = Pathname.new(__dir__).join("..").expand_path
 if ARGV == ["--self-test"]
-  repaired_source(repo_root)
-  run_self_test
+  fixed_source = repaired_source(repo_root)
+  run_self_test(fixed_source)
   exit 0
 end
 

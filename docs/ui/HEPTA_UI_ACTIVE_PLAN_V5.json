@@ -1,0 +1,19 @@
+{
+  "schema": "hepta.ui.active-plan.v5",
+  "status": "REPOSITORY_GAP_CLOSURE_CANDIDATE_EXTERNAL_EVIDENCE_REQUIRED",
+  "repository": "ProfHepta/hepta-private-ci",
+  "baseBranch": "codex/ui-v4-executable-final-gap-closure-v3-20260829",
+  "baseCommit": "304143bf362e6cc8369158309b7b9c7c9c3d3868",
+  "baseTree": "a28c7808e64e2cfa21a8ed3fcbc5525cbbfbac3f",
+  "workBranch": "codex/ui-v5-plan-and-repo-gap-closure-20260829",
+  "planningAuthority": true,
+  "runtimeAuthority": false,
+  "effectAuthority": false,
+  "productionAuthority": false,
+  "operatorAcceptance": false,
+  "promotionAuthority": false,
+  "releaseAuthority": false,
+  "sourceControllableGapsClosed": false,
+  "externalEvidenceComplete": false,
+  "allGapsClosed": false
+}

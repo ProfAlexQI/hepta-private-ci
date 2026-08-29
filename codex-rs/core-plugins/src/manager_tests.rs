@@ -401,7 +401,10 @@ plugins = true
     );
 
     let config = load_config(codex_home.path(), codex_home.path()).await;
-    let manager = PluginsManager::new(codex_home.path().to_path_buf());
+    let manager = PluginsManager::new_with_restriction_product(
+        codex_home.path().to_path_buf(),
+        /*restriction_product*/ None,
+    );
     manager.write_remote_installed_plugins_cache(vec![RemoteInstalledPlugin {
         marketplace_name: "chatgpt-global".to_string(),
         id: "plugins~Plugin_linear".to_string(),

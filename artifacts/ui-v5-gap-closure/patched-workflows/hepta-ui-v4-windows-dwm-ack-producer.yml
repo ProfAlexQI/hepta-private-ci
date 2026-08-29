@@ -1,0 +1,200 @@
+name: hepta-ui-v4-windows-dwm-ack-producer
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-windows-dwm-ack-producer-*"
+  pull_request:
+    paths:
+      - "apps/hepta-native/src/shared/hepta_window_visual_ack.rs"
+      - "apps/hepta-native/src/shared/hepta_windows_material_adapter.rs"
+      - "apps/hepta-native/src/shared/hepta_windows_window_ack_producer.rs"
+      - "apps/hepta-native/src/shared/mod.rs"
+      - "docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"
+      - "docs/ui/HEPTA_WINDOWS_DWM_ACK_PRODUCER_V1.json"
+      - "docs/ui/HEPTA_UI_V4_TRANCHE_10_WINDOWS_DWM_ACK_PRODUCER_2026-08-28.md"
+      - "scripts/hepta-ui-v4-window-ack-matrix-gate"
+      - "scripts/hepta-ui-v4-windows-dwm-ack-producer-gate"
+      - ".github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+concurrency:
+  group: hepta-ui-v4-windows-dwm-ack-producer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: Windows DWM acknowledgement producer source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate source formats
+        run: |
+          ruby -c scripts/hepta-ui-v4-window-ack-matrix-gate
+          ruby -c scripts/hepta-ui-v4-windows-dwm-ack-producer-gate
+          ruby -rjson -e 'ARGV.each { |path| JSON.parse(File.read(path)) }' \
+            docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json \
+            docs/ui/HEPTA_WINDOWS_DWM_ACK_PRODUCER_V1.json
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml")'
+
+      - name: Run inherited acknowledgement and component-matrix source gate
+        run: |
+          mkdir -p artifacts/ui-v4-windows-dwm-ack
+          ruby scripts/hepta-ui-v4-window-ack-matrix-gate \
+            | tee artifacts/ui-v4-windows-dwm-ack/inherited-source-gate.json
+
+      - name: Run Windows DWM acknowledgement producer source gate
+        run: |
+          ruby scripts/hepta-ui-v4-windows-dwm-ack-producer-gate \
+            | tee artifacts/ui-v4-windows-dwm-ack/source-gate.json
+
+      - name: Verify source-only claim boundary
+        run: |
+          ruby -rjson -e '
+            inherited = JSON.parse(File.read("artifacts/ui-v4-windows-dwm-ack/inherited-source-gate.json"))
+            abort "unexpected inherited status" unless inherited.fetch("status") == "PASS_WINDOW_ACK_COMPONENT_MATRIX_SOURCE_ONLY"
+            receipt = JSON.parse(File.read("artifacts/ui-v4-windows-dwm-ack/source-gate.json"))
+            abort "unexpected source status" unless receipt.fetch("status") == "PASS_WINDOWS_DWM_ACK_PRODUCER_SOURCE_ONLY"
+            %w[
+              native_compile_validation windows_compile_validation
+              explicit_hwnd_host_binding backend_ack_runtime_validation
+              backdrop_readback_validation full_visual_readback_validation
+              transient_system_material_binding complete_profile_binding
+              system_material_binding device_validation
+              production_authority effect_authority live_adapter_authority
+              operator_acceptance promotion release
+            ].each do |key|
+              abort "#{key} escaped source-only boundary" unless receipt.fetch(key) == false
+            end
+          '
+
+      - name: Bind source receipt to exact commit and tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CANDIDATE_TREE="$(git rev-parse 'HEAD^{tree}')"
+          ruby -rjson -e '
+            receipt = JSON.parse(File.read("artifacts/ui-v4-windows-dwm-ack/source-gate.json"))
+            receipt["candidate"] = {
+              "commit" => ENV.fetch("HEPTA_CANDIDATE_SHA"),
+              "tree" => ENV.fetch("CANDIDATE_TREE")
+            }
+            File.write(
+              "artifacts/ui-v4-windows-dwm-ack/source-receipt.json",
+              JSON.pretty_generate(receipt) + "\n"
+            )
+          '
+
+      - name: Upload source receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-windows-dwm-ack-source-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: artifacts/ui-v4-windows-dwm-ack
+          if-no-files-found: error
+          retention-days: 14
+
+  compile-contract:
+    name: Windows DWM acknowledgement compile (${{ matrix.os }})
+    needs: source-contract
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    steps:
+      - name: Enable Windows long paths before checkout
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global core.longpaths true
+
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install Linux Native build dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential \
+            pkg-config \
+            clang \
+            ca-certificates \
+            libssl-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxkbcommon-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxinerama-dev \
+            libasound2-dev \
+            libpulse-dev \
+            libwayland-dev \
+            wayland-protocols \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev \
+            libgles2-mesa-dev \
+            libglx-dev \
+            libdrm-dev \
+            libgbm-dev
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+
+      - name: Check Native formatting
+        run: cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
+
+      - name: Compile Native library without product bridge defaults
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo check --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features
+
+      - name: Run scoped acknowledgement tests
+        shell: bash
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_window_visual_ack::tests -- --nocapture
+
+      - name: Run Windows backdrop mapping and full-profile adapter tests
+        shell: bash
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_windows_material_adapter::tests -- --nocapture
+
+      - name: Run Windows backdrop-only producer tests
+        shell: bash
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_windows_window_ack_producer::tests -- --nocapture

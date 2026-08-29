@@ -1,0 +1,78 @@
+{
+  "schema": "hepta.ui.repository-gap-ledger.v1",
+  "candidate": {
+    "commit": "304143bf362e6cc8369158309b7b9c7c9c3d3868",
+    "tree": "a28c7808e64e2cfa21a8ed3fcbc5525cbbfbac3f",
+    "branch": "codex/ui-v5-plan-and-repo-gap-closure-20260829"
+  },
+  "status": "PATCH_CANDIDATE_REQUIRES_COMMIT_AND_HOSTED_EXECUTION",
+  "gaps": [
+    {
+      "id": "REPO-UI-001",
+      "title": "contract fixture missing frozen Git objects",
+      "state": "PATCHED_CANDIDATE",
+      "paths": [
+        "scripts/hepta-ci-baseline-contract"
+      ]
+    },
+    {
+      "id": "REPO-UI-002",
+      "title": "DWM Windows job executes Bash continuation in PowerShell",
+      "state": "PATCHED_CANDIDATE",
+      "paths": [
+        ".github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml"
+      ]
+    },
+    {
+      "id": "REPO-UI-003",
+      "title": "aggregate Windows job executes Bash continuation in PowerShell",
+      "state": "PATCHED_CANDIDATE",
+      "paths": [
+        ".github/workflows/hepta-ui-v4-windows-material-profile-aggregate.yml"
+      ]
+    },
+    {
+      "id": "REPO-UI-004",
+      "title": "patched Makepad CxOsOp Debug match is non-exhaustive",
+      "state": "PATCHED_CANDIDATE",
+      "paths": [
+        "scripts/hepta-ui-v4-apply-makepad-windows-ack-patch",
+        "scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch"
+      ]
+    },
+    {
+      "id": "REPO-UI-005",
+      "title": "pipefail gate rejects set -euo pipefail",
+      "state": "PATCHED_CANDIDATE",
+      "paths": [
+        "scripts/hepta-ui-v4-exact-candidate-materialization-gate"
+      ]
+    },
+    {
+      "id": "REPO-UI-006",
+      "title": "rmcp 1.8 non_exhaustive constructors",
+      "state": "PATCHED_CANDIDATE",
+      "paths": [
+        "codex-rs/memories/mcp/src/server.rs",
+        "codex-rs/tools/src/mcp_tool_tests.rs",
+        "codex-rs/tools/src/responses_api_tests.rs"
+      ]
+    },
+    {
+      "id": "REPO-UI-007",
+      "title": "Windows Bazel Rust/test compatibility regressions",
+      "state": "PATCHED_CANDIDATE",
+      "paths": [
+        "codex-rs/analytics/src/analytics_client_tests.rs",
+        "codex-rs/app-server-protocol/src/protocol/v2/turn.rs",
+        "codex-rs/thread-store/src/local/read_thread.rs",
+        "codex-rs/thread-store/src/local/mod.rs",
+        "codex-rs/exec-server/src/client.rs",
+        "codex-rs/core-plugins/src/manager_tests.rs",
+        ".github/workflows/windows-msvc-bazel.yml"
+      ]
+    }
+  ],
+  "closureRule": "Every gap requires a committed exact-head diff and a successful nonempty assigned-runner result; local source transformation is not qualification.",
+  "sourceControllableGapsClosed": false
+}

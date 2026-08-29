@@ -81,6 +81,23 @@ replace_once!(
 )
 
 replace_once!(
+  checkout.join("platform/src/cx_api.rs"),
+  <<~'RUST'.chomp,
+            Self::SetWindowVisuals(..) => write!(f, "SetWindowVisuals"),
+            Self::ShowInDock(..) => write!(f, "ShowInDock"),
+  RUST
+  <<~'RUST'.chomp,
+            Self::SetWindowVisuals(..) => write!(f, "SetWindowVisuals"),
+            #[cfg(target_os = "windows")]
+            Self::SetWindowVisualsCorrelated { .. } => {
+                write!(f, "SetWindowVisualsCorrelated")
+            }
+            Self::ShowInDock(..) => write!(f, "ShowInDock"),
+  RUST
+  "correlated CxOsOp Debug arm"
+)
+
+replace_once!(
   checkout.join("platform/src/window.rs"),
   "};\n\npub struct WindowHandle(PoolId);",
   <<~'RUST'.chomp,

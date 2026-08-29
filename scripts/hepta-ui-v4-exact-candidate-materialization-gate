@@ -62,7 +62,13 @@ checks["workflow.exact_candidate_env"] =
 checks["workflow.exact_checkout"] =
   workflow.scan('ref: ${{ env.HEPTA_CANDIDATE_SHA }}').length >= 4 &&
   workflow.include?('test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"')
-checks["workflow.pipefail"] = workflow.scan("set -o pipefail").length >= 3
+pipefail_lines = workflow.each_line.count do |line|
+  stripped = line.strip
+  stripped.match?(/\Aset\s+-o\s+pipefail\z/) ||
+    stripped.match?(/\Aset\s+-[A-Za-z]*o[A-Za-z]*\s+pipefail\z/) ||
+    stripped.match?(/\Aset\s+-[A-Za-z]+\s+-o\s+pipefail\z/)
+end
+checks["workflow.pipefail"] = pipefail_lines >= 3
 checks["workflow.self_test"] =
   workflow.include?("hepta-ui-v4-run-fixed-makepad-windows-ack-patch --self-test")
 checks["workflow.inherited_source_chain"] =

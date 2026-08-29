@@ -798,6 +798,22 @@ self_test() (
   r9_ref="refs/remotes/upstream/hepta-intake-20260724-r9"
   r9_sha="000d2540ad73996f3589ae178bfe447bfd67cef2"
   git clone -q --shared --no-checkout "$ROOT" "$ref_fixture"
+  local intake_url fixture_role fixture_ref fixture_sha fetched_sha
+  intake_url="$(jq -er '.upstream_intake.url' "$tmp/contract.json")"
+  while IFS=$'\t' read -r fixture_role fixture_ref fixture_sha; do
+    if ! git -C "$ref_fixture" cat-file -e "${fixture_sha}^{commit}" 2>/dev/null; then
+      git -C "$ref_fixture" fetch --no-tags --filter=blob:none "$intake_url" "$fixture_sha" >/dev/null
+      fetched_sha="$(git -C "$ref_fixture" rev-parse --verify FETCH_HEAD)"
+      [[ "$fetched_sha" == "$fixture_sha" ]] || {
+        echo "Hepta CI contract self-test fetched the wrong frozen object for $fixture_role: expected $fixture_sha, found $fetched_sha" >&2
+        return 1
+      }
+      [[ "$(git -C "$ref_fixture" cat-file -t "$fetched_sha")" == "commit" ]] || {
+        echo "Hepta CI contract self-test fetched a non-commit object for $fixture_role: $fetched_sha" >&2
+        return 1
+      }
+    fi
+  done < <(jq -er '.upstream_intake.refs[] | [.role,.ref,.sha] | @tsv' "$tmp/contract.json")
   git -C "$ref_fixture" update-ref "$predecessor_ref" "$predecessor_sha"
   git -C "$ref_fixture" update-ref "$r2_ref" "$r2_sha"
   git -C "$ref_fixture" update-ref "$r3_ref" "$r3_sha"
