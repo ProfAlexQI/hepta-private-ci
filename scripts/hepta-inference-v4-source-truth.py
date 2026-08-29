@@ -69,7 +69,7 @@ REQUIRED_PATHS = (
     *SCRIPTS,
     "codex-rs/Cargo.toml",
     "codex-rs/Cargo.lock",
-    "rust-toolchain.toml",
+    "codex-rs/rust-toolchain.toml",
     "codex-rs/hepta-infer-core/Cargo.toml",
     "codex-rs/hepta-infer-core/src/controller.rs",
     "codex-rs/hepta-infer-core/src/hashing.rs",
@@ -318,15 +318,15 @@ def require_workspace() -> dict[str, Any]:
     if "hepta-infer-worker-host" in members:
         fail("worker-host may not enter workspace before its complete package lands")
 
-    toolchain = load_toml("rust-toolchain.toml").get("toolchain")
+    toolchain = load_toml("codex-rs/rust-toolchain.toml").get("toolchain")
     if not isinstance(toolchain, dict) or toolchain.get("channel") != "1.95.0":
-        fail("rust-toolchain.toml must remain pinned to 1.95.0")
+        fail("codex-rs/rust-toolchain.toml must remain pinned to 1.95.0")
 
     return {
         "workspace_member_count": len(members),
         "inference_packages": package_names,
         "cargo_lock_sha256": sha256_file("codex-rs/Cargo.lock"),
-        "rust_toolchain_sha256": sha256_file("rust-toolchain.toml"),
+        "rust_toolchain_sha256": sha256_file("codex-rs/rust-toolchain.toml"),
     }
 
 
