@@ -1,0 +1,261 @@
+name: Hepta Intelligence A0 V4.5 normalized exact-parent publisher
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-a0-v45-repair-generator-20260830"
+    paths:
+      - ".github/workflows/a0-v45-normalized-publisher.yml"
+      - "scripts/a0-v45-generator/payload.*"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-a0-v45-normalized-publisher
+  cancel-in-progress: false
+
+env:
+  Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
+  CANONICAL_A0_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  OUTPUT_BRANCH: tmp/hepta-intelligence-a0-v45-normalized-candidate-20260830
+  ORIGINAL_GENERATOR_SHA256: 50909f010ca32cd513e94c6088b861ea61bad6c17a2417cce1e44d647a37ace2
+
+jobs:
+  generate-validate-publish:
+    name: Generate, validate and publish normalized V4.5 exact-parent candidate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout complete generator source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Reconstruct and deterministically normalize generator
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/a0-v45 /tmp/generator.py
+          mkdir -p /tmp/a0-v45
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import base64
+          import gzip
+          import hashlib
+          import json
+          from pathlib import Path
+
+          payload_paths = sorted(Path("scripts/a0-v45-generator").glob("payload.*"))
+          assert [path.name for path in payload_paths] == [f"payload.{i:02d}" for i in range(7)]
+          encoded = "".join(path.read_text(encoding="utf-8") for path in payload_paths)
+          original = gzip.decompress(base64.b64decode(encoded, validate=True))
+          expected = "50909f010ca32cd513e94c6088b861ea61bad6c17a2417cce1e44d647a37ace2"
+          assert hashlib.sha256(original).hexdigest() == expected
+
+          source = original.decode("utf-8")
+          needle = "    master, spec, agents = transform_markdown(master, spec, agents)\n"
+          assert source.count(needle) == 1
+          normalization = '''\n    # Normalize generated Markdown before computing any registered digest.\n    # This is a deterministic source repair for git-diff whitespace errors only.\n    def normalize_generated_markdown(value: str) -> str:\n        lines = [line.rstrip() for line in value.splitlines()]\n        while lines and lines[-1] == "":\n            lines.pop()\n        return "\\n".join(lines) + "\\n"\n\n    master = normalize_generated_markdown(master)\n    spec = normalize_generated_markdown(spec)\n    agents = normalize_generated_markdown(agents)\n'''
+          patched = source.replace(needle, needle + normalization).encode("utf-8")
+          Path("/tmp/generator.py").write_bytes(patched)
+          provenance = {
+              "schema": "hepta_intelligence_a0_v45_generator_patch_provenance_v1",
+              "original_generator_sha256": hashlib.sha256(original).hexdigest(),
+              "patched_generator_sha256": hashlib.sha256(patched).hexdigest(),
+              "patch_scope": [
+                  "strip trailing whitespace from generated Markdown lines",
+                  "collapse trailing blank lines to exactly one LF",
+                  "apply normalization before registered content digests are computed",
+              ],
+              "authority": False,
+              "source_writeback": False,
+          }
+          Path("/tmp/a0-v45/generator-provenance.json").write_text(
+              json.dumps(provenance, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          python3 -m py_compile /tmp/generator.py
+
+      - name: Generate normalized replacement overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/generator.py --root "$GITHUB_WORKSPACE" --output /tmp/a0-v45
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          from pathlib import Path
+
+          def strict_pairs(pairs):
+              out = {}
+              for key, value in pairs:
+                  if key in out:
+                      raise ValueError(f"duplicate JSON key: {key}")
+                  out[key] = value
+              return out
+
+          output = Path("/tmp/a0-v45")
+          manifest = json.loads(
+              (output / "repair-manifest.json").read_text(encoding="utf-8"),
+              object_pairs_hook=strict_pairs,
+          )
+          assert manifest["source_head"] == "0a93b172e575670d20c30e2efa7f312097466fe6"
+          assert manifest["source_tree"] == "d06bf9cf39eb3c8030d65f62de78dd326bfa9604"
+          assert manifest["replacement_parent"] == "c768bcbeb4c1168088d2499828c24da521a2a73a"
+          assert manifest["plan_version"] == "4.5.0"
+          assert manifest["spec_version"] == "1.3.0"
+          assert manifest["changed_path_count"] == 17
+          assert manifest["source_writeback"] is False
+          assert manifest["a0_candidate_qualified"] is False
+          assert manifest["authority"] and all(value is False for value in manifest["authority"].values())
+          assert len(manifest["files"]) == 17
+          for item in manifest["files"]:
+              path = output / "generated" / item["path"]
+              assert path.is_file(), item["path"]
+              assert path.stat().st_size == item["size"]
+              assert hashlib.sha256(path.read_bytes()).hexdigest() == item["sha256"]
+              text = path.read_text(encoding="utf-8")
+              assert "\r" not in text
+              assert not text.endswith("\n\n")
+              assert all(line == line.rstrip() for line in text.splitlines())
+              if path.suffix == ".json":
+                  json.loads(text, object_pairs_hook=strict_pairs)
+          PY
+
+      - name: Build the sole-child Q0 replacement commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout --detach "$Q0_HEAD"
+          cp -a /tmp/a0-v45/generated/. .
+          chmod +x \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+          git add -A
+          git diff --cached --check
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import subprocess
+          from pathlib import Path
+
+          def strict_pairs(pairs):
+              out = {}
+              for key, value in pairs:
+                  if key in out:
+                      raise ValueError(f"duplicate JSON key: {key}")
+                  out[key] = value
+              return out
+
+          manifest = json.loads(
+              Path("/tmp/a0-v45/repair-manifest.json").read_text(encoding="utf-8"),
+              object_pairs_hook=strict_pairs,
+          )
+          changed = sorted(
+              path
+              for path in subprocess.check_output(
+                  ["git", "diff", "--cached", "--name-only"], text=True
+              ).splitlines()
+              if path
+          )
+          expected = [item["path"] for item in manifest["files"]]
+          assert changed == expected
+          assert len(changed) == 17
+          for item in manifest["files"]:
+              path = Path(item["path"])
+              assert hashlib.sha256(path.read_bytes()).hexdigest() == item["sha256"]
+          PY
+          git -c user.name='Hepta A0 V4.5 source publisher' \
+              -c user.email='hepta-a0-v45-publisher@invalid.example' \
+              commit -m 'docs(intelligence): normalize and validate V4.5 A0 source contract'
+          test "$(git rev-parse HEAD^)" = "$Q0_HEAD"
+          test "$(git rev-list --count "$Q0_HEAD"..HEAD)" = 1
+
+      - name: Run strict source and legacy compatibility gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-document-authority.py
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          python3 scripts/hepta-intelligence-current-truth.py --compact >/tmp/a0-v45/current-truth-1.json
+          python3 scripts/hepta-intelligence-current-truth.py --compact >/tmp/a0-v45/current-truth-2.json
+          cmp /tmp/a0-v45/current-truth-1.json /tmp/a0-v45/current-truth-2.json
+          GITHUB_SHA="$(git rev-parse HEAD)" \
+          GITHUB_REPOSITORY='ProfHepta/hepta-private-ci' \
+          GITHUB_REF_NAME="$CANONICAL_A0_BRANCH" \
+            python3 scripts/verify-hepta-intelligence-a0-authority.py \
+            | tee /tmp/a0-v45/a0-source-evidence-receipt.json
+          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
+            python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
+          done
+          git diff --check HEAD^ HEAD
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Seal validation receipt and replacement patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --binary "$Q0_HEAD" HEAD >/tmp/a0-v45/a0-v45-normalized-replacement.patch
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import subprocess
+          from pathlib import Path
+
+          output = Path("/tmp/a0-v45")
+          manifest = json.loads((output / "repair-manifest.json").read_text(encoding="utf-8"))
+          provenance = json.loads((output / "generator-provenance.json").read_text(encoding="utf-8"))
+          manifest.update(
+              {
+                  "validation_architecture": "x86_64-unknown-linux-gnu/ubuntu-22.04",
+                  "validation_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+                  "validation_tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(),
+                  "validation_parent": subprocess.check_output(["git", "rev-parse", "HEAD^"], text=True).strip(),
+                  "original_generator_sha256": provenance["original_generator_sha256"],
+                  "patched_generator_sha256": provenance["patched_generator_sha256"],
+                  "patch_sha256": hashlib.sha256(
+                      (output / "a0-v45-normalized-replacement.patch").read_bytes()
+                  ).hexdigest(),
+                  "status": "PASS_LOCAL_EXACT_PARENT_V4_5_NORMALIZED_REPLACEMENT_VALIDATION",
+              }
+          )
+          (output / "validated-repair-manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Publish only the validated isolated candidate ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push --force origin "HEAD:refs/heads/$OUTPUT_BRANCH"
+
+      - name: Upload deterministic repair evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-a0-v45-normalized-${{ github.sha }}
+          path: /tmp/a0-v45/**
+          if-no-files-found: error
+          retention-days: 30
