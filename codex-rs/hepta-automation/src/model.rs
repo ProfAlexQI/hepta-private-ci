@@ -16,25 +16,24 @@ use sha2::Digest;
 use sha2::Sha256;
 use uuid::Uuid;
 
-use crate::AutomationError;
-
 pub const MAX_AUTOMATION_PROMPT_BYTES: usize = 32 * 1024;
 pub const MAX_AUTOMATION_THREAD_ID_BYTES: usize = 512;
 pub const MAX_AUTOMATION_INTERVAL_MS: u64 = 31_536_000_000;
+const MIN_AUTOMATION_INTERVAL_MS: u64 = 1_000;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AutomationSchedule {
     Once,
-    Interval { every_ms: u64 },
+    FixedInterval { interval_ms: u64 },
 }
 
 impl AutomationSchedule {
     pub fn next_after(self, current_ms: u64) -> Result<Option<u64>, AutomationError> {
         match self {
             Self::Once => Ok(None),
-            Self::Interval { every_ms } => current_ms
-                .checked_add(every_ms)
+            Self::FixedInterval { interval_ms } => current_ms
+                .checked_add(interval_ms)
                 .map(Some)
                 .ok_or(AutomationError::Invalid),
         }
@@ -43,10 +42,13 @@ impl AutomationSchedule {
     pub(crate) fn validate(self) -> Result<(), AutomationError> {
         match self {
             Self::Once => Ok(()),
-            Self::Interval { every_ms } if (1_000..=MAX_AUTOMATION_INTERVAL_MS).contains(&every_ms) => {
+            Self::FixedInterval { interval_ms }
+                if (MIN_AUTOMATION_INTERVAL_MS..=MAX_AUTOMATION_INTERVAL_MS)
+                    .contains(&interval_ms) =>
+            {
                 Ok(())
             }
-            Self::Interval { .. } => Err(AutomationError::Invalid),
+            Self::FixedInterval { .. } => Err(AutomationError::Invalid),
         }
     }
 }
@@ -57,6 +59,7 @@ pub enum AutomationTaskState {
     Enabled,
     Disabled,
     Cancelled,
+    Completed,
 }
 
 impl AutomationTaskState {
@@ -65,6 +68,7 @@ impl AutomationTaskState {
             Self::Enabled => "enabled",
             Self::Disabled => "disabled",
             Self::Cancelled => "cancelled",
+            Self::Completed => "completed",
         }
     }
 
@@ -73,12 +77,14 @@ impl AutomationTaskState {
             "enabled" => Ok(Self::Enabled),
             "disabled" => Ok(Self::Disabled),
             "cancelled" => Ok(Self::Cancelled),
+            "completed" => Ok(Self::Completed),
             _ => Err(AutomationError::Corrupt),
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
 pub struct AutomationTaskId(Uuid);
 
 impl AutomationTaskId {
@@ -87,9 +93,15 @@ impl AutomationTaskId {
     }
 
     pub fn parse(value: &str) -> Result<Self, AutomationError> {
-        Uuid::parse_str(value)
-            .map(Self)
-            .map_err(|_| AutomationError::Invalid)
+        let parsed = Uuid::parse_str(value).map_err(|_| AutomationError::Invalid)?;
+        if parsed.get_version_num() != 7 || parsed.hyphenated().to_string() != value {
+            return Err(AutomationError::Invalid);
+        }
+        Ok(Self(parsed))
+    }
+
+    pub fn as_uuid(&self) -> &Uuid {
+        &self.0
     }
 }
 
@@ -113,26 +125,8 @@ impl FromStr for AutomationTaskId {
     }
 }
 
-impl Serialize for AutomationTaskId {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
-    }
-}
-
-impl<'de> Deserialize<'de> for AutomationTaskId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value = String::deserialize(deserializer)?;
-        Self::parse(&value).map_err(serde::de::Error::custom)
-    }
-}
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AutomationTaskDraft {
     pub task_id: AutomationTaskId,
     pub thread_id: String,
@@ -143,14 +137,30 @@ pub struct AutomationTaskDraft {
 }
 
 impl AutomationTaskDraft {
+    pub fn new(
+        thread_id: impl Into<String>,
+        prompt: impl Into<String>,
+        schedule: AutomationSchedule,
+        first_run_at_ms: u64,
+        created_at_ms: u64,
+    ) -> Self {
+        Self {
+            task_id: AutomationTaskId::new(),
+            thread_id: thread_id.into(),
+            prompt: prompt.into(),
+            schedule,
+            first_run_at_ms,
+            created_at_ms,
+        }
+    }
+
     pub(crate) fn validate(&self) -> Result<(), AutomationError> {
-        validate_text(
-            &self.thread_id,
-            MAX_AUTOMATION_THREAD_ID_BYTES,
-            "thread id",
-        )?;
+        validate_text(&self.thread_id, MAX_AUTOMATION_THREAD_ID_BYTES, "thread id")?;
         validate_text(&self.prompt, MAX_AUTOMATION_PROMPT_BYTES, "prompt")?;
-        if self.first_run_at_ms < self.created_at_ms {
+        let thread = Uuid::parse_str(&self.thread_id).map_err(|_| AutomationError::Invalid)?;
+        if thread.hyphenated().to_string() != self.thread_id
+            || self.first_run_at_ms < self.created_at_ms
+        {
             return Err(AutomationError::Invalid);
         }
         self.schedule.validate()
@@ -158,6 +168,7 @@ impl AutomationTaskDraft {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AutomationTask {
     pub task_id: AutomationTaskId,
     pub owner_agent_id: AgentId,
@@ -240,7 +251,8 @@ impl AutomationLease {
             command_bytes,
         )
         .map_err(|_| AutomationError::Invalid)?;
-        let operation = OutboxEnvelope::pending(binding, 1).map_err(|_| AutomationError::Invalid)?;
+        let operation =
+            OutboxEnvelope::pending(binding, 1).map_err(|_| AutomationError::Invalid)?;
         Ok(AutomationAdmission {
             owner_agent_id: self.task.owner_agent_id.clone(),
             task_id: self.task.task_id,
@@ -251,6 +263,34 @@ impl AutomationLease {
             client_user_message_id: self.client_user_message_id.clone(),
             operation,
         })
+    }
+
+    pub fn validate_operation(&self, operation: &OutboxEnvelope) -> Result<(), AutomationError> {
+        operation
+            .validate()
+            .map_err(|_| AutomationError::Conflict)?;
+        let binding = &operation.binding;
+        let expected_operation_id = format!(
+            "automation:queue:v2:{}:{}",
+            self.task.task_id, self.occurrence
+        );
+        let command = operation_command(self);
+        let command_bytes = u64::try_from(command.len()).map_err(|_| AutomationError::Invalid)?;
+        if binding.operation_id.as_str() != expected_operation_id
+            || binding.idempotency_key.as_str() != self.client_user_message_id
+            || &binding.source_owner_agent_id != &self.task.owner_agent_id
+            || binding.source_component != ProductComponentId::AutomationRuntime
+            || &binding.destination_owner_agent_id != &self.task.owner_agent_id
+            || binding.destination_component != ProductComponentId::AppServer
+            || binding.action != AuthorityAction::MutateAutomation
+            || binding.generation != self.lease_generation
+            || binding.command_sha256 != Sha256Digest::for_bytes(&command)
+            || binding.command_bytes != command_bytes
+            || operation.sequence != 1
+        {
+            return Err(AutomationError::Conflict);
+        }
+        Ok(())
     }
 }
 
@@ -333,16 +373,10 @@ fn operation_command(lease: &AutomationLease) -> Vec<u8> {
     bytes
 }
 
-fn operation_fence(
-    context: &AutomationOperationContext,
-    lease_token: &str,
-) -> Sha256Digest {
+fn operation_fence(context: &AutomationOperationContext, lease_token: &str) -> Sha256Digest {
     let mut bytes = Vec::new();
     frame(&mut bytes, b"hepta:automation:operation-fence:v1");
-    frame(
-        &mut bytes,
-        context.fencing_token_sha256.as_str().as_bytes(),
-    );
+    frame(&mut bytes, context.fencing_token_sha256.as_str().as_bytes());
     frame(&mut bytes, lease_token.as_bytes());
     Sha256Digest::for_bytes(&bytes)
 }
@@ -357,5 +391,55 @@ fn validate_text(value: &str, maximum: usize, _label: &str) -> Result<(), Automa
         Err(AutomationError::Invalid)
     } else {
         Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum AutomationError {
+    #[error("invalid automation request")]
+    Invalid,
+    #[error("automation owner denied the request")]
+    AccessDenied,
+    #[error("automation state conflict")]
+    Conflict,
+    #[error("automation state is corrupt")]
+    Corrupt,
+    #[error("automation storage is unavailable")]
+    Unavailable,
+    #[error("Agent turn queue rejected automation admission")]
+    Dispatch,
+    #[error("automation provider admission outcome is unknown")]
+    DispatchUnknown,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AutomationSchedule;
+    use super::AutomationTaskId;
+
+    #[test]
+    fn task_id_requires_canonical_uuid_v7() {
+        let id = AutomationTaskId::new();
+        assert_eq!(AutomationTaskId::parse(&id.to_string()), Ok(id));
+        assert!(AutomationTaskId::parse("00000000-0000-4000-8000-000000000000").is_err());
+        assert!(AutomationTaskId::parse(&format!("{{{id}}}")).is_err());
+    }
+
+    #[test]
+    fn fixed_interval_is_bounded_and_advances() {
+        assert_eq!(
+            AutomationSchedule::FixedInterval { interval_ms: 1_000 }.next_after(5_000),
+            Ok(Some(6_000))
+        );
+        assert!(
+            AutomationSchedule::FixedInterval { interval_ms: 999 }
+                .next_after(5_000)
+                .is_ok()
+        );
+        assert!(
+            AutomationSchedule::FixedInterval { interval_ms: 999 }
+                .validate()
+                .is_err()
+        );
     }
 }

@@ -45,14 +45,7 @@ impl AuthorizedProductionWriter {
         let store = CognitiveStore::open(layout)
             .await
             .map_err(ProductionWriterRuntimeError::Store)?;
-        Self::open_with_store(
-            store,
-            authorization,
-            verifier,
-            lease_id,
-            lease_generation,
-        )
-        .await
+        Self::open_with_store(store, authorization, verifier, lease_id, lease_generation).await
     }
 
     pub async fn open_with_store<V>(
@@ -78,15 +71,10 @@ impl AuthorizedProductionWriter {
             return Err(ProductionWriterRuntimeError::LocalAuthorityRejected);
         }
         let (authority, cognitive_write) = authorization.into_parts();
-        let writer = ProductionDurableWriter::open(
-            store,
-            authority,
-            verifier,
-            lease_id,
-            lease_generation,
-        )
-        .await
-        .map_err(ProductionWriterRuntimeError::Writer)?;
+        let writer =
+            ProductionDurableWriter::open(store, authority, verifier, lease_id, lease_generation)
+                .await
+                .map_err(ProductionWriterRuntimeError::Writer)?;
         Ok(Self {
             writer: Arc::new(writer),
             cognitive_write,
@@ -245,12 +233,7 @@ mod tests {
     async fn typed_runtime_handle_is_required_before_raw_writer_open() {
         let (_temp, layout) = layout();
         let authorization = must(
-            ProductionCognitiveWriteAuthorization::verify(
-                lease(),
-                &AllowVerifier,
-                &agent_id(),
-                1,
-            ),
+            ProductionCognitiveWriteAuthorization::verify(lease(), &AllowVerifier, &agent_id(), 1),
             "create typed authorization",
         );
         let runtime = must(
@@ -273,12 +256,7 @@ mod tests {
     async fn generation_drift_is_rejected_before_store_open() {
         let (_temp, layout) = layout();
         let authorization = must(
-            ProductionCognitiveWriteAuthorization::verify(
-                lease(),
-                &AllowVerifier,
-                &agent_id(),
-                3,
-            ),
+            ProductionCognitiveWriteAuthorization::verify(lease(), &AllowVerifier, &agent_id(), 3),
             "create typed authorization",
         );
         let result = AuthorizedProductionWriter::open(

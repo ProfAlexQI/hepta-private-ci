@@ -14,10 +14,13 @@ use codex_app_server_protocol::UserInput;
 use codex_hepta_automation::AutomationAdmission;
 use codex_hepta_automation::AutomationError;
 use codex_hepta_automation::AutomationFuture;
+use codex_hepta_automation::AutomationOperationContext;
 use codex_hepta_automation::AutomationQueueReceipt;
 use codex_hepta_automation::AutomationScheduler;
 use codex_hepta_automation::AutomationStore;
 use codex_hepta_automation::AutomationTurnQueue;
+use codex_hepta_contracts::DestinationAcknowledgement;
+use codex_hepta_contracts::Sha256Digest;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use tokio_util::sync::CancellationToken;
 
@@ -57,7 +60,7 @@ impl AgentdAutomationQueue {
         &self,
         admission: AutomationAdmission,
     ) -> Result<AutomationQueueReceipt, QueueFailure> {
-        if admission.agent_id != self.identity.agent_id {
+        if admission.owner_agent_id != self.identity.agent_id {
             return Err(QueueFailure::BeforeAdmission(
                 AgentdError::GenerationFenced(
                     "automation admission does not belong to the owning Agent".to_string(),
@@ -141,9 +144,20 @@ impl AgentdAutomationQueue {
         {
             return Err(QueueFailure::OutcomeUnknown);
         }
+        let destination_receipt_sha256 = Sha256Digest::for_bytes(
+            format!(
+                "hepta:app-server-queue-receipt:v1\0{}\0{}",
+                response.queued_submission.id, response.queued_submission.client_user_message_id
+            )
+            .as_bytes(),
+        );
+        let acknowledgement =
+            DestinationAcknowledgement::committed(&admission.operation, destination_receipt_sha256)
+                .map_err(|_| QueueFailure::OutcomeUnknown)?;
         Ok(AutomationQueueReceipt {
             queued_submission_id: response.queued_submission.id,
             client_user_message_id: response.queued_submission.client_user_message_id,
+            acknowledgement,
         })
     }
 }
@@ -177,6 +191,7 @@ impl AutomationTurnQueue for AgentdAutomationQueue {
 
 pub(crate) async fn run_automation_scheduler(
     store: AutomationStore,
+    operation_context: AutomationOperationContext,
     state: Arc<AgentdState>,
     identity: AgentdIdentity,
     cancellation: CancellationToken,
@@ -195,6 +210,7 @@ pub(crate) async fn run_automation_scheduler(
         store,
         queue,
         identity.spawn_generation,
+        operation_context,
         AUTOMATION_LEASE_DURATION,
         AUTOMATION_DISPATCH_TIMEOUT,
     ) {

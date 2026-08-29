@@ -35,10 +35,7 @@ pub struct MatrixOperationRecord {
 
 impl MatrixOperationRecord {
     pub fn recovery_decision(&self) -> RecoveryDecision {
-        recovery_decision(
-            self.phase,
-            self.phase != OperationPhase::OutboxPending,
-        )
+        recovery_decision(self.phase, self.phase != OperationPhase::OutboxPending)
     }
 }
 
@@ -82,19 +79,15 @@ impl MatrixOperationJournal {
         {
             return Err(MatrixDurableError::Invalid);
         }
-        let idempotency_key = client_user_message_id(
-            &self.owner_agent_id,
-            &inbox.room_id,
-            &inbox.event_id,
-        );
+        let idempotency_key =
+            client_user_message_id(&self.owner_agent_id, &inbox.room_id, &inbox.event_id);
         let operation_id = operation_id(&self.owner_agent_id, &inbox.event_id)?;
         let command_sha256 = command_digest(inbox, &idempotency_key);
-        let command_bytes = u64::try_from(inbox.payload.len())
-            .map_err(|_| MatrixDurableError::Invalid)?;
+        let command_bytes =
+            u64::try_from(inbox.payload.len()).map_err(|_| MatrixDurableError::Invalid)?;
         let binding = OperationBinding::new(
             operation_id,
-            IdempotencyKey::parse(idempotency_key)
-                .map_err(|_| MatrixDurableError::Invalid)?,
+            IdempotencyKey::parse(idempotency_key).map_err(|_| MatrixDurableError::Invalid)?,
             self.owner_agent_id.clone(),
             ProductComponentId::MatrixIngress,
             self.owner_agent_id.clone(),
@@ -103,11 +96,7 @@ impl MatrixOperationJournal {
             inbox.binding_revision,
             inbox.generation,
             inbox.generation,
-            fencing_digest(
-                &self.owner_agent_id,
-                inbox,
-                project_id,
-            ),
+            fencing_digest(&self.owner_agent_id, inbox, project_id),
             command_sha256,
             command_bytes,
         )
@@ -170,7 +159,10 @@ impl MatrixOperationJournal {
         let current = self.require_exact(event_id, envelope).await?;
         match current.phase {
             OperationPhase::OutboxPending => {
-                if !current.phase.can_transition_to(OperationPhase::DeliveryClaimed) {
+                if !current
+                    .phase
+                    .can_transition_to(OperationPhase::DeliveryClaimed)
+                {
                     return Err(MatrixDurableError::Corrupt);
                 }
                 self.transition(
@@ -183,12 +175,14 @@ impl MatrixOperationJournal {
                 )
                 .await
             }
+            // HEPTA_MATRIX_SINGLE_WINNER_CLAIM_V1: once the durable
+            // boundary is claimed, all re-entry is lookup/reconcile only.
             OperationPhase::DeliveryClaimed
             | OperationPhase::Indeterminate
             | OperationPhase::Acknowledged
             | OperationPhase::ReconciledApplied
             | OperationPhase::ReconciledNotApplied
-            | OperationPhase::Quarantined => Ok(current),
+            | OperationPhase::Quarantined => Err(MatrixDurableError::Conflict),
             _ => Err(MatrixDurableError::Corrupt),
         }
     }
@@ -202,7 +196,10 @@ impl MatrixOperationJournal {
         let current = self.require_exact(event_id, envelope).await?;
         match current.phase {
             OperationPhase::DeliveryClaimed => {
-                if !current.phase.can_transition_to(OperationPhase::Indeterminate) {
+                if !current
+                    .phase
+                    .can_transition_to(OperationPhase::Indeterminate)
+                {
                     return Err(MatrixDurableError::Corrupt);
                 }
                 self.transition(
@@ -275,8 +272,8 @@ impl MatrixOperationJournal {
     ) -> Result<MatrixOperationRecord, MatrixDurableError> {
         let current = self.require_exact(event_id, envelope).await?;
         match current.phase {
-            OperationPhase::Indeterminate => self
-                .transition(
+            OperationPhase::Indeterminate => {
+                self.transition(
                     event_id,
                     envelope,
                     OperationPhase::Indeterminate,
@@ -284,7 +281,8 @@ impl MatrixOperationJournal {
                     Some(destination_receipt_sha256),
                     at_ms,
                 )
-                .await,
+                .await
+            }
             OperationPhase::ReconciledApplied
                 if current.destination_receipt_sha256.as_ref()
                     == Some(destination_receipt_sha256) =>
@@ -309,8 +307,8 @@ impl MatrixOperationJournal {
     ) -> Result<MatrixOperationRecord, MatrixDurableError> {
         let current = self.require_exact(event_id, envelope).await?;
         match current.phase {
-            OperationPhase::Indeterminate => self
-                .transition(
+            OperationPhase::Indeterminate => {
+                self.transition(
                     event_id,
                     envelope,
                     OperationPhase::Indeterminate,
@@ -318,7 +316,8 @@ impl MatrixOperationJournal {
                     None,
                     at_ms,
                 )
-                .await,
+                .await
+            }
             OperationPhase::ReconciledNotApplied => Ok(current),
             _ => Err(MatrixDurableError::Conflict),
         }
@@ -356,7 +355,10 @@ impl MatrixOperationJournal {
         let current = load_record(&pool, &self.owner_agent_id, event_id)
             .await?
             .ok_or(MatrixDurableError::Conflict)?;
-        if current.envelope != *envelope || current.phase != expected || at_ms < current.updated_at_ms {
+        if current.envelope != *envelope
+            || current.phase != expected
+            || at_ms < current.updated_at_ms
+        {
             pool.close().await;
             return Err(MatrixDurableError::Conflict);
         }
@@ -477,8 +479,10 @@ fn record_from_row(
         .map(Sha256Digest::parse)
         .transpose()
         .map_err(|_| MatrixDurableError::Corrupt)?;
-    if matches!(phase, OperationPhase::Acknowledged | OperationPhase::ReconciledApplied)
-        != destination_receipt_sha256.is_some()
+    if matches!(
+        phase,
+        OperationPhase::Acknowledged | OperationPhase::ReconciledApplied
+    ) != destination_receipt_sha256.is_some()
     {
         return Err(MatrixDurableError::Corrupt);
     }
@@ -633,10 +637,8 @@ mod tests {
             .await
             .expect("load inbox")
             .expect("inbox");
-        let project_id = codex_hepta_matrix_protocol::room_project_idempotency_key(
-            &agent_id,
-            &inbox.room_id,
-        );
+        let project_id =
+            codex_hepta_matrix_protocol::room_project_idempotency_key(&agent_id, &inbox.room_id);
         let journal = MatrixOperationJournal::new(&store);
         let begun = journal.begin(&inbox, &project_id, 4).await.expect("begin");
         assert!(begun.created);
@@ -652,16 +654,26 @@ mod tests {
             Err(MatrixDurableError::Conflict)
         );
 
-        let claimed = journal
-            .claim_delivery(&event_id, &begun.record.envelope, 5)
-            .await
-            .expect("claim");
+        let (first_claim, second_claim) = tokio::join!(
+            journal.claim_delivery(&event_id, &begun.record.envelope, 5),
+            journal.claim_delivery(&event_id, &begun.record.envelope, 5),
+        );
+        let claimed = match (first_claim, second_claim) {
+            (Ok(claimed), Err(MatrixDurableError::Conflict)) => claimed,
+            (Err(MatrixDurableError::Conflict), Ok(claimed)) => claimed,
+            other => {
+                panic!("two concurrent Matrix delivery claims must have one winner: {other:?}")
+            }
+        };
         assert_eq!(claimed.phase, OperationPhase::DeliveryClaimed);
         let indeterminate = journal
             .mark_indeterminate(&event_id, &begun.record.envelope, 6)
             .await
             .expect("indeterminate");
-        assert_eq!(indeterminate.recovery_decision(), RecoveryDecision::LookupOnly);
+        assert_eq!(
+            indeterminate.recovery_decision(),
+            RecoveryDecision::LookupOnly
+        );
         store.close().await;
 
         let reopened = MatrixDurableStore::open(&layout, MatrixDurableConfig::default())
@@ -680,11 +692,9 @@ mod tests {
             .await
             .expect("reconcile");
         assert_eq!(reconciled.phase, OperationPhase::ReconciledApplied);
-        let acknowledgement = DestinationAcknowledgement::committed(
-            &persisted.envelope,
-            destination.clone(),
-        )
-        .expect("ack shape");
+        let acknowledgement =
+            DestinationAcknowledgement::committed(&persisted.envelope, destination.clone())
+                .expect("ack shape");
         acknowledgement
             .validate_against(&persisted.envelope)
             .expect("exact acknowledgement");

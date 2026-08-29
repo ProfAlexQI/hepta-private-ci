@@ -175,7 +175,9 @@ fn commit_record(
     )?;
     parent.sync_all()?;
     if failpoint == CommitFailpoint::AfterRenameBeforeReturn {
-        return Err(io::Error::other("acknowledgement lost after durable rename"));
+        return Err(io::Error::other(
+            "acknowledgement lost after durable rename",
+        ));
     }
     Ok(())
 }
@@ -247,7 +249,12 @@ fn process_death_before_write_leaves_no_durable_record() {
     let root = TempRoot::new("before-write")
         .unwrap_or_else(|error| panic!("temporary root must open: {error}"));
     let final_path = root.join("operation.journal");
-    let record = JournalRecord::new(&binding(1, b"command"), OperationPhase::OutboxPending, 1, false);
+    let record = JournalRecord::new(
+        &binding(1, b"command"),
+        OperationPhase::OutboxPending,
+        1,
+        false,
+    );
     assert!(commit_record(&final_path, &record, CommitFailpoint::BeforeWrite).is_err());
     assert!(!final_path.exists());
 }
@@ -257,15 +264,13 @@ fn process_death_after_sync_before_rename_does_not_publish_partial_record() {
     let root = TempRoot::new("before-rename")
         .unwrap_or_else(|error| panic!("temporary root must open: {error}"));
     let final_path = root.join("operation.journal");
-    let record = JournalRecord::new(&binding(1, b"command"), OperationPhase::OutboxPending, 1, false);
-    assert!(
-        commit_record(
-            &final_path,
-            &record,
-            CommitFailpoint::AfterSyncBeforeRename
-        )
-        .is_err()
+    let record = JournalRecord::new(
+        &binding(1, b"command"),
+        OperationPhase::OutboxPending,
+        1,
+        false,
     );
+    assert!(commit_record(&final_path, &record, CommitFailpoint::AfterSyncBeforeRename).is_err());
     assert!(!final_path.exists());
     assert!(final_path.with_extension("tmp").exists());
 }
@@ -300,7 +305,12 @@ fn acknowledgement_loss_after_rename_reopens_exact_durable_record() {
 
 #[test]
 fn disk_full_write_never_yields_a_decodable_record() {
-    let record = JournalRecord::new(&binding(1, b"command"), OperationPhase::OutboxPending, 1, false);
+    let record = JournalRecord::new(
+        &binding(1, b"command"),
+        OperationPhase::OutboxPending,
+        1,
+        false,
+    );
     let encoded = record.encode();
     let mut writer = DiskFullWriter::new(encoded.len() / 2);
     assert!(writer.write_all(&encoded).is_err());
@@ -309,7 +319,12 @@ fn disk_full_write_never_yields_a_decodable_record() {
 
 #[test]
 fn corruption_and_truncation_fail_closed_on_reopen() {
-    let record = JournalRecord::new(&binding(1, b"command"), OperationPhase::OutboxPending, 1, false);
+    let record = JournalRecord::new(
+        &binding(1, b"command"),
+        OperationPhase::OutboxPending,
+        1,
+        false,
+    );
     let mut corrupt = record.encode();
     corrupt[16] ^= 0x01;
     assert!(JournalRecord::decode(&corrupt).is_err());
@@ -343,10 +358,7 @@ fn terminal_record_never_reopens_for_delivery() {
         OperationPhase::ReconciledNotApplied,
         OperationPhase::Quarantined,
     ] {
-        assert_eq!(
-            recovery_decision(phase, true),
-            RecoveryDecision::Terminal
-        );
+        assert_eq!(recovery_decision(phase, true), RecoveryDecision::Terminal);
     }
 }
 

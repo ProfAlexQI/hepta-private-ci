@@ -159,6 +159,8 @@ def verify_matrix_operation() -> None:
             "ProductComponentId::AppServer",
             "AuthorityAction::ServeSession",
             "pub async fn claim_delivery",
+            "HEPTA_MATRIX_SINGLE_WINNER_CLAIM_V1",
+            "two concurrent Matrix delivery claims must have one winner",
             "pub async fn mark_indeterminate",
             "pub async fn acknowledge",
             "pub async fn reconcile_applied",
@@ -206,6 +208,11 @@ def verify_provider_operation() -> None:
             "pub struct ProviderOperationCoordinator",
             "Authorized<ExternalEffectCapability>",
             "external_effect.is_external()",
+            "HEPTA_PROVIDER_SINGLE_WINNER_CLAIM_V1",
+            "DeliveryAlreadyClaimed",
+            "binding.authority_epoch()",
+            "binding.owner_epoch()",
+            "binding.fencing_token_sha256()",
             "binding.is_expired_at(observed_at_unix_seconds)",
             "OperationPhase::DeliveryClaimed",
             "OperationPhase::Indeterminate",
@@ -235,11 +242,21 @@ def verify_provider_operation() -> None:
 
 def verify_real_store_fault() -> None:
     require_markers(
+        "codex-rs/hepta-matrix-store/src/store.rs",
+        (
+            "ingest_inbox_with_max_page_count_for_qualification",
+            "PRAGMA max_page_count",
+            "AssertSqlSafe",
+            "transaction.rollback()",
+            "PRAGMA max_page_count = 2147483646",
+        ),
+    )
+    require_markers(
         "codex-rs/hepta-matrix-store/tests/sqlite_full.rs",
         (
             "real_matrix_sqlite_full_rolls_back_failed_inbox_and_preserves_operation_reopen",
-            "PRAGMA max_page_count",
-            "real SQLite growth must reach SQLITE_FULL",
+            "ingest_inbox_with_max_page_count_for_qualification",
+            "the product write transaction must observe SQLITE_FULL on its own connection",
             "the failed product transaction must not leave a partial inbox row",
             "MatrixDurableStore::open(&layout",
             "reopened_operation",
@@ -252,7 +269,7 @@ def verify_required_gate() -> None:
     for marker in (
         "python3 scripts/verify-hepta-cross-owner-operation-wiring.py",
         "cargo test --locked -p codex-hepta-contracts provider_operation::tests",
-        "cargo test --locked -p codex-hepta-matrix-store --test sqlite_full",
+        "cargo test --locked -p codex-hepta-matrix-store --features qualification-fault-injection --test sqlite_full",
         "runs-on: ubuntu-24.04",
         "Hepta architecture convergence required",
     ):

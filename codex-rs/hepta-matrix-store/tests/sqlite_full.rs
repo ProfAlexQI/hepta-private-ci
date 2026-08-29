@@ -24,8 +24,8 @@ async fn real_matrix_sqlite_full_rolls_back_failed_inbox_and_preserves_operation
     let temp = tempfile::tempdir().expect("temporary root");
     let root = temp.path().join("fleet");
     std::fs::create_dir_all(&root).expect("create fleet root");
-    let fleet = HeptaFleetRoot::parse(root.canonicalize().expect("canonical root"))
-        .expect("fleet root");
+    let fleet =
+        HeptaFleetRoot::parse(root.canonicalize().expect("canonical root")).expect("fleet root");
     let agent_id = AgentId::parse(AGENT_ID).expect("AgentId");
     let layout = fleet.layout().agent(&agent_id);
     let store = MatrixDurableStore::open(&layout, MatrixDurableConfig::default())
@@ -56,7 +56,10 @@ async fn real_matrix_sqlite_full_rolls_back_failed_inbox_and_preserves_operation
         received_at_ms: 3,
     };
     assert!(matches!(
-        store.ingest_inbox(&baseline).await.expect("baseline ingest"),
+        store
+            .ingest_inbox(&baseline)
+            .await
+            .expect("baseline ingest"),
         InboxDisposition::Accepted(_)
     ));
     let baseline_record = store

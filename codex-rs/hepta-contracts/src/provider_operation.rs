@@ -114,10 +114,7 @@ impl ProviderOperationRecord {
     }
 
     pub fn recovery_decision(&self) -> RecoveryDecision {
-        recovery_decision(
-            self.phase,
-            self.phase != OperationPhase::OutboxPending,
-        )
+        recovery_decision(self.phase, self.phase != OperationPhase::OutboxPending)
     }
 
     fn claim_delivery(&mut self) -> Result<(), ProviderOperationError> {
@@ -126,12 +123,14 @@ impl ProviderOperationRecord {
                 self.transition(OperationPhase::DeliveryClaimed)?;
                 Ok(())
             }
+            // HEPTA_PROVIDER_SINGLE_WINNER_CLAIM_V1: a claimed or
+            // settled provider operation may only use status lookup/reconcile.
             OperationPhase::DeliveryClaimed
             | OperationPhase::Indeterminate
             | OperationPhase::Acknowledged
             | OperationPhase::ReconciledApplied
             | OperationPhase::ReconciledNotApplied
-            | OperationPhase::Quarantined => Ok(()),
+            | OperationPhase::Quarantined => Err(ProviderOperationError::DeliveryAlreadyClaimed),
             _ => Err(ProviderOperationError::BindingDrift),
         }
     }
@@ -151,10 +150,8 @@ impl ProviderOperationRecord {
                 match self.phase {
                     OperationPhase::DeliveryClaimed => {
                         self.transition(OperationPhase::DestinationCommitted)?;
-                        let acknowledgement = DestinationAcknowledgement::committed(
-                            &self.envelope,
-                            receipt.clone(),
-                        )?;
+                        let acknowledgement =
+                            DestinationAcknowledgement::committed(&self.envelope, receipt.clone())?;
                         acknowledgement.validate_against(&self.envelope)?;
                         self.transition(OperationPhase::Acknowledged)?;
                         self.destination_receipt_sha256 = Some(receipt);
@@ -242,11 +239,7 @@ where
         external_effect: Authorized<ExternalEffectCapability>,
         observed_at_unix_seconds: u64,
     ) -> Result<Self, ProviderOperationError> {
-        validate_effect_authority(
-            &operation,
-            &external_effect,
-            observed_at_unix_seconds,
-        )?;
+        validate_effect_authority(&operation, &external_effect, observed_at_unix_seconds)?;
         Ok(Self {
             provider: ProviderEffectCoordinator::new(adapter),
             operation,
@@ -260,11 +253,7 @@ where
         external_effect: Authorized<ExternalEffectCapability>,
         observed_at_unix_seconds: u64,
     ) -> Result<Self, ProviderOperationError> {
-        validate_effect_authority(
-            &operation,
-            &external_effect,
-            observed_at_unix_seconds,
-        )?;
+        validate_effect_authority(&operation, &external_effect, observed_at_unix_seconds)?;
         Ok(Self {
             provider,
             operation,
@@ -306,13 +295,8 @@ where
                 return Err(error.into());
             }
         };
-        let latest_ack = self
-            .provider
-            .journal()
-            .acknowledgements(&intent.key)
-            .last();
-        self.operation
-            .settle_dispatch(provider.state, latest_ack)?;
+        let latest_ack = self.provider.journal().acknowledgements(&intent.key).last();
+        self.operation.settle_dispatch(provider.state, latest_ack)?;
         Ok(ProviderOperationDispatchReceipt {
             provider,
             operation_phase: self.operation.phase,
@@ -340,13 +324,8 @@ where
                 return Err(error.into());
             }
         };
-        let latest_ack = self
-            .provider
-            .journal()
-            .acknowledgements(&intent.key)
-            .last();
-        self.operation
-            .settle_dispatch(provider.state, latest_ack)?;
+        let latest_ack = self.provider.journal().acknowledgements(&intent.key).last();
+        self.operation.settle_dispatch(provider.state, latest_ack)?;
         Ok(ProviderOperationDispatchReceipt {
             provider,
             operation_phase: self.operation.phase,
@@ -370,11 +349,7 @@ where
             return Err(ProviderOperationError::LookupBeforeBoundary);
         }
         let state = self.provider.reconcile(&intent.key).await?;
-        let latest_ack = self
-            .provider
-            .journal()
-            .acknowledgements(&intent.key)
-            .last();
+        let latest_ack = self.provider.journal().acknowledgements(&intent.key).last();
         self.operation.settle_dispatch(state, latest_ack)?;
         Ok(state)
     }
@@ -400,6 +375,7 @@ pub enum ProviderOperationError {
     BindingDrift,
     MissingProviderAck,
     ExternalAuthorityRequired,
+    DeliveryAlreadyClaimed,
     LookupBeforeBoundary,
 }
 
@@ -416,12 +392,12 @@ impl fmt::Display for ProviderOperationError {
             Self::MissingProviderAck => {
                 formatter.write_str("provider terminal state has no exact acknowledgement")
             }
-            Self::ExternalAuthorityRequired => formatter.write_str(
-                "provider operation requires externally verified effect authority",
-            ),
-            Self::LookupBeforeBoundary => formatter.write_str(
-                "provider lookup is forbidden before a delivery boundary is crossed",
-            ),
+            Self::ExternalAuthorityRequired => formatter
+                .write_str("provider operation requires externally verified effect authority"),
+            Self::DeliveryAlreadyClaimed => formatter
+                .write_str("provider delivery boundary was already claimed; reconcile instead"),
+            Self::LookupBeforeBoundary => formatter
+                .write_str("provider lookup is forbidden before a delivery boundary is crossed"),
         }
     }
 }
@@ -459,8 +435,7 @@ fn validate_effect_authority(
 ) -> Result<(), ProviderOperationError> {
     if !external_effect.is_external()
         || external_effect.action() != AuthorityAction::ExternalEffect
-        || external_effect.subject_agent_id()
-            != &operation.envelope.binding.source_owner_agent_id
+        || external_effect.subject_agent_id() != &operation.envelope.binding.source_owner_agent_id
         || external_effect.generation() != operation.envelope.binding.generation
     {
         return Err(ProviderOperationError::ExternalAuthorityRequired);
@@ -468,6 +443,12 @@ fn validate_effect_authority(
     let binding = external_effect
         .external_lease_binding()
         .ok_or(ProviderOperationError::ExternalAuthorityRequired)?;
+    if binding.authority_epoch() != operation.envelope.binding.authority_epoch
+        || binding.owner_epoch() != operation.envelope.binding.owner_epoch
+        || binding.fencing_token_sha256() != &operation.envelope.binding.fencing_token_sha256
+    {
+        return Err(ProviderOperationError::ExternalAuthorityRequired);
+    }
     if binding.is_expired_at(observed_at_unix_seconds) {
         return Err(AuthorityError::LeaseExpired {
             deadline: binding.expires_at_unix_seconds(),
@@ -544,7 +525,7 @@ mod tests {
             7,
             11,
             3,
-            Sha256Digest::for_bytes(b"provider-fence"),
+            Sha256Digest::for_bytes(b"effect-fence"),
             64,
         )
         .unwrap_or_else(|error| panic!("provider operation must build: {error}"))
@@ -561,10 +542,7 @@ mod tests {
         }
     }
 
-    fn effect_authority(
-        generation: u64,
-        expiry: u64,
-    ) -> Authorized<ExternalEffectCapability> {
+    fn effect_authority(generation: u64, expiry: u64) -> Authorized<ExternalEffectCapability> {
         let binding = AuthorityLeaseBinding::new(
             agent(),
             Sha256Digest::for_bytes(b"signed-effect-grant"),
@@ -639,16 +617,17 @@ mod tests {
             operation.envelope.binding.action,
             AuthorityAction::ExternalEffect
         );
-        assert_eq!(operation.recovery_decision(), RecoveryDecision::RetryBeforeDelivery);
+        assert_eq!(
+            operation.recovery_decision(),
+            RecoveryDecision::RetryBeforeDelivery
+        );
     }
 
     #[test]
     fn changed_payload_and_local_effect_authority_fail_closed() {
         let first = intent(b"payload-a");
-        let changed = ProviderEffectIntent::new(
-            first.key.clone(),
-            Sha256Digest::for_bytes(b"payload-b"),
-        );
+        let changed =
+            ProviderEffectIntent::new(first.key.clone(), Sha256Digest::for_bytes(b"payload-b"));
         let operation = operation(&first);
         assert_eq!(
             operation.validate_for(&changed),
@@ -658,7 +637,9 @@ mod tests {
             .unwrap_or_else(|error| panic!("qualification grant must build: {error}"));
         assert!(matches!(
             local.authorize::<ExternalEffectCapability>(),
-            Err(AuthorityError::ActionDenied(AuthorityAction::ExternalEffect))
+            Err(AuthorityError::ActionDenied(
+                AuthorityAction::ExternalEffect
+            ))
         ));
     }
 
@@ -688,13 +669,20 @@ mod tests {
         )
         .unwrap_or_else(|error| panic!("bound coordinator must build: {error}"));
         let receipt = coordinator
-            .dispatch_once(intent, 101)
+            .dispatch_once(intent.clone(), 101)
             .await
             .unwrap_or_else(|error| panic!("dispatch must settle: {error}"));
         assert!(receipt.provider.physical_dispatch_attempted);
         assert_eq!(receipt.provider.state, ProviderEffectState::Completed);
         assert_eq!(receipt.operation_phase, OperationPhase::Acknowledged);
-        assert_eq!(coordinator.operation().recovery_decision(), RecoveryDecision::Terminal);
+        assert_eq!(
+            coordinator.operation().recovery_decision(),
+            RecoveryDecision::Terminal
+        );
+        assert_eq!(
+            coordinator.dispatch_once(intent, 102).await,
+            Err(ProviderOperationError::DeliveryAlreadyClaimed),
+        );
     }
 
     #[test]

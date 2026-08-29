@@ -3,6 +3,9 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use codex_hepta_contracts::AgentId;
+use codex_hepta_contracts::OperationPhase;
+use codex_hepta_contracts::OutboxEnvelope;
+use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_paths::HeptaAgentLayout;
 use codex_state::SqliteConfig;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -173,7 +176,9 @@ impl AutomationStore {
         }
         let rows = sqlx::query(
             "SELECT o.task_id, o.occurrence, r.scheduled_for_ms,
-                    o.client_user_message_id, o.observed_at_ms
+                    o.client_user_message_id, o.observed_at_ms,
+                    o.operation_id, o.operation_binding_sha256,
+                    o.operation_sequence
              FROM automation_dispatch_outcomes o
              JOIN automation_runs r
                ON r.task_id = o.task_id AND r.occurrence = o.occurrence
@@ -198,6 +203,20 @@ impl AutomationStore {
                         .try_get("client_user_message_id")
                         .map_err(unavailable)?,
                     observed_at_ms: to_u64(row.try_get("observed_at_ms").map_err(unavailable)?)?,
+                    operation_id: row
+                        .try_get::<Option<String>, _>("operation_id")
+                        .map_err(unavailable)?,
+                    operation_binding_sha256: row
+                        .try_get::<Option<String>, _>("operation_binding_sha256")
+                        .map_err(unavailable)?
+                        .map(Sha256Digest::parse)
+                        .transpose()
+                        .map_err(|_| AutomationError::Corrupt)?,
+                    operation_sequence: row
+                        .try_get::<Option<i64>, _>("operation_sequence")
+                        .map_err(unavailable)?
+                        .map(to_u64)
+                        .transpose()?,
                 })
             })
             .collect()
@@ -477,11 +496,17 @@ impl AutomationStore {
     pub async fn record_dispatch_uncertain(
         &self,
         lease: &AutomationLease,
+        operation: &OutboxEnvelope,
         observed_at_ms: u64,
     ) -> Result<(), AutomationError> {
         if lease.task.owner_agent_id != self.owner_agent_id {
             return Err(AutomationError::AccessDenied);
         }
+        lease.validate_operation(operation)?;
+        let operation_id = operation.binding.operation_id.as_str();
+        let operation_binding_sha256 = operation.binding_sha256.as_str();
+        let operation_sequence = to_i64(operation.sequence)?;
+
         let mut transaction = self.pool.begin().await.map_err(unavailable)?;
         let updated = sqlx::query(
             "UPDATE automation_runs
@@ -503,7 +528,8 @@ impl AutomationStore {
         }
 
         let existing = sqlx::query(
-            "SELECT outcome FROM automation_dispatch_outcomes
+            "SELECT outcome, operation_id, operation_binding_sha256, operation_sequence
+             FROM automation_dispatch_outcomes
              WHERE task_id = ? AND occurrence = ?",
         )
         .bind(lease.task.task_id.to_string())
@@ -514,30 +540,53 @@ impl AutomationStore {
         match existing {
             Some(row) => {
                 let outcome: String = row.try_get("outcome").map_err(unavailable)?;
-                if outcome != "uncertain" {
+                let persisted_operation_id: Option<String> =
+                    row.try_get("operation_id").map_err(unavailable)?;
+                let persisted_binding: Option<String> = row
+                    .try_get("operation_binding_sha256")
+                    .map_err(unavailable)?;
+                let persisted_sequence: Option<i64> =
+                    row.try_get("operation_sequence").map_err(unavailable)?;
+                if outcome != "uncertain"
+                    || persisted_operation_id.as_deref() != Some(operation_id)
+                    || persisted_binding.as_deref() != Some(operation_binding_sha256)
+                    || persisted_sequence != Some(operation_sequence)
+                {
                     return Err(AutomationError::Conflict);
                 }
-                sqlx::query(
+                let refreshed = sqlx::query(
                     "UPDATE automation_dispatch_outcomes SET observed_at_ms = ?
-                     WHERE task_id = ? AND occurrence = ? AND outcome = 'uncertain'",
+                     WHERE task_id = ? AND occurrence = ? AND outcome = 'uncertain'
+                       AND operation_id = ? AND operation_binding_sha256 = ?
+                       AND operation_sequence = ?",
                 )
                 .bind(to_i64(observed_at_ms)?)
                 .bind(lease.task.task_id.to_string())
                 .bind(to_i64(lease.occurrence)?)
+                .bind(operation_id)
+                .bind(operation_binding_sha256)
+                .bind(operation_sequence)
                 .execute(&mut *transaction)
                 .await
                 .map_err(unavailable)?;
+                if refreshed.rows_affected() != 1 {
+                    return Err(AutomationError::Conflict);
+                }
             }
             None => {
                 sqlx::query(
                     "INSERT INTO automation_dispatch_outcomes (
-                         task_id, occurrence, client_user_message_id, outcome, observed_at_ms
-                     ) VALUES (?, ?, ?, 'uncertain', ?)",
+                         task_id, occurrence, client_user_message_id, outcome, observed_at_ms,
+                         operation_id, operation_binding_sha256, operation_sequence
+                     ) VALUES (?, ?, ?, 'uncertain', ?, ?, ?, ?)",
                 )
                 .bind(lease.task.task_id.to_string())
                 .bind(to_i64(lease.occurrence)?)
                 .bind(&lease.client_user_message_id)
                 .bind(to_i64(observed_at_ms)?)
+                .bind(operation_id)
+                .bind(operation_binding_sha256)
+                .bind(operation_sequence)
                 .execute(&mut *transaction)
                 .await
                 .map_err(|error| {
@@ -623,7 +672,8 @@ impl AutomationStore {
         let mut transaction = self.pool.begin().await.map_err(unavailable)?;
         let row = sqlx::query(
             "SELECT r.scheduled_for_ms, r.state, o.client_user_message_id,
-                    o.outcome
+                    o.outcome, o.operation_id, o.operation_binding_sha256,
+                    o.operation_sequence
              FROM automation_runs r
              JOIN automation_dispatch_outcomes o
                ON o.task_id = r.task_id AND o.occurrence = r.occurrence
@@ -641,9 +691,21 @@ impl AutomationStore {
         let state: String = row.try_get("state").map_err(unavailable)?;
         let outcome: String = row.try_get("outcome").map_err(unavailable)?;
         let client_id: String = row.try_get("client_user_message_id").map_err(unavailable)?;
+        let operation_id: Option<String> = row.try_get("operation_id").map_err(unavailable)?;
+        let operation_binding_sha256: Option<String> = row
+            .try_get("operation_binding_sha256")
+            .map_err(unavailable)?;
+        let operation_sequence: Option<i64> =
+            row.try_get("operation_sequence").map_err(unavailable)?;
         if state != "leased"
             || outcome != "uncertain"
             || client_id != receipt.client_user_message_id
+            || operation_id.as_deref() != Some(receipt.acknowledgement.operation_id.as_str())
+            || operation_binding_sha256.as_deref()
+                != Some(receipt.acknowledgement.binding_sha256.as_str())
+            || operation_sequence != Some(to_i64(receipt.acknowledgement.sequence)?)
+            || receipt.acknowledgement.idempotency_key.as_str() != client_id
+            || receipt.acknowledgement.phase != OperationPhase::DestinationCommitted
         {
             return Err(AutomationError::Conflict);
         }
@@ -750,6 +812,7 @@ impl AutomationStore {
     pub async fn mark_submitted(
         &self,
         lease: &AutomationLease,
+        operation: &OutboxEnvelope,
         receipt: &AutomationQueueReceipt,
         submitted_at_ms: u64,
     ) -> Result<AutomationTask, AutomationError> {
@@ -759,6 +822,11 @@ impl AutomationStore {
         {
             return Err(AutomationError::AccessDenied);
         }
+        lease.validate_operation(operation)?;
+        receipt
+            .acknowledgement
+            .validate_against(operation)
+            .map_err(|_| AutomationError::Conflict)?;
         let mut transaction = self.pool.begin().await.map_err(unavailable)?;
         let run = sqlx::query(
             "UPDATE automation_runs
@@ -787,7 +855,9 @@ impl AutomationStore {
              SET outcome = 'submitted', queued_submission_id = ?,
                  observed_at_ms = ?, submitted_at_ms = ?
              WHERE task_id = ? AND occurrence = ?
-               AND client_user_message_id = ? AND outcome = 'uncertain'",
+               AND client_user_message_id = ? AND outcome = 'uncertain'
+               AND operation_id = ? AND operation_binding_sha256 = ?
+               AND operation_sequence = ?",
         )
         .bind(&receipt.queued_submission_id)
         .bind(to_i64(submitted_at_ms)?)
@@ -795,6 +865,9 @@ impl AutomationStore {
         .bind(lease.task.task_id.to_string())
         .bind(to_i64(lease.occurrence)?)
         .bind(&lease.client_user_message_id)
+        .bind(operation.binding.operation_id.as_str())
+        .bind(operation.binding_sha256.as_str())
+        .bind(to_i64(operation.sequence)?)
         .execute(&mut *transaction)
         .await
         .map_err(|error| {
@@ -804,28 +877,8 @@ impl AutomationStore {
                 unavailable(error)
             }
         })?;
-        if uncertainty.rows_affected() == 0 {
-            sqlx::query(
-                "INSERT INTO automation_dispatch_outcomes (
-                     task_id, occurrence, client_user_message_id, queued_submission_id,
-                     outcome, observed_at_ms, submitted_at_ms
-                 ) VALUES (?, ?, ?, ?, 'submitted', ?, ?)",
-            )
-            .bind(lease.task.task_id.to_string())
-            .bind(to_i64(lease.occurrence)?)
-            .bind(&lease.client_user_message_id)
-            .bind(&receipt.queued_submission_id)
-            .bind(to_i64(submitted_at_ms)?)
-            .bind(to_i64(submitted_at_ms)?)
-            .execute(&mut *transaction)
-            .await
-            .map_err(|error| {
-                if is_constraint(&error) {
-                    AutomationError::Conflict
-                } else {
-                    unavailable(error)
-                }
-            })?;
+        if uncertainty.rows_affected() != 1 {
+            return Err(AutomationError::Conflict);
         }
 
         // Control operations can disable or cancel a task while an already admitted
@@ -1043,6 +1096,21 @@ async fn verify_store(pool: &SqlitePool, owner_agent_id: &AgentId) -> Result<(),
             .map_err(unavailable)?;
     if foreign != 0 {
         return Err(AutomationError::AccessDenied);
+    }
+    let invalid_operation_bindings: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM automation_dispatch_outcomes
+         WHERE (operation_id IS NULL) != (operation_binding_sha256 IS NULL)
+            OR (operation_id IS NULL) != (operation_sequence IS NULL)
+            OR (operation_sequence IS NOT NULL AND operation_sequence <= 0)
+            OR (operation_binding_sha256 IS NOT NULL
+                AND (length(operation_binding_sha256) != 64
+                     OR operation_binding_sha256 GLOB '*[^0-9a-f]*'))",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(unavailable)?;
+    if invalid_operation_bindings != 0 {
+        return Err(AutomationError::Corrupt);
     }
     let invalid_outcomes: i64 = sqlx::query_scalar(
         "SELECT COUNT(*)
