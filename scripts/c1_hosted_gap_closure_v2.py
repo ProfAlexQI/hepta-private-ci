@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Epoch-9 wrapper for the exact-head WEB-C1 hosted gap closure.
+"""Epoch-12 wrapper for the exact-head WEB-C1 hosted gap closure.
 
 The v1 producer owns bounded Rust 1.95 formatting, Cargo.lock regeneration,
 contract validation, CAS commit, and no-force push. This wrapper makes the
 repair transformations idempotent after partial predecessor commits, binds the
-repository migration, and stages a private single-link copy of the
-qualification executable before the artifact-to-browser handshake. It does not
-weaken the artifact gate and grants no source, build, runtime, operator,
-promotion, or release authority.
+repository migration across runner evidence contracts, and stages a private
+single-link copy of the qualification executable before the artifact-to-browser
+handshake. It does not weaken the artifact gate and grants no source, build,
+runtime, operator, promotion, or release authority.
 """
 
 from __future__ import annotations
@@ -20,6 +20,8 @@ from types import ModuleType
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BASE_PATH = ROOT / "scripts/c1_hosted_gap_closure_v1.py"
 COMMON_PATH = "scripts/hepta_browser_runner_evidence/common.py"
+CONTRACTS_PATH = "scripts/hepta_browser_runner_evidence/contracts.py"
+POLICY_PATH = "docs/hepta-vnext/browser/RUNNER_QUALIFICATION_POLICY_V2.json"
 STARTUP_PATH = (
     "tools/hepta-browser-c1-startup-bridge/src/bin/"
     "hepta-browser-c1-startup-bridge-trial.rs"
@@ -76,6 +78,43 @@ def replace_all_idempotent(path: str, old: str, new: str) -> None:
     BASE.fail(f"{path}: neither old nor accepted replacement is present")
 
 
+def patch_runner_evidence_contracts() -> None:
+    BASE.replace_once(
+        COMMON_PATH,
+        'EXPECTED_REPOSITORY = "ProfAlexQI/hepta-private-ci"\n',
+        'EXPECTED_REPOSITORY = "ProfHepta/hepta-private-ci"\n',
+    )
+    BASE.replace_once(
+        POLICY_PATH,
+        '"expected_repository_full_name":"ProfAlexQI/hepta-private-ci"',
+        '"expected_repository_full_name":"ProfHepta/hepta-private-ci"',
+    )
+    BASE.replace_once(
+        CONTRACTS_PATH,
+        '''        "reuse evidence from another head SHA",
+        "dispatch exact-source qualification before exact-head required graphs are executable",
+''',
+        '''        "reuse evidence from another head SHA",
+        "cancel a run created after the queue-hygiene observation started",
+        "dispatch exact-source qualification before exact-head required graphs are executable",
+''',
+    )
+    BASE.replace_once(
+        CONTRACTS_PATH,
+        '''            "verification": (
+                "obsolete queued runs are cancelled without cancelling the current "
+                "exact-head required runs"
+            ),
+''',
+        '''            "verification": (
+                "only obsolete queued runs observed before cleanup starts are "
+                "cancelled; the cleanup excludes its exact head and every run created "
+                "after its observation timestamp"
+            ),
+''',
+    )
+
+
 def patch_contracts() -> None:
     # The predecessor commit may already contain any subset of the v1 repairs.
     # Rebind its helpers before calling it so partial progress is a verified
@@ -83,11 +122,7 @@ def patch_contracts() -> None:
     BASE.replace_once = replace_once_idempotent
     BASE.replace_all = replace_all_idempotent
     ORIGINAL_PATCH_CONTRACTS()
-    BASE.replace_once(
-        COMMON_PATH,
-        'EXPECTED_REPOSITORY = "ProfAlexQI/hepta-private-ci"\n',
-        'EXPECTED_REPOSITORY = "ProfHepta/hepta-private-ci"\n',
-    )
+    patch_runner_evidence_contracts()
     BASE.replace_once(
         STARTUP_PATH,
         '''    let executable = std::env::current_exe()?;
@@ -193,11 +228,11 @@ def validate() -> None:
 
 
 def path_allowed(path: str) -> bool:
-    return path == COMMON_PATH or ORIGINAL_PATH_ALLOWED(path)
+    return path in {COMMON_PATH, CONTRACTS_PATH, POLICY_PATH} or ORIGINAL_PATH_ALLOWED(path)
 
 
 def commit_and_push() -> None:
-    BASE.run("git", "add", "--", COMMON_PATH)
+    BASE.run("git", "add", "--", COMMON_PATH, CONTRACTS_PATH, POLICY_PATH)
     ORIGINAL_COMMIT_AND_PUSH()
 
 
