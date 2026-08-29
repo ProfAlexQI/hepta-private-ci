@@ -1,0 +1,354 @@
+name: Hepta Intelligence A0 V4.5.1 semantic repair publisher
+
+on:
+  push:
+    branches:
+      - "ops/hepta-intelligence-a0-v45-normalized-publisher-20260830"
+    paths:
+      - ".github/workflows/a0-v451-semantic-repair.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-a0-v451-semantic-repair
+  cancel-in-progress: false
+
+env:
+  REPOSITORY: ProfHepta/hepta-private-ci
+  Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
+  SOURCE_CANDIDATE: 1146f0290fbbff7e6a26f6b91c80ec1e1daa0b60
+  CANONICAL_A0_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  OUTPUT_BRANCH: tmp/hepta-intelligence-a0-v451-semantic-candidate-20260830
+
+jobs:
+  repair-validate-publish:
+    name: Repair and validate V4.5.1 exact-parent candidate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout complete repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Materialize the validated V4.5 source surface over Q0
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t allowed <<'EOF'
+          .github/workflows/hepta-intelligence-a0-authority.yml
+          .github/workflows/hepta-intelligence-execution-spec.yml
+          .github/workflows/hepta-intelligence-master-plan.yml
+          plans/hepta-intelligence/AGENTS.md
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json
+          scripts/hepta-intelligence-current-truth.py
+          scripts/verify-hepta-intelligence-a0-authority.py
+          scripts/verify-hepta-intelligence-document-authority.py
+          scripts/verify-hepta-intelligence-master-plan.py
+          EOF
+          test "$(git rev-parse "$SOURCE_CANDIDATE^")" = "$Q0_HEAD"
+          git checkout --detach "$Q0_HEAD"
+          git checkout "$SOURCE_CANDIDATE" -- "${allowed[@]}"
+          chmod +x \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+
+      - name: Apply deterministic V4.5.1 semantic and verifier repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import copy
+          import hashlib
+          import json
+          import re
+          from pathlib import Path
+
+          ROOT = Path.cwd()
+          PLAN = ROOT / "plans" / "hepta-intelligence"
+          CURRENT = PLAN / "HEPTA_INTELLIGENCE_CURRENT_PLAN.json"
+          DOCUMENT = PLAN / "HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json"
+          MASTER = PLAN / "HEPTA_INTELLIGENCE_MASTER_PLAN.md"
+          SPEC = PLAN / "HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md"
+          TRUTH = ROOT / "scripts" / "hepta-intelligence-current-truth.py"
+          PLAN_VERSION = "4.5.1"
+          ACTION = "Publish V4.5.1 as one exact-parent replacement"
+          REASON = "A0 V4.5.1 exact-parent replacement requires executable evidence, independent review, canonical selection and merge-candidate admission"
+          PROVENANCE = [
+              "241daa85253a6224a9473a1a2b2967f71e9b46af",
+              "88b355931456603bd7a1dd9e0cdfd4d0d035dc0e",
+              "0b80caff91010f40a79c795c20487ff9d773d229",
+              "0a93b172e575670d20c30e2efa7f312097466fe6",
+              "d93050c48e2943bb2be46e5f610c1bc109498194",
+              "1146f0290fbbff7e6a26f6b91c80ec1e1daa0b60",
+          ]
+
+          def strict_pairs(pairs):
+              out = {}
+              for key, value in pairs:
+                  if key in out:
+                      raise ValueError(f"duplicate JSON key: {key}")
+                  out[key] = value
+              return out
+
+          def load(path: Path):
+              return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=strict_pairs)
+
+          def pretty(value) -> str:
+              return json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+
+          def canonical(value) -> bytes:
+              return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+          def normalize(text: str) -> str:
+              lines = [line.rstrip() for line in text.splitlines()]
+              while lines and lines[-1] == "":
+                  lines.pop()
+              return "\n".join(lines) + "\n"
+
+          master = MASTER.read_text(encoding="utf-8")
+          assert master.count("Version: `4.5.0`") == 1
+          master = master.replace("Version: `4.5.0`", f"Version: `{PLAN_VERSION}`", 1)
+          heading = "## 0.1 V4.5 A0 source-contract closure\n"
+          assert master.count(heading) == 1
+          note = (
+              "\nV4.5.1 closes the residual machine-plan semantic drift found after the V4.5 "
+              "byte-level gates: the executable next action and stack-budget reason now name the "
+              "same release, superseded exact-head candidates are retained in provenance, and the "
+              "current-truth verifier rejects regression to stale V4.4 wording.\n"
+          )
+          master = master.replace(heading, heading + note, 1)
+          master = normalize(master)
+          MASTER.write_text(master, encoding="utf-8")
+
+          spec = SPEC.read_text(encoding="utf-8")
+          assert spec.count("version `4.5.0`") == 1
+          spec = normalize(spec.replace("version `4.5.0`", f"version `{PLAN_VERSION}`", 1))
+          SPEC.write_text(spec, encoding="utf-8")
+
+          truth = TRUTH.read_text(encoding="utf-8")
+          assert truth.count("PLAN_VERSION = '4.5.0'") == 1
+          truth = truth.replace("PLAN_VERSION = '4.5.0'", f"PLAN_VERSION = '{PLAN_VERSION}'", 1)
+          anchor = '    require(current.get("session_bootstrap", {}).get("read_order") == READ_ORDER, "read order drift")\n'
+          assert truth.count(anchor) == 1
+          checks = '''    require(current.get("active_phase", {}).get("active_task") == "A0.3_V4_5_SOURCE_CONTRACT_CLOSURE", "active task drift")
+    actions = current.get("next_actions")
+    require(isinstance(actions, list) and actions and actions[0].get("id") == "A0.3a", "next action identity drift")
+    require(actions[0].get("action") == "Publish V4.5.1 as one exact-parent replacement", "next action version drift")
+    require(current.get("stack_budget", {}).get("reason") == "A0 V4.5.1 exact-parent replacement requires executable evidence, independent review, canonical selection and merge-candidate admission", "stack budget reason drift")
+    require(current.get("a0_previous_exact_head_provenance") == ["241daa85253a6224a9473a1a2b2967f71e9b46af", "88b355931456603bd7a1dd9e0cdfd4d0d035dc0e", "0b80caff91010f40a79c795c20487ff9d773d229", "0a93b172e575670d20c30e2efa7f312097466fe6", "d93050c48e2943bb2be46e5f610c1bc109498194", "1146f0290fbbff7e6a26f6b91c80ec1e1daa0b60"], "A0 provenance drift")
+    require("V4.4" not in json.dumps(current, sort_keys=True), "stale V4.4 current-plan semantics")
+'''
+          truth = normalize(truth.replace(anchor, anchor + checks, 1))
+          TRUTH.write_text(truth, encoding="utf-8")
+
+          current = load(CURRENT)
+          current["canonical"]["plan_version"] = PLAN_VERSION
+          current["canonical"]["content_sha256"] = hashlib.sha256(MASTER.read_bytes()).hexdigest()
+          current["operational_execution"]["execution_spec_sha256"] = hashlib.sha256(SPEC.read_bytes()).hexdigest()
+          current["a0_previous_exact_head_provenance"] = PROVENANCE
+          matches = [item for item in current["next_actions"] if item.get("id") == "A0.3a"]
+          assert len(matches) == 1
+          matches[0]["action"] = ACTION
+          current["stack_budget"]["reason"] = REASON
+          current_text = pretty(current)
+          assert "V4.4" not in current_text
+          CURRENT.write_text(current_text, encoding="utf-8")
+
+          document = load(DOCUMENT)
+          entries = document["registered_canonical_inputs"]
+          bindings = {
+              CURRENT.relative_to(ROOT).as_posix(): hashlib.sha256(CURRENT.read_bytes()).hexdigest(),
+              MASTER.relative_to(ROOT).as_posix(): hashlib.sha256(MASTER.read_bytes()).hexdigest(),
+              SPEC.relative_to(ROOT).as_posix(): hashlib.sha256(SPEC.read_bytes()).hexdigest(),
+          }
+          for path, digest in bindings.items():
+              found = [item for item in entries if item.get("path") == path]
+              assert len(found) == 1
+              found[0]["content_sha256"] = digest
+          self_path = DOCUMENT.relative_to(ROOT).as_posix()
+          self_entries = [item for item in entries if item.get("path") == self_path]
+          assert len(self_entries) == 1
+          self_entries[0]["content_sha256"] = None
+          self_entries[0]["content_sha256"] = hashlib.sha256(canonical(document)).hexdigest()
+          DOCUMENT.write_text(pretty(document), encoding="utf-8")
+
+          for path in (CURRENT, DOCUMENT, MASTER, SPEC, TRUTH):
+              text = path.read_text(encoding="utf-8")
+              assert "\r" not in text
+              assert not text.endswith("\n\n")
+              assert all(line == line.rstrip() for line in text.splitlines())
+          for path in (CURRENT, DOCUMENT):
+              load(path)
+          PY
+
+      - name: Build sole-child Q0 candidate and verify path budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git diff --cached --check
+          mapfile -t expected <<'EOF'
+          .github/workflows/hepta-intelligence-a0-authority.yml
+          .github/workflows/hepta-intelligence-execution-spec.yml
+          .github/workflows/hepta-intelligence-master-plan.yml
+          plans/hepta-intelligence/AGENTS.md
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json
+          scripts/hepta-intelligence-current-truth.py
+          scripts/verify-hepta-intelligence-a0-authority.py
+          scripts/verify-hepta-intelligence-document-authority.py
+          scripts/verify-hepta-intelligence-master-plan.py
+          EOF
+          mapfile -t actual < <(git diff --cached --name-only | sort)
+          printf '%s\n' "${expected[@]}" | sort >/tmp/expected-paths
+          printf '%s\n' "${actual[@]}" >/tmp/actual-paths
+          cmp /tmp/expected-paths /tmp/actual-paths
+          test "${#actual[@]}" = 17
+          git -c user.name='Hepta A0 V4.5.1 source publisher' \
+              -c user.email='hepta-a0-v451-publisher@invalid.example' \
+              commit -m 'docs(intelligence): close V4.5.1 semantic plan drift'
+          test "$(git rev-parse HEAD^)" = "$Q0_HEAD"
+          test "$(git rev-list --count "$Q0_HEAD"..HEAD)" = 1
+
+      - name: Run strict source, semantic and compatibility gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/a0-v451
+          mkdir -p /tmp/a0-v451
+          python3 -m py_compile \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-document-authority.py
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          python3 scripts/hepta-intelligence-current-truth.py --compact >/tmp/a0-v451/current-truth-1.json
+          python3 scripts/hepta-intelligence-current-truth.py --compact >/tmp/a0-v451/current-truth-2.json
+          cmp /tmp/a0-v451/current-truth-1.json /tmp/a0-v451/current-truth-2.json
+          GITHUB_SHA="$(git rev-parse HEAD)" \
+          GITHUB_REPOSITORY="$REPOSITORY" \
+          GITHUB_REF_NAME="$CANONICAL_A0_BRANCH" \
+            python3 scripts/verify-hepta-intelligence-a0-authority.py \
+            | tee /tmp/a0-v451/a0-source-evidence-receipt.json
+          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
+            python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
+          done
+          git diff --check HEAD^ HEAD
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Seal candidate manifest, archive and patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --binary "$Q0_HEAD" HEAD >/tmp/a0-v451/a0-v451-exact-parent.patch
+          mapfile -t paths < <(git diff --name-only "$Q0_HEAD" HEAD | sort)
+          git archive --format=tar.gz -o /tmp/a0-v451/a0-v451-candidate.tar.gz HEAD "${paths[@]}"
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import subprocess
+          from pathlib import Path
+
+          root = Path.cwd()
+          out = Path("/tmp/a0-v451")
+          paths = sorted(subprocess.check_output(["git", "diff", "--name-only", "HEAD^", "HEAD"], text=True).splitlines())
+          files = []
+          for rel in paths:
+              path = root / rel
+              files.append({
+                  "path": rel,
+                  "size": path.stat().st_size,
+                  "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                  "mode": subprocess.check_output(["git", "ls-tree", "HEAD", rel], text=True).split()[0],
+              })
+          manifest = {
+              "schema": "hepta_intelligence_a0_v451_semantic_repair_receipt_v1",
+              "repository": "ProfHepta/hepta-private-ci",
+              "source_candidate": "1146f0290fbbff7e6a26f6b91c80ec1e1daa0b60",
+              "candidate": {
+                  "head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+                  "tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(),
+                  "parent": subprocess.check_output(["git", "rev-parse", "HEAD^"], text=True).strip(),
+              },
+              "plan_version": "4.5.1",
+              "spec_version": "1.3.0",
+              "changed_path_count": len(paths),
+              "files": files,
+              "checks": [
+                  "PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_5_SOURCE_ONLY",
+                  "PASS_HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_V4_5",
+                  "PASS_HEPTA_INTELLIGENCE_CURRENT_TRUTH_V1",
+                  "PASS_HEPTA_INTELLIGENCE_A0_SOURCE_EVIDENCE",
+                  "P0.2-P0.4c compatibility snapshots",
+                  "no stale V4.4 current-plan semantics",
+                  "complete superseded-head provenance",
+              ],
+              "patch_sha256": hashlib.sha256((out / "a0-v451-exact-parent.patch").read_bytes()).hexdigest(),
+              "archive_sha256": hashlib.sha256((out / "a0-v451-candidate.tar.gz").read_bytes()).hexdigest(),
+              "a0_candidate_qualified": False,
+              "selected": False,
+              "source_writeback": False,
+              "authority": {
+                  "runtime": False,
+                  "production": False,
+                  "operator": False,
+                  "promotion": False,
+                  "release": False,
+                  "callers": False,
+              },
+              "status": "PASS_EXACT_PARENT_V4_5_1_SOURCE_AND_SEMANTIC_VALIDATION",
+          }
+          (out / "validated-v451-repair-receipt.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Transmit candidate objects and attempt isolated ref publication
+        shell: bash
+        run: |
+          set -uo pipefail
+          set +e
+          git push --force origin "HEAD:refs/heads/$OUTPUT_BRANCH" 2>&1 | tee /tmp/a0-v451/publish-transport.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$rc" >/tmp/a0-v451/publish-transport-exit-code.txt
+          printf '%s\n' "$(git rev-parse HEAD)" >/tmp/a0-v451/candidate-head.txt
+          # A workflow-scope rejection is expected for a candidate carrying read-only workflow files.
+          # The authenticated source publisher creates the ref only after consuming this exact receipt.
+          exit 0
+
+      - name: Upload deterministic V4.5.1 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-a0-v451-${{ github.sha }}
+          path: /tmp/a0-v451/**
+          if-no-files-found: error
+          retention-days: 30
