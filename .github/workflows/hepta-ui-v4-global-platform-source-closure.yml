@@ -1,130 +1,21 @@
-name: hepta-ui-v4-global-platform-source-closure
+name: archived-ui-v4-contract
 
 on:
-  push:
-    branches:
-      - "codex/ui-v4-global-platform-source-closure-*"
-  pull_request:
-    paths:
-      - "apps/hepta-native/src/shared/hepta_macos_appkit_material_adapter.rs"
-      - "apps/hepta-native/src/shared/hepta_ios_uikit_material_adapter.rs"
-      - "apps/hepta-native/src/shared/hepta_android_material3_activity_bridge.rs"
-      - "apps/hepta-native/src/shared/hepta_ui_explicit_activation_caller.rs"
-      - "tools/hepta-ui-global-platform-source-closure/**"
-      - "scripts/hepta-ui-v4-global-platform-source-closure-gate"
-      - "docs/ui/HEPTA_UI_GLOBAL_PLATFORM_SOURCE_CLOSURE_V1.json"
-      - "docs/ui/HEPTA_UI_REMAINING_EXTERNAL_BLOCKERS_V2.json"
-      - "docs/ui/schemas/hepta.ui.v4.global-platform-source-closure.v1.schema.json"
-      - "docs/ui/HEPTA_UI_V4_TRANCHE_25_GLOBAL_PLATFORM_SOURCE_CLOSURE_2026-08-28.md"
-      - ".github/workflows/hepta-ui-v4-global-platform-source-closure.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: hepta-ui-v4-global-platform-source-closure-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-
 jobs:
-  source-contract:
-    name: Global platform source closure contract
+  archived:
+    name: Historical UI v4 contract archive
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Verify exact checkout
+      - name: Explain canonical replacement
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
-      - name: Validate source and machine contracts
-        shell: bash
-        run: |
-          set -euo pipefail
-          ruby -c scripts/hepta-ui-v4-global-platform-source-closure-gate
-          ruby -rjson -e 'ARGV.each { |path| JSON.parse(File.read(path)) }' \
-            docs/ui/HEPTA_UI_GLOBAL_PLATFORM_SOURCE_CLOSURE_V1.json \
-            docs/ui/HEPTA_UI_REMAINING_EXTERNAL_BLOCKERS_V2.json \
-            docs/ui/schemas/hepta.ui.v4.global-platform-source-closure.v1.schema.json
-          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-global-platform-source-closure.yml")'
-          mkdir -p artifacts/source
-          ruby scripts/hepta-ui-v4-global-platform-source-closure-gate | tee artifacts/source/receipt.json
-          ruby -rjson -e '
-            receipt=JSON.parse(File.read("artifacts/source/receipt.json"))
-            abort "unexpected source status" unless receipt.fetch("status") == "PASS_GLOBAL_PLATFORM_SOURCE_CLOSURE_SOURCE_ONLY"
-            abort "source gaps remain" unless receipt.fetch("global_source_controllable_gaps_closed") == true
-            abort "authority escaped" unless %w[production_authority effect_authority live_adapter_authority operator_acceptance promotion release].all? { |key| receipt.fetch(key) == false }
-          '
-          printf '%s\n' "$HEPTA_CANDIDATE_SHA" > artifacts/source/candidate-commit.txt
-          git rev-parse 'HEAD^{tree}' > artifacts/source/candidate-tree.txt
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: hepta-ui-v4-global-platform-source-${{ env.HEPTA_CANDIDATE_SHA }}
-          path: artifacts/source
-          if-no-files-found: error
-          retention-days: 14
-
-  host-compile:
-    name: Global platform source compile (${{ matrix.os }})
-    needs: source-contract
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
-          fetch-depth: 1
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88.0
-          components: rustfmt
-      - name: Format, compile, and test isolated source closure
-        shell: bash
-        run: |
-          set -euo pipefail
-          manifest=tools/hepta-ui-global-platform-source-closure/Cargo.toml
-          cargo fmt --manifest-path "$manifest" -- --check
-          cargo check --manifest-path "$manifest" --all-targets
-          cargo test --manifest-path "$manifest" -- --nocapture
-
-  mobile-target-compile:
-    name: Global platform target compile (${{ matrix.target }})
-    needs: source-contract
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {os: macos-latest, target: aarch64-apple-ios}
-          - {os: ubuntu-latest, target: aarch64-linux-android}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
-          fetch-depth: 1
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88.0
-          targets: ${{ matrix.target }}
-      - name: Compile target-specific source surface
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo check \
-            --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml \
-            --lib --target "${{ matrix.target }}"
+          echo "This historical UI v4 workflow is retained for audit and manual replay only."
+          echo "Repository-controlled executable qualification moved to hepta-ui-v4-final-gap-closure-v4."
+          echo "Physical-device, operator, browser-human, and product-host evidence remain in their dedicated governed workflows."

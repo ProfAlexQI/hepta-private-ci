@@ -1,173 +1,21 @@
-name: Hepta UI Remaining Blocker Remediation
+name: archived-ui-v4-contract
 
 on:
-  push:
-    branches:
-      - codex/ui-v4-executable-final-gap-closure-v3-20260829
-    paths:
-      - .github/workflows/hepta-ui-v4-remaining-remediation.yml
+  workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: hepta-ui-v4-remaining-remediation
-  cancel-in-progress: true
+  contents: read
 
 jobs:
-  remediate:
-    name: Apply all remaining repository-controlled UI remediations
+  archived:
+    name: Historical UI v4 contract archive
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-    env:
-      HEPTA_REMEDIATION_SHA: ${{ github.sha }}
-      HEPTA_BRANCH: codex/ui-v4-executable-final-gap-closure-v3-20260829
+    timeout-minutes: 5
     steps:
-      - name: Checkout exact remediation head
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ env.HEPTA_BRANCH }}
-          fetch-depth: 0
-          persist-credentials: true
-
-      - name: Install Rust 1.95 rustfmt
-        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
-        with:
-          toolchain: 1.95.0
-          components: rustfmt
-
-      - name: Apply bounded remediation and self-delete
+      - name: Explain canonical replacement
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$HEPTA_REMEDIATION_SHA"
-
-          ruby <<'RUBY'
-          def write_if_changed(path, text)
-            current = File.read(path)
-            File.write(path, text) unless text == current
-          end
-
-          def inject_named_exact_checkout(text)
-            needle = "      - name: Checkout candidate\n        uses: actions/checkout@v4\n"
-            replacement = <<~YAML.lines.map { |line| "      #{line}" }.join
-              - name: Enable Windows long paths before checkout
-                if: runner.os == 'Windows'
-                shell: pwsh
-                run: git config --global core.longpaths true
-              - name: Checkout exact candidate
-                uses: actions/checkout@v4
-                with:
-                  ref: ${{ env.HEPTA_CANDIDATE_SHA }}
-                  fetch-depth: 1
-                  persist-credentials: false
-              - name: Verify exact checkout
-                shell: bash
-                run: |
-                  set -euo pipefail
-                  test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
-            YAML
-            count = text.scan(needle).length
-            abort "expected named checkout occurrences" if count.zero?
-            text.gsub(needle, replacement)
-          end
-
-          def inject_longpaths_before_exact_checkout(text)
-            return text if text.include?("Enable Windows long paths before checkout")
-            named = "      - name: Checkout exact candidate\n        uses: actions/checkout@v4\n"
-            named_replacement = <<~YAML.lines.map { |line| "      #{line}" }.join
-              - name: Enable Windows long paths before checkout
-                if: runner.os == 'Windows'
-                shell: pwsh
-                run: git config --global core.longpaths true
-              - name: Checkout exact candidate
-                uses: actions/checkout@v4
-            YAML
-            if text.include?(named)
-              return text.gsub(named, named_replacement)
-            end
-            bare = "      - uses: actions/checkout@v4\n"
-            bare_replacement = <<~YAML.lines.map { |line| "      #{line}" }.join
-              - name: Enable Windows long paths before checkout
-                if: runner.os == 'Windows'
-                shell: pwsh
-                run: git config --global core.longpaths true
-              - uses: actions/checkout@v4
-            YAML
-            abort "expected checkout occurrence" unless text.include?(bare)
-            text.gsub(bare, bare_replacement)
-          end
-
-          path = ".github/workflows/hepta-ui-v4-final-gap-closure-v3.yml"
-          text = inject_longpaths_before_exact_checkout(File.read(path))
-          write_if_changed(path, text)
-
-          path = ".github/workflows/hepta-ui-v4-global-platform-source-closure.yml"
-          text = File.read(path).gsub("toolchain: 1.88.0", "toolchain: 1.95.0")
-          text = inject_longpaths_before_exact_checkout(text)
-          write_if_changed(path, text)
-
-          path = ".github/workflows/hepta-ui-v4-windows-product-host-safety-device-closure.yml"
-          text = File.read(path).gsub("toolchain: 1.88.0", "toolchain: 1.95.0")
-          text = inject_longpaths_before_exact_checkout(text)
-          write_if_changed(path, text)
-
-          path = ".github/workflows/hepta-ui-v4-rust-served.yml"
-          text = File.read(path)
-          unless text.include?("HEPTA_CANDIDATE_SHA:")
-            needle = "permissions:\n  contents: read\n"
-            replacement = "permissions:\n  contents: read\n\nenv:\n  HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}\n"
-            abort "rust-served permissions anchor missing" unless text.include?(needle)
-            text = text.sub(needle, replacement)
-          end
-          text = inject_named_exact_checkout(text) if text.include?("Checkout candidate")
-          text = text.gsub("toolchain: 1.88.0", "toolchain: 1.95.0")
-          text = text.gsub("${{ github.sha }}", "${{ env.HEPTA_CANDIDATE_SHA }}")
-          write_if_changed(path, text)
-          RUBY
-
-          cargo fmt --manifest-path apps/hepta-native/Cargo.toml
-          cargo fmt --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml
-          cargo fmt --manifest-path tools/hepta-ui-windows-product-host-safety/Cargo.toml
-          cargo fmt --manifest-path tools/hepta-ui-windows-product-host-device-drill/Cargo.toml
-
-          git rm -- .github/workflows/hepta-ui-v4-remaining-remediation.yml
-          if [[ -f .github/workflows/hepta-ui-v4-rustfmt-remediation.yml ]]; then
-            git rm -- .github/workflows/hepta-ui-v4-rustfmt-remediation.yml
-          fi
-
-          ruby <<'RUBY'
-          allowed = [
-            %r{\Aapps/hepta-native/.+\.rs\z},
-            %r{\Atools/hepta-ui-global-platform-source-closure/.+\.rs\z},
-            %r{\Atools/hepta-ui-windows-product-host-safety/.+\.rs\z},
-            %r{\Atools/hepta-ui-windows-product-host-device-drill/.+\.rs\z},
-            %r{\A\.github/workflows/hepta-ui-v4-final-gap-closure-v3\.yml\z},
-            %r{\A\.github/workflows/hepta-ui-v4-global-platform-source-closure\.yml\z},
-            %r{\A\.github/workflows/hepta-ui-v4-windows-product-host-safety-device-closure\.yml\z},
-            %r{\A\.github/workflows/hepta-ui-v4-rust-served\.yml\z},
-            %r{\A\.github/workflows/hepta-ui-v4-rustfmt-remediation\.yml\z},
-            %r{\A\.github/workflows/hepta-ui-v4-remaining-remediation\.yml\z}
-          ]
-          changed = `git diff --name-only`.lines(chomp: true)
-          unexpected = changed.reject { |path| allowed.any? { |rule| rule.match?(path) } }
-          abort "unexpected remediation paths: #{unexpected.join(', ')}" unless unexpected.empty?
-          abort "remediation produced no changes" if changed.empty?
-          RUBY
-
-          ruby -e 'require "yaml"; ARGV.each { |path| YAML.parse_file(path) }' \
-            .github/workflows/hepta-ui-v4-final-gap-closure-v3.yml \
-            .github/workflows/hepta-ui-v4-global-platform-source-closure.yml \
-            .github/workflows/hepta-ui-v4-windows-product-host-safety-device-closure.yml \
-            .github/workflows/hepta-ui-v4-rust-served.yml
-          git diff --check
-          cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
-          cargo fmt --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml -- --check
-          cargo fmt --manifest-path tools/hepta-ui-windows-product-host-safety/Cargo.toml -- --check
-          cargo fmt --manifest-path tools/hepta-ui-windows-product-host-device-drill/Cargo.toml -- --check
-
-          git config user.name "hepta-ci"
-          git config user.email "hepta-ci@users.noreply.github.com"
-          git add -A
-          git commit -m "fix(ui): close executable formatting and workflow blockers"
-          git push origin "HEAD:refs/heads/$HEPTA_BRANCH"
+          echo "This historical UI v4 workflow is retained for audit and manual replay only."
+          echo "Repository-controlled executable qualification moved to hepta-ui-v4-final-gap-closure-v4."
+          echo "Physical-device, operator, browser-human, and product-host evidence remain in their dedicated governed workflows."

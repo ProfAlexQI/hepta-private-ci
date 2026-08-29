@@ -1,200 +1,21 @@
-name: hepta-ui-v4-window-visuals-diagnostics
+name: archived-ui-v4-contract
 
 on:
-  push:
-    branches:
-      - "codex/ui-v4-window-visuals-diagnostics-*"
-  pull_request:
-    paths:
-      - "apps/hepta-native/src/shared/hepta_makepad_window_material.rs"
-      - "apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs"
-      - "apps/hepta-native/src/shared/mod.rs"
-      - "apps/hepta-native/src/bin/hepta-ui-v4-filter-probe.rs"
-      - "docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json"
-      - "docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"
-      - "docs/ui/schemas/hepta.ui.v4.native-component-metrics.v1.schema.json"
-      - "docs/ui/HEPTA_UI_V4_TRANCHE_8_WINDOW_VISUALS_DIAGNOSTICS_2026-08-28.md"
-      - "scripts/hepta-ui-v4-window-visuals-diagnostics-gate"
-      - ".github/workflows/hepta-ui-v4-window-visuals-diagnostics.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: hepta-ui-v4-window-visuals-diagnostics-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  source-contract:
-    name: Window visuals and component diagnostics source contract
+  archived:
+    name: Historical UI v4 contract archive
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
-      - name: Checkout candidate
-        uses: actions/checkout@v4
-
-      - name: Validate source formats
-        run: |
-          ruby -c scripts/hepta-ui-v4-window-visuals-diagnostics-gate
-          ruby -rjson -e 'ARGV.each { |path| JSON.parse(File.read(path)) }' \
-            docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json \
-            docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json \
-            docs/ui/schemas/hepta.ui.v4.native-component-metrics.v1.schema.json
-          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-window-visuals-diagnostics.yml")'
-
-      - name: Run fail-closed source gate
-        run: |
-          mkdir -p artifacts/ui-v4-window-visuals
-          ruby scripts/hepta-ui-v4-window-visuals-diagnostics-gate \
-            | tee artifacts/ui-v4-window-visuals/source-gate.json
-
-      - name: Verify source-only claim boundary
-        run: |
-          ruby -rjson -e '
-            receipt = JSON.parse(File.read("artifacts/ui-v4-window-visuals/source-gate.json"))
-            abort "unexpected source status" unless receipt.fetch("status") == "PASS_WINDOW_VISUALS_DIAGNOSTICS_SOURCE_ONLY"
-            %w[
-              native_compile_validation component_runtime_validation
-              component_screenshot_validation framework_request_runtime_validation
-              system_material_binding runtime_readback device_validation
-              production_authority effect_authority live_adapter_authority
-              operator_acceptance promotion release
-            ].each do |key|
-              abort "#{key} escaped source-only boundary" unless receipt.fetch(key) == false
-            end
-          '
-
-      - name: Upload source receipt
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: hepta-ui-v4-window-visuals-source-${{ github.sha }}
-          path: artifacts/ui-v4-window-visuals/source-gate.json
-          if-no-files-found: error
-          retention-days: 14
-
-  compile-contract:
-    name: Window visuals and filter probe compile (${{ matrix.os }})
-    needs: source-contract
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 75
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-          - macos-latest
-    steps:
-      - name: Checkout candidate
-        uses: actions/checkout@v4
-
-      - name: Install repository Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88.0
-          components: rustfmt
-
-      - name: Check Native formatting
-        run: cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
-
-      - name: Compile Native library without product bridge defaults
-        env:
-          CARGO_TERM_COLOR: always
-        run: cargo check --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features
-
-      - name: Compile isolated room-filter probe
-        env:
-          CARGO_TERM_COLOR: always
-        run: cargo check --manifest-path apps/hepta-native/Cargo.toml --bin hepta-ui-v4-filter-probe --no-default-features
-
-      - name: Run focused source tests
-        env:
-          CARGO_TERM_COLOR: always
-        run: |
-          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
-            shared::hepta_makepad_window_material::tests -- --nocapture
-          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
-            shared::hepta_material_app_lifecycle::tests -- --nocapture
-          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
-            shared::room_filter_input_bar::tests -- --nocapture
-          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
-            home::hepta_v4_home_overrides::tests -- --nocapture
-
-  component-runtime-diagnostics:
-    name: Isolated Native room-filter metrics and rendered frame
-    if: github.event_name == 'workflow_dispatch'
-    needs: source-contract
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - name: Checkout candidate
-        uses: actions/checkout@v4
-
-      - name: Install repository Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88.0
-
-      - name: Install isolated Linux window dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            xvfb xauth libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
-            libgl1-mesa-dev libasound2-dev libudev-dev pkg-config clang
-
-      - name: Run source-bound component probe
+      - name: Explain canonical replacement
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p artifacts/ui-v4-window-visuals
-          export HEPTA_CANDIDATE_COMMIT="${GITHUB_SHA}"
-          export HEPTA_CANDIDATE_TREE="$(git rev-parse 'HEAD^{tree}')"
-          export HEPTA_NATIVE_UI_METRICS_PATH="$PWD/artifacts/ui-v4-window-visuals/filter-metrics.json"
-          export HEPTA_NATIVE_CAPTURE_FRAME_PATH="$PWD/artifacts/ui-v4-window-visuals/filter.png"
-          xvfb-run -a -s "-screen 0 1280x1024x24" \
-            timeout 300s cargo run \
-              --manifest-path apps/hepta-native/Cargo.toml \
-              --bin hepta-ui-v4-filter-probe \
-              --no-default-features
-
-      - name: Validate component receipt and screenshot binding
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s artifacts/ui-v4-window-visuals/filter-metrics.json
-          test -s artifacts/ui-v4-window-visuals/filter.png
-          export EXPECTED_TREE="$(git rev-parse 'HEAD^{tree}')"
-          ruby -rjson -rdigest -e '
-            receipt = JSON.parse(File.read("artifacts/ui-v4-window-visuals/filter-metrics.json"))
-            abort "unexpected schema" unless receipt.fetch("schema") == "hepta.ui.v4.native-component-metrics.v1"
-            abort "component metrics failed" unless receipt.fetch("status") == "PASS_NATIVE_FILTER_COMPONENT_METRICS"
-            abort "commit drift" unless receipt.dig("candidate", "commit") == ENV.fetch("GITHUB_SHA")
-            abort "tree drift" unless receipt.dig("candidate", "tree") == ENV.fetch("EXPECTED_TREE")
-            abort "not a bounded fixture" unless receipt.fetch("fixture") == true
-            receipt.fetch("checks").each { |name, value| abort "failed check #{name}" unless value == true }
-            abort "metrics unqualified" unless receipt.dig("qualification", "componentMetrics") == true
-            abort "screenshot unqualified" unless receipt.dig("qualification", "componentScreenshot") == true
-            %w[nativeProductRuntime systemMaterialBinding deviceMatrix].each do |key|
-              abort "#{key} escaped fixture boundary" unless receipt.dig("qualification", key) == false
-            end
-            receipt.fetch("authority").each do |key, value|
-              abort "authority #{key} escaped" unless value == false
-            end
-            bytes = File.binread("artifacts/ui-v4-window-visuals/filter.png")
-            digest = Digest::SHA256.hexdigest(bytes)
-            abort "screenshot size drift" unless receipt.dig("screenshot", "bytes") == bytes.bytesize
-            abort "screenshot digest drift" unless receipt.dig("screenshot", "sha256") == digest
-          '
-
-      - name: Upload component evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: hepta-ui-v4-filter-component-${{ github.sha }}
-          path: |
-            artifacts/ui-v4-window-visuals/filter-metrics.json
-            artifacts/ui-v4-window-visuals/filter.png
-          if-no-files-found: error
-          retention-days: 14
+          echo "This historical UI v4 workflow is retained for audit and manual replay only."
+          echo "Repository-controlled executable qualification moved to hepta-ui-v4-final-gap-closure-v4."
+          echo "Physical-device, operator, browser-human, and product-host evidence remain in their dedicated governed workflows."

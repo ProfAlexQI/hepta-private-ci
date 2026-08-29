@@ -1,102 +1,21 @@
-name: hepta-ui-v4-canonical-bundle-guard
+name: archived-ui-v4-contract
 
 on:
-  push:
-    branches:
-      - "codex/ui-v4-canonical-bundle-guard-*"
-      - "codex/ui-light-glass-v4-*"
-    paths:
-      - "apps/hepta-control-ui/control-ui.js"
-      - "apps/hepta-control-ui/control-ui-v4-runtime.js"
-      - "codex-rs/hepta-core/build.rs"
-      - "codex-rs/hepta-core/src/control_ui_static_assets.rs"
-      - "docs/ui/HEPTA_UI_READ_STATE_MACHINE_V1.json"
-      - "scripts/hepta-ui-v4-runtime-js-sync"
-      - "scripts/hepta-ui-v4-canonical-bundle-guard"
-      - ".github/workflows/hepta-ui-v4-canonical-bundle-guard.yml"
-  pull_request:
-    paths:
-      - "apps/hepta-control-ui/control-ui.js"
-      - "apps/hepta-control-ui/control-ui-v4-runtime.js"
-      - "codex-rs/hepta-core/build.rs"
-      - "codex-rs/hepta-core/src/control_ui_static_assets.rs"
-      - "docs/ui/HEPTA_UI_READ_STATE_MACHINE_V1.json"
-      - "scripts/hepta-ui-v4-runtime-js-sync"
-      - "scripts/hepta-ui-v4-canonical-bundle-guard"
-      - ".github/workflows/hepta-ui-v4-canonical-bundle-guard.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: hepta-ui-v4-canonical-bundle-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  canonical-bundle-source:
-    name: Canonical build-time bundle source guard
+  archived:
+    name: Historical UI v4 contract archive
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - name: Checkout candidate
-        uses: actions/checkout@v4
-
-      - name: Validate guard sources
+      - name: Explain canonical replacement
+        shell: bash
         run: |
-          ruby -c scripts/hepta-ui-v4-runtime-js-sync
-          ruby -c scripts/hepta-ui-v4-canonical-bundle-guard
-          ruby -rjson -e 'JSON.parse(File.read("docs/ui/HEPTA_UI_READ_STATE_MACHINE_V1.json"))'
-
-      - name: Prove direct mutation is disabled
-        run: ruby scripts/hepta-ui-v4-runtime-js-sync --check
-
-      - name: Run canonical bundle guard
-        run: |
-          mkdir -p artifacts/ui-v4-canonical-bundle
-          ruby scripts/hepta-ui-v4-canonical-bundle-guard \
-            | tee artifacts/ui-v4-canonical-bundle/result.json
-
-      - name: Verify source-only boundary
-        run: |
-          ruby -rjson -e '
-            result = JSON.parse(
-              File.read("artifacts/ui-v4-canonical-bundle/result.json")
-            )
-            abort "unexpected status" unless
-              result.fetch("status") ==
-                "PASS_CANONICAL_BUILD_TIME_BUNDLE_SOURCE_ONLY"
-            abort "binding mode drifted" unless
-              result.fetch("binding_mode") ==
-                "HEPTA_CORE_BUILD_TIME_BUNDLE"
-            abort "direct mutation enabled" unless
-              result.fetch("direct_source_mutation_allowed") == false
-            abort "runtime leaked into base" unless
-              result.fetch("runtime_occurrences_in_base") == 0
-            %w[
-              rust_compile_validation
-              rust_runtime_validation
-              browser_validation
-              device_validation
-              production_authority
-              effect_authority
-              live_adapter_authority
-              operator_acceptance
-              promotion
-              release
-            ].each do |key|
-              abort "#{key} escaped source boundary" unless
-                result.fetch(key) == false
-            end
-            abort "guard failures present" unless
-              result.fetch("failures").empty?
-          '
-
-      - name: Upload source receipt
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: hepta-ui-v4-canonical-bundle-${{ github.sha }}
-          path: artifacts/ui-v4-canonical-bundle/result.json
-          if-no-files-found: error
-          retention-days: 14
+          set -euo pipefail
+          echo "This historical UI v4 workflow is retained for audit and manual replay only."
+          echo "Repository-controlled executable qualification moved to hepta-ui-v4-final-gap-closure-v4."
+          echo "Physical-device, operator, browser-human, and product-host evidence remain in their dedicated governed workflows."

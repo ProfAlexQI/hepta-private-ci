@@ -1,111 +1,34 @@
-#!/usr/bin/env ruby
-# frozen_string_literal: true
+#![deny(unsafe_code)]
 
-require "json"
-require "open3"
-require "pathname"
+#[path = "../../../apps/hepta-native/src/shared/hepta_platform_material.rs"]
+pub mod hepta_platform_material;
+#[allow(unsafe_code)]
+#[path = "../../../apps/hepta-native/src/shared/hepta_system_preferences.rs"]
+pub mod hepta_system_preferences;
+#[path = "../../../apps/hepta-native/src/shared/hepta_platform_material_runtime.rs"]
+pub mod hepta_platform_material_runtime;
+#[path = "../../../apps/hepta-native/src/shared/hepta_macos_appkit_material_adapter.rs"]
+pub mod hepta_macos_appkit_material_adapter;
+#[path = "../../../apps/hepta-native/src/shared/hepta_ios_uikit_material_adapter.rs"]
+pub mod hepta_ios_uikit_material_adapter;
+#[path = "../../../apps/hepta-native/src/shared/hepta_android_material3_activity_bridge.rs"]
+pub mod hepta_android_material3_activity_bridge;
+#[path = "../../../apps/hepta-native/src/shared/hepta_ui_explicit_activation_caller.rs"]
+pub mod hepta_ui_explicit_activation_caller;
 
-ROOT = Pathname(__dir__).parent
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-required = [
-  "scripts/hepta-ui-v4-final-gap-closure-index-v3",
-  "scripts/hepta-ui-v4-executable-final-gap-closure-v3-gate",
-  "docs/ui/HEPTA_UI_EXECUTABLE_FINAL_GAP_CLOSURE_V3.json",
-  "docs/ui/HEPTA_UI_REMAINING_EXTERNAL_BLOCKERS_V7.json",
-  "docs/ui/schemas/hepta.ui.v4.final-gap-closure-index.v3.schema.json",
-  ".github/workflows/hepta-ui-v4-final-gap-closure-v3.yml",
-  ".github/workflows/hepta-ui-v4.yml",
-  "tools/hepta-ui-global-platform-source-closure/Cargo.toml",
-  "tools/hepta-ui-windows-product-host-safety/Cargo.toml",
-  "tools/hepta-ui-windows-product-host-device-drill/Cargo.toml"
-]
-
-failures = required.reject { |path| (ROOT / path).file? }.map { |path| "missing #{path}" }
-
-unless failures.any?
-  contract = JSON.parse((ROOT / "docs/ui/HEPTA_UI_EXECUTABLE_FINAL_GAP_CLOSURE_V3.json").read)
-  blockers = JSON.parse((ROOT / "docs/ui/HEPTA_UI_REMAINING_EXTERNAL_BLOCKERS_V7.json").read)
-  producer = (ROOT / "scripts/hepta-ui-v4-final-gap-closure-index-v3").read
-  generic = (ROOT / ".github/workflows/hepta-ui-v4.yml").read
-  workflow = (ROOT / ".github/workflows/hepta-ui-v4-final-gap-closure-v3.yml").read
-
-  failures << "contract source gap" unless contract["sourceControllableGapsClosed"] == true
-  failures << "contract all gaps prematurely closed" unless contract["allGapsClosed"] == false
-  failures << "contract toolchain drift" unless contract["rustToolchain"] == "1.95.0"
-  failures << "contract runner job count" unless Array(contract["sameRunExecutableJobs"]).length == 7
-  failures << "blocker source gap" unless blockers["sourceControllableGapsClosed"] == true
-  failures << "source implementation gaps remain" unless Array(blockers["sourceImplementationGaps"]).empty?
-  failures << "external blocker count" unless Array(blockers["externalEvidence"]).length == 8
-  failures << "all gaps prematurely closed" unless blockers["allGapsClosed"] == false
-  failures << "authority escaped" unless blockers.fetch("authority").values.all? { |value| value == false }
-
-  failures << "generic merge-ref checkout remains" unless generic.include?("github.event.pull_request.head.sha || github.sha")
-  failures << "generic exact checkout ref missing" unless generic.include?('ref: ${{ env.HEPTA_CANDIDATE_SHA }}')
-  failures << "generic stale Rust toolchain" if generic.include?("toolchain: 1.88.0")
-  failures << "generic Rust 1.95 missing" unless generic.include?("toolchain: 1.95.0")
-  failures << "generic served bundle compile missing" unless generic.include?("cargo check --manifest-path codex-rs/Cargo.toml -p hepta-core")
-  failures << "generic Native contract tests missing" unless generic.include?("runtime_material_resolution_is_bounded_and_fail_closed")
-
-  failures << "v3 exact checkout missing" unless workflow.include?("github.event.pull_request.head.sha || github.sha")
-  failures << "v3 stale Rust toolchain" if workflow.include?("toolchain: 1.88.0")
-  failures << "v3 Rust 1.95 missing" unless workflow.scan("toolchain: 1.95.0").length >= 3
-  failures << "served bundle executable job missing" unless workflow.include?("Final gap v3 served and Native contracts")
-  failures << "platform executable matrix missing" unless workflow.include?("Final gap v3 platform contracts")
-  failures << "iOS target compile missing" unless workflow.include?("aarch64-apple-ios")
-  failures << "Android target compile missing" unless workflow.include?("aarch64-linux-android")
-  failures << "global platform harness execution missing" unless workflow.include?("tools/hepta-ui-global-platform-source-closure/Cargo.toml")
-  failures << "Windows safety harness execution missing" unless workflow.include?("tools/hepta-ui-windows-product-host-safety/Cargo.toml")
-  failures << "device producer surface compile missing" unless workflow.include?("tools/hepta-ui-windows-product-host-device-drill/Cargo.toml")
-  failures << "same-run jobs API missing" unless workflow.include?("/actions/runs/$GITHUB_RUN_ID/jobs")
-  failures << "external artifact ID intake missing" unless workflow.include?("windows_device_artifact_id")
-  failures << "unsafe repository permission" if workflow.match?(/contents:\s*write|actions:\s*write/)
-  failures << "deploy/release job present" if workflow.match?(/^\s{2}(?:deploy|publish|release)(?:[-_][A-Za-z0-9_-]+)?:\s*$/i)
-
-  %w[
-    allRequiredJobsExecuted
-    allRequiredStepsSuccessful
-    exactHeadCheckedOut
-    servedBundleCompiled
-    nativeContractsTested
-    globalPlatformHarnessTested
-    windowsSafetyHarnessTested
-    iosTargetCompiled
-    androidTargetCompiled
-  ].each do |field|
-    failures << "runner field #{field} missing" unless producer.include?(field)
-  end
-  failures << "Chrome human browser coverage missing" unless producer.include?('%w[chrome edge firefox safari]')
-  %w[rootMicaExact chromeMaterialExact navigationMaterialExact dynamicColorApplied].each do |field|
-    failures << "named platform semantic #{field} missing" unless producer.include?(field)
-  end
-
-  stdout, stderr, status = Open3.capture3(
-    "ruby",
-    ROOT.join("scripts/hepta-ui-v4-final-gap-closure-index-v3").to_s,
-    "--self-test"
-  )
-  failures << "index self-test: #{stderr.byteslice(0, 512)}" unless status.success? && stdout.include?("PASS_FINAL_GAP_CLOSURE_INDEX_V3_SELF_TEST")
-end
-
-payload = {
-  "status" => failures.empty? ? "PASS_EXECUTABLE_FINAL_GAP_CLOSURE_V3_SOURCE_ONLY" : "FAIL_EXECUTABLE_FINAL_GAP_CLOSURE_V3_SOURCE",
-  "source_controllable_gaps_closed" => failures.empty?,
-  "hosted_executable_validation" => false,
-  "external_evidence_complete" => false,
-  "all_gaps_closed" => false,
-  "product_wired" => false,
-  "product_host_may_bind" => false,
-  "system_material_bound" => false,
-  "native_product_runtime" => false,
-  "device_validation" => false,
-  "production_authority" => false,
-  "effect_authority" => false,
-  "live_adapter_authority" => false,
-  "operator_acceptance" => false,
-  "promotion" => false,
-  "release" => false,
-  "failures" => failures
+    #[test]
+    fn all_source_closure_constants_remain_non_authoritative() {
+        assert!(hepta_macos_appkit_material_adapter::HEPTA_MACOS_APPKIT_SOURCE_IMPLEMENTED);
+        assert!(hepta_ios_uikit_material_adapter::HEPTA_IOS_UIKIT_SOURCE_IMPLEMENTED);
+        assert!(hepta_android_material3_activity_bridge::HEPTA_ANDROID_MATERIAL3_SOURCE_IMPLEMENTED);
+        assert!(hepta_ui_explicit_activation_caller::HEPTA_UI_EXPLICIT_CALLER_SOURCE_IMPLEMENTED);
+        assert!(!hepta_macos_appkit_material_adapter::HEPTA_MACOS_APPKIT_PRODUCT_BOUND);
+        assert!(!hepta_ios_uikit_material_adapter::HEPTA_IOS_UIKIT_PRODUCT_BOUND);
+        assert!(!hepta_android_material3_activity_bridge::HEPTA_ANDROID_MATERIAL3_PRODUCT_BOUND);
+        assert!(!hepta_ui_explicit_activation_caller::HEPTA_UI_EXPLICIT_CALLER_REGISTERED);
+    }
 }
-
-puts JSON.pretty_generate(payload)
-exit(failures.empty? ? 0 : 1)
