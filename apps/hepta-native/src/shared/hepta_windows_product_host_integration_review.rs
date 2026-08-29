@@ -5,8 +5,7 @@
 //! system material, mutate the product lifecycle, or grant effect/production
 //! authority. Product integration remains a separate, operator-governed tranche.
 
-pub const HEPTA_WINDOWS_REVIEW_MAKEPAD_REVISION: &str =
-    "c4335cee10b22aca768510c9d072b0ca1bba15c8";
+pub const HEPTA_WINDOWS_REVIEW_MAKEPAD_REVISION: &str = "c4335cee10b22aca768510c9d072b0ca1bba15c8";
 pub const HEPTA_WINDOWS_REVIEW_SOURCE_IMPLEMENTED: bool = true;
 pub const HEPTA_WINDOWS_REVIEW_RUNTIME_PROVENANCE_VALIDATED: bool = false;
 pub const HEPTA_WINDOWS_REVIEW_IMPLEMENTATION_APPROVED: bool = false;

@@ -254,12 +254,8 @@ fn readback_mismatches(
     let requested_visuals = requested_visuals.normalized();
     match readback {
         HeptaWindowVisualReadback::None => false,
-        HeptaWindowVisualReadback::Backdrop(backdrop) => {
-            backdrop != requested_visuals.backdrop
-        }
-        HeptaWindowVisualReadback::Full(visuals) => {
-            visuals.normalized() != requested_visuals
-        }
+        HeptaWindowVisualReadback::Backdrop(backdrop) => backdrop != requested_visuals.backdrop,
+        HeptaWindowVisualReadback::Full(visuals) => visuals.normalized() != requested_visuals,
     }
 }
 
@@ -496,7 +492,10 @@ mod tests {
                 .unwrap();
         let exact = verify_window_visual_acknowledgement(
             request,
-            observation(request, HeptaWindowVisualReadback::Full(request.requested_visuals())),
+            observation(
+                request,
+                HeptaWindowVisualReadback::Full(request.requested_visuals()),
+            ),
         );
         assert_eq!(
             exact.status,

@@ -93,27 +93,32 @@ script_mod! {
     }
 }
 
-
 #[derive(Script, ScriptHook, Widget)]
 struct LocationPreview {
-    #[deref] view: View,
-    #[rust] coords: Option<Result<Coordinates, robius_location::Error>>,
-    #[rust] timestamp: Option<SystemTime>,
+    #[deref]
+    view: View,
+    #[rust]
+    coords: Option<Result<Coordinates, robius_location::Error>>,
+    #[rust]
+    timestamp: Option<SystemTime>,
 }
 
 fn location_error_message(error: robius_location::Error) -> &'static str {
     use robius_location::Error;
     match error {
-        Error::AuthorizationDenied =>
-            "Permission denied. Give Hepta location access in your device's settings, then try again.",
-        Error::TemporarilyUnavailable =>
-            "Your location isn't available right now. Please try again in a moment.",
-        Error::Network =>
-            "A network problem prevented getting your location. Check your connection and try again.",
-        Error::PermanentlyUnavailable =>
-            "Location services aren't available on this device.",
-        Error::AndroidEnvironment | Error::NotMainThread | Error::Unknown =>
-            "Couldn't get your location. Please try again.",
+        Error::AuthorizationDenied => {
+            "Permission denied. Give Hepta location access in your device's settings, then try again."
+        }
+        Error::TemporarilyUnavailable => {
+            "Your location isn't available right now. Please try again in a moment."
+        }
+        Error::Network => {
+            "A network problem prevented getting your location. Check your connection and try again."
+        }
+        Error::PermanentlyUnavailable => "Location services aren't available on this device.",
+        Error::AndroidEnvironment | Error::NotMainThread | Error::Unknown => {
+            "Couldn't get your location. Please try again."
+        }
     }
 }
 
@@ -126,16 +131,18 @@ impl Widget for LocationPreview {
                     Some(LocationAction::Update(LocationUpdate { coordinates, time })) => {
                         self.coords = Some(Ok(*coordinates));
                         self.timestamp = *time;
-                        self.button(cx, ids!(send_location_button)).set_enabled(cx, true);
+                        self.button(cx, ids!(send_location_button))
+                            .set_enabled(cx, true);
                         needs_redraw = true;
                     }
                     Some(LocationAction::Error(e)) => {
                         self.coords = Some(Err(*e));
                         self.timestamp = None;
-                        self.button(cx, ids!(send_location_button)).set_enabled(cx, false);
+                        self.button(cx, ids!(send_location_button))
+                            .set_enabled(cx, false);
                         needs_redraw = true;
                     }
-                    _ => { }
+                    _ => {}
                 }
             }
 
@@ -143,7 +150,10 @@ impl Widget for LocationPreview {
             //       in the RoomScreen handle_event function.
 
             // Handle the cancel location button being clicked.
-            if self.button(cx, ids!(cancel_location_button)).clicked(actions) {
+            if self
+                .button(cx, ids!(cancel_location_button))
+                .clicked(actions)
+            {
                 self.clear();
                 needs_redraw = true;
             }
@@ -159,11 +169,17 @@ impl Widget for LocationPreview {
     fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
         let text = match self.coords {
             Some(Ok(c)) => {
-                match self.timestamp
+                match self
+                    .timestamp
                     .and_then(MilliSecondsSinceUnixEpoch::from_system_time)
                     .and_then(time_ago)
                 {
-                    Some(age) => format!("📍 Your location (from {}): {:.6}, {:.6}", age.to_ascii_lowercase(), c.latitude, c.longitude),
+                    Some(age) => format!(
+                        "📍 Your location (from {}): {:.6}, {:.6}",
+                        age.to_ascii_lowercase(),
+                        c.latitude,
+                        c.longitude
+                    ),
                     None => format!("📍 Your location: {:.6}, {:.6}", c.latitude, c.longitude),
                 }
             }
@@ -175,13 +191,13 @@ impl Widget for LocationPreview {
     }
 }
 
-
 impl LocationPreview {
     fn show(&mut self, cx: &mut Cx) {
         request_location_update(cx, LocationRequest::UpdateOnce);
         self.coords = None;
         self.timestamp = None;
-        self.button(cx, ids!(send_location_button)).set_enabled(cx, false);
+        self.button(cx, ids!(send_location_button))
+            .set_enabled(cx, false);
         self.visible = true;
     }
 

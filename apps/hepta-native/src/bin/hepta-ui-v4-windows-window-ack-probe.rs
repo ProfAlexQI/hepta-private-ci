@@ -9,7 +9,10 @@
 //! mutation, provider, or production path.
 
 #[cfg(all(target_os = "windows", hepta_makepad_windows_ack_hook))]
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 #[cfg(all(target_os = "windows", hepta_makepad_windows_ack_hook))]
 use hepta_native::makepad_widgets::*;
@@ -21,8 +24,7 @@ use hepta_native::shared::hepta_makepad_window_material::{
 use hepta_native::shared::hepta_platform_material::HeptaPlatform;
 #[cfg(all(target_os = "windows", hepta_makepad_windows_ack_hook))]
 use hepta_native::shared::hepta_window_visual_ack::{
-    HeptaWindowVisualAckReceipt, HeptaWindowVisualAckStatus,
-    HeptaWindowVisualRequestIdentity,
+    HeptaWindowVisualAckReceipt, HeptaWindowVisualAckStatus, HeptaWindowVisualRequestIdentity,
 };
 #[cfg(all(target_os = "windows", hepta_makepad_windows_ack_hook))]
 use hepta_native::shared::hepta_windows_backend_ack_bridge::{
@@ -278,9 +280,7 @@ impl WindowsAckProbeApp {
         if request_sequence != request.request_sequence() {
             return Err("backend request sequence drifted".to_string());
         }
-        if window_id.0 != request.window_index()
-            || window_id.1 != request.window_generation()
-        {
+        if window_id.0 != request.window_index() || window_id.1 != request.window_generation() {
             return Err("backend WindowId identity drifted".to_string());
         }
         let processed = HeptaWindowsBackendVisualsProcessed::new(
@@ -317,7 +317,10 @@ impl WindowsAckProbeApp {
         receipt: HeptaWindowVisualAckReceipt,
     ) -> Result<(), String> {
         if !receipt.accepted || !receipt.grants_no_authority() || !receipt.remains_partial() {
-            return Err(format!("receipt escaped partial boundary: {:?}", receipt.status));
+            return Err(format!(
+                "receipt escaped partial boundary: {:?}",
+                receipt.status
+            ));
         }
         match self.phase {
             ProbePhase::WaitingForMica => {
@@ -349,16 +352,22 @@ impl WindowsAckProbeApp {
     }
 
     fn complete(&mut self, cx: &mut Cx) -> Result<(), String> {
-        let mica = self.mica_receipt.ok_or_else(|| "missing Mica receipt".to_string())?;
-        let solid = self.solid_receipt.ok_or_else(|| "missing solid receipt".to_string())?;
-        let candidate_commit = std::env::var("HEPTA_CANDIDATE_COMMIT")
-            .unwrap_or_else(|_| "UNBOUND".to_string());
-        let candidate_tree = std::env::var("HEPTA_CANDIDATE_TREE")
-            .unwrap_or_else(|_| "UNBOUND".to_string());
+        let mica = self
+            .mica_receipt
+            .ok_or_else(|| "missing Mica receipt".to_string())?;
+        let solid = self
+            .solid_receipt
+            .ok_or_else(|| "missing solid receipt".to_string())?;
+        let candidate_commit =
+            std::env::var("HEPTA_CANDIDATE_COMMIT").unwrap_or_else(|_| "UNBOUND".to_string());
+        let candidate_tree =
+            std::env::var("HEPTA_CANDIDATE_TREE").unwrap_or_else(|_| "UNBOUND".to_string());
         if !is_git_object_id(&candidate_commit) || !is_git_object_id(&candidate_tree) {
             return Err("candidate commit/tree are not exact Git object IDs".to_string());
         }
-        let window_id = self.window_id.ok_or_else(|| "missing WindowId".to_string())?;
+        let window_id = self
+            .window_id
+            .ok_or_else(|| "missing WindowId".to_string())?;
         let native_window_handle = self
             .native_window_handle
             .filter(|handle| *handle != 0)
@@ -480,7 +489,10 @@ impl AppMain for WindowsAckProbeApp {
         }
         if self.watchdog_timer.is_event(event).is_some() {
             self.watchdog_timer = Timer::empty();
-            self.fail(cx, "probe timed out before both acknowledgements".to_string());
+            self.fail(
+                cx,
+                "probe timed out before both acknowledgements".to_string(),
+            );
             return;
         }
         self.match_event(cx, event);

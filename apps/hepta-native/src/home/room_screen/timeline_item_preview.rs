@@ -26,24 +26,24 @@ pub(super) fn draw_replied_to_message(
         show_reply = true;
         match &in_reply_to_details.event {
             TimelineDetails::Ready(replied_to_event) => {
-                let (in_reply_to_username, is_avatar_fully_drawn) =
-                    replied_to_message_view
-                        .avatar(cx, ids!(preview_content.reply_preview_avatar))
-                        .set_avatar_and_get_username(
-                            cx,
-                            timeline_kind,
-                            &replied_to_event.sender,
-                            Some(&replied_to_event.sender_profile),
-                            Some(in_reply_to_details.event_id.as_ref()),
-                            true,
-                        );
+                let (in_reply_to_username, is_avatar_fully_drawn) = replied_to_message_view
+                    .avatar(cx, ids!(preview_content.reply_preview_avatar))
+                    .set_avatar_and_get_username(
+                        cx,
+                        timeline_kind,
+                        &replied_to_event.sender,
+                        Some(&replied_to_event.sender_profile),
+                        Some(in_reply_to_details.event_id.as_ref()),
+                        true,
+                    );
 
                 fully_drawn = is_avatar_fully_drawn;
 
                 replied_to_message_view
                     .label(cx, ids!(preview_content.reply_preview_username))
                     .set_text(cx, in_reply_to_username.as_str());
-                let msg_body = replied_to_message_view.html_or_plaintext(cx, ids!(reply_preview_body));
+                let msg_body =
+                    replied_to_message_view.html_or_plaintext(cx, ids!(reply_preview_body));
                 populate_preview_of_timeline_item(
                     cx,
                     &msg_body,
@@ -97,8 +97,12 @@ pub(super) fn draw_replied_to_message(
 
     replied_to_message_view.set_visible(cx, show_reply);
     // After we changed a reply preview's content, we need to clear its cached view and measured height.
-    replied_to_message_view.view(cx, ids!(preview_content)).redraw_texture_cache();
-    replied_to_message_view.as_collapsible_preview().reset_measured_height();
+    replied_to_message_view
+        .view(cx, ids!(preview_content))
+        .redraw_texture_cache();
+    replied_to_message_view
+        .as_collapsible_preview()
+        .reset_measured_height();
     fully_drawn
 }
 
@@ -158,7 +162,8 @@ pub(super) fn populate_thread_root_summary(
                 &embedded_event.content,
                 &embedded_event.sender,
                 sender_username,
-            ).format_with(sender_username, true);
+            )
+            .format_with(sender_username, true);
             match utils::replace_linebreaks_separators(&preview, true) {
                 Cow::Borrowed(_) => Cow::Owned(preview),
                 Cow::Owned(replaced) => Cow::Owned(replaced),
@@ -169,20 +174,24 @@ pub(super) fn populate_thread_root_summary(
             if td.is_unavailable()
                 && let Some(thread_root_event_id) = thread_root_event_id.clone()
             {
-                let needs_refresh = fetched_summary
-                    .is_none_or(|fs| fs.latest_reply_preview_text.is_none());
-                if needs_refresh && pending_thread_summary_fetches.insert(thread_root_event_id.clone()) {
+                let needs_refresh =
+                    fetched_summary.is_none_or(|fs| fs.latest_reply_preview_text.is_none());
+                if needs_refresh
+                    && pending_thread_summary_fetches.insert(thread_root_event_id.clone())
+                {
                     let accepted = submit_async_request(MatrixRequest::FetchThreadSummaryDetails {
                         timeline_kind: timeline_kind.clone(),
                         thread_root_event_id: thread_root_event_id.clone(),
                         timeline_item_index,
-                    }).was_accepted();
+                    })
+                    .was_accepted();
                     if !accepted {
                         pending_thread_summary_fetches.remove(&thread_root_event_id);
                     }
                 }
             }
-            fetched_summary.and_then(|fs| fs.latest_reply_preview_text.as_deref())
+            fetched_summary
+                .and_then(|fs| fs.latest_reply_preview_text.as_deref())
                 .unwrap_or("<i>Loading latest reply...</i>")
                 .into()
         }
@@ -194,7 +203,7 @@ pub(super) fn populate_thread_root_summary(
 
     let replies_count_text = match replies_count {
         1 => Cow::Borrowed("1 reply"),
-        n => Cow::Owned(format!("{n} replies"))
+        n => Cow::Owned(format!("{n} replies")),
     };
     item.label(cx, ids!(thread_summary_count))
         .set_text(cx, &replies_count_text);
@@ -214,22 +223,32 @@ pub fn populate_preview_of_timeline_item(
 ) {
     if let Some(m) = timeline_item_content.as_message() {
         match m.msgtype() {
-            MessageType::Text(TextMessageEventContent { body, formatted, .. })
-            | MessageType::Notice(NoticeMessageEventContent { body, formatted, .. }) => {
-                let _ = populate_text_message_content(cx, widget_out, body, formatted.as_ref(), None, None, None, None);
+            MessageType::Text(TextMessageEventContent {
+                body, formatted, ..
+            })
+            | MessageType::Notice(NoticeMessageEventContent {
+                body, formatted, ..
+            }) => {
+                let _ = populate_text_message_content(
+                    cx,
+                    widget_out,
+                    body,
+                    formatted.as_ref(),
+                    None,
+                    None,
+                    None,
+                    None,
+                );
                 return;
             }
-            _ => { } // fall through to the general case for all timeline items below.
+            _ => {} // fall through to the general case for all timeline items below.
         }
     }
-    let html = text_preview_of_timeline_item(
-        timeline_item_content,
-        sender_user_id,
-        sender_username,
-    ).format_with(sender_username, true);
+    let html =
+        text_preview_of_timeline_item(timeline_item_content, sender_user_id, sender_username)
+            .format_with(sender_username, true);
     widget_out.show_html(cx, html);
 }
-
 
 /// A trait for abstracting over the different types of timeline events
 /// that can be displayed in a `SmallStateEvent` widget.
@@ -296,10 +315,8 @@ impl SmallStateEventContent for LiveLocationState {
         _item_drawn_status: ItemDrawnStatus,
         mut new_drawn_status: ItemDrawnStatus,
     ) -> (WidgetRef, ItemDrawnStatus) {
-        item.label(cx, ids!(content)).set_text(
-            cx,
-            &format!("{username} shared a live location."),
-        );
+        item.label(cx, ids!(content))
+            .set_text(cx, &format!("{username} shared a live location."));
         new_drawn_status.content_drawn = true;
         (item, new_drawn_status)
     }
@@ -342,7 +359,9 @@ impl SmallStateEventContent for PollState {
     ) -> (WidgetRef, ItemDrawnStatus) {
         item.label(cx, ids!(content)).set_text(
             cx,
-            self.fallback_text().unwrap_or_else(|| self.results().question).as_str(),
+            self.fallback_text()
+                .unwrap_or_else(|| self.results().question)
+                .as_str(),
         );
         new_drawn_status.content_drawn = true;
         (item, new_drawn_status)
@@ -411,20 +430,15 @@ impl SmallStateEventContent for RoomMembershipChange {
     ) -> (WidgetRef, ItemDrawnStatus) {
         let Some(preview) = text_preview_of_room_membership_change(self, false) else {
             // Don't actually display anything for nonexistent/unimportant membership changes.
-            return (
-                list.item(cx, item_id, id!(Empty)),
-                ItemDrawnStatus::new(),
-            );
+            return (list.item(cx, item_id, id!(Empty)), ItemDrawnStatus::new());
         };
 
         item.label(cx, ids!(content))
             .set_text(cx, &preview.format_with(username, false));
 
         // The invite_user_button is only used for "Knocked" membership change events.
-        item.button(cx, ids!(invite_user_button)).set_visible(
-            cx,
-            matches!(self.change(), Some(MembershipChange::Knocked)),
-        );
+        item.button(cx, ids!(invite_user_button))
+            .set_visible(cx, matches!(self.change(), Some(MembershipChange::Knocked)));
 
         new_drawn_status.content_drawn = true;
         (item, new_drawn_status)
@@ -476,7 +490,8 @@ pub(super) fn populate_small_state_event(
         );
         // Draw the timestamp as part of the profile.
         if let Some(dt) = unix_time_millis_to_datetime(event_tl_item.timestamp()) {
-            item.timestamp(cx, ids!(left_container.timestamp)).set_date_time(cx, dt);
+            item.timestamp(cx, ids!(left_container.timestamp))
+                .set_date_time(cx, dt);
         }
         new_drawn_status.profile_drawn = profile_drawn;
         username
@@ -494,7 +509,6 @@ pub(super) fn populate_small_state_event(
         new_drawn_status,
     )
 }
-
 
 /// Returns the display name of the sender of the given `event_tl_item`, if available.
 fn get_profile_display_name(event_tl_item: &EventTimelineItem) -> Option<String> {

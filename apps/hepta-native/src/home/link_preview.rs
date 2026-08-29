@@ -8,7 +8,10 @@ use std::{
 
 use makepad_widgets::*;
 use crate::{LivePtr, utils, widget_ref_from_live_ptr};
-use matrix_sdk::ruma::{events::room::{ImageInfo, MediaSource}, OwnedMxcUri, UInt};
+use matrix_sdk::ruma::{
+    events::room::{ImageInfo, MediaSource},
+    OwnedMxcUri, UInt,
+};
 use serde::{Deserialize, Deserializer};
 use url::Url;
 
@@ -231,8 +234,12 @@ impl Widget for LinkPreview {
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
         // Handle collapsible button clicks
         if let Event::Actions(actions) = event {
-            let expand_btn = self.view.button(cx, ids!(collapsible_buttons.expand_button));
-            let collapse_btn = self.view.button(cx, ids!(collapsible_buttons.collapse_button));
+            let expand_btn = self
+                .view
+                .button(cx, ids!(collapsible_buttons.expand_button));
+            let collapse_btn = self
+                .view
+                .button(cx, ids!(collapsible_buttons.collapse_button));
             if expand_btn.clicked(actions) || collapse_btn.clicked(actions) {
                 self.is_expanded = !self.is_expanded;
                 self.update_button_and_visibility(cx);
@@ -255,10 +262,12 @@ impl Widget for LinkPreview {
                     // return to normal bg color
                     reset_hover(cx, view);
                     if fe.is_over && fe.is_primary_hit() && fe.was_tap() {
-                        if let Some(html_link) = view.link_label(cx, ids!(content_view.title_label)).borrow() {
+                        if let Some(html_link) =
+                            view.link_label(cx, ids!(content_view.title_label)).borrow()
+                        {
                             if !html_link.url.is_empty() {
                                 cx.widget_action(
-                                    html_link.widget_uid(), 
+                                    html_link.widget_uid(),
                                     HtmlLinkAction::Clicked {
                                         url: html_link.url.clone(),
                                         key_modifiers: fe.modifiers,
@@ -277,7 +286,11 @@ impl Widget for LinkPreview {
 
     fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
         // First, draw as many children as should be visible.
-        let num_visible = if self.is_expanded { self.children.len() } else { MAX_DEFAULT_VISIBLE_PREVIEWS };
+        let num_visible = if self.is_expanded {
+            self.children.len()
+        } else {
+            MAX_DEFAULT_VISIBLE_PREVIEWS
+        };
         for child in self.children.iter_mut().take(num_visible) {
             let _ = child.draw(cx, scope);
         }
@@ -290,9 +303,15 @@ impl Widget for LinkPreview {
 impl LinkPreview {
     fn update_button_and_visibility(&mut self, cx: &mut Cx) {
         if self.num_hidden_links > 0 {
-            self.view.view(cx, ids!(collapsible_buttons)).set_visible(cx, true);
-            let expand_btn = self.view.button(cx, ids!(collapsible_buttons.expand_button));
-            let collapse_btn = self.view.button(cx, ids!(collapsible_buttons.collapse_button));
+            self.view
+                .view(cx, ids!(collapsible_buttons))
+                .set_visible(cx, true);
+            let expand_btn = self
+                .view
+                .button(cx, ids!(collapsible_buttons.expand_button));
+            let collapse_btn = self
+                .view
+                .button(cx, ids!(collapsible_buttons.collapse_button));
             if self.is_expanded {
                 expand_btn.set_visible(cx, false);
                 collapse_btn.set_visible(cx, true);
@@ -304,7 +323,9 @@ impl LinkPreview {
             expand_btn.reset_hover(cx);
             collapse_btn.reset_hover(cx);
         } else {
-            self.view.view(cx, ids!(collapsible_buttons)).set_visible(cx, false);
+            self.view
+                .view(cx, ids!(collapsible_buttons))
+                .set_visible(cx, false);
         }
     }
 }
@@ -336,16 +357,24 @@ impl LinkPreviewRef {
         populate_image_fn: &F,
     ) -> bool
     where
-        F: Fn(&mut Cx, &TextOrImageRef, Option<&ImageInfo>, MediaSource, &str, &mut MediaCache) -> bool,
+        F: Fn(
+            &mut Cx,
+            &TextOrImageRef,
+            Option<&ImageInfo>,
+            MediaSource,
+            &str,
+            &mut MediaCache,
+        ) -> bool,
     {
         const SKIPPED_DOMAINS: &[&str] = &["matrix.to", "matrix.io"];
 
         // Deduplicate links and filter out matrix or invalid links.
         let mut accepted_links: Vec<url::Url> = Vec::new();
         for link in links {
-            if link.host_str().is_some_and(|host|
-                SKIPPED_DOMAINS.iter().any(|skip| host.ends_with(skip))
-            ) {
+            if link
+                .host_str()
+                .is_some_and(|host| SKIPPED_DOMAINS.iter().any(|skip| host.ends_with(skip)))
+            {
                 continue;
             }
             if !accepted_links.contains(link) {
@@ -379,11 +408,14 @@ impl LinkPreviewRef {
             }
         }
 
-        let Some(inner) = self.borrow() else { return true };
+        let Some(inner) = self.borrow() else {
+            return true;
+        };
         let mut all_drawn = true;
         for (view, link) in inner.children.iter().zip(inner.last_populated_links.iter()) {
             let entry = link_preview_cache.get_or_fetch_link_preview(link.as_str());
-            all_drawn &= populate_preview_item(cx, view, entry, link, media_cache, populate_image_fn);
+            all_drawn &=
+                populate_preview_item(cx, view, entry, link, media_cache, populate_image_fn);
         }
         all_drawn
     }
@@ -452,7 +484,14 @@ where
     image_info.mimetype = data.image_type.clone();
     image_info.size = data.image_size;
     let source = MediaSource::Plain(OwnedMxcUri::from(image.clone()));
-    let fully_drawn = populate_image_fn(cx, &text_or_image, Some(&image_info), source, "", media_cache);
+    let fully_drawn = populate_image_fn(
+        cx,
+        &text_or_image,
+        Some(&image_info),
+        source,
+        "",
+        media_cache,
+    );
     // Only show the image area once there's an actual image in it. Anything else means
     // it's still loading or couldn't be fetched, and an error message doesn't belong here.
     image_view.set_visible(cx, text_or_image.status().is_image());
@@ -465,7 +504,11 @@ pub struct LinkPreviewData {
     #[serde(rename = "og:description")]
     pub description: Option<String>,
     /// The size of the image in bytes, if available
-    #[serde(rename = "matrix:image:size", default, deserialize_with = "deserialize_lenient_uint")]
+    #[serde(
+        rename = "matrix:image:size",
+        default,
+        deserialize_with = "deserialize_lenient_uint"
+    )]
     pub image_size: Option<UInt>,
     /// The URL of the image
     #[serde(rename = "og:image")]
@@ -499,7 +542,9 @@ where
     }
     Ok(match Option::<NumberOrString>::deserialize(deserializer)? {
         Some(NumberOrString::Number(n)) => Some(n),
-        Some(NumberOrString::String(s)) => s.parse::<u64>().ok().and_then(|n| UInt::try_from(n).ok()),
+        Some(NumberOrString::String(s)) => {
+            s.parse::<u64>().ok().and_then(|n| UInt::try_from(n).ok())
+        }
         None => None,
     })
 }
@@ -515,9 +560,7 @@ pub struct LinkPreviewCache {
 impl LinkPreviewCache {
     /// Creates a new link preview cache that will optionally send updates
     /// when a link preview request has completed.
-    pub const fn new(
-        timeline_update_sender: Option<TimelineUpdateSender>,
-    ) -> Self {
+    pub const fn new(timeline_update_sender: Option<TimelineUpdateSender>) -> Self {
         Self {
             cache: BTreeMap::new(),
             timeline_update_sender,

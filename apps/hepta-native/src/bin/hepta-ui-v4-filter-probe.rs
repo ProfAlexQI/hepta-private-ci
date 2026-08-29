@@ -64,9 +64,7 @@ impl FilterProbeApp {
         filter
             .text_input(cx, ids!(input))
             .set_text(cx, "Hepta diagnostics");
-        filter
-            .button(cx, ids!(clear_button))
-            .set_visible(cx, true);
+        filter.button(cx, ids!(clear_button)).set_visible(cx, true);
         self.ui.redraw(cx);
         self.capture_timer = cx.start_timeout(0.35);
     }
@@ -89,10 +87,10 @@ impl FilterProbeApp {
             })
             .unwrap_or((Vec2d::default(), 1.0));
 
-        let candidate_commit = std::env::var("HEPTA_CANDIDATE_COMMIT")
-            .unwrap_or_else(|_| "UNBOUND".to_string());
-        let candidate_tree = std::env::var("HEPTA_CANDIDATE_TREE")
-            .unwrap_or_else(|_| "UNBOUND".to_string());
+        let candidate_commit =
+            std::env::var("HEPTA_CANDIDATE_COMMIT").unwrap_or_else(|_| "UNBOUND".to_string());
+        let candidate_tree =
+            std::env::var("HEPTA_CANDIDATE_TREE").unwrap_or_else(|_| "UNBOUND".to_string());
         let checks = json!({
             "candidateCommitBound": is_git_object_id(&candidate_commit),
             "candidateTreeBound": is_git_object_id(&candidate_tree),
@@ -108,8 +106,7 @@ impl FilterProbeApp {
             .expect("checks object")
             .values()
             .all(|value| value == &Value::Bool(true));
-        let capture_path = std::env::var_os("HEPTA_NATIVE_CAPTURE_FRAME_PATH")
-            .map(PathBuf::from);
+        let capture_path = std::env::var_os("HEPTA_NATIVE_CAPTURE_FRAME_PATH").map(PathBuf::from);
 
         self.pending_receipt = Some(json!({
             "schema": RECEIPT_SCHEMA,
@@ -187,8 +184,7 @@ impl FilterProbeApp {
 
         let metrics_pass = receipt["qualification"]["componentMetrics"] == Value::Bool(true);
         let screenshot_requested = receipt["screenshot"]["requested"] == Value::Bool(true);
-        let screenshot_pass =
-            receipt["qualification"]["componentScreenshot"] == Value::Bool(true);
+        let screenshot_pass = receipt["qualification"]["componentScreenshot"] == Value::Bool(true);
         receipt["status"] = Value::String(
             if metrics_pass && (!screenshot_requested || screenshot_pass) {
                 "PASS_NATIVE_FILTER_COMPONENT_METRICS"

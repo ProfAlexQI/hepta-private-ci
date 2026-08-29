@@ -14,12 +14,8 @@ use super::hepta_platform_material_host::{
     HeptaMaterialHostCapabilities, HeptaMaterialHostError, HeptaMaterialHostSnapshot,
     HeptaPlatformMaterialHost,
 };
-use super::hepta_platform_material_runtime::{
-    current_platform, HeptaUnboundSystemMaterialAdapter,
-};
-use super::hepta_system_preferences::{
-    current_system_preferences, HeptaSystemPreferenceSnapshot,
-};
+use super::hepta_platform_material_runtime::{current_platform, HeptaUnboundSystemMaterialAdapter};
+use super::hepta_system_preferences::{current_system_preferences, HeptaSystemPreferenceSnapshot};
 
 pub const HEPTA_MATERIAL_APP_LIFECYCLE_SOURCE_WIRED: bool = true;
 pub const HEPTA_MATERIAL_APP_FRAMEWORK_WINDOW_VISUALS_SOURCE_WIRED: bool = true;
@@ -81,10 +77,7 @@ impl HeptaMaterialAppLifecycle {
         )
     }
 
-    pub fn suspend(
-        &mut self,
-        event: HeptaMaterialAppLifecycleEvent,
-    ) -> HeptaMaterialHostSnapshot {
+    pub fn suspend(&mut self, event: HeptaMaterialAppLifecycleEvent) -> HeptaMaterialHostSnapshot {
         self.last_event = Some(event);
         self.host.suspend(&mut self.adapter)
     }
@@ -159,9 +152,7 @@ impl HeptaV4MaterialLifecycleNode {
                 snapshot.system_material_bound,
                 snapshot.generation,
             ),
-            Err(error) => error!(
-                "Hepta material host {event:?} remained fail-closed: {error:?}"
-            ),
+            Err(error) => error!("Hepta material host {event:?} remained fail-closed: {error:?}"),
         }
     }
 
@@ -272,8 +263,7 @@ mod tests {
         assert!(active.grants_no_authority());
         assert!(matches!(
             active.phase,
-            HeptaMaterialHostPhase::SolidFallback
-                | HeptaMaterialHostPhase::SemanticIntentOnly
+            HeptaMaterialHostPhase::SolidFallback | HeptaMaterialHostPhase::SemanticIntentOnly
         ));
         let shutdown = lifecycle.shutdown();
         assert_eq!(shutdown.phase, HeptaMaterialHostPhase::Shutdown);

@@ -98,11 +98,7 @@ impl HeptaWindowsWindowHandles {
 
 /// Minimal DWM write surface used by the full Windows material adapter.
 pub trait HeptaWindowsBackdropApi {
-    fn set_backdrop(
-        &mut self,
-        window: isize,
-        kind: HeptaWindowsBackdropKind,
-    ) -> Result<(), i32>;
+    fn set_backdrop(&mut self, window: isize, kind: HeptaWindowsBackdropKind) -> Result<(), i32>;
 }
 
 /// DWM readback surface used by the root-window acknowledgement producer.
@@ -131,9 +127,7 @@ impl<A> HeptaWindowsMaterialAdapter<A> {
     }
 }
 
-impl<A: HeptaWindowsBackdropApi> HeptaSystemMaterialAdapter
-    for HeptaWindowsMaterialAdapter<A>
-{
+impl<A: HeptaWindowsBackdropApi> HeptaSystemMaterialAdapter for HeptaWindowsMaterialAdapter<A> {
     fn platform(&self) -> HeptaPlatform {
         HeptaPlatform::Windows
     }
@@ -159,10 +153,9 @@ impl<A: HeptaWindowsBackdropApi> HeptaSystemMaterialAdapter
             self.handles.transient_window,
             HeptaWindowsBackdropKind::Acrylic,
         ) {
-            let _ = self.api.set_backdrop(
-                self.handles.chrome_window,
-                HeptaWindowsBackdropKind::None,
-            );
+            let _ = self
+                .api
+                .set_backdrop(self.handles.chrome_window, HeptaWindowsBackdropKind::None);
             self.bound = false;
             return Err(HeptaSystemMaterialError::SystemCallFailed(error));
         }
@@ -186,10 +179,9 @@ impl<A: HeptaWindowsBackdropApi> HeptaSystemMaterialAdapter
             self.handles.transient_window,
             HeptaWindowsBackdropKind::None,
         );
-        let _ = self.api.set_backdrop(
-            self.handles.chrome_window,
-            HeptaWindowsBackdropKind::None,
-        );
+        let _ = self
+            .api
+            .set_backdrop(self.handles.chrome_window, HeptaWindowsBackdropKind::None);
         self.bound = false;
     }
 }
@@ -224,11 +216,7 @@ pub struct HeptaWindowsDwmBackdropApi;
 
 #[cfg(target_os = "windows")]
 impl HeptaWindowsBackdropApi for HeptaWindowsDwmBackdropApi {
-    fn set_backdrop(
-        &mut self,
-        window: isize,
-        kind: HeptaWindowsBackdropKind,
-    ) -> Result<(), i32> {
+    fn set_backdrop(&mut self, window: isize, kind: HeptaWindowsBackdropKind) -> Result<(), i32> {
         use std::mem::size_of;
 
         if window == 0 {
@@ -243,11 +231,7 @@ impl HeptaWindowsBackdropApi for HeptaWindowsDwmBackdropApi {
                 size_of::<i32>() as u32,
             )
         };
-        if result >= 0 {
-            Ok(())
-        } else {
-            Err(result)
-        }
+        if result >= 0 { Ok(()) } else { Err(result) }
     }
 }
 
@@ -274,8 +258,9 @@ impl HeptaWindowsBackdropReadbackApi for HeptaWindowsDwmBackdropApi {
         if result < 0 {
             return Err(HeptaWindowsBackdropReadbackError::SystemCallFailed(result));
         }
-        HeptaWindowsDwmBackdropValue::from_dwm_value(value)
-            .ok_or(HeptaWindowsBackdropReadbackError::UnknownBackdropValue(value))
+        HeptaWindowsDwmBackdropValue::from_dwm_value(value).ok_or(
+            HeptaWindowsBackdropReadbackError::UnknownBackdropValue(value),
+        )
     }
 }
 
@@ -325,8 +310,7 @@ mod tests {
 
     #[test]
     fn windows_adapter_binds_and_unbinds_both_material_roles() {
-        let mut adapter =
-            HeptaWindowsMaterialAdapter::new(handles(), RecordingApi::default());
+        let mut adapter = HeptaWindowsMaterialAdapter::new(handles(), RecordingApi::default());
         let receipt = bind_material_runtime(&mut adapter, preferences()).unwrap();
         assert_eq!(
             receipt,

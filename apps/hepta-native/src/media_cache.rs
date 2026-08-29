@@ -1,9 +1,20 @@
-use std::{ops::{Deref, DerefMut}, sync::{Arc, Mutex}};
+use std::{
+    ops::{Deref, DerefMut},
+    sync::{Arc, Mutex},
+};
 use hashbrown::{hash_map::RawEntryMut, HashMap};
 use makepad_widgets::{error, SignalToUI};
-use matrix_sdk::{media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings}, ruma::{events::room::MediaSource, OwnedMxcUri}, Error, HttpError};
+use matrix_sdk::{
+    media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings},
+    ruma::{events::room::MediaSource, OwnedMxcUri},
+    Error, HttpError,
+};
 use matrix_sdk::reqwest::StatusCode;
-use crate::{home::{room_screen::TimelineUpdate, timeline_update_queue::TimelineUpdateSender}, shared::attachment_download::media_source_mxc, sliding_sync::{self, MatrixRequest}};
+use crate::{
+    home::{room_screen::TimelineUpdate, timeline_update_queue::TimelineUpdateSender},
+    shared::attachment_download::media_source_mxc,
+    sliding_sync::{self, MatrixRequest},
+};
 
 /// The value type in the media cache, one per Matrix URI.
 #[derive(Debug, Clone)]
@@ -25,7 +36,6 @@ pub enum MediaCacheEntry {
 
 /// A reference to a media cache entry and its associated format.
 pub type MediaCacheEntryRef = Arc<Mutex<MediaCacheEntry>>;
-
 
 /// A cache of fetched media, indexed by Matrix URI.
 ///
@@ -57,9 +67,7 @@ impl MediaCache {
     ///
     /// It will also optionally send updates to the given timeline update sender
     /// when a media request has completed.
-    pub fn new(
-        timeline_update_sender: Option<TimelineUpdateSender>,
-    ) -> Self {
+    pub fn new(timeline_update_sender: Option<TimelineUpdateSender>) -> Self {
         Self {
             cache: HashMap::new(),
             timeline_update_sender,
@@ -109,11 +117,11 @@ impl MediaCache {
                             value.thumbnail = Some((Arc::clone(&entry_ref), requested_mts.clone()));
                             // If a full-size image is already loaded, return it.
                             if let Some(existing_file) = value.full_file.as_ref() {
-                                if let MediaCacheEntry::Loaded(d) = existing_file.lock().unwrap().deref() {
-                                    post_request_retval = (
-                                        MediaCacheEntry::Loaded(Arc::clone(d)),
-                                        MediaFormat::File,
-                                    );
+                                if let MediaCacheEntry::Loaded(d) =
+                                    existing_file.lock().unwrap().deref()
+                                {
+                                    post_request_retval =
+                                        (MediaCacheEntry::Loaded(Arc::clone(d)), MediaFormat::File);
                                 }
                             }
                             entry_ref_to_fetch = entry_ref;
@@ -121,17 +129,18 @@ impl MediaCache {
                     }
                     MediaFormat::File => {
                         if let Some(entry_ref) = value.full_file.as_ref() {
-                            return (
-                                entry_ref.lock().unwrap().deref().clone(),
-                                MediaFormat::File,
-                            );
+                            return (entry_ref.lock().unwrap().deref().clone(), MediaFormat::File);
                         } else {
                             // Here, a full-size image was requested but not found, so fetch it.
                             let entry_ref = Arc::new(Mutex::new(MediaCacheEntry::Requested));
                             value.full_file = Some(entry_ref.clone());
                             // If a thumbnail is already loaded, return it.
-                            if let Some((existing_thumbnail, existing_mts)) = value.thumbnail.as_ref() {
-                                if let MediaCacheEntry::Loaded(d) = existing_thumbnail.lock().unwrap().deref() {
+                            if let Some((existing_thumbnail, existing_mts)) =
+                                value.thumbnail.as_ref()
+                            {
+                                if let MediaCacheEntry::Loaded(d) =
+                                    existing_thumbnail.lock().unwrap().deref()
+                                {
                                     post_request_retval = (
                                         MediaCacheEntry::Loaded(Arc::clone(d)),
                                         MediaFormat::Thumbnail(existing_mts.clone()),
@@ -207,11 +216,13 @@ impl MediaCache {
             value.full_file.is_some() || value.thumbnail.is_some()
         });
     }
-
 }
 
 /// Converts a Matrix SDK error to a MediaCacheEntry::Failed with appropriate status codes.
-pub(crate) fn error_to_media_cache_entry(error: Error, request: &MediaRequestParameters) -> MediaCacheEntry {
+pub(crate) fn error_to_media_cache_entry(
+    error: Error,
+    request: &MediaRequestParameters,
+) -> MediaCacheEntry {
     match error {
         Error::Http(http_error) => {
             if let Some(client_error) = http_error.as_client_api_error() {
@@ -224,9 +235,11 @@ pub(crate) fn error_to_media_cache_entry(error: Error, request: &MediaRequestPar
                         if !reqwest_error.is_connect() {
                             MediaCacheEntry::Failed(StatusCode::INTERNAL_SERVER_ERROR)
                         } else if reqwest_error.is_status() {
-                            MediaCacheEntry::Failed(reqwest_error
-                                .status()
-                                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR))
+                            MediaCacheEntry::Failed(
+                                reqwest_error
+                                    .status()
+                                    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                            )
                         } else {
                             MediaCacheEntry::Failed(StatusCode::INTERNAL_SERVER_ERROR)
                         }
@@ -237,7 +250,7 @@ pub(crate) fn error_to_media_cache_entry(error: Error, request: &MediaRequestPar
         }
         Error::InsufficientData => MediaCacheEntry::Failed(StatusCode::PARTIAL_CONTENT),
         Error::AuthenticationRequired => MediaCacheEntry::Failed(StatusCode::UNAUTHORIZED),
-        _ => MediaCacheEntry::Failed(StatusCode::INTERNAL_SERVER_ERROR)
+        _ => MediaCacheEntry::Failed(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
 
@@ -253,7 +266,7 @@ fn insert_into_cache<D: Into<Arc<[u8]>>>(
             let data = data.into();
             MediaCacheEntry::Loaded(data)
         }
-        Err(e) => error_to_media_cache_entry(e, &request)
+        Err(e) => error_to_media_cache_entry(e, &request),
     };
 
     *value_ref.lock().unwrap() = new_value;

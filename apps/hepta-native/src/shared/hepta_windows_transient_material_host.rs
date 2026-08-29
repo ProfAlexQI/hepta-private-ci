@@ -124,8 +124,7 @@ impl HeptaWindowsTransientRequestIdentity {
                     && requested_visuals.backdrop == WindowBackdrop::Acrylic
             }
             HeptaWindowsTransientMaterialKind::SolidRollback => {
-                !requested_visuals.transparent
-                    && requested_visuals.backdrop == WindowBackdrop::None
+                !requested_visuals.transparent && requested_visuals.backdrop == WindowBackdrop::None
             }
         };
         if !valid {
@@ -375,14 +374,10 @@ impl HeptaWindowsTransientMaterialHost {
             }
             HeptaWindowsTransientMaterialKind::SolidRollback => {
                 if self.acrylic_receipt.is_none() {
-                    return Err(
-                        HeptaWindowsTransientHostError::AcrylicAcknowledgementRequired,
-                    );
+                    return Err(HeptaWindowsTransientHostError::AcrylicAcknowledgementRequired);
                 }
                 if self.solid_receipt.is_some() {
-                    return Err(
-                        HeptaWindowsTransientHostError::SolidRollbackAlreadyAcknowledged,
-                    );
+                    return Err(HeptaWindowsTransientHostError::SolidRollbackAlreadyAcknowledged);
                 }
             }
         }
@@ -440,12 +435,10 @@ impl HeptaWindowsTransientMaterialHost {
             return Ok(receipt);
         }
 
-        let observed = api
-            .read_backdrop(identity.hwnd)
-            .map_err(|error| {
-                self.reject_and_consume();
-                HeptaWindowsTransientHostError::Readback(error)
-            })?;
+        let observed = api.read_backdrop(identity.hwnd).map_err(|error| {
+            self.reject_and_consume();
+            HeptaWindowsTransientHostError::Readback(error)
+        })?;
         let observed_backdrop = observed_backdrop(observed);
         if observed_backdrop != Some(request.requested_visuals.backdrop) {
             let receipt = self.receipt(
@@ -473,12 +466,8 @@ impl HeptaWindowsTransientMaterialHost {
         let receipt = self.receipt(request, identity, status, true, observed_backdrop);
         self.pending = None;
         match request.kind {
-            HeptaWindowsTransientMaterialKind::Acrylic => {
-                self.acrylic_receipt = Some(receipt)
-            }
-            HeptaWindowsTransientMaterialKind::SolidRollback => {
-                self.solid_receipt = Some(receipt)
-            }
+            HeptaWindowsTransientMaterialKind::Acrylic => self.acrylic_receipt = Some(receipt),
+            HeptaWindowsTransientMaterialKind::SolidRollback => self.solid_receipt = Some(receipt),
         }
         Ok(receipt)
     }
@@ -486,9 +475,7 @@ impl HeptaWindowsTransientMaterialHost {
     pub fn begin_close(&mut self) -> Result<(), HeptaWindowsTransientHostError> {
         self.ensure_active()?;
         if self.pending.is_some() || self.solid_receipt.is_none() {
-            return Err(
-                HeptaWindowsTransientHostError::SolidRollbackRequiredBeforeClose,
-            );
+            return Err(HeptaWindowsTransientHostError::SolidRollbackRequiredBeforeClose);
         }
         self.phase = HeptaWindowsTransientHostPhase::Closing;
         Ok(())
@@ -681,8 +668,8 @@ mod tests {
     };
     use crate::shared::hepta_windows_backend_ack_bridge::HeptaWindowsBackendWindowIdentity;
     use crate::shared::hepta_window_visual_ack::{
-        HeptaWindowVisualAckReceipt, HeptaWindowVisualAckStatus,
-        HeptaWindowVisualBackend, HeptaWindowVisualReadbackScope,
+        HeptaWindowVisualAckReceipt, HeptaWindowVisualAckStatus, HeptaWindowVisualBackend,
+        HeptaWindowVisualReadbackScope,
     };
     use crate::shared::hepta_platform_material::HeptaPlatform;
 
@@ -720,14 +707,8 @@ mod tests {
             },
             HeptaWindowsTransientMaterialKind::SolidRollback => WindowVisuals::default(),
         };
-        HeptaWindowsTransientRequestIdentity::new(
-            sequence,
-            ROOT_ID,
-            POPUP_ID,
-            visuals,
-            kind,
-        )
-        .unwrap()
+        HeptaWindowsTransientRequestIdentity::new(sequence, ROOT_ID, POPUP_ID, visuals, kind)
+            .unwrap()
     }
 
     fn event(
@@ -789,10 +770,11 @@ mod tests {
             calls: Vec::new(),
             value: HeptaWindowsDwmBackdropValue::Acrylic,
         };
-        assert!(host
-            .process_backend_event(event(acrylic, true), &mut acrylic_api)
-            .unwrap()
-            .accepted);
+        assert!(
+            host.process_backend_event(event(acrylic, true), &mut acrylic_api)
+                .unwrap()
+                .accepted
+        );
 
         let solid = request(3, HeptaWindowsTransientMaterialKind::SolidRollback);
         host.register_request(solid).unwrap();
@@ -800,14 +782,15 @@ mod tests {
             calls: Vec::new(),
             value: HeptaWindowsDwmBackdropValue::None,
         };
-        assert!(host
-            .process_backend_event(event(solid, true), &mut solid_api)
-            .unwrap()
-            .accepted);
+        assert!(
+            host.process_backend_event(event(solid, true), &mut solid_api)
+                .unwrap()
+                .accepted
+        );
 
         host.begin_close().unwrap();
-        let destroyed = HeptaWindowsTransientWindowIdentity::new(12, POPUP_ID.0, POPUP_ID.1)
-            .unwrap();
+        let destroyed =
+            HeptaWindowsTransientWindowIdentity::new(12, POPUP_ID.0, POPUP_ID.1).unwrap();
         assert!(host.process_destroyed(destroyed).unwrap());
         let aggregate = aggregate_windows_material_profile(
             HeptaWindowsBackendWindowIdentity {

@@ -7,7 +7,6 @@ use crate::home::room_screen::InviteResultAction;
 use crate::sliding_sync::{MatrixRequest, submit_async_request};
 use crate::utils::RoomNameId;
 
-
 script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*
@@ -102,12 +101,14 @@ enum InviteModalState {
     InviteError,
 }
 
-
 #[derive(Script, ScriptHook, Widget)]
 pub struct InviteModal {
-    #[deref] view: View,
-    #[rust] state: InviteModalState,
-    #[rust] room_name_id: Option<RoomNameId>,
+    #[deref]
+    view: View,
+    #[rust]
+    state: InviteModalState,
+    #[rust]
+    room_name_id: Option<RoomNameId>,
 }
 
 impl Widget for InviteModal {
@@ -127,8 +128,10 @@ impl WidgetMatchEvent for InviteModal {
 
         // Handle canceling/closing the modal.
         let cancel_clicked = cancel_button.clicked(actions);
-        if cancel_clicked ||
-            actions.iter().any(|a| matches!(a.downcast_ref(), Some(ModalAction::Dismissed)))
+        if cancel_clicked
+            || actions
+                .iter()
+                .any(|a| matches!(a.downcast_ref(), Some(ModalAction::Dismissed)))
         {
             // If the modal was dismissed by clicking outside of it, we MUST NOT emit
             // a `InviteModalAction::Close` action, as that would cause
@@ -152,7 +155,8 @@ impl WidgetMatchEvent for InviteModal {
         let mut status_label = self.view.label(cx, ids!(status_label_view.status_label));
 
         // Handle return key or invite button click.
-        if let Some(user_id_str) = confirm_button.clicked(actions)
+        if let Some(user_id_str) = confirm_button
+            .clicked(actions)
             .then(|| user_id_input.text())
             .or_else(|| user_id_input.returned(actions).map(|(t, _)| t))
         {
@@ -208,9 +212,12 @@ impl WidgetMatchEvent for InviteModal {
             for action in actions {
                 let new_state = match action.downcast_ref() {
                     Some(InviteResultAction::Sent { room_id, user_id })
-                        if self.room_name_id.as_ref().is_some_and(|rni| rni.room_id() == room_id)
-                            && invited_user_id == user_id
-                    => {
+                        if self
+                            .room_name_id
+                            .as_ref()
+                            .is_some_and(|rni| rni.room_id() == room_id)
+                            && invited_user_id == user_id =>
+                    {
                         let status = format!("Successfully invited {user_id}!");
                         script_apply_eval!(cx, status_label, {
                             text: #(status),
@@ -224,10 +231,16 @@ impl WidgetMatchEvent for InviteModal {
                         okay_button.set_visible(cx, true);
                         Some(InviteModalState::InviteSuccess)
                     }
-                    Some(InviteResultAction::Failed { room_id, user_id, error })
-                        if self.room_name_id.as_ref().is_some_and(|rni| rni.room_id() == room_id)
-                            && invited_user_id == user_id
-                    => {
+                    Some(InviteResultAction::Failed {
+                        room_id,
+                        user_id,
+                        error,
+                    }) if self
+                        .room_name_id
+                        .as_ref()
+                        .is_some_and(|rni| rni.room_id() == room_id)
+                        && invited_user_id == user_id =>
+                    {
                         let status = format!("Failed to send invite: {error}");
                         script_apply_eval!(cx, status_label, {
                             text: #(status),
@@ -255,10 +268,9 @@ impl WidgetMatchEvent for InviteModal {
 
 impl InviteModal {
     pub fn show(&mut self, cx: &mut Cx, room_name_id: RoomNameId) {
-        self.view.label(cx, ids!(title)).set_text(
-            cx,
-            &format!("Invite to {room_name_id}"),
-        );
+        self.view
+            .label(cx, ids!(title))
+            .set_text(cx, &format!("Invite to {room_name_id}"));
         self.state = InviteModalState::WaitingForUserInput;
         self.room_name_id = Some(room_name_id);
 
@@ -277,8 +289,12 @@ impl InviteModal {
         okay_button.reset_hover(cx);
         user_id_input.set_is_read_only(cx, false);
         user_id_input.set_text(cx, "");
-        self.view.view(cx, ids!(status_label_view)).set_visible(cx, false);
-        self.view.label(cx, ids!(status_label_view.status_label)).set_text(cx, "");
+        self.view
+            .view(cx, ids!(status_label_view))
+            .set_visible(cx, false);
+        self.view
+            .label(cx, ids!(status_label_view.status_label))
+            .set_text(cx, "");
         self.view.redraw(cx);
         user_id_input.set_key_focus(cx);
     }
@@ -286,7 +302,9 @@ impl InviteModal {
 
 impl InviteModalRef {
     pub fn show(&self, cx: &mut Cx, room_name_id: RoomNameId) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.show(cx, room_name_id);
     }
 }

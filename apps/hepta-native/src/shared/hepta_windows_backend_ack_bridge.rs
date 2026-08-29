@@ -17,14 +17,13 @@ use makepad_widgets::WindowVisuals;
 
 use super::hepta_platform_material::HeptaPlatform;
 use super::hepta_window_visual_ack::{
-    verify_window_visual_acknowledgement, HeptaWindowVisualAckReceipt,
-    HeptaWindowVisualBackend, HeptaWindowVisualBackendObservation,
-    HeptaWindowVisualReadback, HeptaWindowVisualRequestIdentity,
+    verify_window_visual_acknowledgement, HeptaWindowVisualAckReceipt, HeptaWindowVisualBackend,
+    HeptaWindowVisualBackendObservation, HeptaWindowVisualReadback,
+    HeptaWindowVisualRequestIdentity,
 };
 use super::hepta_windows_material_adapter::HeptaWindowsBackdropReadbackApi;
 use super::hepta_windows_window_ack_producer::{
-    HeptaWindowsDwmAckProducerError, HeptaWindowsDwmWindowAckProducer,
-    HeptaWindowsDwmWindowBinding,
+    HeptaWindowsDwmAckProducerError, HeptaWindowsDwmWindowAckProducer, HeptaWindowsDwmWindowBinding,
 };
 
 pub const HEPTA_WINDOWS_BACKEND_ACK_BRIDGE_SOURCE_WIRED: bool = true;
@@ -316,10 +315,8 @@ impl HeptaWindowsBackendAckBridge {
                 binding.window_generation,
             )
             .map_err(HeptaWindowsBackendAckBridgeError::BackendObservation)?;
-            let mut producer = HeptaWindowsDwmWindowAckProducer::new(
-                producer_binding,
-                BorrowedReadbackApi(api),
-            );
+            let mut producer =
+                HeptaWindowsDwmWindowAckProducer::new(producer_binding, BorrowedReadbackApi(api));
             let observation = match producer.observe(request) {
                 Ok(observation) => observation,
                 Err(error) => {
@@ -437,33 +434,31 @@ mod tests {
     }
 
     fn request(sequence: u64, generation: u64) -> HeptaWindowVisualRequestIdentity {
-        HeptaWindowVisualRequestIdentity::from_makepad_receipt(
-            HeptaMakepadWindowMaterialReceipt {
-                generation: sequence,
-                platform: HeptaPlatform::Windows,
-                window_index: Some(4),
-                window_generation: Some(generation),
-                phase: HeptaMakepadWindowMaterialPhase::PersistentChromeRequested,
-                requested_visuals: WindowVisuals {
-                    transparent: true,
-                    backdrop: WindowBackdrop::Mica,
-                    backdrop_intensity: 0.9,
-                },
-                framework_state_updated: true,
-                framework_request_queued: true,
-                persistent_chrome_requested: true,
-                transient_system_material_bound: false,
-                complete_profile_bound: false,
-                system_material_bound: false,
-                runtime_readback: false,
-                production_authority: false,
-                effect_authority: false,
-                live_adapter_authority: false,
-                operator_acceptance: false,
-                promotion: false,
-                release: false,
+        HeptaWindowVisualRequestIdentity::from_makepad_receipt(HeptaMakepadWindowMaterialReceipt {
+            generation: sequence,
+            platform: HeptaPlatform::Windows,
+            window_index: Some(4),
+            window_generation: Some(generation),
+            phase: HeptaMakepadWindowMaterialPhase::PersistentChromeRequested,
+            requested_visuals: WindowVisuals {
+                transparent: true,
+                backdrop: WindowBackdrop::Mica,
+                backdrop_intensity: 0.9,
             },
-        )
+            framework_state_updated: true,
+            framework_request_queued: true,
+            persistent_chrome_requested: true,
+            transient_system_material_bound: false,
+            complete_profile_bound: false,
+            system_material_bound: false,
+            runtime_readback: false,
+            production_authority: false,
+            effect_authority: false,
+            live_adapter_authority: false,
+            operator_acceptance: false,
+            promotion: false,
+            release: false,
+        })
         .unwrap()
     }
 
@@ -516,7 +511,10 @@ mod tests {
         assert!(receipt.remains_partial());
         assert!(receipt.grants_no_authority());
         assert_eq!(api.calls, vec![404]);
-        assert_eq!(bridge.phase(), HeptaWindowsBackendAckBridgePhase::Acknowledged);
+        assert_eq!(
+            bridge.phase(),
+            HeptaWindowsBackendAckBridgePhase::Acknowledged
+        );
     }
 
     #[test]
@@ -555,7 +553,10 @@ mod tests {
             .process_backend_event(event(request, false), &mut api)
             .unwrap();
 
-        assert_eq!(receipt.status, HeptaWindowVisualAckStatus::RejectedBackendFailure);
+        assert_eq!(
+            receipt.status,
+            HeptaWindowVisualAckStatus::RejectedBackendFailure
+        );
         assert!(!receipt.accepted);
         assert!(api.calls.is_empty());
         assert_eq!(bridge.phase(), HeptaWindowsBackendAckBridgePhase::Rejected);
@@ -601,7 +602,10 @@ mod tests {
         assert!(!bridge.invalidate_destroyed_window(binding(8)));
         assert_eq!(bridge.bound_window(), Some(binding(9)));
         assert!(bridge.invalidate_destroyed_window(binding(9)));
-        assert_eq!(bridge.phase(), HeptaWindowsBackendAckBridgePhase::Invalidated);
+        assert_eq!(
+            bridge.phase(),
+            HeptaWindowsBackendAckBridgePhase::Invalidated
+        );
     }
 
     #[test]

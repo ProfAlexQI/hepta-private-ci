@@ -44,14 +44,19 @@ pub static SLASH_COMMANDS: &[SlashCommand] = &[
 /// Returns an iterator over all slash commands that start with the given `query`.
 pub fn matching_commands(query: &str) -> impl Iterator<Item = &'static SlashCommand> {
     let query = query.to_lowercase();
-    SLASH_COMMANDS.iter().filter(move |c| c.name.starts_with(&query))
+    SLASH_COMMANDS
+        .iter()
+        .filter(move |c| c.name.starts_with(&query))
 }
 
 /// Creates and returns the message event content for the given slash command.
 pub fn build_message_for_command(text: &str) -> Option<RoomMessageEventContent> {
     let (name, arg) = split_command(text)?;
     match name {
-        "html" => Some(RoomMessageEventContent::text_html(html_to_plaintext(arg), arg)),
+        "html" => Some(RoomMessageEventContent::text_html(
+            html_to_plaintext(arg),
+            arg,
+        )),
         "plain" => Some(RoomMessageEventContent::text_plain(arg)),
         _ => None,
     }

@@ -8,9 +8,13 @@ use matrix_sdk::{
         },
     },
 };
-use matrix_sdk_ui::timeline::{EventTimelineItem, MsgLikeKind, TimelineEventItemId, TimelineItemContent};
+use matrix_sdk_ui::timeline::{
+    EventTimelineItem, MsgLikeKind, TimelineEventItemId, TimelineItemContent,
+};
 
-use crate::shared::mentionable_text_input::{MentionableTextInputWidgetExt, MentionableTextInputWidgetRefExt, MentionableTextInputState};
+use crate::shared::mentionable_text_input::{
+    MentionableTextInputWidgetExt, MentionableTextInputWidgetRefExt, MentionableTextInputState,
+};
 use crate::{
     settings::app_preferences::{AppPreferencesGlobal, AppPreferencesAction},
     shared::popup_list::{enqueue_popup_notification, PopupKind},
@@ -101,7 +105,7 @@ script_mod! {
         align: Align{x: 0.5, y: 1.0}
 
         editing_content := mod.widgets.EditingContent { }
-        
+
         slide: 1.0,
 
         animator: Animator{
@@ -149,17 +153,25 @@ struct EditingPaneInfo {
 /// A view that slides in from the bottom of the screen to allow editing a message.
 #[derive(Script, Widget, Animator)]
 pub struct EditingPane {
-    #[source] source: ScriptObjectRef,
-    #[deref] view: View,
-    #[apply_default] animator: Animator,
-    #[live] slide: f32,
+    #[source]
+    source: ScriptObjectRef,
+    #[deref]
+    view: View,
+    #[apply_default]
+    animator: Animator,
+    #[live]
+    slide: f32,
 
-    #[rust] info: Option<EditingPaneInfo>,
-    #[rust] is_animating_out: bool,
-    #[rust] last_content_height: f64,
+    #[rust]
+    info: Option<EditingPaneInfo>,
+    #[rust]
+    is_animating_out: bool,
+    #[rust]
+    last_content_height: f64,
     /// Used to force this widget's parent to do a re-draw
     /// after the hide animation completes on this pane.
-    #[rust] next_frame: NextFrame,
+    #[rust]
+    next_frame: NextFrame,
 }
 
 impl ScriptHook for EditingPane {
@@ -193,7 +205,9 @@ impl Widget for EditingPane {
             }
         }
 
-        if !self.visible { return; }
+        if !self.visible {
+            return;
+        }
 
         let animator_action = self.animator_handle_event(cx, event);
         if animator_action.must_redraw() {
@@ -227,7 +241,8 @@ impl Widget for EditingPane {
         }
 
         if let Event::Actions(actions) = event {
-            let mentionable_input = self.mentionable_text_input(cx, ids!(editing_content.edit_text_input));
+            let mentionable_input =
+                self.mentionable_text_input(cx, ids!(editing_content.edit_text_input));
             let edit_text_input = mentionable_input.text_input_ref();
 
             // Hide the editing pane if the cancel button was clicked
@@ -240,7 +255,9 @@ impl Widget for EditingPane {
                 return;
             }
 
-            let Some(info) = self.info.as_ref() else { return };
+            let Some(info) = self.info.as_ref() else {
+                return;
+            };
 
             if self.button(cx, ids!(accept_button)).clicked(actions)
                 || edit_text_input.returned(actions).is_some()
@@ -258,7 +275,9 @@ impl Widget for EditingPane {
 
                                     // TODO: also handle "/html" or "/plain" prefixes, just like when sending new messages.
                                     MessageType::Text(_text) => EditedContent::RoomMessage(
-                                        RoomMessageEventContentWithoutRelation::text_markdown(&edited_text),
+                                        RoomMessageEventContentWithoutRelation::text_markdown(
+                                            &edited_text,
+                                        ),
                                     ),
                                     MessageType::Emote(_emote) => EditedContent::RoomMessage(
                                         RoomMessageEventContentWithoutRelation::emote_markdown(
@@ -272,7 +291,8 @@ impl Widget for EditingPane {
                                     MessageType::Image(image) => {
                                         let mut new_image_msg = image.clone();
                                         if image.formatted.is_some() {
-                                            new_image_msg.formatted = FormattedBody::markdown(&edited_text);
+                                            new_image_msg.formatted =
+                                                FormattedBody::markdown(&edited_text);
                                         }
                                         new_image_msg.body = edited_text.clone();
                                         EditedContent::RoomMessage(
@@ -280,11 +300,12 @@ impl Widget for EditingPane {
                                                 MessageType::Image(new_image_msg),
                                             ),
                                         )
-                                    },
+                                    }
                                     MessageType::Audio(audio) => {
                                         let mut new_audio_msg = audio.clone();
                                         if audio.formatted.is_some() {
-                                            new_audio_msg.formatted = FormattedBody::markdown(&edited_text);
+                                            new_audio_msg.formatted =
+                                                FormattedBody::markdown(&edited_text);
                                         }
                                         new_audio_msg.body = edited_text.clone();
                                         EditedContent::RoomMessage(
@@ -292,23 +313,25 @@ impl Widget for EditingPane {
                                                 MessageType::Audio(new_audio_msg),
                                             ),
                                         )
-                                    },
+                                    }
                                     MessageType::File(file) => {
                                         let mut new_file_msg = file.clone();
                                         if file.formatted.is_some() {
-                                            new_file_msg.formatted = FormattedBody::markdown(&edited_text);
+                                            new_file_msg.formatted =
+                                                FormattedBody::markdown(&edited_text);
                                         }
                                         new_file_msg.body = edited_text.clone();
                                         EditedContent::RoomMessage(
-                                            RoomMessageEventContentWithoutRelation::new(MessageType::File(
-                                                new_file_msg,
-                                            )),
+                                            RoomMessageEventContentWithoutRelation::new(
+                                                MessageType::File(new_file_msg),
+                                            ),
                                         )
-                                    },
+                                    }
                                     MessageType::Video(video) => {
                                         let mut new_video_msg = video.clone();
                                         if video.formatted.is_some() {
-                                            new_video_msg.formatted = FormattedBody::markdown(&edited_text);
+                                            new_video_msg.formatted =
+                                                FormattedBody::markdown(&edited_text);
                                         }
                                         new_video_msg.body = edited_text.clone();
                                         EditedContent::RoomMessage(
@@ -316,7 +339,7 @@ impl Widget for EditingPane {
                                                 MessageType::Video(new_video_msg),
                                             ),
                                         )
-                                    },
+                                    }
                                     _non_editable => {
                                         enqueue_popup_notification(
                                             "That message type cannot be edited.",
@@ -326,15 +349,21 @@ impl Widget for EditingPane {
                                         self.animator_play(cx, ids!(panel.hide));
                                         self.redraw(cx);
                                         return;
-                                    },
+                                    }
                                 };
 
                                 // Re-add the original message's mentions, but only if they're still present in the edited text.
-                                if let EditedContent::RoomMessage(new_message_content) = &mut edited_content {
-                                    let mut mentions = mentionable_input.get_mentions_in(&edited_text);
+                                if let EditedContent::RoomMessage(new_message_content) =
+                                    &mut edited_content
+                                {
+                                    let mut mentions =
+                                        mentionable_input.get_mentions_in(&edited_text);
                                     if let Some(existing) = message.mentions() {
                                         for user_id in &existing.user_ids {
-                                            if edited_text.contains(&format!("]({})", user_id.matrix_to_uri())) {
+                                            if edited_text.contains(&format!(
+                                                "]({})",
+                                                user_id.matrix_to_uri()
+                                            )) {
                                                 mentions.user_ids.insert(user_id.clone());
                                             }
                                         }
@@ -377,7 +406,6 @@ impl Widget for EditingPane {
                                     fallback_text: edited_text,
                                     new_content: new_content_block,
                                 }
-
                             }
                             _ => {
                                 enqueue_popup_notification(
@@ -396,7 +424,7 @@ impl Widget for EditingPane {
                             None,
                         );
                         return;
-                    },
+                    }
                 };
 
                 submit_async_request(MatrixRequest::EditMessage {
@@ -488,14 +516,14 @@ impl EditingPane {
         match edit_result {
             Ok(()) => {
                 self.animator_play(cx, ids!(panel.hide));
-            },
+            }
             Err(e) => {
                 enqueue_popup_notification(
                     format!("Failed to edit message: {}", e),
                     PopupKind::Error,
                     None,
                 );
-            },
+            }
         }
     }
 
@@ -507,15 +535,12 @@ impl EditingPane {
         timeline_kind: TimelineKind,
     ) {
         if !event_tl_item.is_editable() {
-            enqueue_popup_notification(
-                "That message cannot be edited.",
-                PopupKind::Error,
-                None,
-            );
+            enqueue_popup_notification("That message cannot be edited.", PopupKind::Error, None);
             return;
         }
 
-        let edit_text_input = self.mentionable_text_input(cx, ids!(editing_content.edit_text_input));
+        let edit_text_input =
+            self.mentionable_text_input(cx, ids!(editing_content.edit_text_input));
 
         if let Some(message) = event_tl_item.content().as_message() {
             edit_text_input.set_text(cx, message.body());
@@ -529,7 +554,6 @@ impl EditingPane {
             );
             return;
         }
-
 
         self.info = Some(EditingPaneInfo {
             event_tl_item,
@@ -547,19 +571,24 @@ impl EditingPane {
         let text_len = edit_text_input.text().len();
         inner_text_input.set_cursor(
             cx,
-            Cursor { index: text_len, prefer_next_row: false },
+            Cursor {
+                index: text_len,
+                prefer_next_row: false,
+            },
             false,
         );
         // TODO: this doesn't work, likely because of Makepad's bug in which you cannot
         // give key focus to a widget that hasn't been drawn yet (as it has no Area).
         inner_text_input.set_key_focus(cx);
-        self.redraw(cx); 
+        self.redraw(cx);
     }
 
     /// Returns the state of this `EditingPane`, if any.
     pub fn save_state(&self) -> Option<EditingPaneState> {
         let info = self.info.as_ref()?;
-        let mentionable_input = self.child_by_path(ids!(editing_content.edit_text_input)).as_mentionable_text_input();
+        let mentionable_input = self
+            .child_by_path(ids!(editing_content.edit_text_input))
+            .as_mentionable_text_input();
         Some(EditingPaneState {
             event_tl_item: info.event_tl_item.clone(),
             mentionable_input_state: mentionable_input.save_state(),
@@ -573,7 +602,10 @@ impl EditingPane {
         editing_pane_state: EditingPaneState,
         timeline_kind: TimelineKind,
     ) {
-        let EditingPaneState { event_tl_item, mentionable_input_state } = editing_pane_state;
+        let EditingPaneState {
+            event_tl_item,
+            mentionable_input_state,
+        } = editing_pane_state;
         self.mentionable_text_input(cx, ids!(editing_content.edit_text_input))
             .restore_state(cx, mentionable_input_state);
         self.info = Some(EditingPaneInfo {
@@ -615,7 +647,9 @@ impl EditingPaneRef {
         timeline_event_item_id: TimelineEventItemId,
         edit_result: Result<(), matrix_sdk_ui::timeline::Error>,
     ) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.handle_edit_result(cx, timeline_event_item_id, edit_result);
     }
 
@@ -629,13 +663,10 @@ impl EditingPaneRef {
     }
 
     /// See [`EditingPane::show()`].
-    pub fn show(
-        &self,
-        cx: &mut Cx,
-        event_tl_item: EventTimelineItem,
-        timeline_kind: TimelineKind,
-    ) {
-        let Some(mut inner) = self.borrow_mut() else { return; };
+    pub fn show(&self, cx: &mut Cx, event_tl_item: EventTimelineItem, timeline_kind: TimelineKind) {
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.show(cx, event_tl_item, timeline_kind);
     }
 
@@ -653,7 +684,9 @@ impl EditingPaneRef {
         editing_pane_state: EditingPaneState,
         timeline_kind: TimelineKind,
     ) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.restore_state(cx, editing_pane_state, timeline_kind);
     }
 
@@ -661,7 +694,9 @@ impl EditingPaneRef {
     ///
     /// This function *DOES NOT* emit an [`EditingPaneAction::Hidden`] action.
     pub fn force_reset_hide(&self, cx: &mut Cx) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.visible = false;
         inner.animator_cut(cx, ids!(panel.hide));
         inner.is_animating_out = false;

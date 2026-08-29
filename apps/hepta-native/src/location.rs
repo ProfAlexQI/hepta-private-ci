@@ -31,7 +31,6 @@ pub fn get_latest_location() -> Option<LocationUpdate> {
     *(LATEST_LOCATION.lock().unwrap())
 }
 
-
 struct LocationHandler;
 
 impl robius_location::Handler for LocationHandler {
@@ -59,7 +58,6 @@ impl robius_location::Handler for LocationHandler {
         Cx::post_action(LocationAction::Error(e));
     }
 }
-
 
 pub enum LocationRequest {
     UpdateOnce,

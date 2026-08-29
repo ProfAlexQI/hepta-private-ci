@@ -3,10 +3,7 @@ use matrix_sdk::{
     Room,
     ruma::{
         UserId,
-        events::{
-            MessageLikeEventType, StateEventType,
-            room::power_levels::RoomPowerLevels,
-        },
+        events::{MessageLikeEventType, StateEventType, room::power_levels::RoomPowerLevels},
     },
 };
 
@@ -87,14 +84,38 @@ impl UserPowerLevels {
         retval.set(UserPowerLevels::Invite, user_power >= power_levels.invite);
         retval.set(UserPowerLevels::Kick, user_power >= power_levels.kick);
         retval.set(UserPowerLevels::Redact, user_power >= power_levels.redact);
-        retval.set(UserPowerLevels::NotifyRoom, user_power >= power_levels.notifications.room);
-        retval.set(UserPowerLevels::Location, user_power >= power_levels.for_message(MessageLikeEventType::Location));
-        retval.set(UserPowerLevels::Message, user_power >= power_levels.for_message(MessageLikeEventType::Message));
-        retval.set(UserPowerLevels::Reaction, user_power >= power_levels.for_message(MessageLikeEventType::Reaction));
-        retval.set(UserPowerLevels::RoomMessage, user_power >= power_levels.for_message(MessageLikeEventType::RoomMessage));
-        retval.set(UserPowerLevels::RoomRedaction, user_power >= power_levels.for_message(MessageLikeEventType::RoomRedaction));
-        retval.set(UserPowerLevels::Sticker, user_power >= power_levels.for_message(MessageLikeEventType::Sticker));
-        retval.set(UserPowerLevels::RoomPinnedEvents, user_power >= power_levels.for_state(StateEventType::RoomPinnedEvents));
+        retval.set(
+            UserPowerLevels::NotifyRoom,
+            user_power >= power_levels.notifications.room,
+        );
+        retval.set(
+            UserPowerLevels::Location,
+            user_power >= power_levels.for_message(MessageLikeEventType::Location),
+        );
+        retval.set(
+            UserPowerLevels::Message,
+            user_power >= power_levels.for_message(MessageLikeEventType::Message),
+        );
+        retval.set(
+            UserPowerLevels::Reaction,
+            user_power >= power_levels.for_message(MessageLikeEventType::Reaction),
+        );
+        retval.set(
+            UserPowerLevels::RoomMessage,
+            user_power >= power_levels.for_message(MessageLikeEventType::RoomMessage),
+        );
+        retval.set(
+            UserPowerLevels::RoomRedaction,
+            user_power >= power_levels.for_message(MessageLikeEventType::RoomRedaction),
+        );
+        retval.set(
+            UserPowerLevels::Sticker,
+            user_power >= power_levels.for_message(MessageLikeEventType::Sticker),
+        );
+        retval.set(
+            UserPowerLevels::RoomPinnedEvents,
+            user_power >= power_levels.for_state(StateEventType::RoomPinnedEvents),
+        );
         retval
     }
 
@@ -140,8 +161,7 @@ impl UserPowerLevels {
     }
 
     pub fn can_send_message(self) -> bool {
-        self.contains(UserPowerLevels::RoomMessage)
-        || self.contains(UserPowerLevels::Message)
+        self.contains(UserPowerLevels::RoomMessage) || self.contains(UserPowerLevels::Message)
     }
 
     pub fn can_send_reaction(self) -> bool {

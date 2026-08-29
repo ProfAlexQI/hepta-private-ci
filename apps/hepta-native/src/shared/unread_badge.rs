@@ -3,7 +3,6 @@
 
 use makepad_widgets::*;
 
-
 script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*
@@ -33,7 +32,7 @@ script_mod! {
                 // on lower-res screens, since red on purple looks blocky/pixellated otherwise.
                 fade_color: instance(#xFFC8B0)
                 fade_radius: uniform(5.0)
-                // Controls the transition of the outer border. 
+                // Controls the transition of the outer border.
                 // 0.0 is a crisp solid badge, 1.0 is a soft fading/dissolve transition.
                 soft: instance(0.0)
 
@@ -87,20 +86,31 @@ script_mod! {
     }
 }
 
-
 #[derive(Script, Widget)]
 pub struct UnreadBadge {
-    #[source] source: ScriptObjectRef,
-    #[deref] view: View,
-    #[live] is_marked_unread: bool,
-    #[live] unread_mentions: u64,
-    #[live] unread_messages: u64,
+    #[source]
+    source: ScriptObjectRef,
+    #[deref]
+    view: View,
+    #[live]
+    is_marked_unread: bool,
+    #[live]
+    unread_mentions: u64,
+    #[live]
+    unread_messages: u64,
     /// The above 3 value that were last drawn (to avoid re-applying their styling).
-    #[rust] last_drawn: Option<(bool, u64, u64)>,
+    #[rust]
+    last_drawn: Option<(bool, u64, u64)>,
 }
 
 impl ScriptHook for UnreadBadge {
-    fn on_after_apply(&mut self, _vm: &mut ScriptVm, apply: &Apply, _scope: &mut Scope, _value: ScriptValue) {
+    fn on_after_apply(
+        &mut self,
+        _vm: &mut ScriptVm,
+        apply: &Apply,
+        _scope: &mut Scope,
+        _value: ScriptValue,
+    ) {
         if apply.is_script_reapply() {
             self.last_drawn = None;
         }
@@ -113,11 +123,10 @@ impl Widget for UnreadBadge {
     }
 
     fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
-
         /// Helper function to format the badge's rounded rectangle.
         ///
         /// The rounded rectangle needs to be wider for longer text.
-        /// It also adds a plus sign at the end if the unread count is greater than 99. 
+        /// It also adds a plus sign at the end if the unread count is greater than 99.
         fn format_border_and_truncation(count: u64) -> (f64, &'static str) {
             let (border_size, plus_sign) = if count > 99 {
                 (0.0, "+")
@@ -131,7 +140,11 @@ impl Widget for UnreadBadge {
 
         // Styling and label depend only on these counts; re-running the draw_bg
         // eval every draw is costly, so skip it when they haven't changed.
-        let now = (self.is_marked_unread, self.unread_mentions, self.unread_messages);
+        let now = (
+            self.is_marked_unread,
+            self.unread_mentions,
+            self.unread_messages,
+        );
         if self.last_drawn == Some(now) {
             return self.view.draw_walk(cx, scope, walk);
         }
@@ -140,8 +153,10 @@ impl Widget for UnreadBadge {
         // If there are unread mentions, show red badge and the number of unread mentions
         if self.unread_mentions > 0 {
             let (border_size, plus_sign) = format_border_and_truncation(self.unread_mentions);
-            self.label(cx, ids!(label_count))
-                .set_text(cx, &format!("{}{plus_sign}", std::cmp::min(self.unread_mentions, 99)));
+            self.label(cx, ids!(label_count)).set_text(
+                cx,
+                &format!("{}{plus_sign}", std::cmp::min(self.unread_mentions, 99)),
+            );
             let mut rounded_view = self.view(cx, ids!(rounded_view));
             script_apply_eval!(cx, rounded_view, {
                 draw_bg +: {
@@ -170,8 +185,10 @@ impl Widget for UnreadBadge {
         // If there are no unread mentions but there are unread messages, show gray badge and the number of unread messages
         else if self.unread_messages > 0 {
             let (border_size, plus_sign) = format_border_and_truncation(self.unread_messages);
-            self.label(cx, ids!(label_count))
-                .set_text(cx, &format!("{}{plus_sign}", std::cmp::min(self.unread_messages, 99)));
+            self.label(cx, ids!(label_count)).set_text(
+                cx,
+                &format!("{}{plus_sign}", std::cmp::min(self.unread_messages, 99)),
+            );
             let mut rounded_view = self.view(cx, ids!(rounded_view));
             script_apply_eval!(cx, rounded_view, {
                 draw_bg +: {
@@ -181,8 +198,7 @@ impl Widget for UnreadBadge {
                 }
             });
             self.visible = true;
-        }
-        else {
+        } else {
             // If there are no unreads of any kind, hide the badge
             self.visible = false;
         }
@@ -193,7 +209,12 @@ impl Widget for UnreadBadge {
 
 impl UnreadBadgeRef {
     /// Sets the unread mentions and messages counts without explicitly redrawing the badge.
-    pub fn update_counts(&self, is_marked_unread: bool, num_unread_mentions: u64, num_unread_messages: u64) {
+    pub fn update_counts(
+        &self,
+        is_marked_unread: bool,
+        num_unread_mentions: u64,
+        num_unread_messages: u64,
+    ) {
         if let Some(mut inner) = self.borrow_mut() {
             inner.is_marked_unread = is_marked_unread;
             inner.unread_mentions = num_unread_mentions;

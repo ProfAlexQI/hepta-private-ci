@@ -9,17 +9,54 @@ use std::{
     time::Duration,
 };
 use makepad_widgets::*;
-use matrix_sdk::{RoomState, ruma::{OwnedEventId, OwnedRoomId, OwnedUserId, RoomId}};
+use matrix_sdk::{
+    RoomState,
+    ruma::{OwnedEventId, OwnedRoomId, OwnedUserId, RoomId},
+};
 use serde::{Deserialize, Serialize};
 use crate::{
-    avatar_cache::clear_avatar_cache, room_preview_cache::clear_room_preview_cache, home::{
-        event_source_modal::{EventSourceModalAction, EventSourceModalWidgetRefExt}, invite_modal::{InviteModalAction, InviteModalWidgetRefExt}, main_desktop_ui::MainDesktopUiAction, navigation_tab_bar::{NavigationBarAction, SelectedTab}, new_message_context_menu::NewMessageContextMenuWidgetRefExt, room_context_menu::RoomContextMenuWidgetRefExt, room_screen::{InviteAction, MessageAction, clear_timeline_states, invalidate_timeline_state}, rooms_list::{RoomsListAction, RoomsListRef, RoomsListUpdate, clear_all_invited_rooms, enqueue_rooms_list_update}
-    }, join_leave_room_modal::{
-        JoinLeaveModalKind, JoinLeaveRoomModalAction, JoinLeaveRoomModalWidgetRefExt
-    }, login::login_screen::LoginAction, logout::{logout_confirm_modal::{LogoutAction, LogoutConfirmModalAction, LogoutConfirmModalWidgetRefExt}, logout_state_machine::is_logout_past_point_of_no_return}, persistence, profile::user_profile_cache::clear_user_profile_cache, room::BasicRoomDetails, settings::app_preferences::{AppPreferences, UiZoom}, shared::{confirmation_modal::{ConfirmationModalContent, ConfirmationModalWidgetRefExt}, image_viewer::{ImageViewerAction, LoadState}, popup_list::{PopupKind, enqueue_popup_notification}}, sliding_sync::{DirectMessageRoomAction, MatrixRequest, TimelineKind, current_user_id, submit_async_request}, utils::RoomNameId, verification::VerificationAction, verification_modal::{
-        VerificationModalAction,
-        VerificationModalWidgetRefExt,
-    }
+    avatar_cache::clear_avatar_cache,
+    room_preview_cache::clear_room_preview_cache,
+    home::{
+        event_source_modal::{EventSourceModalAction, EventSourceModalWidgetRefExt},
+        invite_modal::{InviteModalAction, InviteModalWidgetRefExt},
+        main_desktop_ui::MainDesktopUiAction,
+        navigation_tab_bar::{NavigationBarAction, SelectedTab},
+        new_message_context_menu::NewMessageContextMenuWidgetRefExt,
+        room_context_menu::RoomContextMenuWidgetRefExt,
+        room_screen::{
+            InviteAction, MessageAction, clear_timeline_states, invalidate_timeline_state,
+        },
+        rooms_list::{
+            RoomsListAction, RoomsListRef, RoomsListUpdate, clear_all_invited_rooms,
+            enqueue_rooms_list_update,
+        },
+    },
+    join_leave_room_modal::{
+        JoinLeaveModalKind, JoinLeaveRoomModalAction, JoinLeaveRoomModalWidgetRefExt,
+    },
+    login::login_screen::LoginAction,
+    logout::{
+        logout_confirm_modal::{
+            LogoutAction, LogoutConfirmModalAction, LogoutConfirmModalWidgetRefExt,
+        },
+        logout_state_machine::is_logout_past_point_of_no_return,
+    },
+    persistence,
+    profile::user_profile_cache::clear_user_profile_cache,
+    room::BasicRoomDetails,
+    settings::app_preferences::{AppPreferences, UiZoom},
+    shared::{
+        confirmation_modal::{ConfirmationModalContent, ConfirmationModalWidgetRefExt},
+        image_viewer::{ImageViewerAction, LoadState},
+        popup_list::{PopupKind, enqueue_popup_notification},
+    },
+    sliding_sync::{
+        DirectMessageRoomAction, MatrixRequest, TimelineKind, current_user_id, submit_async_request,
+    },
+    utils::RoomNameId,
+    verification::VerificationAction,
+    verification_modal::{VerificationModalAction, VerificationModalWidgetRefExt},
 };
 use crate::shared::file_upload_modal::{FileUploadModalWidgetRefExt, FileUploadModalAction};
 #[cfg(feature = "hepta-bridge")]
@@ -85,7 +122,7 @@ script_mod! {
                         image_viewer_modal := Modal {
                             content := ImageViewer {}
                         }
-                        
+
                         // The popup that lets the user select users to mention, rooms to link,
                         // or a slash command to run (via kbd triggers like '@', '#', '/').
                         mention_popup := MentionablePopup { }
@@ -162,10 +199,13 @@ app_main!(App);
 
 #[derive(Script)]
 pub struct App {
-    #[live] ui: WidgetRef,
+    #[live]
+    ui: WidgetRef,
     /// The top-level app state, shared across various parts of the app.
-    #[rust] app_state: AppState,
-    #[rust] lifecycle: AppLifecycle,
+    #[rust]
+    app_state: AppState,
+    #[rust]
+    lifecycle: AppLifecycle,
     /// Disabled-by-default Hepta facade owned by the real App lifecycle. It is
     /// never activated from a Matrix action or process environment.
     #[cfg(feature = "hepta-bridge")]
@@ -180,7 +220,8 @@ pub struct App {
     /// The details of a room we're waiting on to be loaded so that we can navigate to it.
     /// This can be either a room we're waiting to join, or one we're waiting to be invited to.
     /// Also includes an optional room ID to be closed once the awaited room has been loaded.
-    #[rust] waiting_to_navigate_to_room: Option<(BasicRoomDetails, Option<OwnedRoomId>)>,
+    #[rust]
+    waiting_to_navigate_to_room: Option<(BasicRoomDetails, Option<OwnedRoomId>)>,
 }
 
 #[cfg(feature = "hepta-bridge")]
@@ -275,12 +316,9 @@ mod hepta_bridge_app_activation_tests {
         matrix_user_id: &str,
         drops: Arc<AtomicUsize>,
     ) -> BackendAuthenticatedBridgeActivation<DropProbeExecutor> {
-        let binding = AuthenticatedLiveBridgeBinding::try_new(
-            "session-7".into(),
-            RUN_IDENTIFIER_SHA256,
-            3,
-        )
-        .unwrap();
+        let binding =
+            AuthenticatedLiveBridgeBinding::try_new("session-7".into(), RUN_IDENTIFIER_SHA256, 3)
+                .unwrap();
         BackendAuthenticatedBridgeActivation::for_test(
             matrix_user_id,
             ENDPOINT,
@@ -381,23 +419,26 @@ impl MatchEvent for App {
         // `matrix_sdk::latest_events` emits a noisy per-room "Timer ... finished"
         // INFO line on every load; silence it by default. RUST_LOG still wins
         // when set, so you can re-enable it with `RUST_LOG=matrix_sdk::latest_events=info`.
-        let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(
-                "info,matrix_sdk::latest_events=warn",
-            ));
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(filter)
-            .try_init();
+        let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+            tracing_subscriber::EnvFilter::new("info,matrix_sdk::latest_events=warn")
+        });
+        let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
 
         // On iOS (and potentially other devices), there is a very low limit
         // (albeit a soft limit) on max file descriptors, as little as 256.
         // We increase that preemptively to avoid running out later due to sqlite ops.
         #[cfg(unix)]
         unsafe {
-            let mut rlim = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+            let mut rlim = libc::rlimit {
+                rlim_cur: 0,
+                rlim_max: 0,
+            };
             if libc::getrlimit(libc::RLIMIT_NOFILE, &mut rlim) == 0 && rlim.rlim_cur < 4096 {
                 let new_soft = (4096 as libc::rlim_t).min(rlim.rlim_max);
-                let bumped = libc::rlimit { rlim_cur: new_soft, rlim_max: rlim.rlim_max };
+                let bumped = libc::rlimit {
+                    rlim_cur: new_soft,
+                    rlim_max: rlim.rlim_max,
+                };
                 libc::setrlimit(libc::RLIMIT_NOFILE, &bumped);
             }
         }
@@ -434,7 +475,8 @@ impl MatchEvent for App {
         log!("App::Startup: starting matrix sdk loop");
         let _tokio_rt_handle = crate::sliding_sync::start_matrix_tokio().unwrap();
 
-        #[cfg(feature = "tsp")] {
+        #[cfg(feature = "tsp")]
+        {
             log!("App::Startup: initializing TSP (Trust Spanning Protocol) module.");
             crate::tsp::tsp_init(_tokio_rt_handle).unwrap();
         }
@@ -443,34 +485,44 @@ impl MatchEvent for App {
     }
 
     fn handle_actions(&mut self, cx: &mut Cx, actions: &Actions) {
-        let invite_confirmation_modal_content = self.ui.confirmation_modal(cx, ids!(invite_confirmation_modal.content));
+        let invite_confirmation_modal_content = self
+            .ui
+            .confirmation_modal(cx, ids!(invite_confirmation_modal.content));
         if let Some(_accepted) = invite_confirmation_modal_content.closed(actions) {
             self.ui.modal(cx, ids!(invite_confirmation_modal)).close(cx);
         }
 
-        let delete_confirmation_modal_content = self.ui.confirmation_modal(cx, ids!(delete_confirmation_modal.content));
+        let delete_confirmation_modal_content = self
+            .ui
+            .confirmation_modal(cx, ids!(delete_confirmation_modal.content));
         if let Some(_accepted) = delete_confirmation_modal_content.closed(actions) {
             self.ui.modal(cx, ids!(delete_confirmation_modal)).close(cx);
         }
 
-        let positive_confirmation_modal_content = self.ui.confirmation_modal(cx, ids!(positive_confirmation_modal.content));
+        let positive_confirmation_modal_content = self
+            .ui
+            .confirmation_modal(cx, ids!(positive_confirmation_modal.content));
         if let Some(_accepted) = positive_confirmation_modal_content.closed(actions) {
-            self.ui.modal(cx, ids!(positive_confirmation_modal)).close(cx);
+            self.ui
+                .modal(cx, ids!(positive_confirmation_modal))
+                .close(cx);
         }
 
         for action in actions {
             match action.downcast_ref() {
                 Some(LogoutConfirmModalAction::Open) => {
-                    self.ui.logout_confirm_modal(cx, ids!(logout_confirm_modal.content)).reset_state(cx);
+                    self.ui
+                        .logout_confirm_modal(cx, ids!(logout_confirm_modal.content))
+                        .reset_state(cx);
                     self.ui.modal(cx, ids!(logout_confirm_modal)).open(cx);
                     continue;
-                },
+                }
                 Some(LogoutConfirmModalAction::Close { was_internal, .. }) => {
                     if *was_internal {
                         self.ui.modal(cx, ids!(logout_confirm_modal)).close(cx);
                     }
                     continue;
-                },
+                }
                 _ => {}
             }
 
@@ -481,9 +533,8 @@ impl MatchEvent for App {
                     // A recoverable Matrix logout failure never restores this
                     // executor; only a fresh backend proof may reactivate it.
                     #[cfg(feature = "hepta-bridge")]
-                    self.hepta_bridge.handle_app_lifecycle_event(
-                        HeptaBridgeLifecycleEvent::LogoutStarted,
-                    );
+                    self.hepta_bridge
+                        .handle_app_lifecycle_event(HeptaBridgeLifecycleEvent::LogoutStarted);
                 }
                 Some(LogoutAction::ApplicationRequiresRestart { .. }) => {
                     #[cfg(feature = "hepta-bridge")]
@@ -491,9 +542,7 @@ impl MatchEvent for App {
                         HeptaBridgeLifecycleEvent::UnrecoverableSessionFailure,
                     );
                 }
-                Some(LogoutAction::LogoutFailure(_))
-                    if is_logout_past_point_of_no_return() =>
-                {
+                Some(LogoutAction::LogoutFailure(_)) if is_logout_past_point_of_no_return() => {
                     #[cfg(feature = "hepta-bridge")]
                     self.hepta_bridge.handle_app_lifecycle_event(
                         HeptaBridgeLifecycleEvent::UnrecoverableSessionFailure,
@@ -501,20 +550,18 @@ impl MatchEvent for App {
                 }
                 Some(LogoutAction::LogoutSuccess) => {
                     #[cfg(feature = "hepta-bridge")]
-                    self.hepta_bridge.handle_app_lifecycle_event(
-                        HeptaBridgeLifecycleEvent::LogoutSuccess,
-                    );
+                    self.hepta_bridge
+                        .handle_app_lifecycle_event(HeptaBridgeLifecycleEvent::LogoutSuccess);
                     self.app_state.logged_in = false;
                     self.ui.modal(cx, ids!(logout_confirm_modal)).close(cx);
                     self.update_login_visibility(cx);
                     self.ui.redraw(cx);
                     continue;
                 }
-                Some(LogoutAction::ClearAppState { on_clear_appstate }) =>  {
+                Some(LogoutAction::ClearAppState { on_clear_appstate }) => {
                     #[cfg(feature = "hepta-bridge")]
-                    self.hepta_bridge.handle_app_lifecycle_event(
-                        HeptaBridgeLifecycleEvent::ClearAppState,
-                    );
+                    self.hepta_bridge
+                        .handle_app_lifecycle_event(HeptaBridgeLifecycleEvent::ClearAppState);
                     // Clear user profile cache, invited_rooms timeline states
                     clear_all_app_state(cx);
                     // Reset all app state to its default.
@@ -545,11 +592,12 @@ impl MatchEvent for App {
             // When not yet logged in, the login_screen widget handles displaying the failure modal.
             if let Some(LoginAction::LoginFailure(_)) = action.downcast_ref() {
                 #[cfg(feature = "hepta-bridge")]
-                self.hepta_bridge.handle_app_lifecycle_event(
-                    HeptaBridgeLifecycleEvent::LoginFailure,
-                );
+                self.hepta_bridge
+                    .handle_app_lifecycle_event(HeptaBridgeLifecycleEvent::LoginFailure);
                 if self.app_state.logged_in {
-                    log!("Received LoginAction::LoginFailure while logged in; showing login screen.");
+                    log!(
+                        "Received LoginAction::LoginFailure while logged in; showing login screen."
+                    );
                     self.app_state.logged_in = false;
                     self.update_login_visibility(cx);
                     self.ui.redraw(cx);
@@ -561,15 +609,20 @@ impl MatchEvent for App {
             // Handle actions for the file upload modal.
             if let Some(action) = action.downcast_ref::<FileUploadModalAction>() {
                 let outer_modal = self.ui.modal(cx, ids!(file_upload_modal));
-                self.ui.file_upload_modal(cx, ids!(file_upload_modal.content))
+                self.ui
+                    .file_upload_modal(cx, ids!(file_upload_modal.content))
                     .handle_file_previewer_action(cx, outer_modal, action);
                 continue;
             }
 
             // Handle an action requesting to open the new message context menu.
-            if let MessageAction::OpenMessageContextMenu { details, abs_pos } = action.as_widget_action().cast() {
+            if let MessageAction::OpenMessageContextMenu { details, abs_pos } =
+                action.as_widget_action().cast()
+            {
                 self.ui.callout_tooltip(cx, ids!(app_tooltip)).hide(cx);
-                let new_message_context_menu = self.ui.new_message_context_menu(cx, ids!(new_message_context_menu));
+                let new_message_context_menu = self
+                    .ui
+                    .new_message_context_menu(cx, ids!(new_message_context_menu));
                 let expected_dimensions = new_message_context_menu.show(cx, details);
                 // Use the overlay container's rect (not the window's) to correctly position
                 // the context menu relative to the body area, which excludes the caption bar.
@@ -591,7 +644,9 @@ impl MatchEvent for App {
             }
 
             // Handle an action requesting to open the room context menu.
-            if let RoomsListAction::OpenRoomContextMenu { details, pos } = action.as_widget_action().cast() {
+            if let RoomsListAction::OpenRoomContextMenu { details, pos } =
+                action.as_widget_action().cast()
+            {
                 self.ui.callout_tooltip(cx, ids!(app_tooltip)).hide(cx);
                 let room_context_menu = self.ui.room_context_menu(cx, ids!(room_context_menu));
                 let expected_dimensions = room_context_menu.show(cx, details);
@@ -648,18 +703,25 @@ impl MatchEvent for App {
                     cx.action(MainDesktopUiAction::LoadDockFromAppState);
                     continue;
                 }
-                Some(AppStateAction::NavigateToRoom { room_to_close, destination_room }) => {
+                Some(AppStateAction::NavigateToRoom {
+                    room_to_close,
+                    destination_room,
+                }) => {
                     self.navigate_to_room(cx, room_to_close.as_ref(), destination_room);
                     continue;
                 }
                 // If we successfully loaded a room that we were waiting on,
                 // we can now navigate to it and optionally close a previous room.
-                Some(AppStateAction::RoomLoadedSuccessfully { room_name_id, .. }) if
-                    self.waiting_to_navigate_to_room.as_ref()
+                Some(AppStateAction::RoomLoadedSuccessfully { room_name_id, .. })
+                    if self
+                        .waiting_to_navigate_to_room
+                        .as_ref()
                         .is_some_and(|(dr, _)| dr.room_id() == room_name_id.room_id()) =>
                 {
                     log!("Loaded awaited room {room_name_id:?}, navigating to it now...");
-                    if let Some((dest_room, room_to_close)) = self.waiting_to_navigate_to_room.take() {
+                    if let Some((dest_room, room_to_close)) =
+                        self.waiting_to_navigate_to_room.take()
+                    {
                         self.navigate_to_room(cx, room_to_close.as_ref(), &dest_room);
                     }
                     continue;
@@ -690,7 +752,8 @@ impl MatchEvent for App {
             //
             // Note: other verification actions are handled by the verification modal itself.
             if let Some(VerificationAction::RequestReceived(state)) = action.downcast_ref() {
-                self.ui.verification_modal(cx, ids!(verification_modal.content))
+                self.ui
+                    .verification_modal(cx, ids!(verification_modal.content))
                     .initialize_with_data(cx, state.clone());
                 self.ui.modal(cx, ids!(verification_modal)).open(cx);
                 continue;
@@ -711,12 +774,23 @@ impl MatchEvent for App {
                 _ => {}
             }
             // Handle actions to open/close the TSP verification modal.
-            #[cfg(feature = "tsp")] {
+            #[cfg(feature = "tsp")]
+            {
                 use std::ops::Deref;
-                use crate::tsp::{tsp_verification_modal::{TspVerificationModalAction, TspVerificationModalWidgetRefExt}, TspIdentityAction};
+                use crate::tsp::{
+                    tsp_verification_modal::{
+                        TspVerificationModalAction, TspVerificationModalWidgetRefExt,
+                    },
+                    TspIdentityAction,
+                };
 
-                if let Some(TspIdentityAction::ReceivedDidAssociationRequest { details, wallet_db }) = action.downcast_ref() {
-                    self.ui.tsp_verification_modal(cx, ids!(tsp_verification_modal.content))
+                if let Some(TspIdentityAction::ReceivedDidAssociationRequest {
+                    details,
+                    wallet_db,
+                }) = action.downcast_ref()
+                {
+                    self.ui
+                        .tsp_verification_modal(cx, ids!(tsp_verification_modal.content))
                         .initialize_with_details(cx, details.clone(), wallet_db.deref().clone());
                     self.ui.modal(cx, ids!(tsp_verification_modal)).open(cx);
                     continue;
@@ -728,7 +802,9 @@ impl MatchEvent for App {
             }
 
             // Handle a request to show the invite confirmation modal.
-            if let Some(InviteAction::ShowInviteConfirmationModal(content_opt)) = action.downcast_ref() {
+            if let Some(InviteAction::ShowInviteConfirmationModal(content_opt)) =
+                action.downcast_ref()
+            {
                 if let Some(content) = content_opt.borrow_mut().take() {
                     invite_confirmation_modal_content.show(cx, content);
                     self.ui.modal(cx, ids!(invite_confirmation_modal)).open(cx);
@@ -737,10 +813,13 @@ impl MatchEvent for App {
             }
 
             // Handle a request to show the generic positive confirmation modal.
-            if let Some(PositiveConfirmationModalAction::Show(content_opt)) = action.downcast_ref() {
+            if let Some(PositiveConfirmationModalAction::Show(content_opt)) = action.downcast_ref()
+            {
                 if let Some(content) = content_opt.borrow_mut().take() {
                     positive_confirmation_modal_content.show(cx, content);
-                    self.ui.modal(cx, ids!(positive_confirmation_modal)).open(cx);
+                    self.ui
+                        .modal(cx, ids!(positive_confirmation_modal))
+                        .open(cx);
                 }
                 continue;
             }
@@ -748,7 +827,9 @@ impl MatchEvent for App {
             // Handle a request to show the delete confirmation modal.
             if let Some(ConfirmDeleteAction::Show(content_opt)) = action.downcast_ref() {
                 if let Some(content) = content_opt.borrow_mut().take() {
-                    self.ui.confirmation_modal(cx, ids!(delete_confirmation_modal.content)).show(cx, content);
+                    self.ui
+                        .confirmation_modal(cx, ids!(delete_confirmation_modal.content))
+                        .show(cx, content);
                     self.ui.modal(cx, ids!(delete_confirmation_modal)).open(cx);
                 }
                 continue;
@@ -757,8 +838,10 @@ impl MatchEvent for App {
             // Handle InviteModalAction to open/close the invite modal.
             match action.downcast_ref() {
                 Some(InviteModalAction::Open(room_name_id)) => {
-                    self.ui.invite_modal(cx, ids!(invite_modal.content)).show(cx, room_name_id.clone());
-                    self.ui.modal(cx, ids!(invite_modal)).open(cx); 
+                    self.ui
+                        .invite_modal(cx, ids!(invite_modal.content))
+                        .show(cx, room_name_id.clone());
+                    self.ui.modal(cx, ids!(invite_modal)).open(cx);
                     continue;
                 }
                 Some(InviteModalAction::Close) => {
@@ -770,8 +853,13 @@ impl MatchEvent for App {
 
             // Handle EventSourceModalAction to open/close the event source modal.
             match action.downcast_ref() {
-                Some(EventSourceModalAction::Open { room_id, event_id, latest_json }) => {
-                    self.ui.event_source_modal(cx, ids!(event_source_modal.content))
+                Some(EventSourceModalAction::Open {
+                    room_id,
+                    event_id,
+                    latest_json,
+                }) => {
+                    self.ui
+                        .event_source_modal(cx, ids!(event_source_modal.content))
                         .show(cx, room_id.clone(), event_id.clone(), latest_json.clone());
                     self.ui.modal(cx, ids!(event_source_modal)).open(cx);
                     continue;
@@ -786,7 +874,11 @@ impl MatchEvent for App {
             // Handle DirectMessageRoomActions
             match action.downcast_ref() {
                 Some(DirectMessageRoomAction::FoundExisting { room_name_id, .. }) => {
-                    self.navigate_to_room(cx, None, &BasicRoomDetails::RoomId(room_name_id.clone()));
+                    self.navigate_to_room(
+                        cx,
+                        None,
+                        &BasicRoomDetails::RoomId(room_name_id.clone()),
+                    );
                 }
                 Some(DirectMessageRoomAction::DidNotExist { user_profile }) => {
                     let user_profile = user_profile.clone();
@@ -794,8 +886,7 @@ impl MatchEvent for App {
                         Some(un) if !un.is_empty() => format!(
                             "You don't have an existing direct message room with {} ({}).\n\n\
                             Would you like to create one now?",
-                            un,
-                            user_profile.user_id,
+                            un, user_profile.user_id,
                         ),
                         _ => format!(
                             "You don't have an existing direct message room with {}.\n\n\
@@ -823,17 +914,29 @@ impl MatchEvent for App {
                             ..Default::default()
                         },
                     );
-                    self.ui.modal(cx, ids!(positive_confirmation_modal)).open(cx);
+                    self.ui
+                        .modal(cx, ids!(positive_confirmation_modal))
+                        .open(cx);
                 }
-                Some(DirectMessageRoomAction::FailedToCreate { user_profile, error }) => {
+                Some(DirectMessageRoomAction::FailedToCreate {
+                    user_profile,
+                    error,
+                }) => {
                     enqueue_popup_notification(
-                        format!("Failed to create a new DM room with {}.\n\nError: {error}", user_profile.displayable_name()),
+                        format!(
+                            "Failed to create a new DM room with {}.\n\nError: {error}",
+                            user_profile.displayable_name()
+                        ),
                         PopupKind::Error,
                         None,
                     );
                 }
                 Some(DirectMessageRoomAction::NewlyCreated { room_name_id, .. }) => {
-                    self.navigate_to_room(cx, None, &BasicRoomDetails::RoomId(room_name_id.clone()));
+                    self.navigate_to_room(
+                        cx,
+                        None,
+                        &BasicRoomDetails::RoomId(room_name_id.clone()),
+                    );
                 }
                 _ => {}
             }
@@ -842,7 +945,7 @@ impl MatchEvent for App {
 }
 
 /// Clears all thread-local UI caches (user profiles, invited rooms, and timeline states).
-/// The `cx` parameter ensures that these thread-local caches are cleared on the main UI thread, 
+/// The `cx` parameter ensures that these thread-local caches are cleared on the main UI thread,
 fn clear_all_app_state(cx: &mut Cx) {
     clear_user_profile_cache(cx);
     clear_all_invited_rooms(cx);
@@ -946,7 +1049,6 @@ impl AppMain for App {
         let scope = &mut Scope::with_data(&mut self.app_state);
         self.ui.handle_event(cx, event, scope);
         self.handle_lifecycle_event(cx, event);
-
     }
 }
 
@@ -1039,7 +1141,10 @@ impl App {
     fn handle_lifecycle_event(&mut self, cx: &mut Cx, event: &Event) {
         match event {
             Event::QuitRequested(e) => {
-                log!("Received quit request: {:?}. Persisting state before allowing quit.", e.reason);
+                log!(
+                    "Received quit request: {:?}. Persisting state before allowing quit.",
+                    e.reason
+                );
                 self.persist_runtime_state(cx, "quit request");
             }
             Event::Pause => {
@@ -1066,10 +1171,11 @@ impl App {
                 crate::sliding_sync::set_sync_service_desired_running(false, "app background");
             }
             Event::WindowCloseRequested(e)
-                if self.ui.window(cx, ids!(main_window)).window_id() == Some(e.window_id) => {
-                    log!("Main window close requested; persisting runtime state.");
-                    self.persist_runtime_state(cx, "main window close request");
-                }
+                if self.ui.window(cx, ids!(main_window)).window_id() == Some(e.window_id) =>
+            {
+                log!("Main window close requested; persisting runtime state.");
+                self.persist_runtime_state(cx, "main window close request");
+            }
             Event::Foreground => {
                 crate::accessibility::reset_cache();
                 if !self.lifecycle.is_foreground {
@@ -1123,21 +1229,27 @@ impl App {
 
         self.persist_runtime_state(cx, "shutdown");
 
-        if let Err(_e) = crate::sliding_sync::stop_sync_service_for_shutdown(Duration::from_secs(3)) {
+        if let Err(_e) = crate::sliding_sync::stop_sync_service_for_shutdown(Duration::from_secs(3))
+        {
             error!("Failed to stop Matrix sync service before shutdown. Error: Timed out.");
         }
 
-        #[cfg(feature = "tsp")] {
+        #[cfg(feature = "tsp")]
+        {
             let tsp_state = std::mem::take(&mut *crate::tsp::tsp_state_ref().lock().unwrap());
             let res = crate::sliding_sync::block_on_async_with_timeout(
                 Some(Duration::from_secs(3)),
                 async move {
                     match tsp_state.close_and_serialize().await {
-                        Ok(saved_state) => match persistence::save_tsp_state_async(saved_state).await {
-                            Ok(_) => { }
-                            Err(e) => error!("Failed to save TSP wallet state. Error: {e}"),
+                        Ok(saved_state) => {
+                            match persistence::save_tsp_state_async(saved_state).await {
+                                Ok(_) => {}
+                                Err(e) => error!("Failed to save TSP wallet state. Error: {e}"),
+                            }
                         }
-                        Err(e) => error!("Failed to close and serialize TSP wallet state. Error: {e}"),
+                        Err(e) => {
+                            error!("Failed to close and serialize TSP wallet state. Error: {e}")
+                        }
                     }
                 },
             );
@@ -1158,8 +1270,12 @@ impl App {
                 .modal(cx, ids!(login_screen_view.login_screen.login_status_modal))
                 .close(cx);
         }
-        self.ui.view(cx, ids!(login_screen_view)).set_visible(cx, show_login);
-        self.ui.view(cx, ids!(home_screen_view)).set_visible(cx, !show_login);
+        self.ui
+            .view(cx, ids!(login_screen_view))
+            .set_visible(cx, show_login);
+        self.ui
+            .view(cx, ids!(home_screen_view))
+            .set_visible(cx, !show_login);
     }
 
     /// Navigates to the given `destination_room`, optionally closing the `room_to_close`.
@@ -1174,16 +1290,17 @@ impl App {
             let tab_id = LiveId::from_str(to_close.as_str());
             let widget_uid = self.ui.widget_uid();
             move |cx: &mut Cx| {
-                cx.widget_action(
-                    widget_uid, 
-                    DockAction::TabCloseWasPressed(tab_id),
-                );
-                enqueue_rooms_list_update(RoomsListUpdate::HideRoom { room_id: to_close.clone() });
+                cx.widget_action(widget_uid, DockAction::TabCloseWasPressed(tab_id));
+                enqueue_rooms_list_update(RoomsListUpdate::HideRoom {
+                    room_id: to_close.clone(),
+                });
             }
         });
 
         let destination_room_id = destination_room.room_id();
-        let room_state = cx.get_global::<RoomsListRef>().get_room_state(destination_room_id);
+        let room_state = cx
+            .get_global::<RoomsListRef>()
+            .get_room_state(destination_room_id);
         let new_selected_room = match room_state {
             Some(RoomState::Joined) => SelectedRoom::JoinedRoom {
                 room_name_id: destination_room.room_name_id().clone(),
@@ -1193,11 +1310,12 @@ impl App {
             },
             // If the destination room is not yet loaded, show a join modal.
             _ => {
-                log!("Destination room {:?} not loaded, showing join modal...", destination_room.room_name_id());
-                self.waiting_to_navigate_to_room = Some((
-                    destination_room.clone(),
-                    room_to_close.cloned(),
-                ));
+                log!(
+                    "Destination room {:?} not loaded, showing join modal...",
+                    destination_room.room_name_id()
+                );
+                self.waiting_to_navigate_to_room =
+                    Some((destination_room.clone(), room_to_close.cloned()));
                 cx.action(JoinLeaveRoomModalAction::Open {
                     kind: JoinLeaveModalKind::JoinRoom {
                         details: destination_room.clone(),
@@ -1209,8 +1327,8 @@ impl App {
             }
         };
 
-
-        log!("Navigating to destination room {:?}, closing room {:?}",
+        log!(
+            "Navigating to destination room {:?}, closing room {:?}",
             destination_room.room_name_id(),
             room_to_close,
         );
@@ -1221,7 +1339,7 @@ impl App {
             cx.action(NavigationBarAction::GoToHome);
         }
         cx.widget_action(
-            self.ui.widget_uid(), 
+            self.ui.widget_uid(),
             RoomsListAction::Selected(new_selected_room),
         );
         // Select and scroll to the destination room in the rooms list.
@@ -1232,8 +1350,6 @@ impl App {
             closure(cx);
         }
     }
-
-
 }
 
 /// App-wide state that is stored persistently across multiple app runs
@@ -1284,7 +1400,6 @@ pub struct SavedDockState {
     /// The selected room tab in this dock when the dock state was saved.
     pub selected_room: Option<SelectedRoom>,
 }
-
 
 /// Represents a room currently or previously selected by the user.
 ///
@@ -1342,9 +1457,7 @@ impl SelectedRoom {
         match self {
             SelectedRoom::InvitedRoom { room_name_id } if room_name_id.room_id() == room_id => {
                 let name = room_name_id.clone();
-                *self = SelectedRoom::JoinedRoom {
-                    room_name_id: name,
-                };
+                *self = SelectedRoom::JoinedRoom { room_name_id: name };
                 true
             }
             _ => false,
@@ -1354,11 +1467,14 @@ impl SelectedRoom {
     /// Returns the `LiveId` of the room tab corresponding to this `SelectedRoom`.
     pub fn tab_id(&self) -> LiveId {
         match self {
-            SelectedRoom::Thread { room_name_id, thread_root_event_id } => {
-                LiveId::from_str(
-                    &format!("{}##{}", room_name_id.room_id(), thread_root_event_id)
-                )
-            }
+            SelectedRoom::Thread {
+                room_name_id,
+                thread_root_event_id,
+            } => LiveId::from_str(&format!(
+                "{}##{}",
+                room_name_id.room_id(),
+                thread_root_event_id
+            )),
             other => LiveId::from_str(other.room_id().as_str()),
         }
     }
@@ -1372,14 +1488,23 @@ impl SelectedRoom {
     /// has been hidden (e.g., its tab was closed, or the user navigated back on mobile view mode),
     /// but not when it's still reachable via the mobile nav stack or a saved desktop dock.
     pub fn close_thread_timeline(&self, cx: &mut Cx) {
-        let SelectedRoom::Thread { room_name_id, thread_root_event_id } = self else { return };
+        let SelectedRoom::Thread {
+            room_name_id,
+            thread_root_event_id,
+        } = self
+        else {
+            return;
+        };
         let room_id = room_name_id.room_id().clone();
         // Drop the stale UI cache so reopening rebuilds a fresh timeline instead of reusing
         // a cache whose backend is about to be freed.
-        invalidate_timeline_state(cx, &TimelineKind::Thread {
-            room_id: room_id.clone(),
-            thread_root_event_id: thread_root_event_id.clone(),
-        });
+        invalidate_timeline_state(
+            cx,
+            &TimelineKind::Thread {
+                room_id: room_id.clone(),
+                thread_root_event_id: thread_root_event_id.clone(),
+            },
+        );
         submit_async_request(MatrixRequest::CloseThreadTimeline {
             room_id,
             thread_root_event_id: thread_root_event_id.clone(),

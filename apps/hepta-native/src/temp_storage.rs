@@ -1,4 +1,8 @@
-use std::{path::{Path, PathBuf}, sync::OnceLock, time::{Duration, SystemTime}};
+use std::{
+    path::{Path, PathBuf},
+    sync::OnceLock,
+    time::{Duration, SystemTime},
+};
 use makepad_widgets::error;
 use crate::cache_dir;
 
@@ -37,7 +41,9 @@ pub fn schedule_temp_dir_cleanup() {
 
 /// Recursively deletes files last modified before `cutoff`, then any empty dirs.
 fn remove_files_older_than(dir: &Path, cutoff: SystemTime) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         let Ok(meta) = entry.metadata() else { continue };

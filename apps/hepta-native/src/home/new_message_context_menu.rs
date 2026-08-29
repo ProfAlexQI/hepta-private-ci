@@ -11,7 +11,7 @@ use crate::sliding_sync::UserPowerLevels;
 use super::room_screen::MessageAction;
 
 const BUTTON_HEIGHT: f64 = 35.0; // KEEP IN SYNC WITH BUTTON_HEIGHT BELOW
-const MENU_WIDTH: f64 = 215.0;   // KEEP IN SYNC WITH MENU_WIDTH BELOW
+const MENU_WIDTH: f64 = 215.0; // KEEP IN SYNC WITH MENU_WIDTH BELOW
 
 script_mod! {
     use mod.prelude.widgets.*
@@ -209,7 +209,6 @@ script_mod! {
     }
 }
 
-
 bitflags! {
     /// Possible actions that the user can perform on a message.
     ///
@@ -256,7 +255,9 @@ impl MessageAbilities {
         abilities.set(Self::CanReplyTo, can_reply_to);
         // No point offering "reply in thread" from within a thread, since the message is already in one.
         abilities.set(Self::CanReplyInThread, can_reply_to && !is_thread_timeline);
-        if let Some(event_id) = event_tl_item.event_id() && user_power_levels.can_pin() {
+        if let Some(event_id) = event_tl_item.event_id()
+            && user_power_levels.can_pin()
+        {
             if pinned_events.iter().any(|ev| ev == event_id) {
                 abilities.set(Self::CanUnpin, true);
             } else {
@@ -267,7 +268,6 @@ impl MessageAbilities {
         abilities.set(Self::HasHtml, has_html);
         abilities
     }
-
 }
 
 /// Details about the message that define its context menu content.
@@ -303,9 +303,12 @@ impl MessageDetails {
 
 #[derive(Script, ScriptHook, Widget)]
 pub struct NewMessageContextMenu {
-    #[deref] view: View,
-    #[source] source: ScriptObjectRef,
-    #[rust] details: Option<MessageDetails>,
+    #[deref]
+    view: View,
+    #[source]
+    source: ScriptObjectRef,
+    #[rust]
+    details: Option<MessageDetails>,
 }
 
 impl Widget for NewMessageContextMenu {
@@ -323,7 +326,9 @@ impl Widget for NewMessageContextMenu {
     }
 
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
-        if !self.visible { return; }
+        if !self.visible {
+            return;
+        }
         self.view.handle_event(cx, event, scope);
 
         let area = self.view.area();
@@ -334,22 +339,26 @@ impl Widget for NewMessageContextMenu {
         // 3. The user clicks/touches outside the main_content view area.
         let close_menu = {
             event.back_pressed()
-            || match event.hits_with_capture_overload(cx, area, true) {
-                Hit::KeyUp(key) => key.key_code == KeyCode::Escape,
-                Hit::FingerDown(fde) => {
-                    let reaction_text_input = self.view.text_input(cx, ids!(reaction_input_view.reaction_text_input));
-                    if reaction_text_input.area().rect(cx).contains(fde.abs) {
-                        reaction_text_input.set_key_focus(cx);
-                    } else {
-                        cx.set_key_focus(area);
+                || match event.hits_with_capture_overload(cx, area, true) {
+                    Hit::KeyUp(key) => key.key_code == KeyCode::Escape,
+                    Hit::FingerDown(fde) => {
+                        let reaction_text_input = self
+                            .view
+                            .text_input(cx, ids!(reaction_input_view.reaction_text_input));
+                        if reaction_text_input.area().rect(cx).contains(fde.abs) {
+                            reaction_text_input.set_key_focus(cx);
+                        } else {
+                            cx.set_key_focus(area);
+                        }
+                        false
                     }
-                    false
+                    Hit::FingerUp(fue) if fue.is_over => !self
+                        .view(cx, ids!(main_content))
+                        .area()
+                        .rect(cx)
+                        .contains(fue.abs),
+                    _ => false,
                 }
-                Hit::FingerUp(fue) if fue.is_over => {
-                    !self.view(cx, ids!(main_content)).area().rect(cx).contains(fue.abs)
-                }
-                _ => false,
-            }
         };
         if close_menu {
             self.close(cx);
@@ -362,101 +371,109 @@ impl Widget for NewMessageContextMenu {
 
 impl WidgetMatchEvent for NewMessageContextMenu {
     fn handle_actions(&mut self, cx: &mut Cx, actions: &Actions, _scope: &mut Scope) {
-        let Some(details) = self.details.as_ref() else { return };
+        let Some(details) = self.details.as_ref() else {
+            return;
+        };
         let mut close_menu = false;
 
-        let reaction_text_input = self.view.text_input(cx, ids!(reaction_input_view.reaction_text_input));
-        let reaction_send_button = self.view.button(cx, ids!(reaction_input_view.reaction_send_button));
-        if reaction_send_button.clicked(actions)
-            || reaction_text_input.returned(actions).is_some()
+        let reaction_text_input = self
+            .view
+            .text_input(cx, ids!(reaction_input_view.reaction_text_input));
+        let reaction_send_button = self
+            .view
+            .button(cx, ids!(reaction_input_view.reaction_send_button));
+        if reaction_send_button.clicked(actions) || reaction_text_input.returned(actions).is_some()
         {
             cx.widget_action(
-                details.room_screen_widget_uid, 
+                details.room_screen_widget_uid,
                 MessageAction::React {
                     details: details.clone(),
                     reaction: reaction_text_input.text(),
                 },
             );
             close_menu = true;
-        }
-        else if reaction_text_input.escaped(actions) {
+        } else if reaction_text_input.escaped(actions) {
             close_menu = true;
-        }
-        else if self.button(cx, ids!(react_button)).clicked(actions) {
+        } else if self.button(cx, ids!(react_button)).clicked(actions) {
             // Show a box to allow the user to input the reaction.
             // In the future, we'll show an emoji chooser.
-            self.view.button(cx, ids!(react_button)).set_visible(cx, false);
-            self.view.view(cx, ids!(reaction_input_view)).set_visible(cx, true);
-            self.text_input(cx, ids!(reaction_input_view.reaction_text_input)).set_key_focus(cx);
+            self.view
+                .button(cx, ids!(react_button))
+                .set_visible(cx, false);
+            self.view
+                .view(cx, ids!(reaction_input_view))
+                .set_visible(cx, true);
+            self.text_input(cx, ids!(reaction_input_view.reaction_text_input))
+                .set_key_focus(cx);
             self.redraw(cx);
             close_menu = false;
-        }
-        else if self.button(cx, ids!(reply_button)).clicked(actions) {
+        } else if self.button(cx, ids!(reply_button)).clicked(actions) {
             cx.widget_action(
-                details.room_screen_widget_uid, 
+                details.room_screen_widget_uid,
                 MessageAction::Reply(details.clone()),
             );
             close_menu = true;
-        }
-        else if self.button(cx, ids!(reply_in_thread_button)).clicked(actions) {
+        } else if self
+            .button(cx, ids!(reply_in_thread_button))
+            .clicked(actions)
+        {
             cx.widget_action(
                 details.room_screen_widget_uid,
                 MessageAction::ReplyInThread(details.clone()),
             );
             close_menu = true;
-        }
-        else if self.button(cx, ids!(edit_message_button)).clicked(actions) {
+        } else if self.button(cx, ids!(edit_message_button)).clicked(actions) {
             cx.widget_action(
-                details.room_screen_widget_uid, 
+                details.room_screen_widget_uid,
                 MessageAction::Edit(details.clone()),
             );
             close_menu = true;
-        }
-        else if self.button(cx, ids!(pin_button)).clicked(actions) {
+        } else if self.button(cx, ids!(pin_button)).clicked(actions) {
             if details.abilities.contains(MessageAbilities::CanPin) {
                 cx.widget_action(
-                    details.room_screen_widget_uid, 
+                    details.room_screen_widget_uid,
                     MessageAction::Pin(details.clone()),
                 );
             } else if details.abilities.contains(MessageAbilities::CanUnpin) {
                 cx.widget_action(
-                    details.room_screen_widget_uid, 
+                    details.room_screen_widget_uid,
                     MessageAction::Unpin(details.clone()),
                 );
             }
             close_menu = true;
-        }
-        else if self.button(cx, ids!(copy_text_button)).clicked(actions) {
+        } else if self.button(cx, ids!(copy_text_button)).clicked(actions) {
             cx.widget_action(
-                details.room_screen_widget_uid, 
+                details.room_screen_widget_uid,
                 MessageAction::CopyText(details.clone()),
             );
             close_menu = true;
-        }
-        else if self.button(cx, ids!(copy_html_button)).clicked(actions) {
+        } else if self.button(cx, ids!(copy_html_button)).clicked(actions) {
             cx.widget_action(
-                details.room_screen_widget_uid, 
+                details.room_screen_widget_uid,
                 MessageAction::CopyHtml(details.clone()),
             );
             close_menu = true;
-        }
-        else if self.button(cx, ids!(copy_link_to_message_button)).clicked(actions) {
+        } else if self
+            .button(cx, ids!(copy_link_to_message_button))
+            .clicked(actions)
+        {
             cx.widget_action(
-                details.room_screen_widget_uid, 
+                details.room_screen_widget_uid,
                 MessageAction::CopyLink(details.clone()),
             );
             close_menu = true;
-        }
-        else if self.button(cx, ids!(view_source_button)).clicked(actions) {
+        } else if self.button(cx, ids!(view_source_button)).clicked(actions) {
             cx.widget_action(
-                details.room_screen_widget_uid, 
+                details.room_screen_widget_uid,
                 MessageAction::ViewSource(details.clone()),
             );
             close_menu = true;
-        }
-        else if self.button(cx, ids!(jump_to_related_button)).clicked(actions) {
+        } else if self
+            .button(cx, ids!(jump_to_related_button))
+            .clicked(actions)
+        {
             cx.widget_action(
-                details.room_screen_widget_uid, 
+                details.room_screen_widget_uid,
                 MessageAction::JumpToRelated(details.clone()),
             );
             close_menu = true;
@@ -475,7 +492,7 @@ impl WidgetMatchEvent for NewMessageContextMenu {
         // }
         else if self.button(cx, ids!(delete_button)).clicked(actions) {
             cx.widget_action(
-                details.room_screen_widget_uid, 
+                details.room_screen_widget_uid,
                 MessageAction::Redact {
                     details: details.clone(),
                     // TODO: show a Modal to confirm deletion, and get the reason.
@@ -516,7 +533,9 @@ impl NewMessageContextMenu {
     ///
     /// Returns the total height of all visible items.
     fn set_button_visibility(&mut self, cx: &mut Cx) -> f64 {
-        let Some(details) = self.details.as_ref() else { return 0.0 };
+        let Some(details) = self.details.as_ref() else {
+            return 0.0;
+        };
 
         let react_button = self.view.button(cx, ids!(react_button));
         let reply_button = self.view.button(cx, ids!(reply_button));
@@ -536,7 +555,9 @@ impl NewMessageContextMenu {
         // `copy_text_button`, `copy_link_to_message_button`, and `view_source_button`
         let show_react = details.abilities.contains(MessageAbilities::CanReact);
         let show_reply_to = details.abilities.contains(MessageAbilities::CanReplyTo);
-        let show_reply_in_thread = details.abilities.contains(MessageAbilities::CanReplyInThread);
+        let show_reply_in_thread = details
+            .abilities
+            .contains(MessageAbilities::CanReplyInThread);
         let show_divider_after_react_reply = show_react || show_reply_to;
         let show_edit = details.abilities.contains(MessageAbilities::CanEdit);
         let show_pin: bool;
@@ -550,11 +571,15 @@ impl NewMessageContextMenu {
         let show_divider_before_report_delete = show_delete; // || show_report;
 
         // Actually set the buttons' visibility.
-        self.view.view(cx, ids!(react_view)).set_visible(cx, show_react);
+        self.view
+            .view(cx, ids!(react_view))
+            .set_visible(cx, show_react);
         react_button.set_visible(cx, show_react);
         reply_button.set_visible(cx, show_reply_to);
         reply_in_thread_button.set_visible(cx, show_reply_in_thread);
-        self.view.view(cx, ids!(divider_after_react_reply)).set_visible(cx, show_divider_after_react_reply);
+        self.view
+            .view(cx, ids!(divider_after_react_reply))
+            .set_visible(cx, show_divider_after_react_reply);
         edit_button.set_visible(cx, show_edit);
         if details.abilities.contains(MessageAbilities::CanPin) {
             pin_button.set_text(cx, "Pin Message");
@@ -568,7 +593,9 @@ impl NewMessageContextMenu {
         pin_button.set_visible(cx, show_pin);
         copy_html_button.set_visible(cx, show_copy_html);
         jump_to_related_button.set_visible(cx, show_jump_to_related);
-        self.view.view(cx, ids!(divider_before_report_delete)).set_visible(cx, show_divider_before_report_delete);
+        self.view
+            .view(cx, ids!(divider_before_report_delete))
+            .set_visible(cx, show_divider_before_report_delete);
         // report_button.set_visible(cx, show_report);
         delete_button.set_visible(cx, show_delete);
 
@@ -587,13 +614,15 @@ impl NewMessageContextMenu {
         delete_button.reset_hover(cx);
 
         // Reset reaction input view stuff.
-        self.view.view(cx, ids!(reaction_input_view)).set_visible(cx, false); // hide until the react_button is clicked
-        self.text_input(cx, ids!(reaction_input_view.reaction_text_input)).set_text(cx, "");
+        self.view
+            .view(cx, ids!(reaction_input_view))
+            .set_visible(cx, false); // hide until the react_button is clicked
+        self.text_input(cx, ids!(reaction_input_view.reaction_text_input))
+            .set_text(cx, "");
 
         self.redraw(cx);
 
-        let num_visible_buttons =
-            show_react as u8
+        let num_visible_buttons = show_react as u8
             + show_reply_to as u8
             + show_reply_in_thread as u8
             + show_edit as u8
@@ -611,7 +640,7 @@ impl NewMessageContextMenu {
             + if show_divider_after_react_reply { 10.0 } else { 0.0 }
             + if show_divider_before_report_delete { 10.0 } else { 0.0 }
             + 20.0  // top and bottom padding
-            + 1.0   // top and bottom border
+            + 1.0 // top and bottom border
     }
 
     fn close(&mut self, cx: &mut Cx) {
@@ -626,13 +655,17 @@ impl NewMessageContextMenu {
 impl NewMessageContextMenuRef {
     /// See [`NewMessageContextMenu::is_currently_shown()`].
     pub fn is_currently_shown(&self, cx: &mut Cx) -> bool {
-        let Some(inner) = self.borrow() else { return false };
+        let Some(inner) = self.borrow() else {
+            return false;
+        };
         inner.is_currently_shown(cx)
     }
 
     /// See [`NewMessageContextMenu::show()`].
     pub fn show(&self, cx: &mut Cx, details: MessageDetails) -> DVec2 {
-        let Some(mut inner) = self.borrow_mut() else { return DVec2::default()};
+        let Some(mut inner) = self.borrow_mut() else {
+            return DVec2::default();
+        };
         inner.show(cx, details)
     }
 }

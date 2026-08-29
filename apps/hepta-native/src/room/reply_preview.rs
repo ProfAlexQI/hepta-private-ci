@@ -251,19 +251,32 @@ const REPLY_PREVIEW_BAR_WIDTH: f64 = 2.0;
 
 #[derive(Script, ScriptHook, Widget)]
 pub struct CollapsiblePreview {
-    #[deref] view: View,
-    #[walk] walk: Walk,
-    #[redraw] #[area] #[rust] area: Area,
-    #[layout] layout: Layout,
+    #[deref]
+    view: View,
+    #[walk]
+    walk: Walk,
+    #[redraw]
+    #[area]
+    #[rust]
+    area: Area,
+    #[layout]
+    layout: Layout,
     /// Whether this collapsed preview can be expanded.
-    #[live] expandable: bool,
+    #[live]
+    expandable: bool,
     /// Whether to draw the vertical bar to the left of this in-timeline reply preview.
-    #[live] show_left_bar: bool,
-    #[rust] is_expanded: bool,
-    #[rust] collapsible: bool,
-    #[rust] last_drawn_height: f64,
-    #[rust] toggle_button_rect: Rect,
-    #[rust] next_frame: NextFrame,
+    #[live]
+    show_left_bar: bool,
+    #[rust]
+    is_expanded: bool,
+    #[rust]
+    collapsible: bool,
+    #[rust]
+    last_drawn_height: f64,
+    #[rust]
+    toggle_button_rect: Rect,
+    #[rust]
+    next_frame: NextFrame,
 }
 
 impl Widget for CollapsiblePreview {
@@ -284,27 +297,49 @@ impl Widget for CollapsiblePreview {
         let predict_collapsed = self.last_drawn_height > REPLY_PREVIEW_FULL_SHOW_THRESHOLD
             && !(self.expandable && self.is_expanded);
         if let Some(mut inner) = preview_content.borrow_mut() {
-            let optimize = if predict_collapsed { ViewOptimize::Texture } else { ViewOptimize::None };
+            let optimize = if predict_collapsed {
+                ViewOptimize::Texture
+            } else {
+                ViewOptimize::None
+            };
             inner.set_optimize(cx, optimize);
             inner.set_texture_max_height(Some(REPLY_PREVIEW_TEXTURE_MAX_HEIGHT));
         }
 
         cx.begin_turtle(
             walk,
-            Layout { flow: Flow::Down, clip_x: false, clip_y: false, ..self.layout },
+            Layout {
+                flow: Flow::Down,
+                clip_x: false,
+                clip_y: false,
+                ..self.layout
+            },
         );
         cx.begin_turtle(
-            Walk { width: Size::fill(), height: Size::fit(), ..Walk::default() },
-            Layout { flow: Flow::Down, clip_y: true, ..Layout::default() },
+            Walk {
+                width: Size::fill(),
+                height: Size::fit(),
+                ..Walk::default()
+            },
+            Layout {
+                flow: Flow::Down,
+                clip_y: true,
+                ..Layout::default()
+            },
         );
         preview_content.draw_all(cx, scope);
         let content_rect = preview_content.area().rect(cx);
-        let body_rect = self.view.widget(cx, ids!(preview_content.reply_preview_body)).area().rect(cx);
+        let body_rect = self
+            .view
+            .widget(cx, ids!(preview_content.reply_preview_body))
+            .area()
+            .rect(cx);
         let used = cx.turtle().used();
         // Obtain the true height of the reply body to determine if it needs to be collapsed.
         if body_rect.pos.y > content_rect.pos.y {
-            self.last_drawn_height = body_rect.pos.y + body_rect.size.y
-                + REPLY_PREVIEW_BODY_BOTTOM_PADDING - content_rect.pos.y;
+            self.last_drawn_height =
+                body_rect.pos.y + body_rect.size.y + REPLY_PREVIEW_BODY_BOTTOM_PADDING
+                    - content_rect.pos.y;
         }
         self.collapsible = self.last_drawn_height > REPLY_PREVIEW_FULL_SHOW_THRESHOLD;
         let collapsed = self.collapsible && !(self.expandable && self.is_expanded);
@@ -322,13 +357,20 @@ impl Widget for CollapsiblePreview {
                 (1.0, 1.0, 0.0)
             };
             if let Some(mut inner) = preview_content.borrow_mut() {
-                inner.draw_bg.set_uniform_on_area(cx, live_id!(fade_start), &[fade_start]);
-                inner.draw_bg.set_uniform_on_area(cx, live_id!(fade_end), &[fade_end]);
-                inner.draw_bg.set_uniform_on_area(cx, live_id!(fade_enabled), &[enabled]);
+                inner
+                    .draw_bg
+                    .set_uniform_on_area(cx, live_id!(fade_start), &[fade_start]);
+                inner
+                    .draw_bg
+                    .set_uniform_on_area(cx, live_id!(fade_end), &[fade_end]);
+                inner
+                    .draw_bg
+                    .set_uniform_on_area(cx, live_id!(fade_enabled), &[enabled]);
             }
         }
         if collapsed {
-            cx.turtle_mut().set_used(used.x, REPLY_PREVIEW_COLLAPSED_HEIGHT);
+            cx.turtle_mut()
+                .set_used(used.x, REPLY_PREVIEW_COLLAPSED_HEIGHT);
         }
         let inner_rect = cx.end_turtle();
         // We only know the true height after it's first drawn, so use next frame
@@ -353,7 +395,11 @@ impl Widget for CollapsiblePreview {
             let button_walk = Walk {
                 width: Size::fit(),
                 height: Size::fit(),
-                margin: Inset { left: body_rect.pos.x - inner_rect.pos.x, top: 4.0, ..Inset::default() },
+                margin: Inset {
+                    left: body_rect.pos.x - inner_rect.pos.x,
+                    top: 4.0,
+                    ..Inset::default()
+                },
                 ..Walk::default()
             };
             let _ = shown.draw_walk(cx, scope, button_walk);
@@ -373,8 +419,8 @@ impl Widget for CollapsiblePreview {
             };
             let bar_walk = Walk {
                 abs_pos: Some(dvec2(content_rect.pos.x, content_rect.pos.y)),
-                width:   Size::Fixed(REPLY_PREVIEW_BAR_WIDTH),
-                height:  Size::Fixed((bar_bottom - content_rect.pos.y).max(0.0)),
+                width: Size::Fixed(REPLY_PREVIEW_BAR_WIDTH),
+                height: Size::Fixed((bar_bottom - content_rect.pos.y).max(0.0)),
                 ..Walk::default()
             };
             let _ = left_bar.draw_walk(cx, scope, bar_walk);
@@ -411,7 +457,9 @@ impl CollapsiblePreviewRef {
 
     /// Area of the inner reply preview content: avatar, username, and body.
     pub fn content_area(&self, cx: &mut Cx) -> Area {
-        let Some(inner) = self.borrow() else { return Area::Empty };
+        let Some(inner) = self.borrow() else {
+            return Area::Empty;
+        };
         inner.view.widget(cx, ids!(preview_content)).area()
     }
 }

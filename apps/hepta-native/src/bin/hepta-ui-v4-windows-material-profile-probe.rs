@@ -25,8 +25,7 @@ use hepta_native::shared::hepta_makepad_window_material::{
 use hepta_native::shared::hepta_platform_material::HeptaPlatform;
 #[cfg(all(target_os = "windows", hepta_makepad_windows_ack_hook))]
 use hepta_native::shared::hepta_window_visual_ack::{
-    HeptaWindowVisualAckReceipt, HeptaWindowVisualAckStatus,
-    HeptaWindowVisualRequestIdentity,
+    HeptaWindowVisualAckReceipt, HeptaWindowVisualAckStatus, HeptaWindowVisualRequestIdentity,
 };
 #[cfg(all(target_os = "windows", hepta_makepad_windows_ack_hook))]
 use hepta_native::shared::hepta_windows_backend_ack_bridge::{
@@ -147,9 +146,7 @@ impl WindowsMaterialProfileProbeApp {
     fn receipt_path() -> PathBuf {
         std::env::var_os("HEPTA_WINDOWS_PROFILE_RECEIPT_PATH")
             .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                PathBuf::from("hepta-ui-v4-windows-material-profile-receipt.json")
-            })
+            .unwrap_or_else(|| PathBuf::from("hepta-ui-v4-windows-material-profile-receipt.json"))
     }
 
     fn queue_root_mica(&mut self, cx: &mut Cx) -> Result<(), String> {
@@ -199,12 +196,8 @@ impl WindowsMaterialProfileProbeApp {
             )
             .map_err(|error| format!("transient parent binding failed: {error:?}"))?;
 
-        let popup = WindowHandle::new_popup(
-            cx,
-            root_window_id,
-            dvec2(104.0, 96.0),
-            dvec2(380.0, 240.0),
-        );
+        let popup =
+            WindowHandle::new_popup(cx, root_window_id, dvec2(104.0, 96.0), dvec2(380.0, 240.0));
         let popup_window_id = popup.window_id();
         if popup_window_id == root_window_id {
             return Err("popup reused the root WindowId".to_string());
@@ -220,9 +213,7 @@ impl WindowsMaterialProfileProbeApp {
         let popup_window_id = self
             .popup_window_id
             .ok_or_else(|| "popup WindowId is missing".to_string())?;
-        if !cx.windows.is_valid(popup_window_id)
-            || !cx.windows[popup_window_id].is_created
-        {
+        if !cx.windows.is_valid(popup_window_id) || !cx.windows[popup_window_id].is_created {
             self.progress_timer = cx.start_timeout(0.10);
             return Ok(());
         }
@@ -249,12 +240,7 @@ impl WindowsMaterialProfileProbeApp {
         self.transient_host
             .register_request(request)
             .map_err(|error| format!("Acrylic request registration failed: {error:?}"))?;
-        queue_correlated_visuals(
-            cx,
-            popup_window_id,
-            visuals,
-            TRANSIENT_ACRYLIC_SEQUENCE,
-        )?;
+        queue_correlated_visuals(cx, popup_window_id, visuals, TRANSIENT_ACRYLIC_SEQUENCE)?;
         self.phase = ProbePhase::WaitingForAcrylic;
         self.ui.redraw(cx);
         Ok(())
@@ -279,12 +265,7 @@ impl WindowsMaterialProfileProbeApp {
         self.transient_host
             .register_request(request)
             .map_err(|error| format!("solid rollback registration failed: {error:?}"))?;
-        queue_correlated_visuals(
-            cx,
-            popup_window_id,
-            visuals,
-            TRANSIENT_SOLID_SEQUENCE,
-        )?;
+        queue_correlated_visuals(cx, popup_window_id, visuals, TRANSIENT_SOLID_SEQUENCE)?;
         self.phase = ProbePhase::WaitingForSolidRollback;
         self.ui.redraw(cx);
         Ok(())
@@ -477,10 +458,7 @@ impl WindowsMaterialProfileProbeApp {
                     || receipt.requested_backdrop != WindowBackdrop::Acrylic
                     || receipt.observed_backdrop != Some(WindowBackdrop::Acrylic)
                 {
-                    return Err(format!(
-                        "unexpected Acrylic receipt: {:?}",
-                        receipt.status
-                    ));
+                    return Err(format!("unexpected Acrylic receipt: {:?}", receipt.status));
                 }
                 self.queue_popup_solid_rollback(cx)
             }
@@ -515,11 +493,9 @@ impl WindowsMaterialProfileProbeApp {
                 self.phase
             ));
         }
-        let destroyed = HeptaWindowsTransientWindowIdentity::from_window_id(
-            native_window_handle,
-            window_id,
-        )
-        .map_err(|error| format!("Destroyed identity rejected: {error:?}"))?;
+        let destroyed =
+            HeptaWindowsTransientWindowIdentity::from_window_id(native_window_handle, window_id)
+                .map_err(|error| format!("Destroyed identity rejected: {error:?}"))?;
         if !self
             .transient_host
             .process_destroyed(destroyed)
@@ -543,8 +519,7 @@ impl WindowsMaterialProfileProbeApp {
             .transient_host
             .profile_evidence()
             .map_err(|error| format!("transient evidence export failed: {error:?}"))?;
-        let aggregate =
-            aggregate_windows_material_profile(root_identity, root_receipt, transient);
+        let aggregate = aggregate_windows_material_profile(root_identity, root_receipt, transient);
         if !aggregate.accepted
             || aggregate.status
                 != HeptaWindowsMaterialProfileAggregateStatus::ReadyForProductIntegrationReview
@@ -619,9 +594,7 @@ impl AppMain for WindowsMaterialProfileProbeApp {
         if self.progress_timer.is_event(event).is_some() {
             self.progress_timer = Timer::empty();
             let result = match self.phase {
-                ProbePhase::WaitingForPopupCreation => {
-                    self.queue_popup_acrylic_if_ready(cx)
-                }
+                ProbePhase::WaitingForPopupCreation => self.queue_popup_acrylic_if_ready(cx),
                 ProbePhase::WaitingForDestroyed => {
                     self.progress_timer = cx.start_timeout(0.10);
                     self.ui.redraw(cx);
@@ -655,29 +628,27 @@ fn root_request_identity(
     window_id: WindowId,
     visuals: WindowVisuals,
 ) -> Result<HeptaWindowVisualRequestIdentity, String> {
-    HeptaWindowVisualRequestIdentity::from_makepad_receipt(
-        HeptaMakepadWindowMaterialReceipt {
-            generation: sequence,
-            platform: HeptaPlatform::Windows,
-            window_index: Some(window_id.0),
-            window_generation: Some(window_id.1),
-            phase: HeptaMakepadWindowMaterialPhase::PersistentChromeRequested,
-            requested_visuals: visuals,
-            framework_state_updated: true,
-            framework_request_queued: true,
-            persistent_chrome_requested: true,
-            transient_system_material_bound: false,
-            complete_profile_bound: false,
-            system_material_bound: false,
-            runtime_readback: false,
-            production_authority: false,
-            effect_authority: false,
-            live_adapter_authority: false,
-            operator_acceptance: false,
-            promotion: false,
-            release: false,
-        },
-    )
+    HeptaWindowVisualRequestIdentity::from_makepad_receipt(HeptaMakepadWindowMaterialReceipt {
+        generation: sequence,
+        platform: HeptaPlatform::Windows,
+        window_index: Some(window_id.0),
+        window_generation: Some(window_id.1),
+        phase: HeptaMakepadWindowMaterialPhase::PersistentChromeRequested,
+        requested_visuals: visuals,
+        framework_state_updated: true,
+        framework_request_queued: true,
+        persistent_chrome_requested: true,
+        transient_system_material_bound: false,
+        complete_profile_bound: false,
+        system_material_bound: false,
+        runtime_readback: false,
+        production_authority: false,
+        effect_authority: false,
+        live_adapter_authority: false,
+        operator_acceptance: false,
+        promotion: false,
+        release: false,
+    })
     .map_err(|error| format!("root request identity rejected: {error:?}"))
 }
 

@@ -1,6 +1,6 @@
 //! The RoomsListHeader contains the title label and loading spinner for rooms list.
 //!
-//! This widget is designed to be reused across both Desktop and Mobile variants 
+//! This widget is designed to be reused across both Desktop and Mobile variants
 //! of the RoomsSideBar to avoid code duplication.
 
 use std::mem::discriminant;
@@ -88,9 +88,11 @@ script_mod! {
 
 #[derive(Script, ScriptHook, Widget)]
 pub struct RoomsListHeader {
-    #[deref] view: View,
+    #[deref]
+    view: View,
 
-    #[rust(State::Idle)] sync_state: State,
+    #[rust(State::Idle)]
+    sync_state: State,
 }
 
 impl Widget for RoomsListHeader {
@@ -104,9 +106,15 @@ impl Widget for RoomsListHeader {
                         if matches!(self.sync_state, State::Offline) {
                             continue;
                         }
-                        self.view.view(cx, ids!(loading_spinner)).set_visible(cx, *is_syncing);
-                        self.view.view(cx, ids!(synced_icon)).set_visible(cx, !*is_syncing);
-                        self.view.view(cx, ids!(offline_icon)).set_visible(cx, false);
+                        self.view
+                            .view(cx, ids!(loading_spinner))
+                            .set_visible(cx, *is_syncing);
+                        self.view
+                            .view(cx, ids!(synced_icon))
+                            .set_visible(cx, !*is_syncing);
+                        self.view
+                            .view(cx, ids!(offline_icon))
+                            .set_visible(cx, false);
                         self.redraw(cx);
                         continue;
                     }
@@ -115,7 +123,9 @@ impl Widget for RoomsListHeader {
                             continue;
                         }
                         if matches!(new_state, State::Offline) {
-                            self.view.view(cx, ids!(loading_spinner)).set_visible(cx, false);
+                            self.view
+                                .view(cx, ids!(loading_spinner))
+                                .set_visible(cx, false);
                             self.view.view(cx, ids!(synced_icon)).set_visible(cx, false);
                             self.view.view(cx, ids!(offline_icon)).set_visible(cx, true);
                             enqueue_popup_notification(
@@ -124,13 +134,19 @@ impl Widget for RoomsListHeader {
                                 Some(4.0),
                             );
                             // Since there is no timeout for fetching media, send an action to ImageViewer when syncing is offline.
-                            cx.action(ImageViewerAction::Show(LoadState::Error(ImageViewerError::Offline)));
+                            cx.action(ImageViewerAction::Show(LoadState::Error(
+                                ImageViewerError::Offline,
+                            )));
                         } else if matches!(self.sync_state, State::Offline) {
                             // Transitioning away from Offline: reset to the default
                             // loading state so the sync indicator can take over again.
-                            self.view.view(cx, ids!(loading_spinner)).set_visible(cx, true);
+                            self.view
+                                .view(cx, ids!(loading_spinner))
+                                .set_visible(cx, true);
                             self.view.view(cx, ids!(synced_icon)).set_visible(cx, false);
-                            self.view.view(cx, ids!(offline_icon)).set_visible(cx, false);
+                            self.view
+                                .view(cx, ids!(offline_icon))
+                                .set_visible(cx, false);
 
                             // Clear stale `Requested`/`Failed` entries from global caches,
                             // as any requests submitted while offline have likely failed,
@@ -166,9 +182,21 @@ impl Widget for RoomsListHeader {
 
         // Show tooltips for the sync status icons.
         for (view, text, bg_color) in [
-            (self.view.view(cx, ids!(loading_spinner)), "Syncing...",   vec4(0.059, 0.533, 0.996, 1.0)), // COLOR_ACTIVE_PRIMARY #0f88fe
-            (self.view.view(cx, ids!(offline_icon)),    "Offline",      vec4(0.863, 0.0, 0.020, 1.0)),   // COLOR_FG_DANGER_RED #DC0005
-            (self.view.view(cx, ids!(synced_icon)),     "Fully synced", vec4(0.075, 0.533, 0.031, 1.0)), // COLOR_FG_ACCEPT_GREEN #138808
+            (
+                self.view.view(cx, ids!(loading_spinner)),
+                "Syncing...",
+                vec4(0.059, 0.533, 0.996, 1.0),
+            ), // COLOR_ACTIVE_PRIMARY #0f88fe
+            (
+                self.view.view(cx, ids!(offline_icon)),
+                "Offline",
+                vec4(0.863, 0.0, 0.020, 1.0),
+            ), // COLOR_FG_DANGER_RED #DC0005
+            (
+                self.view.view(cx, ids!(synced_icon)),
+                "Fully synced",
+                vec4(0.075, 0.533, 0.031, 1.0),
+            ), // COLOR_FG_ACCEPT_GREEN #138808
         ] {
             if !view.visible() {
                 continue;

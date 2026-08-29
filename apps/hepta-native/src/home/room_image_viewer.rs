@@ -8,7 +8,12 @@ use matrix_sdk::{
 };
 use matrix_sdk::reqwest::StatusCode;
 
-use crate::{home::timeline_update_queue::TimelineUpdateSender, media_cache::{error_to_media_cache_entry, MediaCacheEntry}, shared::image_viewer::ImageViewerError, sliding_sync::{submit_async_request, MatrixRequest}};
+use crate::{
+    home::timeline_update_queue::TimelineUpdateSender,
+    media_cache::{error_to_media_cache_entry, MediaCacheEntry},
+    shared::image_viewer::ImageViewerError,
+    sliding_sync::{submit_async_request, MatrixRequest},
+};
 
 /// Fetches the full-size image for the image viewer.
 ///
@@ -39,7 +44,9 @@ pub fn get_image_name_and_filesize(event_tl_item: &EventTimelineItem) -> (String
     if let Some(message) = event_tl_item.content().as_message() {
         if let MessageType::Image(image_content) = message.msgtype() {
             let name = image_content.filename().to_string();
-            let size = image_content.info.as_ref()
+            let size = image_content
+                .info
+                .as_ref()
                 .and_then(|info| info.size)
                 .map_or(0, u64::from);
             return (name, size);
@@ -63,15 +70,15 @@ fn show_fetched_image_in_viewer(
 ) {
     let action = match data {
         Ok(data) => ImageViewerFetchAction::Loaded(data.into()),
-        Err(e) => ImageViewerFetchAction::Failed(
-            match error_to_media_cache_entry(e, &request) {
-                MediaCacheEntry::Failed(StatusCode::NOT_FOUND) => ImageViewerError::NotFound,
-                MediaCacheEntry::Failed(StatusCode::INTERNAL_SERVER_ERROR) => ImageViewerError::ConnectionFailed,
-                MediaCacheEntry::Failed(StatusCode::PARTIAL_CONTENT) => ImageViewerError::BadData,
-                MediaCacheEntry::Failed(StatusCode::UNAUTHORIZED) => ImageViewerError::Unauthorized,
-                _ => ImageViewerError::Unknown,
+        Err(e) => ImageViewerFetchAction::Failed(match error_to_media_cache_entry(e, &request) {
+            MediaCacheEntry::Failed(StatusCode::NOT_FOUND) => ImageViewerError::NotFound,
+            MediaCacheEntry::Failed(StatusCode::INTERNAL_SERVER_ERROR) => {
+                ImageViewerError::ConnectionFailed
             }
-        ),
+            MediaCacheEntry::Failed(StatusCode::PARTIAL_CONTENT) => ImageViewerError::BadData,
+            MediaCacheEntry::Failed(StatusCode::UNAUTHORIZED) => ImageViewerError::Unauthorized,
+            _ => ImageViewerError::Unknown,
+        }),
     };
     Cx::post_action(action);
 }

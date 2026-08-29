@@ -1,5 +1,5 @@
 //! A popup menu that contains buttons for sending attachments or location to a room.
-//! 
+//!
 //! This is shown when clicking the add/plus-sign button in the RoomInputBar.
 
 use makepad_widgets::*;
@@ -48,7 +48,7 @@ script_mod! {
         show_bg: false
         draw_bg +: {
             color: #00000000
-        } 
+        }
 
         // This works kinda like the other context menus; we position the main content
         // within the entire room screen using margins.
@@ -107,16 +107,25 @@ pub enum RoomInputPopupMenuAction {
 
 #[derive(Script, ScriptHook, Widget)]
 pub struct RoomInputPopupMenu {
-    #[source] source: ScriptObjectRef,
-    #[deref] view: View,
+    #[source]
+    source: ScriptObjectRef,
+    #[deref]
+    view: View,
 }
 
 impl Widget for RoomInputPopupMenu {
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
-        if !self.visible { return; }
+        if !self.visible {
+            return;
+        }
 
-        if matches!(event, Event::KeyUp(KeyEvent {key_code: KeyCode::Escape, .. }))
-            || event.back_pressed()
+        if matches!(
+            event,
+            Event::KeyUp(KeyEvent {
+                key_code: KeyCode::Escape,
+                ..
+            })
+        ) || event.back_pressed()
         {
             self.close(cx);
             return;
@@ -133,7 +142,10 @@ impl Widget for RoomInputPopupMenu {
 
 impl WidgetMatchEvent for RoomInputPopupMenu {
     fn handle_actions(&mut self, cx: &mut Cx, actions: &Actions, _scope: &mut Scope) {
-        let action = if self.button(cx, ids!(upload_photo_video_button)).clicked(actions) {
+        let action = if self
+            .button(cx, ids!(upload_photo_video_button))
+            .clicked(actions)
+        {
             RoomInputPopupMenuAction::UploadPhotoOrVideo
         } else if self.button(cx, ids!(upload_file_button)).clicked(actions) {
             RoomInputPopupMenuAction::UploadFile
@@ -163,14 +175,17 @@ impl RoomInputPopupMenu {
     }
 
     pub fn close(&mut self, cx: &mut Cx) {
-        if !self.visible { return; }
+        if !self.visible {
+            return;
+        }
         self.visible = false;
         cx.revert_key_focus();
         self.redraw(cx);
     }
 
     fn reset_button_hover(&mut self, cx: &mut Cx) {
-        self.button(cx, ids!(upload_photo_video_button)).reset_hover(cx);
+        self.button(cx, ids!(upload_photo_video_button))
+            .reset_hover(cx);
         self.button(cx, ids!(upload_file_button)).reset_hover(cx);
         self.button(cx, ids!(send_location_button)).reset_hover(cx);
     }
@@ -193,9 +208,10 @@ impl RoomInputPopupMenu {
         match event {
             Event::MouseDown(e) => !main_rect.contains(e.abs),
             Event::LongPress(e) => !main_rect.contains(e.abs),
-            Event::TouchUpdate(e) => e.touches.iter().any(|touch| {
-                touch.state == TouchState::Start && !main_rect.contains(touch.abs)
-            }),
+            Event::TouchUpdate(e) => e
+                .touches
+                .iter()
+                .any(|touch| touch.state == TouchState::Start && !main_rect.contains(touch.abs)),
             _ => false,
         }
     }
@@ -203,27 +219,37 @@ impl RoomInputPopupMenu {
 
 impl RoomInputPopupMenuRef {
     pub fn is_open(&self) -> bool {
-        let Some(inner) = self.borrow() else { return false };
+        let Some(inner) = self.borrow() else {
+            return false;
+        };
         inner.is_open()
     }
 
     pub fn close(&self, cx: &mut Cx) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.close(cx);
     }
 
     pub fn show(&self, cx: &mut Cx) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.show(cx);
     }
 
     pub fn is_event_within_popup_menu(&self, cx: &mut Cx, event: &Event) -> bool {
-        let Some(inner) = self.borrow() else { return false };
+        let Some(inner) = self.borrow() else {
+            return false;
+        };
         inner.is_event_within_popup_menu(cx, event)
     }
 
     pub fn should_dismiss_for_outside_event(&self, cx: &mut Cx, event: &Event) -> bool {
-        let Some(inner) = self.borrow() else { return false };
+        let Some(inner) = self.borrow() else {
+            return false;
+        };
         inner.should_dismiss_for_outside_event(cx, event)
     }
 
@@ -233,5 +259,4 @@ impl RoomInputPopupMenuRef {
             action => Some(action),
         }
     }
-
 }

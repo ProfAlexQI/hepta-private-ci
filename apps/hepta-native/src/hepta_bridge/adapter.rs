@@ -3,9 +3,7 @@ use std::collections::VecDeque;
 
 use thiserror::Error;
 
-use super::contract::{
-    BridgeRequest, BridgeRequestKind, BridgeUpdate, HEPTA_BRIDGE_SCHEMA_VERSION,
-};
+use super::contract::{BridgeRequest, BridgeRequestKind, BridgeUpdate, HEPTA_BRIDGE_SCHEMA_VERSION};
 
 /// Capabilities are denied unless a trusted adapter opts into them explicitly.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -51,13 +49,17 @@ pub enum BridgeAdapterError {
 /// The product UI treats all confirmation bindings as opaque. Implementations must not
 /// infer runtime authority from Matrix events or equate Matrix delivery with a Hepta receipt.
 pub(crate) trait BridgeTransport: Send {
-    fn capabilities(&self) -> BridgeCapabilities { BridgeCapabilities::default() }
+    fn capabilities(&self) -> BridgeCapabilities {
+        BridgeCapabilities::default()
+    }
 
     fn handle(&mut self, request: BridgeRequest) -> Result<Vec<BridgeUpdate>, BridgeAdapterError>;
 }
 
 impl BridgeTransport for Box<dyn BridgeTransport> {
-    fn capabilities(&self) -> BridgeCapabilities { self.as_ref().capabilities() }
+    fn capabilities(&self) -> BridgeCapabilities {
+        self.as_ref().capabilities()
+    }
 
     fn handle(&mut self, request: BridgeRequest) -> Result<Vec<BridgeUpdate>, BridgeAdapterError> {
         self.as_mut().handle(request)
@@ -81,15 +83,23 @@ impl BridgeTransport for DisabledBridgeAdapter {
 pub(crate) struct ValidatedBridgeUpdate(BridgeUpdate);
 
 impl ValidatedBridgeUpdate {
-    pub(super) fn as_update(&self) -> &BridgeUpdate { &self.0 }
+    pub(super) fn as_update(&self) -> &BridgeUpdate {
+        &self.0
+    }
 
-    pub(super) fn into_update(self) -> BridgeUpdate { self.0 }
+    pub(super) fn into_update(self) -> BridgeUpdate {
+        self.0
+    }
 
     #[cfg(test)]
-    pub(super) fn for_test(update: BridgeUpdate) -> Self { Self(update) }
+    pub(super) fn for_test(update: BridgeUpdate) -> Self {
+        Self(update)
+    }
 
     #[cfg(test)]
-    pub(super) fn as_update_mut(&mut self) -> &mut BridgeUpdate { &mut self.0 }
+    pub(super) fn as_update_mut(&mut self) -> &mut BridgeUpdate {
+        &mut self.0
+    }
 }
 
 /// Mandatory validation wrapper around every bridge transport.
@@ -110,9 +120,13 @@ impl GuardedBridgeAdapter<DisabledBridgeAdapter> {
 }
 
 impl<T: BridgeTransport> GuardedBridgeAdapter<T> {
-    pub(super) fn new(transport: T) -> Self { Self { transport } }
+    pub(super) fn new(transport: T) -> Self {
+        Self { transport }
+    }
 
-    pub fn capabilities(&self) -> BridgeCapabilities { self.transport.capabilities() }
+    pub fn capabilities(&self) -> BridgeCapabilities {
+        self.transport.capabilities()
+    }
 
     pub fn handle(
         &mut self,
@@ -190,12 +204,13 @@ impl FakeBridgeAdapter {
     pub fn push_updates(&mut self, updates: Vec<BridgeUpdate>) {
         self.queued.push_back(Ok(updates));
     }
-
 }
 
 #[cfg(test)]
 impl BridgeTransport for FakeBridgeAdapter {
-    fn capabilities(&self) -> BridgeCapabilities { self.capabilities }
+    fn capabilities(&self) -> BridgeCapabilities {
+        self.capabilities
+    }
 
     fn handle(&mut self, request: BridgeRequest) -> Result<Vec<BridgeUpdate>, BridgeAdapterError> {
         if request.metadata.schema_version != HEPTA_BRIDGE_SCHEMA_VERSION {

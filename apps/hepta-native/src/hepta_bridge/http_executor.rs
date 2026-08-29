@@ -246,11 +246,7 @@ impl LiveSnapshotHttpExecutor for AuthenticatedLoopbackHttpExecutor {
             ));
         }
         let bytes = self.execute(request)?;
-        parse_response(
-            request.endpoint(),
-            &bytes,
-            &self.response_integrity_key,
-        )
+        parse_response(request.endpoint(), &bytes, &self.response_integrity_key)
     }
 }
 

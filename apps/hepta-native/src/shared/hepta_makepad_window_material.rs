@@ -112,10 +112,7 @@ impl HeptaMakepadWindowMaterialController {
     }
 
     pub fn observe_window(&mut self, cx: &Cx, window_id: WindowId) -> bool {
-        if self.shutdown
-            || !cx.windows.is_valid(window_id)
-            || cx.windows[window_id].is_popup
-        {
+        if self.shutdown || !cx.windows.is_valid(window_id) || cx.windows[window_id].is_popup {
             return false;
         }
         let changed = self.window_id != Some(window_id);
@@ -198,8 +195,7 @@ impl HeptaMakepadWindowMaterialController {
 
     fn valid_root_window(&self, cx: &Cx) -> Option<WindowId> {
         let window_id = self.window_id?;
-        (cx.windows.is_valid(window_id) && !cx.windows[window_id].is_popup)
-            .then_some(window_id)
+        (cx.windows.is_valid(window_id) && !cx.windows[window_id].is_popup).then_some(window_id)
     }
 
     fn install(
@@ -265,11 +261,7 @@ pub fn desired_root_window_visuals(
     )
 }
 
-fn queue_window_visuals(
-    cx: &mut Cx,
-    window_id: WindowId,
-    visuals: WindowVisuals,
-) -> (bool, bool) {
+fn queue_window_visuals(cx: &mut Cx, window_id: WindowId, visuals: WindowVisuals) -> (bool, bool) {
     let visuals = visuals.normalized();
     let (changed, created) = {
         let window = &mut cx.windows[window_id];
@@ -386,7 +378,10 @@ mod tests {
             },
             true,
         );
-        assert_eq!(receipt.phase, HeptaMakepadWindowMaterialPhase::SolidRequested);
+        assert_eq!(
+            receipt.phase,
+            HeptaMakepadWindowMaterialPhase::SolidRequested
+        );
         assert_eq!(cx.windows[window_id].backdrop, WindowBackdrop::None);
         let suspended = controller.suspend(&mut cx, HeptaPlatform::Windows);
         assert_eq!(suspended.phase, HeptaMakepadWindowMaterialPhase::Suspended);
@@ -405,11 +400,8 @@ mod tests {
 
     #[test]
     fn macos_vibrancy_request_still_requires_runtime_readback() {
-        let (phase, visuals, requested) = desired_root_window_visuals(
-            HeptaPlatform::MacOs,
-            transparent_preferences(),
-            false,
-        );
+        let (phase, visuals, requested) =
+            desired_root_window_visuals(HeptaPlatform::MacOs, transparent_preferences(), false);
         assert_eq!(
             phase,
             HeptaMakepadWindowMaterialPhase::PersistentChromeRequested

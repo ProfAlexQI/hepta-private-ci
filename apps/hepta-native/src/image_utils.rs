@@ -24,7 +24,10 @@ pub fn read_image_dimensions(path: &Path) -> Option<(usize, usize)> {
     const HEADER_PREFIX_LEN: u64 = 256 * 1024;
     let mut file = std::fs::File::open(path).ok()?;
     let mut buf = Vec::new();
-    file.by_ref().take(HEADER_PREFIX_LEN).read_to_end(&mut buf).ok()?;
+    file.by_ref()
+        .take(HEADER_PREFIX_LEN)
+        .read_to_end(&mut buf)
+        .ok()?;
     if let Ok(dims) = image_size_by_data(&buf, path) {
         return Some(dims);
     }

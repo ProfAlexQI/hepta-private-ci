@@ -15,7 +15,11 @@ use crate::{
     avatar_cache::{get_or_fetch_avatar, process_avatar_updates, AvatarCacheEntry},
     home::rooms_list::RoomsListRef,
     room::FetchedRoomAvatar,
-    shared::{avatar::{AvatarImage, AvatarWidgetRefExt}, slash_commands::SlashCommand, styles::*},
+    shared::{
+        avatar::{AvatarImage, AvatarWidgetRefExt},
+        slash_commands::SlashCommand,
+        styles::*,
+    },
     utils::{self, RoomNameId},
 };
 use matrix_sdk::ruma::{OwnedMxcUri, OwnedRoomAliasId, OwnedRoomId, OwnedUserId};
@@ -161,7 +165,9 @@ pub enum MentionItem {
         display_name: String,
         avatar_url: Option<OwnedMxcUri>,
     },
-    NotifyRoom { room_name: String },
+    NotifyRoom {
+        room_name: String,
+    },
     Room(RoomMentionCandidate),
     Command(&'static SlashCommand),
 }
@@ -176,38 +182,54 @@ enum MentionablePopupAction {
 
 #[derive(Script, ScriptHook, Widget)]
 pub struct MentionablePopup {
-    #[source] source: ScriptObjectRef,
-    #[deref] view: View,
+    #[source]
+    source: ScriptObjectRef,
+    #[deref]
+    view: View,
 
-    #[live] color_focus: Vec4f,
-    #[live] color_hover: Vec4f,
+    #[live]
+    color_focus: Vec4f,
+    #[live]
+    color_hover: Vec4f,
 
-    #[rust] is_open: bool,
+    #[rust]
+    is_open: bool,
     /// The location of the text input cursor that this popup is positioned near.
-    #[rust] anchor_rect: Rect,
+    #[rust]
+    anchor_rect: Rect,
     /// The MentionableTextInput widget instance that opened and is controlling this popup.
-    #[rust] owner: Option<WidgetUid>,
+    #[rust]
+    owner: Option<WidgetUid>,
     /// The starting byte of the trigger token within this text input's content.
-    #[rust] trigger_start_byte: Option<usize>,
+    #[rust]
+    trigger_start_byte: Option<usize>,
 
     /// The actual matches that we should show, in ranked order.
-    #[rust] items: Arc<Vec<MentionItem>>,
+    #[rust]
+    items: Arc<Vec<MentionItem>>,
     /// Message shown when there were no matches for the current query.
-    #[rust] empty_message: String,
+    #[rust]
+    empty_message: String,
     /// The message shown while loading more matches.
-    #[rust] loading_message: String,
-    #[rust] is_loading: bool,
+    #[rust]
+    loading_message: String,
+    #[rust]
+    is_loading: bool,
 
     /// The index in `items` of which item we're focusing on via keyboard navigation.
-    #[rust] keyboard_focus_index: Option<usize>,
+    #[rust]
+    keyboard_focus_index: Option<usize>,
     /// The index in `items` of which item we're focusing on via mouse hover.
-    #[rust] pointer_hover_index: Option<usize>,
+    #[rust]
+    pointer_hover_index: Option<usize>,
     /// The last-drawn height of the list itself; used to help align the item selected
     /// via keyboard nav to the bottom of the viewport.
-    #[rust] list_viewport_height: f64,
+    #[rust]
+    list_viewport_height: f64,
     /// Whether all of the avatars in the currently-visible rows have been fully drawn.
     /// If `false`, we'll try to update the avatar cache and re-draw avatars upon a UI Signal.
-    #[rust] is_fully_drawn: bool,
+    #[rust]
+    is_fully_drawn: bool,
 }
 
 impl Widget for MentionablePopup {
@@ -226,7 +248,12 @@ impl Widget for MentionablePopup {
         if let Event::Actions(actions) = event {
             let list = self.portal_list(cx, ids!(main_content.list_container.list));
 
-            if actions.iter().any(|a| matches!(a.as_widget_action().cast(), WindowAction::WindowGeomChange(_))) {
+            if actions.iter().any(|a| {
+                matches!(
+                    a.as_widget_action().cast(),
+                    WindowAction::WindowGeomChange(_)
+                )
+            }) {
                 self.redraw(cx);
             }
 
@@ -247,14 +274,19 @@ impl Widget for MentionablePopup {
                     self.keyboard_focus_index = Some(index);
                     should_redraw = true;
                 }
-                if item.finger_hover_out(actions).is_some() && self.pointer_hover_index == Some(index) {
+                if item.finger_hover_out(actions).is_some()
+                    && self.pointer_hover_index == Some(index)
+                {
                     self.pointer_hover_index = None;
                     should_redraw = true;
                 }
             }
             if let Some(index) = clicked_item_idx {
                 if index < self.items.len() {
-                    cx.widget_action(self.widget_uid(), MentionablePopupAction::ClickedItem(index));
+                    cx.widget_action(
+                        self.widget_uid(),
+                        MentionablePopupAction::ClickedItem(index),
+                    );
                 }
             }
             if should_redraw {
@@ -276,7 +308,9 @@ impl Widget for MentionablePopup {
 
         while let Some(widget) = self.view.draw_walk(cx, scope, walk).step() {
             let portal_list = widget.as_portal_list();
-            let Some(mut list) = portal_list.borrow_mut() else { continue };
+            let Some(mut list) = portal_list.borrow_mut() else {
+                continue;
+            };
             // With no matches we draw a single loading or empty row.
             let count = self.items.len().max(1);
             list.set_item_range(cx, 0, count);
@@ -286,7 +320,8 @@ impl Widget for MentionablePopup {
                 }
                 let row = match self.items.get(index) {
                     Some(mention) => {
-                        let mut row_widget = build_row(cx, &mut list, index, mention, &mut fully_drawn);
+                        let mut row_widget =
+                            build_row(cx, &mut list, index, mention, &mut fully_drawn);
                         let color = if self.keyboard_focus_index == Some(index) {
                             self.color_focus
                         } else if self.pointer_hover_index == Some(index) {
@@ -299,12 +334,16 @@ impl Widget for MentionablePopup {
                     }
                     None if self.is_loading => {
                         let loading_row = list.item(cx, index, id!(loading_row));
-                        loading_row.label(cx, ids!(loading_label)).set_text(cx, &self.loading_message);
+                        loading_row
+                            .label(cx, ids!(loading_label))
+                            .set_text(cx, &self.loading_message);
                         loading_row
                     }
                     None => {
                         let empty_row = list.item(cx, index, id!(empty_row));
-                        empty_row.label(cx, ids!(empty_label)).set_text(cx, &self.empty_message);
+                        empty_row
+                            .label(cx, ids!(empty_label))
+                            .set_text(cx, &self.empty_message);
                         empty_row
                     }
                 };
@@ -334,7 +373,10 @@ impl MentionablePopup {
         // Align the left side of the popup with the current textinput's cursor location,
         // and then ensure that the width is either limited by the app window size or a fixed max value.
         let width = (window_size.x - 2.0 * edge).clamp(0.0, POPUP_MAX_WIDTH);
-        let left_win = anchor.pos.x.clamp(edge, (window_size.x - edge - width).max(edge));
+        let left_win = anchor
+            .pos
+            .x
+            .clamp(edge, (window_size.x - edge - width).max(edge));
 
         // Measure space inside the overlay body, not the window: its top is at
         // overlay.y, so the popup never spills up into the caption.
@@ -345,13 +387,19 @@ impl MentionablePopup {
         let space_above = (anchor.pos.y - gap - top_limit).max(0.0);
         let space_below = (bottom_limit - anchor.pos.y - anchor.size.y - gap).max(0.0);
         let is_above_text_input = space_above >= space_below;
-        let available_space = if is_above_text_input { space_above } else { space_below };
+        let available_space = if is_above_text_input {
+            space_above
+        } else {
+            space_below
+        };
         // Shrink the list so header + list fits the space we have, capped to
         // MAX_VISIBLE_ROWS. Anything past that scrolls.
         let list_cap = (MAX_VISIBLE_ROWS * ROW_HEIGHT + 2.0 * LIST_PADDING)
             .min((available_space - header_h).max(0.0));
         let row_count = self.items.len().max(1) as f64;
-        let list_height = (row_count * ROW_HEIGHT + 2.0 * LIST_PADDING).min(list_cap).max(0.0);
+        let list_height = (row_count * ROW_HEIGHT + 2.0 * LIST_PADDING)
+            .min(list_cap)
+            .max(0.0);
         self.list_viewport_height = (list_height - 2.0 * LIST_PADDING).max(0.0);
         let box_height = header_h + list_height;
 
@@ -401,21 +449,27 @@ impl MentionablePopupRef {
         loading_message: &str,
     ) {
         {
-            let Some(mut inner) = self.borrow_mut() else { return };
-            let is_first_anchor = inner.owner != Some(owner)
-                || inner.trigger_start_byte != Some(trigger_start_byte);
+            let Some(mut inner) = self.borrow_mut() else {
+                return;
+            };
+            let is_first_anchor =
+                inner.owner != Some(owner) || inner.trigger_start_byte != Some(trigger_start_byte);
             inner.owner = Some(owner);
             if is_first_anchor {
                 inner.anchor_rect = anchor_rect;
                 inner.trigger_start_byte = Some(trigger_start_byte);
             }
             inner.is_open = true;
-            inner.view.label(cx, ids!(main_content.header_view.header_label)).set_text(cx, header);
+            inner
+                .view
+                .label(cx, ids!(main_content.header_view.header_label))
+                .set_text(cx, header);
             inner.loading_message = loading_message.to_string();
             inner.redraw(cx);
         }
         // Always reset the scroll position when showing a new popup.
-        self.portal_list(cx, ids!(main_content.list_container.list)).set_first_id_and_scroll(0, 0.0);
+        self.portal_list(cx, ids!(main_content.list_container.list))
+            .set_first_id_and_scroll(0, 0.0);
     }
 
     /// Replaces the currently-shown matches in an existing popup.
@@ -436,7 +490,9 @@ impl MentionablePopupRef {
         empty_message: &str,
     ) {
         {
-            let Some(mut inner) = self.borrow_mut() else { return };
+            let Some(mut inner) = self.borrow_mut() else {
+                return;
+            };
             if inner.owner != Some(owner) {
                 return;
             }
@@ -448,7 +504,8 @@ impl MentionablePopupRef {
             inner.pointer_hover_index = None;
             inner.redraw(cx);
         }
-        self.portal_list(cx, ids!(main_content.list_container.list)).set_first_id_and_scroll(0, 0.0);
+        self.portal_list(cx, ids!(main_content.list_container.list))
+            .set_first_id_and_scroll(0, 0.0);
     }
 
     pub fn hide(&self, cx: &mut Cx, owner: WidgetUid) {
@@ -475,7 +532,8 @@ impl MentionablePopupRef {
     }
 
     pub fn is_open_for(&self, owner: WidgetUid) -> bool {
-        self.borrow().is_some_and(|inner| inner.is_open && inner.owner == Some(owner))
+        self.borrow()
+            .is_some_and(|inner| inner.is_open && inner.owner == Some(owner))
     }
 
     /// Updates the anchor rect, and thus the location, of this popup without changing its content.
@@ -491,7 +549,8 @@ impl MentionablePopupRef {
     }
 
     pub fn content_rect(&self, cx: &mut Cx) -> Rect {
-        self.borrow().map_or(Rect::default(), |inner| inner.content_rect(cx))
+        self.borrow()
+            .map_or(Rect::default(), |inner| inner.content_rect(cx))
     }
 
     /// Moves the keyboard focus by `delta` and returns the newly-selected item index.
@@ -536,16 +595,20 @@ impl MentionablePopupRef {
     /// Returns the item currently selected/focused by the keyboard navigation.
     pub fn focused_item(&self) -> Option<MentionItem> {
         let inner = self.borrow()?;
-        inner.keyboard_focus_index.and_then(|i| inner.items.get(i).cloned())
+        inner
+            .keyboard_focus_index
+            .and_then(|i| inner.items.get(i).cloned())
     }
 
     pub fn item_at(&self, index: usize) -> Option<MentionItem> {
-        self.borrow().and_then(|inner| inner.items.get(index).cloned())
+        self.borrow()
+            .and_then(|inner| inner.items.get(index).cloned())
     }
 
     pub fn clicked_item(&self, actions: &Actions) -> Option<MentionItem> {
         let uid = self.widget_uid();
-        let index = actions.iter()
+        let index = actions
+            .iter()
             .filter_map(|a| a.as_widget_action())
             .filter(|a| a.widget_uid == uid)
             .find_map(|a| match a.cast() {
@@ -561,21 +624,48 @@ pub fn set_global_mention_popup(cx: &mut Cx, parent_ref: &WidgetRef) {
     Cx::set_global(cx, parent_ref.mentionable_popup(cx, ids!(mention_popup)));
 }
 
-fn build_row(cx: &mut Cx, list: &mut PortalList, index: usize, item: &MentionItem, fully_drawn: &mut bool) -> WidgetRef {
+fn build_row(
+    cx: &mut Cx,
+    list: &mut PortalList,
+    index: usize,
+    item: &MentionItem,
+    fully_drawn: &mut bool,
+) -> WidgetRef {
     match item {
-        MentionItem::User { user_id, display_name, avatar_url } => {
+        MentionItem::User {
+            user_id,
+            display_name,
+            avatar_url,
+        } => {
             let new_widget = list.item(cx, index, id!(row));
-            new_widget.label(cx, ids!(info.title)).set_text(cx, display_name);
-            new_widget.label(cx, ids!(info.subtitle)).set_text(cx, user_id.as_str());
+            new_widget
+                .label(cx, ids!(info.title))
+                .set_text(cx, display_name);
+            new_widget
+                .label(cx, ids!(info.subtitle))
+                .set_text(cx, user_id.as_str());
             *fully_drawn &= set_user_avatar(cx, &new_widget, avatar_url.as_ref(), display_name);
             new_widget
         }
         MentionItem::NotifyRoom { room_name } => {
             let new_widget = list.item(cx, index, id!(row));
-            new_widget.label(cx, ids!(info.title)).set_text(cx, "Notify the entire room");
-            new_widget.label(cx, ids!(info.subtitle)).set_text(cx, "@room");
-            let first = room_name.chars().next().map(|c| c.to_string()).unwrap_or_else(|| "@".into());
-            new_widget.avatar(cx, ids!(avatar)).show_text(cx, Some(COLOR_ROBRIX_PURPLE), None, &first);
+            new_widget
+                .label(cx, ids!(info.title))
+                .set_text(cx, "Notify the entire room");
+            new_widget
+                .label(cx, ids!(info.subtitle))
+                .set_text(cx, "@room");
+            let first = room_name
+                .chars()
+                .next()
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "@".into());
+            new_widget.avatar(cx, ids!(avatar)).show_text(
+                cx,
+                Some(COLOR_ROBRIX_PURPLE),
+                None,
+                &first,
+            );
             new_widget
         }
         MentionItem::Room(candidate) => {
@@ -587,27 +677,46 @@ fn build_row(cx: &mut Cx, list: &mut PortalList, index: usize, item: &MentionIte
             };
             new_widget.label(cx, ids!(info.title)).set_text(cx, &name);
             let alias = candidate.alias.as_ref().map(|a| a.as_str()).unwrap_or("");
-            new_widget.label(cx, ids!(info.subtitle)).set_text(cx, alias);
-            *fully_drawn &= set_room_avatar(cx, &new_widget, candidate.room_name_id.room_id(), candidate.avatar_url.as_ref(), candidate.room_name_id.name_for_avatar());
+            new_widget
+                .label(cx, ids!(info.subtitle))
+                .set_text(cx, alias);
+            *fully_drawn &= set_room_avatar(
+                cx,
+                &new_widget,
+                candidate.room_name_id.room_id(),
+                candidate.avatar_url.as_ref(),
+                candidate.room_name_id.name_for_avatar(),
+            );
             new_widget
         }
         MentionItem::Command(cmd) => {
             let new_widget = list.item(cx, index, id!(command_row));
-            new_widget.label(cx, ids!(info.title)).set_text(cx, &format!("/{}", cmd.name));
-            new_widget.label(cx, ids!(info.subtitle)).set_text(cx, cmd.description);
+            new_widget
+                .label(cx, ids!(info.title))
+                .set_text(cx, &format!("/{}", cmd.name));
+            new_widget
+                .label(cx, ids!(info.subtitle))
+                .set_text(cx, cmd.description);
             new_widget
         }
     }
 }
 
 /// Returns `true` once the avatar is fully drawn, `false` if it's still being fetched.
-fn set_user_avatar(cx: &mut Cx, row: &WidgetRef, avatar_url: Option<&OwnedMxcUri>, display: &str) -> bool {
+fn set_user_avatar(
+    cx: &mut Cx,
+    row: &WidgetRef,
+    avatar_url: Option<&OwnedMxcUri>,
+    display: &str,
+) -> bool {
     let avatar = row.avatar(cx, ids!(avatar));
     match avatar_url {
         Some(mxc) => match get_or_fetch_avatar(cx, mxc) {
             AvatarCacheEntry::Loaded(data) => {
                 let image = AvatarImage::from((mxc.clone(), data));
-                let _ = avatar.show_image(cx, None, |cx, img| utils::load_avatar_image(&img, cx, &image));
+                let _ = avatar.show_image(cx, None, |cx, img| {
+                    utils::load_avatar_image(&img, cx, &image)
+                });
                 true
             }
             AvatarCacheEntry::Requested => {
@@ -627,11 +736,21 @@ fn set_user_avatar(cx: &mut Cx, row: &WidgetRef, avatar_url: Option<&OwnedMxcUri
 }
 
 /// Resolves a room's avatar using the rooms list's metadata or the avatar cache.
-fn set_room_avatar(cx: &mut Cx, row: &WidgetRef, room_id: &OwnedRoomId, avatar_url: Option<&OwnedMxcUri>, name_for_avatar: Option<&str>) -> bool {
+fn set_room_avatar(
+    cx: &mut Cx,
+    row: &WidgetRef,
+    room_id: &OwnedRoomId,
+    avatar_url: Option<&OwnedMxcUri>,
+    name_for_avatar: Option<&str>,
+) -> bool {
     let avatar = row.avatar(cx, ids!(avatar));
     if cx.has_global::<RoomsListRef>() {
-        if let Some(FetchedRoomAvatar::Image(image)) = cx.get_global::<RoomsListRef>().get_room_avatar(room_id) {
-            let _ = avatar.show_image(cx, None, |cx, img| utils::load_avatar_image(&img, cx, &image));
+        if let Some(FetchedRoomAvatar::Image(image)) =
+            cx.get_global::<RoomsListRef>().get_room_avatar(room_id)
+        {
+            let _ = avatar.show_image(cx, None, |cx, img| {
+                utils::load_avatar_image(&img, cx, &image)
+            });
             return true;
         }
     }
@@ -640,7 +759,9 @@ fn set_room_avatar(cx: &mut Cx, row: &WidgetRef, room_id: &OwnedRoomId, avatar_u
         match get_or_fetch_avatar(cx, mxc) {
             AvatarCacheEntry::Loaded(data) => {
                 let image = AvatarImage::from((mxc.clone(), data));
-                let _ = avatar.show_image(cx, None, |cx, img| utils::load_avatar_image(&img, cx, &image));
+                let _ = avatar.show_image(cx, None, |cx, img| {
+                    utils::load_avatar_image(&img, cx, &image)
+                });
                 return true;
             }
             AvatarCacheEntry::Requested => fully_drawn = false,

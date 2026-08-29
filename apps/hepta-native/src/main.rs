@@ -5,8 +5,11 @@
 // Hide the command prompt console window on Windows, if desired.
 // TODO: move this into Makepad itself as an addition to the `MAKEPAD` env var.
 #![cfg_attr(
-    all(any(feature = "hide_windows_console", packaging_build), target_os = "windows"),
-    windows_subsystem = "windows",
+    all(
+        any(feature = "hide_windows_console", packaging_build),
+        target_os = "windows"
+    ),
+    windows_subsystem = "windows"
 )]
 
 fn main() {

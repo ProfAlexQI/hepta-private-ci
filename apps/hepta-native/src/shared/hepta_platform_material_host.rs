@@ -176,11 +176,7 @@ impl HeptaPlatformMaterialHost {
             } else {
                 HeptaMaterialFallbackReason::UnsupportedPlatform
             };
-            return Ok(self.install_solid(
-                platform,
-                HeptaMaterialHostPhase::SolidFallback,
-                reason,
-            ));
+            return Ok(self.install_solid(platform, HeptaMaterialHostPhase::SolidFallback, reason));
         }
 
         if !capabilities.system_material_available {
@@ -279,9 +275,7 @@ impl HeptaPlatformMaterialHost {
     }
 }
 
-const fn fallback_reason_for_error(
-    error: HeptaSystemMaterialError,
-) -> HeptaMaterialFallbackReason {
+const fn fallback_reason_for_error(error: HeptaSystemMaterialError) -> HeptaMaterialFallbackReason {
     match error {
         HeptaSystemMaterialError::UserTransparencyDisabled => {
             HeptaMaterialFallbackReason::UserTransparencyDisabled

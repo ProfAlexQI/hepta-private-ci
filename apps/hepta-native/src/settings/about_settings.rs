@@ -22,7 +22,6 @@ const UPSTREAM_PREFIX: &str = "Robrix upstream: ";
 const TESTFLIGHT_PREFIX: &str = "TestFlight build: ";
 const SDK_PREFIX: &str = "Matrix Rust SDK: ";
 
-
 script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*
@@ -155,11 +154,11 @@ script_mod! {
     }
 }
 
-
 /// The About / Help section of the SettingsScreen.
 #[derive(Script, Widget)]
 pub struct AboutSettings {
-    #[deref] view: View,
+    #[deref]
+    view: View,
 }
 
 impl ScriptHook for AboutSettings {
@@ -209,15 +208,26 @@ impl Widget for AboutSettings {
 
 impl AboutSettings {
     fn handle_actions(&mut self, cx: &mut Cx, actions: &Actions) {
-        if self.view.button(cx, ids!(copy_robrix_version_button)).clicked(actions) {
+        if self
+            .view
+            .button(cx, ids!(copy_robrix_version_button))
+            .clicked(actions)
+        {
             Self::copy_with_toast(cx, &robrix_plaintext(), "Copied Hepta Native version.");
         }
         if !TESTFLIGHT_BUILD_NUMBER.is_empty()
-            && self.view.button(cx, ids!(copy_testflight_button)).clicked(actions)
+            && self
+                .view
+                .button(cx, ids!(copy_testflight_button))
+                .clicked(actions)
         {
             Self::copy_with_toast(cx, &testflight_plaintext(), "Copied TestFlight build ID.");
         }
-        if self.view.button(cx, ids!(copy_sdk_version_button)).clicked(actions) {
+        if self
+            .view
+            .button(cx, ids!(copy_sdk_version_button))
+            .clicked(actions)
+        {
             Self::copy_with_toast(cx, &sdk_plaintext(), "Copied Matrix SDK version.");
         }
 
@@ -236,7 +246,8 @@ impl AboutSettings {
 
         // Only show the TestFlight row if testflight env var is set.
         let has_testflight = !TESTFLIGHT_BUILD_NUMBER.is_empty();
-        view.view(cx, ids!(testflight_row)).set_visible(cx, has_testflight);
+        view.view(cx, ids!(testflight_row))
+            .set_visible(cx, has_testflight);
         if has_testflight {
             view.html(cx, ids!(testflight_html))
                 .set_text(cx, &testflight_html());
@@ -293,7 +304,9 @@ fn upstream_html() -> String {
     if ROBRIX_GIT_COMMIT_URL.is_empty() {
         format!("<b>{UPSTREAM_PREFIX}</b>{ROBRIX_GIT_COMMIT_HASH}")
     } else {
-        format!("<b>{UPSTREAM_PREFIX}</b><a href=\"{ROBRIX_GIT_COMMIT_URL}\">{ROBRIX_GIT_COMMIT_HASH}</a>")
+        format!(
+            "<b>{UPSTREAM_PREFIX}</b><a href=\"{ROBRIX_GIT_COMMIT_URL}\">{ROBRIX_GIT_COMMIT_HASH}</a>"
+        )
     }
 }
 

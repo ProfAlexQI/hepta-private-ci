@@ -114,7 +114,9 @@ impl DownloadKind {
 fn download_media(
     info: DownloadableAttachment,
     update_sender: TimelineUpdateSenderOption,
-    on_downloaded: impl FnOnce(String, OwnedMxcUri, Vec<u8>, TimelineUpdateSenderOption) + Send + 'static,
+    on_downloaded: impl FnOnce(String, OwnedMxcUri, Vec<u8>, TimelineUpdateSenderOption)
+    + Send
+    + 'static,
 ) -> bool {
     let mxc = media_source_mxc(&info.media_source).clone();
     let filename = info.filename.clone();
@@ -122,7 +124,9 @@ fn download_media(
         media_source: info.media_source,
         filename: info.filename,
         on_download_result: Box::new(move |result| match result {
-            MediaDownloadResult::Downloaded(bytes) => on_downloaded(filename, mxc, bytes, update_sender),
+            MediaDownloadResult::Downloaded(bytes) => {
+                on_downloaded(filename, mxc, bytes, update_sender)
+            }
             MediaDownloadResult::Failed(e) => {
                 enqueue_popup_notification(
                     format!("Failed to download \"{filename}\": {e}"),
@@ -284,7 +288,9 @@ fn finish_download_indicator(
     outcome: DownloadOutcome,
 ) {
     let Some(mxc) = mxc else { return };
-    let Some(sender) = update_sender.as_ref() else { return };
+    let Some(sender) = update_sender.as_ref() else {
+        return;
+    };
     match outcome {
         DownloadOutcome::Cancelled => {
             let _ = sender.send(TimelineUpdate::AttachmentDownloadReset(mxc.clone()));
@@ -295,7 +301,10 @@ fn finish_download_indicator(
                 DownloadOutcome::Succeeded => Ok(()),
                 _ => Err(String::new()),
             };
-            let _ = sender.send(TimelineUpdate::AttachmentDownloadFinished(mxc.clone(), result));
+            let _ = sender.send(TimelineUpdate::AttachmentDownloadFinished(
+                mxc.clone(),
+                result,
+            ));
             SignalToUI::set_ui_signal();
             // Clear the success/failure display after a short delay.
             let sender = sender.clone();

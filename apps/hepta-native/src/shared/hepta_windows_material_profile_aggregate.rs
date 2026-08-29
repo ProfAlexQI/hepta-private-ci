@@ -181,8 +181,8 @@ pub fn aggregate_windows_material_profile(
     transient: HeptaWindowsTransientLifecycleEvidence,
 ) -> HeptaWindowsMaterialProfileAggregateReceipt {
     let status = validate(root_identity, root, transient);
-    let accepted = status
-        == HeptaWindowsMaterialProfileAggregateStatus::ReadyForProductIntegrationReview;
+    let accepted =
+        status == HeptaWindowsMaterialProfileAggregateStatus::ReadyForProductIntegrationReview;
     HeptaWindowsMaterialProfileAggregateReceipt {
         status,
         accepted,
@@ -221,8 +221,7 @@ fn validate(
         || !root.accepted
         || root.platform != HeptaPlatform::Windows
         || root.backend != HeptaWindowVisualBackend::WindowsDwm
-        || root.status
-            != HeptaWindowVisualAckStatus::VerifiedPersistentChromeWithBackdropReadback
+        || root.status != HeptaWindowVisualAckStatus::VerifiedPersistentChromeWithBackdropReadback
         || root.readback_scope != HeptaWindowVisualReadbackScope::BackdropOnly
         || root.requested_visuals.backdrop != WindowBackdrop::Mica
         || root.observed_backdrop != Some(WindowBackdrop::Mica)
@@ -417,7 +416,8 @@ mod tests {
 
     #[test]
     fn exact_dual_receipt_set_is_review_eligible_but_unbound() {
-        let receipt = aggregate_windows_material_profile(root_identity(), root_receipt(), evidence());
+        let receipt =
+            aggregate_windows_material_profile(root_identity(), root_receipt(), evidence());
         assert_eq!(
             receipt.status,
             HeptaWindowsMaterialProfileAggregateStatus::ReadyForProductIntegrationReview

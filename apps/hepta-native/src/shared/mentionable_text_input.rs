@@ -17,7 +17,10 @@ use matrix_sdk::{
 };
 use crate::{
     home::rooms_list::RoomsListRef,
-    shared::{mention_popup::{MentionItem, MentionablePopupRef}, slash_commands},
+    shared::{
+        mention_popup::{MentionItem, MentionablePopupRef},
+        slash_commands,
+    },
     sliding_sync::{submit_async_request, MatrixRequest},
     utils::{self, MatchQuality},
 };
@@ -39,22 +42,31 @@ script_mod! {
 
 #[derive(Script, ScriptHook, Widget)]
 pub struct MentionableTextInput {
-    #[source] source: ScriptObjectRef,
-    #[deref] view: View,
+    #[source]
+    source: ScriptObjectRef,
+    #[deref]
+    view: View,
 
-    #[rust] room_id: Option<OwnedRoomId>,
-    #[rust] room_members: Option<Arc<Vec<RoomMember>>>,
+    #[rust]
+    room_id: Option<OwnedRoomId>,
+    #[rust]
+    room_members: Option<Arc<Vec<RoomMember>>>,
     /// Cached room display name, refreshed on room change (avoids a per-keystroke lookup).
-    #[rust] room_name: String,
-    #[rust] can_notify_room: bool,
+    #[rust]
+    room_name: String,
+    #[rust]
+    can_notify_room: bool,
 
-    #[rust] active_trigger: Option<ActiveTrigger>,
-    #[rust] request_id: u64,
+    #[rust]
+    active_trigger: Option<ActiveTrigger>,
+    #[rust]
+    request_id: u64,
 
     /// A superset of possible mentions that might be in the current textinput.
     /// Mentions may have been deleted after adding them, so we have to check for them
     /// before sending the message in the textinput.
-    #[rust] possible_mentions: Mentions,
+    #[rust]
+    possible_mentions: Mentions,
 }
 
 impl Widget for MentionableTextInput {
@@ -66,7 +78,12 @@ impl Widget for MentionableTextInput {
         if popup_ref.is_open_for(uid) {
             // On a window resize, the textinput moved, so re-anchor the popup to the cursor.
             if let Event::Actions(actions) = event {
-                if actions.iter().any(|a| matches!(a.as_widget_action().cast(), WindowAction::WindowGeomChange(_))) {
+                if actions.iter().any(|a| {
+                    matches!(
+                        a.as_widget_action().cast(),
+                        WindowAction::WindowGeomChange(_)
+                    )
+                }) {
                     let anchor = self.popup_anchor(cx);
                     popup_ref.set_anchor(cx, uid, anchor);
                 }
@@ -108,7 +125,12 @@ impl Widget for MentionableTextInput {
             }
 
             /// Returns true if the tap/click location was outside of the text input or the mention popup.
-            fn is_outside(cx: &mut Cx, pref: &MentionablePopupRef, input_area: &Area, loc: DVec2) -> bool {
+            fn is_outside(
+                cx: &mut Cx,
+                pref: &MentionablePopupRef,
+                input_area: &Area,
+                loc: DVec2,
+            ) -> bool {
                 !pref.content_rect(cx).contains(loc) && !input_area.rect(cx).contains(loc)
             }
 
@@ -116,9 +138,10 @@ impl Widget for MentionableTextInput {
             let should_dismiss = event.back_pressed()
                 || match event {
                     Event::MouseDown(e) => is_outside(cx, &popup_ref, &text_input_area, e.abs),
-                    Event::TouchUpdate(e) => e.touches.iter().any(
-                        |t| t.state == TouchState::Start && is_outside(cx, &popup_ref, &text_input_area, t.abs)
-                    ),
+                    Event::TouchUpdate(e) => e.touches.iter().any(|t| {
+                        t.state == TouchState::Start
+                            && is_outside(cx, &popup_ref, &text_input_area, t.abs)
+                    }),
                     _ => false,
                 };
             if should_dismiss {
@@ -215,7 +238,14 @@ impl MentionableTextInput {
         let anchor = self.popup_anchor(cx);
         let trigger_start = self.active_trigger.map_or(0, |t| t.start_byte);
         let popup_ref = self.popup_ref(cx);
-        popup_ref.show(cx, uid, anchor, trigger_start, kind.header(), kind.loading_message());
+        popup_ref.show(
+            cx,
+            uid,
+            anchor,
+            trigger_start,
+            kind.header(),
+            kind.loading_message(),
+        );
 
         match kind {
             TriggerKind::User => self.match_members(cx, &popup_ref, query),
@@ -233,7 +263,13 @@ impl MentionableTextInput {
         let uid = self.widget_uid();
         self.request_id = self.request_id.wrapping_add(1);
         // Show the loading spinner while we wait for the member list / ranking.
-        popup_ref.set_results(cx, uid, Arc::new(Vec::new()), true, TriggerKind::User.empty_message());
+        popup_ref.set_results(
+            cx,
+            uid,
+            Arc::new(Vec::new()),
+            true,
+            TriggerKind::User.empty_message(),
+        );
 
         let (Some(_), Some(members)) = (self.room_id.as_ref(), self.room_members.clone()) else {
             // Room members not yet available, just keep showing the loading spinner for now
@@ -256,7 +292,13 @@ impl MentionableTextInput {
         let uid = self.widget_uid();
         self.request_id = self.request_id.wrapping_add(1);
         // Show the loading spinner while the worker task does the rooms/spaces ranking.
-        popup_ref.set_results(cx, uid, Arc::new(Vec::new()), true, TriggerKind::Room.empty_message());
+        popup_ref.set_results(
+            cx,
+            uid,
+            Arc::new(Vec::new()),
+            true,
+            TriggerKind::Room.empty_message(),
+        );
 
         submit_async_request(MatrixRequest::GetMatchingRooms {
             query: query.to_string(),
@@ -273,7 +315,11 @@ impl MentionableTextInput {
         };
 
         let text_to_insert = match &item {
-            MentionItem::User { user_id, display_name, .. } => {
+            MentionItem::User {
+                user_id,
+                display_name,
+                ..
+            } => {
                 self.possible_mentions.user_ids.insert(user_id.clone());
                 format!("[{}]({}) ", display_name, user_id.matrix_to_uri())
             }
@@ -285,7 +331,10 @@ impl MentionableTextInput {
                 // Prefer the room alias so we don't need the `via` servers list.
                 let (label, uri) = match candidate.alias.as_ref() {
                     Some(alias) => (alias.to_string(), alias.matrix_to_uri()),
-                    None => (candidate.room_name_id.to_string(), candidate.room_name_id.room_id().matrix_to_uri()),
+                    None => (
+                        candidate.room_name_id.to_string(),
+                        candidate.room_name_id.room_id().matrix_to_uri(),
+                    ),
                 };
                 format!("[{label}]({uri}) ")
             }
@@ -307,7 +356,10 @@ impl MentionableTextInput {
         text_input.set_text(cx, &new_text);
         text_input.set_cursor(
             cx,
-            Cursor { index: start + text_to_insert.len(), prefer_next_row: false },
+            Cursor {
+                index: start + text_to_insert.len(),
+                prefer_next_row: false,
+            },
             false,
         );
 
@@ -337,10 +389,15 @@ impl MentionableTextInputRef {
     /// Updates whether the user can `@room`. Refreshes an open `@` popup so the
     /// "Notify the entire room" entry appears or disappears accordingly.
     pub fn set_can_notify_room(&self, cx: &mut Cx, can_notify: bool) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         if inner.can_notify_room != can_notify {
             inner.can_notify_room = can_notify;
-            if inner.active_trigger.is_some_and(|t| t.kind == TriggerKind::User) {
+            if inner
+                .active_trigger
+                .is_some_and(|t| t.kind == TriggerKind::User)
+            {
                 inner.refresh_popup(cx);
             }
         }
@@ -354,11 +411,14 @@ impl MentionableTextInputRef {
         room_id: OwnedRoomId,
         room_members: Option<Arc<Vec<RoomMember>>>,
     ) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         let uid = inner.widget_uid();
         let room_changed = inner.room_id.as_ref() != Some(&room_id);
         if room_changed {
-            inner.room_name = cx.has_global::<RoomsListRef>()
+            inner.room_name = cx
+                .has_global::<RoomsListRef>()
                 .then(|| cx.get_global::<RoomsListRef>().get_room_name(&room_id))
                 .flatten()
                 .map(|n| n.to_string())
@@ -377,25 +437,33 @@ impl MentionableTextInputRef {
             }
         }
         // Repopulate a "loading members" popup once the members arrive.
-        if members_arrived && inner.active_trigger.is_some_and(|t| t.kind == TriggerKind::User) {
+        if members_arrived
+            && inner
+                .active_trigger
+                .is_some_and(|t| t.kind == TriggerKind::User)
+        {
             inner.refresh_popup(cx);
         }
     }
 
     /// Returns a saved instance of this widget's state.
     pub fn save_state(&self) -> MentionableTextInputState {
-        self.borrow().map_or_else(
-            MentionableTextInputState::default,
-            |inner| MentionableTextInputState {
-                text_input_state: inner.text_input_ref().save_state(),
-                possible_mentions: inner.possible_mentions.clone(),
-            }
-        )
+        self.borrow()
+            .map_or_else(MentionableTextInputState::default, |inner| {
+                MentionableTextInputState {
+                    text_input_state: inner.text_input_ref().save_state(),
+                    possible_mentions: inner.possible_mentions.clone(),
+                }
+            })
     }
 
     pub fn restore_state(&self, cx: &mut Cx, state: MentionableTextInputState) {
-        let Some(mut inner) = self.borrow_mut() else { return };
-        inner.text_input_ref().restore_state(cx, state.text_input_state);
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
+        inner
+            .text_input_ref()
+            .restore_state(cx, state.text_input_state);
         inner.possible_mentions = state.possible_mentions;
     }
 
@@ -421,7 +489,8 @@ impl MentionableTextInputRef {
 
     /// Returns the mentions whose links still exist in the given `text`.
     pub fn get_mentions_in(&self, text: &str) -> Mentions {
-        self.borrow().map_or_else(Mentions::new, |inner| inner.real_mentions_in_markdown(text))
+        self.borrow()
+            .map_or_else(Mentions::new, |inner| inner.real_mentions_in_markdown(text))
     }
 }
 
@@ -445,7 +514,6 @@ impl MentionableTextInput {
     }
 }
 
-
 /// The saved state of a `MentionableTextInput`.
 #[derive(Clone, Default)]
 pub struct MentionableTextInputState {
@@ -462,7 +530,11 @@ pub struct MentionMatches {
 }
 impl MentionMatches {
     pub fn new(request_id: u64, owner: WidgetUid, items: Vec<MentionItem>) -> Self {
-        Self { request_id, owner, items: Arc::new(items) }
+        Self {
+            request_id,
+            owner,
+            items: Arc::new(items),
+        }
     }
 }
 
@@ -519,14 +591,22 @@ struct ActiveTrigger {
 fn contains_room_mention(text: &str) -> bool {
     const ROOM_MENTION: &str = "@room";
     text.match_indices(ROOM_MENTION).any(|(i, _)| {
-        let has_whitespace_before = text[..i].chars().next_back().is_none_or(|c| c.is_whitespace());
-        let has_whitespace_after  = text[i + ROOM_MENTION.len()..].chars().next().is_none_or(|c| c.is_whitespace());
+        let has_whitespace_before = text[..i]
+            .chars()
+            .next_back()
+            .is_none_or(|c| c.is_whitespace());
+        let has_whitespace_after = text[i + ROOM_MENTION.len()..]
+            .chars()
+            .next()
+            .is_none_or(|c| c.is_whitespace());
         has_whitespace_before && has_whitespace_after
     })
 }
 
 fn member_display_name(member: &RoomMember) -> &str {
-    member.display_name().unwrap_or_else(|| member.user_id().as_str())
+    member
+        .display_name()
+        .unwrap_or_else(|| member.user_id().as_str())
 }
 
 /// Ranks and builds all matching members.
@@ -547,7 +627,8 @@ fn rank_members(
         .filter_map(|(i, m)| {
             let display_lower = member_display_name(m).to_lowercase();
             let localpart_lower = m.user_id().localpart().to_lowercase();
-            user_match_priority(&display_lower, &localpart_lower, &query_lower).map(|p| (p, display_lower, i))
+            user_match_priority(&display_lower, &localpart_lower, &query_lower)
+                .map(|p| (p, display_lower, i))
         })
         .collect();
     ranked.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
@@ -567,14 +648,21 @@ fn rank_members(
     items
 }
 
-fn user_match_priority(display_lower: &str, localpart_lower: &str, query_lc: &str) -> Option<(MatchQuality, u8)> {
+fn user_match_priority(
+    display_lower: &str,
+    localpart_lower: &str,
+    query_lc: &str,
+) -> Option<(MatchQuality, u8)> {
     if query_lc.is_empty() {
         return Some((MatchQuality::Substring, u8::MAX));
     }
-    [ (MatchQuality::of(display_lower, query_lc), 0u8), (MatchQuality::of(localpart_lower, query_lc), 1u8) ]
-        .into_iter()
-        .filter(|(q, _)| q.is_match())
-        .min()
+    [
+        (MatchQuality::of(display_lower, query_lc), 0u8),
+        (MatchQuality::of(localpart_lower, query_lc), 1u8),
+    ]
+    .into_iter()
+    .filter(|(q, _)| q.is_match())
+    .min()
 }
 
 /// Finds the active trigger "token" that ends at the current cursor, if any.

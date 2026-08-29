@@ -11,7 +11,6 @@ use matrix_sdk_ui::timeline::EventTimelineItem;
 
 use std::cmp;
 
-
 /// The maximum number of items to display in the read receipts AvatarRow
 /// and its accompanying tooltip.
 pub const MAX_VISIBLE_AVATARS_IN_READ_RECEIPT: usize = 3;
@@ -104,11 +103,10 @@ impl Widget for AvatarRow {
         let widget_rect = self.area.rect(cx);
 
         let should_hover_in = match event.hits(cx, self.area) {
-            Hit::FingerLongPress(_)
-            | Hit::FingerHoverIn(..) => true,
+            Hit::FingerLongPress(_) | Hit::FingerHoverIn(..) => true,
             Hit::FingerUp(fue) if fue.is_over && fue.is_primary_hit() => true,
             Hit::FingerHoverOut(_) => {
-                cx.widget_action(uid,  RoomScreenTooltipActions::HoverOut);
+                cx.widget_action(uid, RoomScreenTooltipActions::HoverOut);
                 false
             }
             _ => false,
@@ -116,7 +114,7 @@ impl Widget for AvatarRow {
         if should_hover_in {
             if let Some(read_receipts) = &self.read_receipts {
                 cx.widget_action(
-                    uid, 
+                    uid,
                     RoomScreenTooltipActions::HoverInReadReceipt {
                         widget_rect,
                         read_receipts: read_receipts.clone(),
@@ -164,10 +162,15 @@ impl AvatarRow {
     ) {
         // Rebuild the list of avatars if anything visible changes.
         let receipts_changed = self.read_receipts.as_ref().is_none_or(|existing| {
-            existing.len() != receipts_map.len() ||
-                !existing.keys().rev().take(MAX_VISIBLE_AVATARS_IN_READ_RECEIPT).eq(
-                    receipts_map.keys().rev().take(MAX_VISIBLE_AVATARS_IN_READ_RECEIPT)
-                )
+            existing.len() != receipts_map.len()
+                || !existing
+                    .keys()
+                    .rev()
+                    .take(MAX_VISIBLE_AVATARS_IN_READ_RECEIPT)
+                    .eq(receipts_map
+                        .keys()
+                        .rev()
+                        .take(MAX_VISIBLE_AVATARS_IN_READ_RECEIPT))
         });
         if receipts_changed {
             self.buttons.clear();
@@ -179,10 +182,13 @@ impl AvatarRow {
             }
             let label = widget_ref_from_live_ptr(cx, self.plus_template).as_label();
             if receipts_map.len() > MAX_VISIBLE_AVATARS_IN_READ_RECEIPT {
-                label.set_text(cx, &format!(
-                    " + {}",
-                    receipts_map.len() - MAX_VISIBLE_AVATARS_IN_READ_RECEIPT,
-                ));
+                label.set_text(
+                    cx,
+                    &format!(
+                        " + {}",
+                        receipts_map.len() - MAX_VISIBLE_AVATARS_IN_READ_RECEIPT,
+                    ),
+                );
             }
             self.label = Some(label);
             self.read_receipts = Some(receipts_map.clone());

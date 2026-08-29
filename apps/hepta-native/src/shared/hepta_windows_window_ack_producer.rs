@@ -13,8 +13,8 @@ use makepad_widgets::WindowBackdrop;
 
 use super::hepta_platform_material::HeptaPlatform;
 use super::hepta_window_visual_ack::{
-    HeptaWindowVisualBackend, HeptaWindowVisualBackendObservation,
-    HeptaWindowVisualReadback, HeptaWindowVisualRequestIdentity,
+    HeptaWindowVisualBackend, HeptaWindowVisualBackendObservation, HeptaWindowVisualReadback,
+    HeptaWindowVisualRequestIdentity,
 };
 use super::hepta_windows_material_adapter::{
     HeptaWindowsBackdropReadbackApi, HeptaWindowsBackdropReadbackError,
@@ -132,9 +132,9 @@ fn validate_requested_root_backdrop(
         request.requested_visuals().backdrop,
     ) {
         (true, WindowBackdrop::Mica) | (false, WindowBackdrop::None) => Ok(()),
-        (_, backdrop) => Err(
-            HeptaWindowsDwmAckProducerError::UnsupportedRequestedBackdrop(backdrop),
-        ),
+        (_, backdrop) => {
+            Err(HeptaWindowsDwmAckProducerError::UnsupportedRequestedBackdrop(backdrop))
+        }
     }
 }
 
@@ -146,9 +146,9 @@ fn map_observed_backdrop(
         HeptaWindowsDwmBackdropValue::None => Ok(WindowBackdrop::None),
         HeptaWindowsDwmBackdropValue::Mica => Ok(WindowBackdrop::Mica),
         HeptaWindowsDwmBackdropValue::Acrylic => Ok(WindowBackdrop::Acrylic),
-        HeptaWindowsDwmBackdropValue::MicaAlt => Err(
-            HeptaWindowsDwmAckProducerError::UnsupportedObservedBackdrop(kind),
-        ),
+        HeptaWindowsDwmBackdropValue::MicaAlt => {
+            Err(HeptaWindowsDwmAckProducerError::UnsupportedObservedBackdrop(kind))
+        }
     }
 }
 
@@ -221,10 +221,8 @@ mod tests {
     }
 
     fn request(persistent: bool) -> HeptaWindowVisualRequestIdentity {
-        HeptaWindowVisualRequestIdentity::from_makepad_receipt(
-            makepad_receipt_for_test(persistent),
-        )
-        .unwrap()
+        HeptaWindowVisualRequestIdentity::from_makepad_receipt(makepad_receipt_for_test(persistent))
+            .unwrap()
     }
 
     fn producer(
@@ -246,10 +244,11 @@ mod tests {
             Err(HeptaWindowsDwmAckProducerError::InvalidHostHandle)
         );
         let mut producer = producer(Ok(HeptaWindowsDwmBackdropValue::Mica));
-        let stale_receipt = crate::shared::hepta_makepad_window_material::HeptaMakepadWindowMaterialReceipt {
-            window_generation: Some(10),
-            ..makepad_receipt_for_test(true)
-        };
+        let stale_receipt =
+            crate::shared::hepta_makepad_window_material::HeptaMakepadWindowMaterialReceipt {
+                window_generation: Some(10),
+                ..makepad_receipt_for_test(true)
+            };
         let stale = HeptaWindowVisualRequestIdentity::from_makepad_receipt(stale_receipt).unwrap();
         assert_eq!(
             producer.observe(stale),
@@ -283,10 +282,8 @@ mod tests {
     fn dwmsbt_none_proves_solid_fallback_not_auto() {
         let request = request(false);
         let mut producer = producer(Ok(HeptaWindowsDwmBackdropValue::None));
-        let receipt = verify_window_visual_acknowledgement(
-            request,
-            producer.observe(request).unwrap(),
-        );
+        let receipt =
+            verify_window_visual_acknowledgement(request, producer.observe(request).unwrap());
         assert_eq!(
             receipt.status,
             HeptaWindowVisualAckStatus::VerifiedSolidFallbackWithBackdropReadback
@@ -304,10 +301,8 @@ mod tests {
         ] {
             let request = request(true);
             let mut producer = producer(Ok(observed));
-            let receipt = verify_window_visual_acknowledgement(
-                request,
-                producer.observe(request).unwrap(),
-            );
+            let receipt =
+                verify_window_visual_acknowledgement(request, producer.observe(request).unwrap());
             assert_eq!(
                 receipt.status,
                 HeptaWindowVisualAckStatus::RejectedReadbackMismatch
@@ -318,9 +313,7 @@ mod tests {
 
     #[test]
     fn readback_errors_and_unsupported_values_fail_closed() {
-        let mut failed = producer(Err(
-            HeptaWindowsBackdropReadbackError::SystemCallFailed(-5),
-        ));
+        let mut failed = producer(Err(HeptaWindowsBackdropReadbackError::SystemCallFailed(-5)));
         assert_eq!(
             failed.observe(request(true)),
             Err(HeptaWindowsDwmAckProducerError::Readback(
@@ -331,29 +324,34 @@ mod tests {
         let mut mica_alt = producer(Ok(HeptaWindowsDwmBackdropValue::MicaAlt));
         assert_eq!(
             mica_alt.observe(request(true)),
-            Err(HeptaWindowsDwmAckProducerError::UnsupportedObservedBackdrop(
-                HeptaWindowsDwmBackdropValue::MicaAlt
-            ))
+            Err(
+                HeptaWindowsDwmAckProducerError::UnsupportedObservedBackdrop(
+                    HeptaWindowsDwmBackdropValue::MicaAlt
+                )
+            )
         );
     }
 
     #[test]
     fn unsupported_request_profiles_are_rejected_before_readback() {
         let mut producer = producer(Ok(HeptaWindowsDwmBackdropValue::Mica));
-        let unsupported_receipt = crate::shared::hepta_makepad_window_material::HeptaMakepadWindowMaterialReceipt {
-            requested_visuals: WindowVisuals {
-                backdrop: WindowBackdrop::Acrylic,
-                ..makepad_receipt_for_test(true).requested_visuals
-            },
-            ..makepad_receipt_for_test(true)
-        };
+        let unsupported_receipt =
+            crate::shared::hepta_makepad_window_material::HeptaMakepadWindowMaterialReceipt {
+                requested_visuals: WindowVisuals {
+                    backdrop: WindowBackdrop::Acrylic,
+                    ..makepad_receipt_for_test(true).requested_visuals
+                },
+                ..makepad_receipt_for_test(true)
+            };
         let unsupported =
             HeptaWindowVisualRequestIdentity::from_makepad_receipt(unsupported_receipt).unwrap();
         assert_eq!(
             producer.observe(unsupported),
-            Err(HeptaWindowsDwmAckProducerError::UnsupportedRequestedBackdrop(
-                WindowBackdrop::Acrylic
-            ))
+            Err(
+                HeptaWindowsDwmAckProducerError::UnsupportedRequestedBackdrop(
+                    WindowBackdrop::Acrylic
+                )
+            )
         );
         assert!(producer.into_inner().calls.is_empty());
     }

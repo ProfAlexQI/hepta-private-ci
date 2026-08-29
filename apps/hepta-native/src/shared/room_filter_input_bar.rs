@@ -207,10 +207,7 @@ impl WidgetMatchEvent for RoomFilterInputBar {
             input.set_text(cx, "");
             clear_button.set_visible(cx, false);
             input.set_key_focus(cx);
-            cx.widget_action(
-                self.widget_uid(),
-                FilterAction::Changed(String::new()),
-            );
+            cx.widget_action(self.widget_uid(), FilterAction::Changed(String::new()));
         }
     }
 }

@@ -58,11 +58,14 @@ script_mod! {
 /// A capsule-shaped progress bar widget.
 #[derive(Script, ScriptHook, Widget)]
 pub struct ProgressBar {
-    #[source] source: ScriptObjectRef,
-    #[deref] view: View,
+    #[source]
+    source: ScriptObjectRef,
+    #[deref]
+    view: View,
 
     /// Current progress value between 0.0 and 1.0
-    #[rust] progress: f32,
+    #[rust]
+    progress: f32,
 }
 
 impl Widget for ProgressBar {

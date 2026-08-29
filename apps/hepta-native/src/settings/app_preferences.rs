@@ -14,7 +14,10 @@ pub struct AppPreferences {
     /// * If `false`, Cmd+Enter (Apple platforms) / Ctrl+Enter (other platforms) sends the
     ///   message and plain Enter inserts a newline. This is only relevant for physical keyboards;
     ///   virtual/soft keyboards always insert a newline upon Enter.
-    #[serde(default = "default_send_on_enter", deserialize_with = "deserialize_send_on_enter")]
+    #[serde(
+        default = "default_send_on_enter",
+        deserialize_with = "deserialize_send_on_enter"
+    )]
     pub send_on_enter: bool,
     /// Max height of image thumbnails in the room timeline.
     #[serde(default, deserialize_with = "crate::utils::deserialize_or_default")]
@@ -22,7 +25,6 @@ pub struct AppPreferences {
     /// UI-wide zoom level, which scaled the entire UI (not just text).
     #[serde(default, deserialize_with = "crate::utils::deserialize_or_default")]
     pub ui_zoom: UiZoom,
-
     // Note: if you add a new preference here, be sure to add a new
     // function `on_<NEW_PREFERENCE>_changed` and update `broadcast_all()`.
 }
@@ -95,7 +97,9 @@ impl AppPreferences {
             None
         } else {
             let window = &cx.windows[window_id];
-            let baseline = window.os_dpi_factor.unwrap_or(window.window_geom.dpi_factor);
+            let baseline = window
+                .os_dpi_factor
+                .unwrap_or(window.window_geom.dpi_factor);
             Some(baseline * self.ui_zoom.multiplier())
         };
         cx.set_window_dpi_override(window_id, dpi_override);
@@ -221,7 +225,11 @@ impl UiZoom {
 
     /// Create a new zoom value that is properly clamped.
     pub fn new(value: f32) -> Self {
-        let v = if value.is_finite() { value } else { Self::DEFAULT };
+        let v = if value.is_finite() {
+            value
+        } else {
+            Self::DEFAULT
+        };
         Self(v.clamp(Self::MIN, Self::MAX))
     }
 

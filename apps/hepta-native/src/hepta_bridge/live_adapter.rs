@@ -350,8 +350,7 @@ impl<E: LiveSnapshotHttpExecutor> BridgeTransport for LoopbackSnapshotAdapter<E>
 mod tests {
     use super::*;
     use crate::hepta_bridge::contract::{
-        BridgeSnapshot, BridgeUpdateKind, Redaction,
-        MAX_BRIDGE_CORRELATION_ID_BYTES,
+        BridgeSnapshot, BridgeUpdateKind, Redaction, MAX_BRIDGE_CORRELATION_ID_BYTES,
         tests_support::{binding, metadata, request_metadata},
     };
 
