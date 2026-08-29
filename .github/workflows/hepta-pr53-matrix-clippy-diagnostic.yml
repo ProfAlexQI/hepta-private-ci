@@ -1,0 +1,52 @@
+name: Hepta PR53 bounded Matrix Clippy diagnostic
+
+on:
+  push:
+    branches:
+      - codex/hepta-pr53-matrix-clippy-diagnostic-20260829
+
+permissions:
+  contents: read
+
+env:
+  TARGET_SOURCE: abb435c263c2967c6ba613c5b8554b4cb45e6153
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+
+jobs:
+  matrix-clippy:
+    name: Bounded Matrix Clippy failure diagnostic
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - name: Execute bounded Matrix Clippy commands
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_one() {
+            local label="$1"
+            shift
+            local log="$RUNNER_TEMP/${label}.log"
+            local status=0
+            "$@" >"$log" 2>&1 || status=$?
+            echo "::group::${label} tail"
+            tail -n 240 "$log"
+            echo "::endgroup::"
+            if test "$status" -ne 0; then
+              echo "FAILED_COMMAND=${label}"
+              exit "$status"
+            fi
+          }
+          run_one matrix-store-clippy just clippy -p codex-hepta-matrix-store --all-targets -- -D warnings
+          run_one matrix-store-fault-clippy just clippy -p codex-hepta-matrix-store --all-targets --features qualification-fault-injection -- -D warnings
+          run_one matrixd-clippy just clippy -p codex-hepta-matrixd --all-targets -- -D warnings
