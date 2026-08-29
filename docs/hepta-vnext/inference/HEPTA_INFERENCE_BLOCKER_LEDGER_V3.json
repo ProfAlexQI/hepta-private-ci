@@ -1,0 +1,341 @@
+{
+  "schema": "hepta.inference.blocker_ledger.v3",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V5",
+  "plan_version": "5.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "development_pr": 73,
+  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "integration_branch": "codex/hepta-inference-v5-runtime-integration-20260830",
+  "source_binding": {
+    "mode": "tracked ledger binds observed parent; exact candidate evidence is CI-generated",
+    "observed_parent_commit": "980d42eec348ca9c5bce61a0f8d3186c3d6dc55d"
+  },
+  "blockers": [
+    {
+      "id": "INF5-B001",
+      "severity": "P0",
+      "package": "INF-D0",
+      "gap_class": "REPOSITORY_COMPONENT",
+      "title": "V4 truth model conflates isolated components with integrated runtime",
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "acceptance": [
+        "V5 current pointer and machine truth are canonical",
+        "component/integration/qualification/evidence states are distinct",
+        "historical V4 files and receipts remain immutable"
+      ]
+    },
+    {
+      "id": "INF5-B002",
+      "severity": "P0",
+      "package": "INF-Q0",
+      "gap_class": "EXACT_HEAD_EXECUTION",
+      "title": "unified source candidate has no completed exact-head qualification",
+      "status": "BLOCKED_UPSTREAM",
+      "evidence": {
+        "staging_head": "705c0916098c39ddd0ef9e6b069e1efe072f410b",
+        "workflow_run": 33275188427,
+        "observed_state": "queued"
+      },
+      "acceptance": [
+        "assigned runners and non-empty steps",
+        "Rust 1.95 fmt/check/test/clippy",
+        "Cargo and Bazel locks exact",
+        "aggregate rejects skipped/cancelled/empty jobs"
+      ]
+    },
+    {
+      "id": "INF5-B003",
+      "severity": "P0",
+      "package": "INF-I1",
+      "gap_class": "REPOSITORY_INTEGRATION",
+      "title": "no one-time bounded prompt input lease reaches provider or worker",
+      "status": "NOT_STARTED",
+      "acceptance": [
+        "digest and length verified before dispatch",
+        "request/generation/capability/tenant/workspace bound",
+        "replay/truncation/oversize/cross-request denied",
+        "raw prompt never persisted or logged",
+        "terminal and fault paths release exactly once"
+      ]
+    },
+    {
+      "id": "INF5-B004",
+      "severity": "P0",
+      "package": "INF-S1",
+      "gap_class": "REPOSITORY_INTEGRATION",
+      "title": "private capability and protocol components are not owned by one daemon runtime coordinator",
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "acceptance": [
+        "OS CSPRNG epoch/session/bootstrap secrets",
+        "inherited private worker handles",
+        "one-time grant and per-event authentication",
+        "runtime coordinator owns lifecycle and rollover",
+        "public endpoint remains unprivileged"
+      ]
+    },
+    {
+      "id": "INF5-B005",
+      "severity": "P1",
+      "package": "INF-S1",
+      "gap_class": "REPOSITORY_INTEGRATION",
+      "title": "operator kill/restart/compaction authority is not independently bound",
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "acceptance": [
+        "operator endpoint disabled by default",
+        "separate inherited capability or owner-only endpoint",
+        "monotonic nonce and generation fence",
+        "public/product caller cannot clear kill switch or compact receipts"
+      ]
+    },
+    {
+      "id": "INF5-B006",
+      "severity": "P0",
+      "package": "INF-S2",
+      "gap_class": "REPOSITORY_COMPONENT",
+      "title": "malformed cancel response can wait forever on a still-live child and receipt kill semantics are ambiguous",
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "acceptance": [
+        "single total cancel deadline",
+        "alive check followed by kill when needed",
+        "bounded wait/reap on every path",
+        "actual-kill disposition persisted accurately",
+        "generation rollover and stale-event denial",
+        "scheduler/input/grant reservations released exactly once"
+      ]
+    },
+    {
+      "id": "INF5-B007",
+      "severity": "P1",
+      "package": "INF-S3",
+      "gap_class": "REPOSITORY_COMPONENT",
+      "title": "retention scan does not strictly reject unknown regular files or constrain temporary-file namespace",
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "acceptance": [
+        "unknown and non-regular entries fail closed",
+        "only recognized receipt/tombstone temp names are removed",
+        "tombstone-before-delete crash recovery",
+        "receipt/tombstone/index budgets are independently bounded"
+      ]
+    },
+    {
+      "id": "INF5-B008",
+      "severity": "P0",
+      "package": "INF-S4",
+      "gap_class": "REPOSITORY_INTEGRATION",
+      "title": "scheduler is an in-memory helper, not a durable daemon dispatch owner",
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "acceptance": [
+        "enqueue rejects cost above every applicable limit",
+        "prepared/committed/released journal is crash safe",
+        "daemon admission/dispatch/terminal paths are wired",
+        "journal and released-id state are bounded",
+        "restart recovery deterministically releases orphaned reservations"
+      ]
+    },
+    {
+      "id": "INF5-B009",
+      "severity": "P0",
+      "package": "INF-R1",
+      "gap_class": "REPOSITORY_COMPONENT",
+      "title": "provider manifest and inventory permit ambiguous model identity",
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "acceptance": [
+        "canonical model digest",
+        "duplicate model names rejected",
+        "loopback literal address only",
+        "strict HTTP framing/content type/status",
+        "one total execution deadline"
+      ]
+    },
+    {
+      "id": "INF5-B010",
+      "severity": "P0",
+      "package": "INF-R1",
+      "gap_class": "REPOSITORY_INTEGRATION",
+      "title": "provider host is not behind daemon admission, grant, scheduler, token chain, cancel and receipt paths",
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "acceptance": [
+        "prompt lease consumed by fixed provider lane",
+        "complete request fence checked before connect",
+        "controller computes token/result chain",
+        "cancel support is proven before dispatch",
+        "hermetic daemon end-to-end test"
+      ]
+    },
+    {
+      "id": "INF5-B011",
+      "severity": "P0",
+      "package": "INF-E1",
+      "gap_class": "REAL_SOFTWARE_EVIDENCE",
+      "title": "real fixed provider and model execution evidence is absent",
+      "status": "BLOCKED_EXTERNAL_EVIDENCE",
+      "dependencies": [
+        "pre-installed fixed provider",
+        "fixed model tuple and expected digest",
+        "assigned evidence runner"
+      ],
+      "acceptance": [
+        "real process and semantic output",
+        "inventory before equals after",
+        "no install/switch/proxy/redirect/fallback",
+        "digest-bound exact-head artifact"
+      ]
+    },
+    {
+      "id": "INF5-B012",
+      "severity": "P0",
+      "package": "INF-R2",
+      "gap_class": "REPOSITORY_INTEGRATION",
+      "title": "worker-host private protocol is disconnected from daemon S1 grant and event authentication",
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "acceptance": [
+        "same canonical private protocol on both ends",
+        "bootstrap/session/request grant consumed once",
+        "token/complete/cancel/failure events carry verified MAC",
+        "controller/scheduler/receipt lifecycle is wired"
+      ]
+    },
+    {
+      "id": "INF5-B013",
+      "severity": "P0",
+      "package": "INF-R2",
+      "gap_class": "REPOSITORY_COMPONENT",
+      "title": "worker executable remains fixture-only and ABI loader has no real lifecycle or verified-handle loading",
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "acceptance": [
+        "non-fixture manifest mode",
+        "load/warm/submit/poll/cancel/drain/unload/health/stats ABI",
+        "digest verification and load use the same immutable handle",
+        "GGUF/tokenizer/template/runtime/SBOM/license/device identities verified",
+        "watchdog and process resource limits"
+      ]
+    },
+    {
+      "id": "INF5-B014",
+      "severity": "P0",
+      "package": "INF-E2",
+      "gap_class": "EXACT_DEVICE_EVIDENCE",
+      "title": "real pinned native runtime, GGUF and exact-device evidence is absent",
+      "status": "BLOCKED_EXTERNAL_EVIDENCE",
+      "dependencies": [
+        "pinned runtime build",
+        "fixed GGUF/tokenizer/template",
+        "target-device runner"
+      ],
+      "acceptance": [
+        "real model load and UTF-8 token",
+        "cancel/crash/OOM/stale-event evidence",
+        "runtime/model/device digests",
+        "no remote fallback"
+      ]
+    },
+    {
+      "id": "INF5-B015",
+      "severity": "P0",
+      "package": "INF-R3",
+      "gap_class": "REPOSITORY_INTEGRATION",
+      "title": "shadow bridge is not wired into an explicit product owner and lacks a complete fence",
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "acceptance": [
+        "qualification-only codex-hepta-agentd seam",
+        "disabled and kill-switched by default",
+        "operator controls kill switch",
+        "agent/task/generations/policy/budget/deadline fence",
+        "timeout cancels shadow execution",
+        "primary output remains byte-identical and authoritative",
+        "no Memory/KG/effect/route/fleet write"
+      ]
+    },
+    {
+      "id": "INF5-B016",
+      "severity": "P0",
+      "package": "INF-Q0",
+      "gap_class": "EXACT_HEAD_EXECUTION",
+      "title": "new integrated source lacks Linux x64, Linux ARM64 and macOS Intel exact-head qualification",
+      "status": "BLOCKED_UPSTREAM",
+      "acceptance": [
+        "fmt/check/test/clippy all platforms",
+        "non-empty assigned jobs",
+        "artifact binds exact head/tree/job/runner/toolchain"
+      ]
+    },
+    {
+      "id": "INF5-B017",
+      "severity": "P0",
+      "package": "INF-E3",
+      "gap_class": "EXACT_DEVICE_EVIDENCE",
+      "title": "exact-device performance, resource, privacy and rollback evidence is absent",
+      "status": "BLOCKED_EXTERNAL_EVIDENCE",
+      "acceptance": [
+        "cold load and warm TTFT percentiles",
+        "prefill/decode throughput",
+        "peak RSS/VRAM/KV/shared memory",
+        "cancel/kill/unload recovery",
+        "privacy review and shadow rollback"
+      ]
+    },
+    {
+      "id": "INF5-B018",
+      "severity": "P0",
+      "package": "INF-A1",
+      "gap_class": "INDEPENDENT_AUTHORITY",
+      "title": "independent operator acceptance, promotion and release are absent",
+      "status": "BLOCKED_INDEPENDENT_AUTHORITY",
+      "acceptance": [
+        "independent operator reviews exact evidence",
+        "privacy thresholds are frozen separately",
+        "promotion and release use separate authorized commits",
+        "implementation author does not self-merge"
+      ]
+    }
+  ],
+  "summary": {
+    "repository_component_open": [
+      "INF5-B001",
+      "INF5-B006",
+      "INF5-B007",
+      "INF5-B009",
+      "INF5-B013"
+    ],
+    "repository_integration_open": [
+      "INF5-B003",
+      "INF5-B004",
+      "INF5-B005",
+      "INF5-B008",
+      "INF5-B010",
+      "INF5-B012",
+      "INF5-B015"
+    ],
+    "exact_head_execution_open": [
+      "INF5-B002",
+      "INF5-B016"
+    ],
+    "external_evidence_open": [
+      "INF5-B011",
+      "INF5-B014",
+      "INF5-B017"
+    ],
+    "independent_authority_open": [
+      "INF5-B018"
+    ],
+    "repository_source_closed": false,
+    "all_gaps_closed": false
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
