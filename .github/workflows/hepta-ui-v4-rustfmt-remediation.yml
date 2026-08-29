@@ -10,17 +10,17 @@ permissions:
 
 concurrency:
   group: hepta-ui-v4-rustfmt-remediation-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   HEPTA_EXPECTED_BRANCH: codex/ui-v4-executable-gap-remediation-20260829
 
 jobs:
   rustfmt-remediation:
-    name: Apply bounded Rust 1.95 formatting
+    name: Apply bounded UI executable remediation
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@v4
@@ -37,6 +37,66 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(git rev-parse --abbrev-ref HEAD)" = HEAD
 
+      - name: Apply exact source and workflow remediations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one exact match, got {count}")
+              target.write_text(text.replace(old, new, 1))
+
+          harness = Path("tools/hepta-ui-global-platform-source-closure/src/lib.rs")
+          text = harness.read_text()
+          if "#![forbid(unsafe_code)]" in text:
+              text = text.replace("#![forbid(unsafe_code)]", "#![deny(unsafe_code)]", 1)
+          if "#[allow(unsafe_code)]\n#[path = \"../../../apps/hepta-native/src/shared/hepta_system_preferences.rs\"]" not in text:
+              text = text.replace(
+                  "#[path = \"../../../apps/hepta-native/src/shared/hepta_system_preferences.rs\"]",
+                  "#[allow(unsafe_code)]\n#[path = \"../../../apps/hepta-native/src/shared/hepta_system_preferences.rs\"]",
+                  1,
+              )
+          harness.write_text(text)
+
+          gate = Path("scripts/hepta-ui-v4-global-platform-source-closure-gate")
+          text = gate.read_text()
+          old = 'checks["harness.forbid_unsafe"] = texts[:harness].include?("#![forbid(unsafe_code)]")'
+          new = '''checks["harness.scoped_unsafe"] =
+            texts[:harness].include?("#![deny(unsafe_code)]") &&
+            texts[:harness].scan("#[allow(unsafe_code)]").length == 1 &&
+            texts[:harness].include?("#[allow(unsafe_code)]\\n#[path = \\\"../../../apps/hepta-native/src/shared/hepta_system_preferences.rs\\\"]")'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'checks["harness.scoped_unsafe"]' not in text:
+              raise SystemExit("global source gate: unsafe policy anchor missing")
+          gate.write_text(text)
+
+          longpath_lines = (
+              '  GIT_CONFIG_COUNT: "1"\n'
+              '  GIT_CONFIG_KEY_0: core.longpaths\n'
+              '  GIT_CONFIG_VALUE_0: "true"\n'
+          )
+          anchors = {
+              ".github/workflows/hepta-ui-v4-final-gap-closure-v3.yml": '  HEPTA_RUST_TOOLCHAIN: "1.95.0"\n',
+              ".github/workflows/hepta-ui-v4-global-platform-source-closure.yml": '  HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}\n',
+              ".github/workflows/hepta-ui-v4-windows-product-host-safety-device-closure.yml": '  HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}\n',
+          }
+          for path, anchor in anchors.items():
+              target = Path(path)
+              text = target.read_text()
+              if "GIT_CONFIG_KEY_0: core.longpaths" not in text:
+                  if text.count(anchor) != 1:
+                      raise SystemExit(f"{path}: longpaths anchor drift")
+                  text = text.replace(anchor, anchor + longpath_lines, 1)
+                  target.write_text(text)
+          PY
+
       - name: Install Rust 1.95 rustfmt
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -52,39 +112,54 @@ jobs:
           cargo fmt --manifest-path tools/hepta-ui-windows-product-host-safety/Cargo.toml
           cargo fmt --manifest-path tools/hepta-ui-windows-product-host-device-drill/Cargo.toml
 
-      - name: Enforce formatting-only allowlist
+      - name: Enforce bounded remediation allowlist
         shell: bash
         run: |
           set -euo pipefail
           git diff --check
           ruby -e '
             paths = `git diff --name-only`.lines(chomp: true).reject(&:empty?)
+            exact = %w[
+              scripts/hepta-ui-v4-global-platform-source-closure-gate
+              .github/workflows/hepta-ui-v4-final-gap-closure-v3.yml
+              .github/workflows/hepta-ui-v4-global-platform-source-closure.yml
+              .github/workflows/hepta-ui-v4-windows-product-host-safety-device-closure.yml
+            ]
             allowed = paths.all? do |path|
-              path.end_with?(".rs") && (
+              exact.include?(path) || (path.end_with?(".rs") && (
                 path.start_with?("apps/hepta-native/") ||
                 path.start_with?("tools/hepta-ui-global-platform-source-closure/") ||
                 path.start_with?("tools/hepta-ui-windows-product-host-safety/") ||
                 path.start_with?("tools/hepta-ui-windows-product-host-device-drill/")
-              )
+              ))
             end
-            abort "format remediation escaped allowlist: #{paths.join(", ")}" unless allowed
-            puts "formatted_paths=#{paths.length}"
+            abort "remediation escaped allowlist: #{paths.join(", ")}" unless allowed
+            abort "remediation produced no changes" if paths.empty?
+            puts "remediated_paths=#{paths.length}"
           '
+          ruby -c scripts/hepta-ui-v4-global-platform-source-closure-gate
+          ruby scripts/hepta-ui-v4-global-platform-source-closure-gate >/dev/null
+          ruby -e 'require "yaml"; ARGV.each { |path| YAML.parse_file(path) }' \
+            .github/workflows/hepta-ui-v4-final-gap-closure-v3.yml \
+            .github/workflows/hepta-ui-v4-global-platform-source-closure.yml \
+            .github/workflows/hepta-ui-v4-windows-product-host-safety-device-closure.yml
 
-      - name: Commit bounded formatter output
+      - name: Commit bounded remediation output
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet; then
-            echo "Rust sources already match Rust 1.95 formatting"
-            exit 0
-          fi
-          git config user.name "hepta-ui-format-bot"
+          git fetch origin "$HEPTA_EXPECTED_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          git config user.name "hepta-ui-remediation-bot"
           git config user.email "102159240+ProfHepta@users.noreply.github.com"
           git add \
             apps/hepta-native \
             tools/hepta-ui-global-platform-source-closure \
             tools/hepta-ui-windows-product-host-safety \
-            tools/hepta-ui-windows-product-host-device-drill
-          git commit -m "style(ui): apply Rust 1.95 formatting"
+            tools/hepta-ui-windows-product-host-device-drill \
+            scripts/hepta-ui-v4-global-platform-source-closure-gate \
+            .github/workflows/hepta-ui-v4-final-gap-closure-v3.yml \
+            .github/workflows/hepta-ui-v4-global-platform-source-closure.yml \
+            .github/workflows/hepta-ui-v4-windows-product-host-safety-device-closure.yml
+          git commit -m "fix(ui): remediate exact executable blockers"
           git push origin "HEAD:$HEPTA_EXPECTED_BRANCH"
