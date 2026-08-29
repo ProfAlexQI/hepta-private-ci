@@ -1,9 +1,9 @@
-name: Hepta strict-clippy remediation once
+name: Hepta integrated blocker closure bootstrap
 
 on:
   push:
     branches:
-      - codex/hepta-architecture-convergence-p0-2-20260828
+      - codex/hepta-gap-closure-v2-20260829
     paths:
       - .github/workflows/hepta-strict-clippy-remediation-once.yml
 
@@ -11,342 +11,97 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-strict-clippy-remediation-once
-  cancel-in-progress: true
+  group: hepta-integrated-blocker-closure-bootstrap
+  cancel-in-progress: false
 
 jobs:
-  remediate:
-    if: "${{ github.event.head_commit.message == 'ci: remediate Hepta strict-clippy blockers' }}"
+  close-integrated-blockers:
+    if: "${{ github.event.head_commit.message == 'ci: integrate Hepta hosted blocker closure' }}"
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 180
     env:
-      EXPECTED_PARENT: f13f0753bd4d75bb08a618700a3782161f51f603
-      BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
+      EXPECTED_PARENT: 8d27dc216bde821110fd966bea331af7d56810c0
+      EXPECTED_CANONICAL_WORKFLOW_BLOB: 84f817b12cea184405729e831044ba782cbb6472
+      BRANCH: codex/hepta-gap-closure-v2-20260829
       WORKFLOW_PATH: .github/workflows/hepta-strict-clippy-remediation-once.yml
     steps:
-      - name: Checkout guarded bootstrap commit
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Checkout exact integrated bootstrap head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.sha }}
           fetch-depth: 2
+          persist-credentials: true
 
-      - name: Verify immutable bootstrap boundary
+      - name: Verify immutable canonical boundary
         shell: bash
         run: |
           set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$BRANCH"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
-          test "$(git branch --show-current)" = ""
+          test "$(git rev-parse "$EXPECTED_PARENT:$WORKFLOW_PATH")" = "$EXPECTED_CANONICAL_WORKFLOW_BLOB"
           test -z "$(git status --porcelain)"
 
       - name: Set up CI environment
         uses: ./.github/actions/setup-ci
 
       - name: Install pinned Python 3.12
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
 
       - name: Install pinned Rust toolchain
-        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
           components: rustfmt, clippy
 
-      - name: Apply compatibility-preserving explicit remediation
+      - name: Apply canonical remediation plus H7 reopen closure
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
+          import os
+          import subprocess
+          import textwrap
           from pathlib import Path
 
-          def read(path: str) -> str:
-              return Path(path).read_text()
-
-          def write(path: str, source: str) -> None:
-              Path(path).write_text(source)
-
-          def replace_once(path: str, old: str, new: str) -> None:
-              source = read(path)
-              count = source.count(old)
-              if count != 1:
-                  raise SystemExit(
-                      f"expected exactly one replacement in {path}, found {count}: {old!r}"
-                  )
-              write(path, source.replace(old, new, 1))
-
-          def lines(*parts: str) -> str:
-              return "\n".join(parts) + "\n"
-
-          def add_attribute_once(path: str, marker: str, attribute: str, comment: str) -> None:
-              source = read(path)
-              if source.count(marker) != 1:
-                  raise SystemExit(f"expected exactly one marker in {path}: {marker!r}")
-              decorated = f"{comment}\n{attribute}\n{marker}"
-              write(path, source.replace(marker, decorated, 1))
-
-          def remove_struct_fields(
-              source: str,
-              struct_name: str,
-              fields: tuple[str, ...],
-          ) -> str:
-              marker = f"struct {struct_name} {{\n"
-              start = source.find(marker)
-              if start < 0:
-                  raise SystemExit(f"missing struct: {struct_name}")
-              end = source.find("}\n", start)
-              if end < 0:
-                  raise SystemExit(f"unterminated struct: {struct_name}")
-              end += 2
-              block = source[start:end]
-              seen = {field: 0 for field in fields}
-              kept: list[str] = []
-              for line in block.splitlines(keepends=True):
-                  stripped = line.strip()
-                  matched = next(
-                      (field for field in fields if stripped.startswith(field + ":")),
-                      None,
-                  )
-                  if matched is None:
-                      kept.append(line)
-                  else:
-                      seen[matched] += 1
-              if any(count != 1 for count in seen.values()):
-                  raise SystemExit(f"unexpected {struct_name} field counts: {seen}")
-              return source[:start] + "".join(kept) + source[end:]
-
-          def remove_initializer_fields(
-              source: str,
-              marker: str,
-              fields: tuple[str, ...],
-          ) -> str:
-              start = source.find(marker)
-              if start < 0:
-                  raise SystemExit(f"missing initializer: {marker.strip()}")
-              terminator = "\n        });"
-              end = source.find(terminator, start)
-              if end < 0:
-                  raise SystemExit(f"unterminated initializer: {marker.strip()}")
-              end += len(terminator)
-              block = source[start:end]
-              seen = {field: 0 for field in fields}
-              kept: list[str] = []
-              for line in block.splitlines(keepends=True):
-                  stripped = line.strip()
-                  matched = next(
-                      (field for field in fields if stripped == field + ","),
-                      None,
-                  )
-                  if matched is None:
-                      kept.append(line)
-                  else:
-                      seen[matched] += 1
-              if any(count != 1 for count in seen.values()):
-                  raise SystemExit(
-                      f"unexpected initializer field counts for {marker.strip()}: {seen}"
-                  )
-              return source[:start] + "".join(kept) + source[end:]
-
-          lease_path = "codex-rs/hepta-memory/src/local_lease_outbox.rs"
-          source = read(lease_path)
-          source = remove_struct_fields(
-              source,
-              "EventRow",
-              ("sequence", "previous_sha256", "event_sha256"),
+          parent = os.environ["EXPECTED_PARENT"]
+          workflow = os.environ["WORKFLOW_PATH"]
+          source = subprocess.check_output(
+              ["git", "show", f"{parent}:{workflow}"],
+              text=True,
           )
-          source = remove_struct_fields(
-              source,
-              "OutboxRow",
-              ("sequence", "previous_sha256", "outbox_sha256"),
+          start_marker = "          python - <<'PY'\n"
+          end_marker = (
+              "\n          PY\n\n"
+              "      - name: Run compiler-guided mechanical remediation"
           )
-          source = remove_initializer_fields(
-              source,
-              "        events.push(EventRow {\n",
-              ("sequence", "previous_sha256", "event_sha256"),
-          )
-          source = remove_initializer_fields(
-              source,
-              "        outbox_rows.push(OutboxRow {\n",
-              ("sequence", "previous_sha256", "outbox_sha256"),
-          )
-          write(lease_path, source)
-
-          agentd_path = "codex-rs/hepta-agentd/src/app_runtime.rs"
-          replace_once(
-              agentd_path,
-              lines(
-                  "use crate::AgentdIdentity;",
-                  "use crate::AgentdState;",
-                  "use crate::composition::authority_for_identity;",
-                  "use crate::qualification_writer::qualification_turn_writer_host;",
-              ),
-              lines(
-                  "use crate::AgentdIdentity;",
-                  "use crate::AgentdState;",
-                  "#[cfg(test)]",
-                  "use crate::composition::authority_for_identity;",
-                  "use crate::qualification_writer::qualification_turn_writer_host;",
-              ),
-          )
-          for signature in (
-              "pub(crate) fn app_server_runtime_options(\n",
-              "pub(crate) fn app_server_runtime_options_for_agent(\n",
-              "fn cognitive_write_for_authority(\n",
-          ):
-              source = read(agentd_path)
-              if source.count(signature) != 1:
-                  raise SystemExit(
-                      f"unexpected helper signature count in {agentd_path}: {signature!r}"
-                  )
-              write(agentd_path, source.replace(signature, "#[cfg(test)]\n" + signature, 1))
-
-          replace_once(
-              "codex-rs/hepta-memory/src/h7_feedback.rs",
-              lines(
-                  "        serde_json::to_string(&(key.trajectory_id, key.event_seq, key.event_id))",
-                  '            .expect("feedback key tuple is serializable")',
-              ),
-              lines(
-                  "        match serde_json::to_string(&(key.trajectory_id, key.event_seq, key.event_id)) {",
-                  "            Ok(value) => value,",
-                  '            Err(error) => panic!("feedback key tuple serialization failed: {error}"),',
-                  "        }",
-              ),
-          )
-
-          replace_once(
-              lease_path,
-              lines(
-                  "        if index > 0 {",
-                  '            let prior = latest.as_ref().expect("lease prior row");',
-              ),
-              lines(
-                  "        if index > 0 {",
-                  "            let Some(prior) = latest.as_ref() else {",
-                  "                return Err(corrupt(",
-                  '                    "lease predecessor is missing for a non-genesis sequence",',
-                  "                ));",
-                  "            };",
-              ),
-          )
-
-          history_path = "codex-rs/app-server-protocol/src/protocol/thread_history.rs"
-          replace_once(
-              history_path,
-              lines(
-                  "            {",
-                  "                state.state = TurnRecoveryCandidateState::Ready;",
-                  '                let (fingerprint, replay) = binding.expect("binding checked above");',
-                  "                state.request_fingerprint_sha256 = Some(fingerprint);",
-              ),
-              lines(
-                  "            {",
-                  "                let Some((fingerprint, replay)) = binding else {",
-                  "                    return;",
-                  "                };",
-                  "                state.state = TurnRecoveryCandidateState::Ready;",
-                  "                state.request_fingerprint_sha256 = Some(fingerprint);",
-              ),
-          )
-          replace_once(
-              history_path,
-              lines(
-                  "            {",
-                  "                state.state = TurnRecoveryCandidateState::InterruptedConfirmed;",
-                  '                let (fingerprint, replay) = binding.expect("binding checked above");',
-                  "                state.request_fingerprint_sha256 = Some(fingerprint);",
-              ),
-              lines(
-                  "            {",
-                  "                let Some((fingerprint, replay)) = binding else {",
-                  "                    return;",
-                  "                };",
-                  "                state.state = TurnRecoveryCandidateState::InterruptedConfirmed;",
-                  "                state.request_fingerprint_sha256 = Some(fingerprint);",
-              ),
-          )
-          replace_once(
-              history_path,
-              lines(
-                  "        if reopen_logical_tail {",
-                  "            let turn = self",
-                  "                .turns",
-                  "                .pop()",
-                  '                .expect("logical tail must exist after strict last-turn check");',
-              ),
-              lines(
-                  "        if reopen_logical_tail {",
-                  "            let Some(turn) = self.turns.pop() else {",
-                  "                return;",
-                  "            };",
-              ),
-          )
-
-          too_many = {
-              "codex-rs/hepta-memory/src/h7_trajectory_store.rs": (
-                  "    pub fn turn_start(\n",
-                  "    pub fn terminal(\n",
-                  "async fn verify_historical_lease(\n",
-                  "async fn insert_row(\n",
-              ),
-              "codex-rs/hepta-memory/src/local_compact_executor.rs": (
-                  "async fn historical_compact_lease_expiry(\n",
-                  "async fn verify_historical_compact_lease_binding(\n",
-              ),
-              lease_path: (
-                  "    pub async fn acquire_local_lease_after_head_bound(\n",
-                  "    pub async fn acquire_host_bound_lease_after_head(\n",
-                  "pub(crate) async fn append_lease(\n",
-                  "fn lease_digest(\n",
-                  "fn event_digest(\n",
-                  "fn outbox_digest(\n",
-              ),
-              "codex-rs/hepta-memory/src/local_memory_saga.rs": (
-                  "    pub async fn tombstone_memory_candidate_saga(\n",
-                  "    async fn replay_tombstone(\n",
-              ),
-              "codex-rs/hepta-memory/src/logical_turn_registry.rs": (
-                  "async fn append_attempt(\n",
-                  "fn attempt_digest(\n",
-                  "fn attempt_digest_without_scope(\n",
-              ),
-              "codex-rs/hepta-memory/src/memory_admission.rs": (
-                  "    pub async fn verify_memory_candidate(\n",
-                  "    pub async fn tombstone_memory_candidate(\n",
-              ),
-          }
-          for path, markers in too_many.items():
-              for marker in markers:
-                  indentation = marker[: len(marker) - len(marker.lstrip())]
-                  add_attribute_once(
-                      path,
-                      marker,
-                      f"{indentation}#[allow(clippy::too_many_arguments)]",
-                      (
-                          f"{indentation}// Stable durable/protocol boundary: grouping these "
-                          "arguments would change call-site and digest contracts."
-                      ),
-                  )
-
-          protocol_path = "codex-rs/hepta-agent-protocol/src/lib.rs"
-          add_attribute_once(
-              protocol_path,
-              lines(
-                  "    pub fn new(",
-                  "        owner_agent_id: AgentId,",
-                  "        lease_id: impl Into<String>,",
-              ),
-              "    #[allow(clippy::too_many_arguments)]",
-              "    // Stable lease-witness wire constructor; preserve the public call shape.",
-          )
-
-          registry_path = "codex-rs/hepta-memory/src/logical_turn_registry.rs"
-          add_attribute_once(
-              registry_path,
-              "pub enum LogicalTurnReservation {\n",
-              "#[allow(clippy::large_enum_variant)]",
-              "// Preserve the public result shape used by exhaustive call-site matching.",
-          )
+          if source.count(start_marker) != 1 or source.count(end_marker) != 1:
+              raise SystemExit("canonical remediation block boundary is not unique")
+          start = source.index(start_marker) + len(start_marker)
+          end = source.index(end_marker, start)
+          script = textwrap.dedent(source[start:end])
+          if "remove_struct_fields" not in script or "too_many" not in script:
+              raise SystemExit("canonical remediation payload is incomplete")
+          Path(".hepta-canonical-remediation.py").write_text(script, encoding="utf-8")
           PY
+          python .hepta-canonical-remediation.py
+          rm -- .hepta-canonical-remediation.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-memory/src/h7_trajectory_store_tests.rs")
+          source = path.read_text(encoding="utf-8")
+          old = "    drop(store);\n"
+          new = "    store.pool.close().await;\n"
+          count = source.count(old)
+          if count != 2:
+              raise SystemExit(
+                  f"expected exactly two H7 reopen pool drops, found {count}"
+              )
+          path.write_text(source.replace(old, new), encoding="utf-8")
+          PY
+          git diff --check
 
       - name: Run compiler-guided mechanical remediation
         working-directory: codex-rs
@@ -394,7 +149,7 @@ jobs:
             esac
           done < <(git diff --name-only)
 
-      - name: Run source and manifest ratchets
+      - name: Run architecture source ratchets
         shell: bash
         run: |
           set -euo pipefail
@@ -405,36 +160,124 @@ jobs:
           python scripts/verify-hepta-memory-runtime-extraction-p0-1.py
           python scripts/verify-hepta-cross-owner-operation-wiring.py
           python scripts/verify-hepta-architecture-gap-ledger.py
+          git diff --check
 
-      - name: Run owned-package checks and strict Clippy
+      - name: Execute integrated blocker qualification
+        id: blocker_matrix
         working-directory: codex-rs
         shell: bash
+        env:
+          DIAGNOSTIC_DIR: ${{ github.workspace }}/.hepta-blocker-diagnostic
         run: |
-          set -euo pipefail
-          cargo fmt \
+          set -u -o pipefail
+          mkdir -p "$DIAGNOSTIC_DIR"
+          full_log="$DIAGNOSTIC_DIR/full.log"
+          summary="$DIAGNOSTIC_DIR/summary.txt"
+          : > "$full_log"
+          : > "$summary"
+
+          write_failure() {
+            local gate="$1"
+            local status="$2"
+            {
+              echo "schema=hepta_integrated_blocker_diagnostic_v1"
+              echo "bootstrap_head=$GITHUB_SHA"
+              echo "expected_parent=$EXPECTED_PARENT"
+              echo "failed_gate=$gate"
+              echo "exit_code=$status"
+              echo "runner_os=$RUNNER_OS"
+              echo "production_authority=false"
+              echo "effect_authority=false"
+              echo "model_invocation_authority=false"
+              echo "operator_acceptance=false"
+              echo "promotion=false"
+              echo "release=false"
+              echo "error_markers_begin"
+              grep -nE '(^error(\[|:)|FAILED|failures:|panicked at|test result: FAILED|could not compile|database is locked|warning:)' "$full_log" | tail -n 320 || true
+              echo "error_markers_end"
+              echo "log_tail_begin"
+              tail -n 700 "$full_log"
+              echo "log_tail_end"
+            } > "$summary"
+          }
+
+          run_gate() {
+            local gate="$1"
+            shift
+            {
+              printf '\n===== gate=%s =====\n' "$gate"
+              printf 'command='
+              printf ' %q' "$@"
+              printf '\n'
+            } | tee -a "$full_log"
+            set +e
+            "$@" 2>&1 | tee -a "$full_log"
+            local status=${PIPESTATUS[0]}
+            set -e
+            if (( status != 0 )); then
+              write_failure "$gate" "$status"
+              exit "$status"
+            fi
+          }
+
+          set -e
+          run_gate fmt_check cargo fmt \
             -p codex-hepta-memory \
             -p codex-hepta-agentd \
             -p codex-hepta-agent-protocol \
             -p codex-app-server-protocol \
             -- --check
-          cargo check --locked \
+          run_gate focused_check cargo check --locked \
             -p codex-hepta-memory \
             -p codex-hepta-agentd \
             -p codex-hepta-agent-protocol \
             -p codex-app-server-protocol
-          cargo clippy --locked --all-targets \
+          run_gate h7_head_scoped_reopen cargo test --locked \
+            -p codex-hepta-memory \
+            h7_trajectory_store_tests::head_scoped_expired_terminal_gate_survives_store_reopen \
+            -- --exact --nocapture
+          run_gate h7_bound_reopen cargo test --locked \
+            -p codex-hepta-memory \
+            h7_trajectory_store_tests::bound_trajectory_is_append_only_causal_and_reopenable \
+            -- --exact --nocapture
+          run_gate memory_lib cargo test --locked \
+            -p codex-hepta-memory --lib -- --nocapture
+          run_gate agentd_lib cargo test --locked \
+            -p codex-hepta-agentd --lib -- --nocapture
+          run_gate agentd_qualification_lib cargo test --locked \
+            -p codex-hepta-agentd \
+            --features qualification-cognitive-write \
+            --lib -- --nocapture
+          run_gate agent_protocol_lib cargo test --locked \
+            -p codex-hepta-agent-protocol --lib -- --nocapture
+          run_gate app_server_protocol_lib cargo test --locked \
+            -p codex-app-server-protocol --lib -- --nocapture
+          run_gate strict_clippy cargo clippy --locked --all-targets \
             -p codex-hepta-memory \
             -p codex-hepta-agentd \
             -p codex-hepta-agent-protocol \
             -p codex-app-server-protocol \
             -- -D warnings
+          {
+            echo "schema=hepta_integrated_blocker_diagnostic_v1"
+            echo "bootstrap_head=$GITHUB_SHA"
+            echo "result=success"
+          } > "$summary"
 
-      - name: Commit source cleanup and retire bootstrap
+      - name: Upload compact blocker diagnostic
+        if: ${{ failure() && steps.blocker_matrix.outcome == 'failure' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hepta-integrated-blocker-diagnostic-${{ github.sha }}
+          path: .hepta-blocker-diagnostic/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
+
+      - name: Commit tested source closure and retire bootstrap
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "hepta-ci-remediation"
-          git config user.email "hepta-ci-remediation@users.noreply.github.com"
           git add -- \
             codex-rs/hepta-memory/src \
             codex-rs/hepta-agentd/src/app_runtime.rs \
@@ -456,27 +299,31 @@ jobs:
             esac
           done < <(git diff --cached --name-only)
           git diff --cached --check
-          git commit -m "ci: close and retire Hepta strict-clippy remediation"
-          git fetch --no-tags origin "refs/heads/$BRANCH"
-          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          git fetch --no-tags origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+          test "$(git rev-parse refs/remotes/origin/$BRANCH)" = "$GITHUB_SHA"
+          git config user.name "hepta-gap-closure"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git commit -m "fix(hepta): close hosted Rust blockers and retire bootstrap"
           git push origin "HEAD:refs/heads/$BRANCH"
 
-      - name: Record non-authoritative receipt
+      - name: Record non-authoritative integrated receipt
         if: always()
         shell: bash
         run: |
           {
-            echo "schema=hepta_strict_clippy_remediation_once_v11"
+            echo "schema=hepta_integrated_blocker_closure_bootstrap_v1"
             echo "bootstrap_head=$GITHUB_SHA"
             echo "expected_parent=$EXPECTED_PARENT"
+            echo "canonical_workflow_blob=$EXPECTED_CANONICAL_WORKFLOW_BLOB"
             echo "job_status=${{ job.status }}"
             echo "bootstrap_retired=${{ job.status == 'success' }}"
             echo "bootstrap_runner=ubuntu-24.04"
             echo "bootstrap_python=3.12"
-            echo "canonical_qualification_runner=ubuntu-24.04"
             echo "production_authority=false"
             echo "effect_authority=false"
             echo "model_invocation_authority=false"
+            echo "provider_dispatch_authority=false"
+            echo "fleet_mutation_authority=false"
             echo "operator_acceptance=false"
             echo "promotion=false"
             echo "release=false"
