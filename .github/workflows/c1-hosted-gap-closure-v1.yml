@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/c1-hosted-gap-closure-v1.yml"
       - "scripts/c1_hosted_gap_closure_v1.py"
+      - "scripts/c1_hosted_gap_closure_v2.py"
 
 permissions:
   contents: write
@@ -13,7 +14,7 @@ concurrency:
   group: c1-hosted-gap-closure-v1-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
-# Exact-head closure epoch 5. Ubuntu 22 is the current exact-PR lane with a
+# Exact-head closure epoch 6. Ubuntu 22 is the current exact-PR lane with a
 # proven positive runner ID and completed preflight steps. The producer remains
 # single-lane and refuses to push if the remote branch moves during validation.
 jobs:
@@ -40,4 +41,4 @@ jobs:
           components: rustfmt, clippy
 
       - name: Execute fail-closed exact-head closure
-        run: python3 scripts/c1_hosted_gap_closure_v1.py
+        run: python3 scripts/c1_hosted_gap_closure_v2.py
