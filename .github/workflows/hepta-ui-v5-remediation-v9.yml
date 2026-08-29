@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 60
     env:
       BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
-      EXPECTED_PARENT: 3e0cf14de1d3a441295d1825a0299e48c8bbfb14
+      EXPECTED_PARENT: 0901502964b52608eaf0adfbf7dfa4ecf9f32663
       BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-remediation-v9.yml
       UPSTREAM_URL: https://github.com/openai/codex.git
       UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
@@ -89,7 +89,7 @@ jobs:
               raise SystemExit(
                   f"dependency contract write marker: expected 1 match, found {text.count(write_marker)}"
               )
-          input_hash_block = (
+          dependency_rebind = (
               'for input_id, input_entry in dep_contract["inputs"].items():\n'
               '    if input_id == "cargo_locks":\n'
               '        continue\n'
@@ -99,8 +99,26 @@ jobs:
               '    if not isinstance(input_path, str) or "sha256" not in input_entry:\n'
               '        continue\n'
               '    input_entry["sha256"] = sha256_path(root / input_path)\n'
+              'expected_findings = dep_contract["scans"]["audit"]["expected_raw_findings"]\n'
+              'expected_findings_bytes = (\n'
+              '    json.dumps(expected_findings, sort_keys=True, separators=(",", ":")) + "\\n"\n'
+              ').encode("utf-8")\n'
+              'dep_contract["scans"]["expected_raw_findings_sha256"] = (\n'
+              '    hashlib.sha256(expected_findings_bytes).hexdigest()\n'
+              ')\n'
           )
-          text = text.replace(write_marker, input_hash_block + write_marker, 1)
+          text = text.replace(write_marker, dependency_rebind + write_marker, 1)
+
+          verify_marker = 'scripts/hepta-dependency-security verify >/dev/null\n'
+          if text.count(verify_marker) != 1:
+              raise SystemExit(
+                  f"dependency verification marker: expected 1 match, found {text.count(verify_marker)}"
+              )
+          text = text.replace(
+              verify_marker,
+              'bash -x scripts/hepta-dependency-security verify\n',
+              1,
+          )
 
           cleanup_marker = '  .github/workflows/hepta-ui-v5-blocker-remediation-bootstrap.yml\n'
           if text.count(cleanup_marker) != 1:
