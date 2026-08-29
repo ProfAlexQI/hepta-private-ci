@@ -21,6 +21,9 @@
     "matrixOperationJournal": true,
     "providerOperationApi": true,
     "matrixSqliteFullFaultSource": true,
+    "matrixSqliteFullSameConnectionSeam": true,
+    "operationSafetySourceMaterialized": true,
+    "temporaryOperationMutatorsRetired": true,
     "singleWriterDataAuthorityMap": true,
     "failClosedRecoveryOrder": true,
     "exactSourceHeadWorkflow": true,
@@ -29,7 +32,7 @@
   "remaining": {
     "legacyProductionLeaseToTypedWitnessAdapter": false,
     "physicalMemoryCrateExtraction": true,
-    "allExistingCrossOwnerCallersMigrated": true,
+    "allExistingCrossOwnerCallersMigrated": false,
     "diskFullRuntimeFaultExecuted": true,
     "killReopenRuntimeFaultExecuted": true,
     "hostedExactHeadQualified": true,
