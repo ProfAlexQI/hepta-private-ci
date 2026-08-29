@@ -1,0 +1,128 @@
+{
+  "schema": "hepta.inference.current_status.v3",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V3",
+  "plan_version": "3.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "canonical_default_branch": "integration/vnext-main-20260811",
+  "canonical_default_head_observed": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+  "development_pr": 73,
+  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "development_base_commit": "6f3286f99f5576b4cc545003889437bf388bb28a",
+  "source_binding": {
+    "mode": "tracked_status_binds_observed_parent; exact head and tree are emitted by CI",
+    "observed_parent_commit": "211948a45874890d69cb60b1bdafd946da2fc77f",
+    "observed_parent_tree": "ad1879dc529f0da44ebb48d84b22e06749a8ef5a"
+  },
+  "current_execution_package": "INF-T0",
+  "current_status": "SOURCE_PRESENT_NOT_RUN",
+  "truth_documents": {
+    "active_plan": "HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V3.md",
+    "stage_matrix": "HEPTA_INFERENCE_STAGE_MATRIX_V4.json",
+    "implementation_status": "HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V2.json",
+    "blocker_ledger": "HEPTA_INFERENCE_BLOCKER_LEDGER_V1.json",
+    "closure_evidence_contract": "HEPTA_INFERENCE_V3_CLOSURE_EVIDENCE_CONTRACT_V1.json",
+    "historical_plan": "HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V2.md",
+    "historical_current_status": "HEPTA_INFERENCE_CURRENT_STATUS_V2.json",
+    "historical_stage_matrix": "HEPTA_INFERENCE_STAGE_MATRIX_V3.json",
+    "historical_implementation_status": "HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V1.json"
+  },
+  "verified_source_facts": {
+    "workspace_crates_present": [
+      "codex-hepta-infer-core",
+      "codex-hepta-infer-client",
+      "codex-hepta-inferd"
+    ],
+    "backend_neutral_contracts_present": true,
+    "owner_local_uds_daemon_present": true,
+    "canonical_bounded_cbor_present": true,
+    "same_user_peer_gate_present": true,
+    "shadow_client_present": true,
+    "adapter_capability_contracts_present": true,
+    "native_worker_abi_and_supervisor_contracts_present": true,
+    "real_provider_call_behind_daemon": false,
+    "isolated_native_worker_process": false,
+    "real_native_model_call": false,
+    "product_wired": false,
+    "runtime_activated": false
+  },
+  "ci_evidence": {
+    "last_known_passing_owned_source_run": {
+      "run_id": 33258442369,
+      "head": "211948a45874890d69cb60b1bdafd946da2fc77f",
+      "source_contract": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "rust_1_95_fmt": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "rust_1_95_locked_check": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "rust_1_95_all_target_tests": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "rust_1_95_strict_clippy": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "aggregate": "EXECUTED_PASSED_QUALIFICATION_ONLY"
+    },
+    "last_known_failed_future_source_run": {
+      "run_id": 33258442434,
+      "job_id": 99116112224,
+      "head": "211948a45874890d69cb60b1bdafd946da2fc77f",
+      "status": "EXECUTED_FAILED",
+      "failed_step": "Compile qualification Python",
+      "reason": "workflow referenced untracked qualification directory and script; downstream Rust matrix was skipped"
+    },
+    "msrv_assessment": "Rust 1.95 is not an evidenced blocker for the current three owned inference crates; do not change toolchain without a new exact-head failure"
+  },
+  "open_blockers": [
+    "INF-B001",
+    "INF-B002",
+    "INF-B003",
+    "INF-B004",
+    "INF-B005",
+    "INF-B006",
+    "INF-B007",
+    "INF-B008",
+    "INF-B009",
+    "INF-B010",
+    "INF-B011",
+    "INF-B012",
+    "INF-B013"
+  ],
+  "next_ordered_packages": [
+    "INF-T1",
+    "INF-H1",
+    "INF-H2",
+    "INF-H3",
+    "INF-H4",
+    "INF-2A",
+    "INF-2B",
+    "INF-2C",
+    "INF-3",
+    "INF-4",
+    "INF-5",
+    "INF-7"
+  ],
+  "claims": {
+    "documents_current": true,
+    "source_qualified_for_this_status_commit": false,
+    "control_plane_source_present": true,
+    "control_plane_hardened": false,
+    "real_provider_executed": false,
+    "real_native_backend_executed": false,
+    "hardware_qualified": false,
+    "production_qualified": false,
+    "operator_accepted": false,
+    "promoted": false,
+    "released": false
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

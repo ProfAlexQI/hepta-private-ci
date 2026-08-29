@@ -1,0 +1,330 @@
+{
+  "schema": "hepta.inference.blocker_ledger.v1",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V3",
+  "plan_version": "3.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "development_pr": 73,
+  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "observed_parent_commit": "211948a45874890d69cb60b1bdafd946da2fc77f",
+  "observed_parent_tree": "ad1879dc529f0da44ebb48d84b22e06749a8ef5a",
+  "generated_on": "2026-08-30",
+  "status_vocabulary": [
+    "NOT_STARTED",
+    "PLANNED",
+    "SOURCE_PRESENT_NOT_RUN",
+    "BLOCKED_RUNNER_NOT_ASSIGNED",
+    "BLOCKED_EXTERNAL_DEPENDENCY",
+    "EXECUTED_FAILED",
+    "EXECUTED_PASSED_QUALIFICATION_ONLY",
+    "OPERATOR_ACCEPTED",
+    "PROMOTED",
+    "RELEASED"
+  ],
+  "blockers": [
+    {
+      "id": "INF-B001",
+      "severity": "P0",
+      "package": "INF-T1",
+      "title": "required exact-head workflow references source that does not exist",
+      "current_status": "EXECUTED_FAILED",
+      "observed_evidence": {
+        "workflow_run_id": 33258442434,
+        "failed_job_id": 99116112224,
+        "failed_step": "Compile qualification Python",
+        "missing_paths": [
+          "tools/hepta-inference-v2-qualification",
+          "scripts/hepta-inference-inf0c-cancel-capability-v4.py",
+          "codex-rs/hepta-infer-backend-v1",
+          "codex-rs/hepta-infer-input-lease",
+          "codex-rs/hepta-infer-model-registry",
+          "codex-rs/hepta-infer-product-bridge",
+          "codex-rs/hepta-infer-router",
+          "codex-rs/hepta-infer-scheduler",
+          "codex-rs/hepta-infer-semantic",
+          "codex-rs/hepta-infer-worker-host"
+        ]
+      },
+      "required_change": "converge the workflow to tracked source and add a path-inventory gate; future crates enter the matrix only in the commit that creates and wires them",
+      "acceptance": [
+        "all workflow-owned paths exist at exact head",
+        "source job executes non-empty steps",
+        "Rust jobs execute fmt/check/test/clippy for existing owned crates",
+        "aggregate fails for skipped/cancelled/failure and passes only after all required source jobs pass"
+      ],
+      "evidence_type": "exact-head GitHub Actions artifact",
+      "qualified": false
+    },
+    {
+      "id": "INF-B002",
+      "severity": "P0",
+      "package": "INF-T0",
+      "title": "current plan and machine status describe stale repository and source facts",
+      "current_status": "SOURCE_PRESENT_NOT_RUN",
+      "observed_evidence": {
+        "stale_plan_repository": "ProfAlexQI/hepta-private-ci",
+        "stale_implementation_claim": "hepta_inferd=false",
+        "actual_repository": "ProfHepta/hepta-private-ci",
+        "actual_workspace_crates": [
+          "codex-hepta-infer-core",
+          "codex-hepta-infer-client",
+          "codex-hepta-inferd"
+        ]
+      },
+      "required_change": "add V3/V4 current truth files while keeping historical receipts immutable",
+      "acceptance": [
+        "current files point to the present repository and PR stack",
+        "source-present and real-executed claims are separated",
+        "one ledger enumerates every open blocker and evidence dependency"
+      ],
+      "evidence_type": "tracked source plus source-truth gate",
+      "qualified": false
+    },
+    {
+      "id": "INF-B003",
+      "severity": "P0",
+      "package": "INF-H1",
+      "title": "same-user public UDS peers can publish worker events and operator restart",
+      "current_status": "PLANNED",
+      "source_paths": [
+        "codex-rs/hepta-infer-core/src/protocol.rs",
+        "codex-rs/hepta-infer-client/src/lib.rs",
+        "codex-rs/hepta-inferd/src/lib.rs"
+      ],
+      "required_change": "separate public client, worker and operator authority; public dispatch rejects Start, Token, Complete and RestartBackend",
+      "acceptance": [
+        "same-UID public peer cannot forge start/token/complete",
+        "same-UID public peer cannot restart or drain backend",
+        "role violation returns a stable typed error",
+        "worker/operator channel requires a daemon-minted capability or inherited private handle"
+      ],
+      "evidence_type": "negative unit and daemon E2E tests",
+      "qualified": false
+    },
+    {
+      "id": "INF-B004",
+      "severity": "P0",
+      "package": "INF-H2",
+      "title": "queue-only limits allow unbounded inflight and running records",
+      "current_status": "PLANNED",
+      "source_paths": [
+        "codex-rs/hepta-infer-core/src/controller.rs"
+      ],
+      "required_change": "add global/per-tenant inflight and running accounting with deterministic release on completion, cancellation and restart",
+      "acceptance": [
+        "admit-start loops cannot bypass quotas",
+        "global and tenant running limits reject before transition",
+        "all terminal paths release reservations exactly once",
+        "snapshot accounting equals retained records in fault tests"
+      ],
+      "evidence_type": "unit/property/fault tests",
+      "qualified": false
+    },
+    {
+      "id": "INF-B005",
+      "severity": "P0",
+      "package": "INF-H3",
+      "title": "token digests are discarded and completion digest/count are caller assertions",
+      "current_status": "PLANNED",
+      "source_paths": [
+        "codex-rs/hepta-infer-core/src/controller.rs",
+        "codex-rs/hepta-infer-core/src/protocol.rs"
+      ],
+      "required_change": "maintain a domain-separated rolling token digest, accepted token count/bytes and output-token limit",
+      "acceptance": [
+        "completion count equals accepted token count",
+        "completion digest equals the controller-computed chain",
+        "output token limit is enforced at token acceptance",
+        "forged digest, count drift and sequence drift fail closed"
+      ],
+      "evidence_type": "known-vector and deterministic replay tests",
+      "qualified": false
+    },
+    {
+      "id": "INF-B006",
+      "severity": "P1",
+      "package": "INF-H4",
+      "title": "daemon connections and frame I/O are not concurrency or time bounded",
+      "current_status": "PLANNED",
+      "source_paths": [
+        "codex-rs/hepta-inferd/src/lib.rs"
+      ],
+      "required_change": "add connection semaphore and bounded read/write/idle timeouts",
+      "acceptance": [
+        "partial-frame peers release permits after timeout",
+        "connection count never exceeds configured maximum",
+        "one slow peer cannot block daemon progress",
+        "timeouts remain connection-local"
+      ],
+      "evidence_type": "daemon slowloris and saturation tests",
+      "qualified": false
+    },
+    {
+      "id": "INF-B007",
+      "severity": "P1",
+      "package": "INF-H4",
+      "title": "terminal receipts are not recovered after daemon restart and have no disk budget",
+      "current_status": "PLANNED",
+      "source_paths": [
+        "codex-rs/hepta-inferd/src/lib.rs",
+        "codex-rs/hepta-infer-core/src/controller.rs"
+      ],
+      "required_change": "implement atomic journal writes, startup scan/index, bounded files/bytes/TTL and memory release after durable persistence",
+      "acceptance": [
+        "old-generation terminal receipt is queryable after restart",
+        "corrupt, duplicate and oversized receipts fail closed",
+        "terminal controller memory remains bounded",
+        "parent directory durability is synchronized where supported"
+      ],
+      "evidence_type": "crash/restart and corruption tests",
+      "qualified": false
+    },
+    {
+      "id": "INF-B008",
+      "severity": "P0",
+      "package": "INF-2A",
+      "title": "adapter contracts are not connected to a real provider call behind hepta-inferd",
+      "current_status": "BLOCKED_EXTERNAL_DEPENDENCY",
+      "dependencies": [
+        "INF-B003",
+        "INF-B004",
+        "INF-B005",
+        "INF-B006",
+        "INF-B007",
+        "fixed pre-installed local provider and model tuple"
+      ],
+      "required_change": "execute one fixed Ollama or LM Studio tuple through daemon with bounded semantic output and inventory fences",
+      "acceptance": [
+        "real provider process executes",
+        "real model returns semantic output",
+        "pre/post model inventory is identical",
+        "no implicit install, model switch, proxy, redirect or remote fallback"
+      ],
+      "evidence_type": "real-service exact-tuple artifact",
+      "qualified": false
+    },
+    {
+      "id": "INF-B009",
+      "severity": "P0",
+      "package": "INF-2B",
+      "title": "native worker source is a state-machine contract, not an isolated model process",
+      "current_status": "BLOCKED_EXTERNAL_DEPENDENCY",
+      "dependencies": [
+        "INF-B003",
+        "INF-B004",
+        "INF-B005",
+        "pinned llama.cpp build and fixed GGUF artifact"
+      ],
+      "required_change": "create the minimal isolated worker host and call the pinned native runtime ABI for a real model",
+      "acceptance": [
+        "one fixed GGUF loads on one real device",
+        "at least one real UTF-8 token is emitted",
+        "model/tokenizer/template/runtime/SBOM/license/device digests are bound",
+        "crash/OOM/protocol-violation paths increment generation and do not fall back remotely"
+      ],
+      "evidence_type": "native worker exact-device artifact",
+      "qualified": false
+    },
+    {
+      "id": "INF-B010",
+      "severity": "P0",
+      "package": "INF-2C",
+      "title": "running cancellation has no backend acknowledgement or forced-kill execution proof",
+      "current_status": "BLOCKED_EXTERNAL_DEPENDENCY",
+      "dependencies": [
+        "INF-B009"
+      ],
+      "required_change": "implement CancelRequested, worker CancelAck, bounded timeout, forced process termination and generation rollover",
+      "acceptance": [
+        "normal cancellation receipt requires worker acknowledgement",
+        "timeout kills the worker and marks forced_worker_termination=true",
+        "late tokens from the old session/generation are rejected",
+        "transport disconnect is never classified as backend acknowledgement"
+      ],
+      "evidence_type": "real worker cancellation/fault artifact",
+      "qualified": false
+    },
+    {
+      "id": "INF-B011",
+      "severity": "P1",
+      "package": "INF-3",
+      "title": "scheduler, reservation ledger and tenant-scoped KV/prefix cache are absent",
+      "current_status": "NOT_STARTED",
+      "dependencies": [
+        "INF-B004",
+        "INF-B007",
+        "INF-B010"
+      ],
+      "required_change": "implement EDF/WFQ and reservation recovery before adding generation-scoped tenant/workspace cache",
+      "acceptance": [
+        "fairness and starvation bounds",
+        "cache cannot cross tenant/workspace/policy/tuple/generation",
+        "cancellation under load releases every lease",
+        "OOM/thermal/backpressure breaker is fail closed"
+      ],
+      "evidence_type": "deterministic scheduler/cache fault suite",
+      "qualified": false
+    },
+    {
+      "id": "INF-B012",
+      "severity": "P0",
+      "package": "INF-5",
+      "title": "new control plane is not wired into a product shadow route",
+      "current_status": "NOT_STARTED",
+      "dependencies": [
+        "INF-B008 or INF-B009",
+        "INF-B010",
+        "INF-B011"
+      ],
+      "required_change": "wire an unprivileged SHADOW_COMPARE_ONLY product bridge without changing primary route or granting Memory/KG/effect authority",
+      "acceptance": [
+        "product caller cannot publish worker events",
+        "primary output remains authoritative during shadow",
+        "shadow output is a typed proposal/signal only",
+        "kill switch and rollback preserve the original route"
+      ],
+      "evidence_type": "product shadow E2E artifact",
+      "qualified": false
+    },
+    {
+      "id": "INF-B013",
+      "severity": "P0",
+      "package": "INF-4/INF-7",
+      "title": "exact-device performance, independent acceptance, promotion and release evidence are absent",
+      "current_status": "BLOCKED_EXTERNAL_DEPENDENCY",
+      "dependencies": [
+        "INF-B008 or INF-B009",
+        "INF-B010",
+        "INF-B011",
+        "INF-B012",
+        "real target-device runners",
+        "independent operator"
+      ],
+      "required_change": "run per-device functional/performance/privacy/rollback qualification and obtain independent operator acceptance",
+      "acceptance": [
+        "each device/driver/runtime/model tuple has its own receipt",
+        "cold/warm TTFT, throughput, peak RSS/VRAM, cancel latency and unload recovery are measured",
+        "operator acceptance is explicit and independent",
+        "promotion and release occur only in separate authorized commits"
+      ],
+      "evidence_type": "target-device receipts plus operator acceptance record",
+      "qualified": false
+    }
+  ],
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

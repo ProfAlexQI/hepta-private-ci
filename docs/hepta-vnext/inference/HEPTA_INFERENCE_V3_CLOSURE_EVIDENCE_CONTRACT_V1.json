@@ -1,0 +1,284 @@
+{
+  "schema": "hepta.inference.v3.closure_evidence_contract.v1",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V3",
+  "plan_version": "3.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "development_pr": 73,
+  "observed_parent_commit": "211948a45874890d69cb60b1bdafd946da2fc77f",
+  "purpose": "define evidence that may close source, real-runtime, hardware, product and promotion blockers without converting source fixtures into stronger claims",
+  "claim_levels": [
+    {
+      "id": "SOURCE_CONTRACT",
+      "maximum_status": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "requires_real_model": false,
+      "allows_product_wiring": false,
+      "allows_promotion": false
+    },
+    {
+      "id": "REAL_SOFTWARE_RUNTIME",
+      "maximum_status": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "requires_real_model": true,
+      "allows_product_wiring": false,
+      "allows_promotion": false
+    },
+    {
+      "id": "EXACT_DEVICE_QUALIFICATION",
+      "maximum_status": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "requires_real_model": true,
+      "requires_target_device": true,
+      "allows_product_wiring": false,
+      "allows_promotion": false
+    },
+    {
+      "id": "PRODUCT_SHADOW",
+      "maximum_status": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "requires_real_model": true,
+      "requires_shadow_only": true,
+      "allows_product_wiring": true,
+      "allows_primary_route_change": false,
+      "allows_promotion": false
+    },
+    {
+      "id": "OPERATOR_ACCEPTANCE",
+      "maximum_status": "OPERATOR_ACCEPTED",
+      "requires_independent_operator": true,
+      "allows_promotion": false
+    },
+    {
+      "id": "PROMOTION_RELEASE",
+      "maximum_status": "RELEASED",
+      "requires_separate_authorized_commit": true,
+      "allows_promotion": true
+    }
+  ],
+  "required_exact_source_fields": [
+    "repository",
+    "pull_request_number",
+    "head_commit",
+    "head_tree",
+    "parent_commit",
+    "cargo_lock_sha256",
+    "workflow_blob_sha256",
+    "plan_blob_sha256",
+    "stage_matrix_blob_sha256",
+    "implementation_status_blob_sha256",
+    "blocker_ledger_blob_sha256",
+    "runner_os",
+    "runner_arch",
+    "runner_name_or_image",
+    "rustc_version",
+    "cargo_version"
+  ],
+  "source_inventory_gate": {
+    "required": true,
+    "rules": [
+      "every owned source and script path invoked by a required workflow exists at exact head",
+      "every Cargo package named by a required command exists in cargo metadata --locked",
+      "future package names are forbidden until their Cargo.toml, workspace membership and lock entry coexist",
+      "all current truth JSON parses and references the active plan",
+      "all authority fields remain closed",
+      "historical receipts are not modified"
+    ]
+  },
+  "source_rust_gate": {
+    "toolchain": "1.95.0 unless exact-head evidence proves a workspace-owned incompatibility and a separate toolchain migration is approved",
+    "packages": [
+      "codex-hepta-infer-core",
+      "codex-hepta-infer-client",
+      "codex-hepta-inferd"
+    ],
+    "commands": [
+      "cargo fmt -p codex-hepta-infer-core -p codex-hepta-infer-client -p codex-hepta-inferd -- --check",
+      "cargo check --locked --all-targets -p codex-hepta-infer-core -p codex-hepta-infer-client -p codex-hepta-inferd",
+      "cargo test --locked --all-targets -p codex-hepta-infer-core -p codex-hepta-infer-client -p codex-hepta-inferd",
+      "cargo clippy --locked --all-targets --no-deps -p codex-hepta-infer-core -p codex-hepta-infer-client -p codex-hepta-inferd -- -D warnings"
+    ],
+    "all_steps_must_be_non_empty": true,
+    "runner_id_must_be_nonzero": true,
+    "skipped_is_pass": false,
+    "cancelled_is_pass": false
+  },
+  "required_control_plane_test_classes": [
+    "public same-user peer cannot publish Start Token Complete",
+    "public same-user peer cannot RestartBackend",
+    "role error code is stable",
+    "queue inflight and running global limits",
+    "queue inflight and running per-tenant limits",
+    "terminal paths release reservations exactly once",
+    "deadline expiry before and after queueing",
+    "token chain known vectors",
+    "token count mismatch rejection",
+    "result digest mismatch rejection",
+    "output token limit rejection",
+    "connection semaphore saturation",
+    "partial frame read timeout",
+    "response write timeout",
+    "atomic receipt persistence",
+    "restart receipt recovery",
+    "receipt corruption duplicate size and budget rejection",
+    "no raw prompt media source code or model output in default receipt"
+  ],
+  "source_receipt_required_claims": {
+    "source_inventory": "PASS",
+    "formatting": "PASS",
+    "locked_check": "PASS",
+    "all_target_tests": "PASS",
+    "strict_clippy": "PASS",
+    "qualification_only": true,
+    "real_provider_executed": false,
+    "real_native_model_executed": false,
+    "hardware_qualified": false,
+    "product_default_route_changed": false,
+    "operator_accepted": false,
+    "promoted": false,
+    "released": false
+  },
+  "real_provider_evidence": {
+    "required_for_blockers": [
+      "INF-B008"
+    ],
+    "required_fields": [
+      "provider_id",
+      "provider_version",
+      "provider_binary_digest_or_install_identity",
+      "model_id",
+      "model_artifact_digest_if_available",
+      "tokenizer_digest_if_available",
+      "chat_template_digest_if_available",
+      "model_inventory_digest_before",
+      "model_inventory_digest_after",
+      "request_fixture_digest",
+      "semantic_result_digest",
+      "output_token_count",
+      "termination_reason",
+      "timeout_and_cancel_disposition",
+      "proxy_disabled",
+      "redirect_disabled",
+      "implicit_install_disabled",
+      "remote_fallback_attempted"
+    ],
+    "must_execute_real_process": true,
+    "http_mock_is_sufficient": false,
+    "inventory_before_must_equal_after": true,
+    "remote_fallback_attempted_must_be": false
+  },
+  "native_worker_evidence": {
+    "required_for_blockers": [
+      "INF-B009",
+      "INF-B010"
+    ],
+    "required_fields": [
+      "worker_binary_sha256",
+      "backend_abi_version",
+      "runtime_upstream_commit",
+      "runtime_build_flags_digest",
+      "runtime_sbom_digest",
+      "runtime_license_digest",
+      "model_digest",
+      "tokenizer_digest",
+      "chat_template_digest",
+      "gguf_digest",
+      "quantization",
+      "device_profile_digest",
+      "driver_runtime",
+      "backend_generation",
+      "worker_session_digest",
+      "request_fixture_digest",
+      "token_chain_digest",
+      "output_token_count",
+      "cancel_acknowledged",
+      "forced_worker_termination",
+      "stale_event_rejection",
+      "remote_fallback_attempted"
+    ],
+    "must_execute_real_model": true,
+    "must_execute_real_worker_process": true,
+    "rust_state_machine_fixture_is_sufficient": false,
+    "remote_fallback_attempted_must_be": false
+  },
+  "hardware_performance_evidence": {
+    "required_for_blockers": [
+      "INF-B013"
+    ],
+    "tuple_dimensions": [
+      "model",
+      "tokenizer",
+      "artifact",
+      "runtime",
+      "compiler",
+      "driver",
+      "device",
+      "quantization",
+      "context",
+      "batch",
+      "kv_cache_policy",
+      "prefix_cache_policy"
+    ],
+    "measurements": [
+      "cold_model_load_ms",
+      "warm_ttft_ms_p50_p95_p99",
+      "prefill_tokens_per_second",
+      "decode_tokens_per_second",
+      "peak_rss_bytes",
+      "peak_vram_bytes",
+      "kv_cache_bytes",
+      "cancel_latency_ms",
+      "forced_kill_latency_ms",
+      "unload_memory_recovery_bytes",
+      "power_and_temperature_if_available",
+      "direct_native_parity"
+    ],
+    "cross_compile_is_target_execution": false,
+    "each_device_requires_own_receipt": true
+  },
+  "product_shadow_evidence": {
+    "required_for_blockers": [
+      "INF-B012"
+    ],
+    "required_claims": {
+      "route_mode": "SHADOW_COMPARE_ONLY",
+      "primary_route_changed": false,
+      "shadow_output_authoritative": false,
+      "memory_write": false,
+      "shared_kg_write": false,
+      "provider_effect": false,
+      "route_write": false,
+      "kill_switch_tested": true,
+      "rollback_tested": true
+    }
+  },
+  "aggregate_rules": [
+    "a source-only aggregate name must include qualification-only",
+    "a source-only aggregate cannot close real-provider native-worker hardware product or operator blockers",
+    "all listed required jobs must conclude success; skipped neutral cancelled timed_out action_required startup_failure and stale are failures",
+    "artifacts must bind the exact head and tree that produced them",
+    "reruns create new artifacts and never mutate historical receipts",
+    "absence of a real-model or target-device runner is BLOCKED_EXTERNAL_DEPENDENCY, not PASS"
+  ],
+  "forbidden_claim_substitutions": [
+    "controller token fixture for real model token",
+    "HTTP mock for real provider process",
+    "worker supervisor state transition for native runtime execution",
+    "transport disconnect for backend cancel acknowledgement",
+    "cross compilation for target hardware execution",
+    "source aggregate for operator acceptance",
+    "Draft PR mergeability for promotion or release"
+  ],
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

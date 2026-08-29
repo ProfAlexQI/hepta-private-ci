@@ -1,0 +1,276 @@
+{
+  "schema": "hepta.inference.stage_matrix.v4",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V3",
+  "plan_version": "3.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "development_pr": 73,
+  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "observed_parent_commit": "211948a45874890d69cb60b1bdafd946da2fc77f",
+  "historical_matrix": "HEPTA_INFERENCE_STAGE_MATRIX_V3.json",
+  "current_package": "INF-T0",
+  "packages": [
+    {
+      "id": "INF-0A",
+      "name": "historical source rebind and plan freeze",
+      "status": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "historical": true,
+      "qualified": true,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-0B",
+      "name": "historical backend-neutral reference contracts",
+      "status": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "historical": true,
+      "qualified": true,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-0C",
+      "name": "historical compatibility readiness hardening",
+      "status": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "historical": true,
+      "qualified": true,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-1",
+      "name": "minimal owner-local UDS controller",
+      "status": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+      "historical": true,
+      "qualified": true,
+      "new_hardening_required": true,
+      "product_wired": false,
+      "runtime_activated": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-T0",
+      "name": "current truth and documentation rebase",
+      "status": "SOURCE_PRESENT_NOT_RUN",
+      "blockers": [
+        "INF-B002"
+      ],
+      "source_present": true,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-T1",
+      "name": "exact-head CI convergence",
+      "status": "EXECUTED_FAILED",
+      "blockers": [
+        "INF-B001"
+      ],
+      "source_present": true,
+      "executed": true,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-H1",
+      "name": "public worker operator authority separation",
+      "status": "PLANNED",
+      "blockers": [
+        "INF-B003"
+      ],
+      "source_present": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-H2",
+      "name": "controller inflight running and deadline resource bounds",
+      "status": "PLANNED",
+      "blockers": [
+        "INF-B004"
+      ],
+      "source_present": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-H3",
+      "name": "token stream integrity and output enforcement",
+      "status": "PLANNED",
+      "blockers": [
+        "INF-B005"
+      ],
+      "source_present": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-H4",
+      "name": "connection bounds receipt journal and restart recovery",
+      "status": "PLANNED",
+      "blockers": [
+        "INF-B006",
+        "INF-B007"
+      ],
+      "source_present": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-2A",
+      "name": "real Ollama or LM Studio adapter behind daemon",
+      "status": "BLOCKED_EXTERNAL_DEPENDENCY",
+      "blockers": [
+        "INF-B008"
+      ],
+      "contract_source_present": true,
+      "real_provider_executed": false,
+      "qualified": false,
+      "product_wired": false,
+      "runtime_activated": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-2B",
+      "name": "isolated llama.cpp native worker",
+      "status": "BLOCKED_EXTERNAL_DEPENDENCY",
+      "blockers": [
+        "INF-B009"
+      ],
+      "abi_and_supervisor_contract_source_present": true,
+      "worker_process_source_present": false,
+      "real_native_model_executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-2C",
+      "name": "worker acknowledged cancellation and forced termination",
+      "status": "BLOCKED_EXTERNAL_DEPENDENCY",
+      "blockers": [
+        "INF-B010"
+      ],
+      "controller_cancel_contract_present": true,
+      "worker_cancel_ack_executed": false,
+      "forced_process_termination_executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-3",
+      "name": "scheduler cache and resource leases",
+      "status": "NOT_STARTED",
+      "blockers": [
+        "INF-B011"
+      ],
+      "source_present": false,
+      "executed": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-4",
+      "name": "exact-device functional and performance qualification",
+      "status": "BLOCKED_EXTERNAL_DEPENDENCY",
+      "blockers": [
+        "INF-B013"
+      ],
+      "source_present": false,
+      "hardware_receipt": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-5",
+      "name": "typed product shadow integration",
+      "status": "NOT_STARTED",
+      "blockers": [
+        "INF-B012"
+      ],
+      "source_present": false,
+      "product_wired": false,
+      "runtime_activated": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-6",
+      "name": "audio and image extension",
+      "status": "NOT_STARTED",
+      "out_of_current_scope": true,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "INF-7",
+      "name": "independent operator acceptance promotion and release",
+      "status": "BLOCKED_EXTERNAL_DEPENDENCY",
+      "blockers": [
+        "INF-B013"
+      ],
+      "operator_accepted": false,
+      "promoted": false,
+      "released": false
+    },
+    {
+      "id": "INF-8",
+      "name": "remote or federated inference future lane",
+      "status": "NOT_STARTED",
+      "frozen": true,
+      "remote_inference": false,
+      "qualified": false,
+      "operator_accepted": false,
+      "promoted": false
+    }
+  ],
+  "global_claims": {
+    "source_only_control_plane_exists": true,
+    "public_role_boundary_closed": false,
+    "resource_bounds_closed": false,
+    "token_integrity_closed": false,
+    "receipt_recovery_closed": false,
+    "real_provider_executed": false,
+    "real_native_worker_executed": false,
+    "product_wired": false,
+    "hardware_qualified": false,
+    "production_qualified": false,
+    "operator_accepted": false,
+    "promoted": false,
+    "released": false
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
