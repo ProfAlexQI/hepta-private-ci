@@ -1,0 +1,275 @@
+name: Hepta Intelligence A0 V4.5.1 semantic repair publisher fixed
+
+on:
+  push:
+    branches:
+      - "ops/hepta-intelligence-a0-v45-normalized-publisher-20260830"
+    paths:
+      - ".github/workflows/a0-v451-semantic-repair-fixed.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-a0-v451-semantic-repair-fixed
+  cancel-in-progress: false
+
+env:
+  REPOSITORY: ProfHepta/hepta-private-ci
+  Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
+  SOURCE_CANDIDATE: 1146f0290fbbff7e6a26f6b91c80ec1e1daa0b60
+  SOURCE_BRANCH: tmp/hepta-intelligence-a0-v45-normalized-candidate-20260830
+  CANONICAL_A0_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  OUTPUT_BRANCH: tmp/hepta-intelligence-a0-v451-semantic-candidate-20260830
+  PATH_MANIFEST_SHA256: fa963166de5cfe36af6682e0e434fd17a8fc7e7d2cfe0c94777b1e0826475e9c
+
+jobs:
+  repair-validate-publish:
+    name: Repair and validate V4.5.1 exact-parent candidate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout complete publisher source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Materialize the validated 17-path V4.5 source over Q0
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/a0-v451
+          mkdir -p /tmp/a0-v451
+          git fetch --no-tags origin "refs/heads/$SOURCE_BRANCH:refs/remotes/origin/a0-v45-source"
+          test "$(git rev-parse refs/remotes/origin/a0-v45-source)" = "$SOURCE_CANDIDATE"
+          test "$(git rev-parse "$SOURCE_CANDIDATE^")" = "$Q0_HEAD"
+          git diff --name-only "$Q0_HEAD" "$SOURCE_CANDIDATE" | sort > /tmp/a0-v451/paths.txt
+          test "$(wc -l < /tmp/a0-v451/paths.txt | tr -d ' ')" = 17
+          test "$(sha256sum /tmp/a0-v451/paths.txt | awk '{print $1}')" = "$PATH_MANIFEST_SHA256"
+          mapfile -t paths < /tmp/a0-v451/paths.txt
+          git checkout --detach "$Q0_HEAD"
+          git checkout "$SOURCE_CANDIDATE" -- "${paths[@]}"
+          chmod +x scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+
+      - name: Apply deterministic V4.5.1 semantic and verifier repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from __future__ import annotations
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path.cwd()
+          plan = root / "plans" / "hepta-intelligence"
+          current_path = plan / "HEPTA_INTELLIGENCE_CURRENT_PLAN.json"
+          document_path = plan / "HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json"
+          master_path = plan / "HEPTA_INTELLIGENCE_MASTER_PLAN.md"
+          spec_path = plan / "HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md"
+          truth_path = root / "scripts" / "hepta-intelligence-current-truth.py"
+          version = "4.5.1"
+          action = "Publish V4.5.1 as one exact-parent replacement"
+          reason = "A0 V4.5.1 exact-parent replacement requires executable evidence, independent review, canonical selection and merge-candidate admission"
+          provenance = [
+              "241daa85253a6224a9473a1a2b2967f71e9b46af",
+              "88b355931456603bd7a1dd9e0cdfd4d0d035dc0e",
+              "0b80caff91010f40a79c795c20487ff9d773d229",
+              "0a93b172e575670d20c30e2efa7f312097466fe6",
+              "d93050c48e2943bb2be46e5f610c1bc109498194",
+              "1146f0290fbbff7e6a26f6b91c80ec1e1daa0b60",
+          ]
+
+          def pairs(items):
+              out = {}
+              for key, value in items:
+                  if key in out:
+                      raise ValueError(f"duplicate JSON key: {key}")
+                  out[key] = value
+              return out
+
+          def load(path):
+              return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=pairs)
+
+          def pretty(value):
+              return json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+
+          def canonical(value):
+              return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+          def normalize(text):
+              lines = [line.rstrip() for line in text.splitlines()]
+              while lines and not lines[-1]:
+                  lines.pop()
+              return "\n".join(lines) + "\n"
+
+          master = master_path.read_text(encoding="utf-8")
+          assert master.count("Version: `4.5.0`") == 1
+          master = master.replace("Version: `4.5.0`", "Version: `4.5.1`", 1)
+          heading = "## 0.1 V4.5 A0 source-contract closure\n"
+          assert master.count(heading) == 1
+          note = "\nV4.5.1 closes residual machine-plan semantic drift after the V4.5 byte-level gates: the executable next action and stack-budget reason now name the same release, superseded exact-head candidates remain in provenance, and the current-truth verifier rejects stale V4.4 wording.\n"
+          master_path.write_text(normalize(master.replace(heading, heading + note, 1)), encoding="utf-8")
+
+          spec = spec_path.read_text(encoding="utf-8")
+          assert spec.count("version `4.5.0`") == 1
+          spec_path.write_text(normalize(spec.replace("version `4.5.0`", "version `4.5.1`", 1)), encoding="utf-8")
+
+          truth = truth_path.read_text(encoding="utf-8")
+          assert truth.count("PLAN_VERSION = '4.5.0'") == 1
+          truth = truth.replace("PLAN_VERSION = '4.5.0'", "PLAN_VERSION = '4.5.1'", 1)
+          anchor = '    require(current.get("session_bootstrap", {}).get("read_order") == READ_ORDER, "read order drift")\n'
+          assert truth.count(anchor) == 1
+          checks = [
+              '    require(current.get("active_phase", {}).get("active_task") == "A0.3_V4_5_SOURCE_CONTRACT_CLOSURE", "active task drift")\n',
+              '    actions = current.get("next_actions")\n',
+              '    require(isinstance(actions, list) and actions and actions[0].get("id") == "A0.3a", "next action identity drift")\n',
+              '    require(actions[0].get("action") == "Publish V4.5.1 as one exact-parent replacement", "next action version drift")\n',
+              '    require(current.get("stack_budget", {}).get("reason") == "A0 V4.5.1 exact-parent replacement requires executable evidence, independent review, canonical selection and merge-candidate admission", "stack budget reason drift")\n',
+              '    require(current.get("a0_previous_exact_head_provenance") == ["241daa85253a6224a9473a1a2b2967f71e9b46af", "88b355931456603bd7a1dd9e0cdfd4d0d035dc0e", "0b80caff91010f40a79c795c20487ff9d773d229", "0a93b172e575670d20c30e2efa7f312097466fe6", "d93050c48e2943bb2be46e5f610c1bc109498194", "1146f0290fbbff7e6a26f6b91c80ec1e1daa0b60"], "A0 provenance drift")\n',
+              '    require("V4.4" not in json.dumps(current, sort_keys=True), "stale V4.4 current-plan semantics")\n',
+          ]
+          truth_path.write_text(normalize(truth.replace(anchor, anchor + "".join(checks), 1)), encoding="utf-8")
+
+          current = load(current_path)
+          current["canonical"]["plan_version"] = version
+          current["canonical"]["content_sha256"] = hashlib.sha256(master_path.read_bytes()).hexdigest()
+          current["operational_execution"]["execution_spec_sha256"] = hashlib.sha256(spec_path.read_bytes()).hexdigest()
+          current["a0_previous_exact_head_provenance"] = provenance
+          matches = [item for item in current["next_actions"] if item.get("id") == "A0.3a"]
+          assert len(matches) == 1
+          matches[0]["action"] = action
+          current["stack_budget"]["reason"] = reason
+          encoded_current = pretty(current)
+          assert "V4.4" not in encoded_current
+          current_path.write_text(encoded_current, encoding="utf-8")
+
+          document = load(document_path)
+          entries = document["registered_canonical_inputs"]
+          bindings = {
+              current_path.relative_to(root).as_posix(): hashlib.sha256(current_path.read_bytes()).hexdigest(),
+              master_path.relative_to(root).as_posix(): hashlib.sha256(master_path.read_bytes()).hexdigest(),
+              spec_path.relative_to(root).as_posix(): hashlib.sha256(spec_path.read_bytes()).hexdigest(),
+          }
+          for path, digest in bindings.items():
+              found = [item for item in entries if item.get("path") == path]
+              assert len(found) == 1
+              found[0]["content_sha256"] = digest
+          self_path = document_path.relative_to(root).as_posix()
+          self_entries = [item for item in entries if item.get("path") == self_path]
+          assert len(self_entries) == 1
+          self_entries[0]["content_sha256"] = None
+          self_entries[0]["content_sha256"] = hashlib.sha256(canonical(document)).hexdigest()
+          document_path.write_text(pretty(document), encoding="utf-8")
+
+          for path in (current_path, document_path, master_path, spec_path, truth_path):
+              text = path.read_text(encoding="utf-8")
+              assert "\r" not in text
+              assert not text.endswith("\n\n")
+              assert all(line == line.rstrip() for line in text.splitlines())
+          load(current_path)
+          load(document_path)
+          PY
+
+      - name: Build sole-child Q0 candidate and enforce path budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git diff --cached --check
+          git diff --cached --name-only | sort > /tmp/a0-v451/actual-paths.txt
+          cmp /tmp/a0-v451/paths.txt /tmp/a0-v451/actual-paths.txt
+          test "$(sha256sum /tmp/a0-v451/actual-paths.txt | awk '{print $1}')" = "$PATH_MANIFEST_SHA256"
+          git -c user.name='Hepta A0 V4.5.1 source publisher' \
+            -c user.email='hepta-a0-v451-publisher@invalid.example' \
+            commit -m 'docs(intelligence): close V4.5.1 semantic plan drift'
+          test "$(git rev-parse HEAD^)" = "$Q0_HEAD"
+          test "$(git rev-list --count "$Q0_HEAD"..HEAD)" = 1
+
+      - name: Run strict source semantic and compatibility gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-document-authority.py
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          python3 scripts/hepta-intelligence-current-truth.py --compact > /tmp/a0-v451/current-truth-1.json
+          python3 scripts/hepta-intelligence-current-truth.py --compact > /tmp/a0-v451/current-truth-2.json
+          cmp /tmp/a0-v451/current-truth-1.json /tmp/a0-v451/current-truth-2.json
+          GITHUB_SHA="$(git rev-parse HEAD)" GITHUB_REPOSITORY="$REPOSITORY" GITHUB_REF_NAME="$CANONICAL_A0_BRANCH" \
+            python3 scripts/verify-hepta-intelligence-a0-authority.py | tee /tmp/a0-v451/a0-source-evidence-receipt.json
+          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
+            python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
+          done
+          git diff --check HEAD^ HEAD
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Seal candidate receipt archive and patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --binary "$Q0_HEAD" HEAD > /tmp/a0-v451/a0-v451-exact-parent.patch
+          mapfile -t paths < /tmp/a0-v451/paths.txt
+          git archive --format=tar.gz -o /tmp/a0-v451/a0-v451-candidate.tar.gz HEAD "${paths[@]}"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import subprocess
+          from pathlib import Path
+          root = Path.cwd()
+          out = Path("/tmp/a0-v451")
+          paths = (out / "paths.txt").read_text(encoding="utf-8").splitlines()
+          files = []
+          for rel in paths:
+              path = root / rel
+              files.append({"path": rel, "size": path.stat().st_size, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "mode": subprocess.check_output(["git", "ls-tree", "HEAD", rel], text=True).split()[0]})
+          receipt = {
+              "schema": "hepta_intelligence_a0_v451_semantic_repair_receipt_v1",
+              "repository": "ProfHepta/hepta-private-ci",
+              "source_candidate": "1146f0290fbbff7e6a26f6b91c80ec1e1daa0b60",
+              "candidate": {"head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(), "tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(), "parent": subprocess.check_output(["git", "rev-parse", "HEAD^"], text=True).strip()},
+              "plan_version": "4.5.1",
+              "spec_version": "1.3.0",
+              "changed_path_count": len(paths),
+              "path_manifest_sha256": hashlib.sha256((out / "paths.txt").read_bytes()).hexdigest(),
+              "files": files,
+              "patch_sha256": hashlib.sha256((out / "a0-v451-exact-parent.patch").read_bytes()).hexdigest(),
+              "archive_sha256": hashlib.sha256((out / "a0-v451-candidate.tar.gz").read_bytes()).hexdigest(),
+              "a0_candidate_qualified": False,
+              "selected": False,
+              "source_writeback": False,
+              "authority": {"runtime": False, "production": False, "operator": False, "promotion": False, "release": False, "callers": False},
+              "status": "PASS_EXACT_PARENT_V4_5_1_SOURCE_AND_SEMANTIC_VALIDATION",
+          }
+          (out / "validated-v451-repair-receipt.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+      - name: Transmit objects and attempt isolated ref publication
+        shell: bash
+        run: |
+          set -uo pipefail
+          set +e
+          git push --force origin "HEAD:refs/heads/$OUTPUT_BRANCH" 2>&1 | tee /tmp/a0-v451/publish-transport.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$rc" > /tmp/a0-v451/publish-transport-exit-code.txt
+          git rev-parse HEAD > /tmp/a0-v451/candidate-head.txt
+          exit 0
+
+      - name: Upload deterministic V4.5.1 evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-a0-v451-${{ github.sha }}
+          path: /tmp/a0-v451/**
+          if-no-files-found: error
+          retention-days: 30
