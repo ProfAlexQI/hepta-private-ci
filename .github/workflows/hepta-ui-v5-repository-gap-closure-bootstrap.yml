@@ -67,67 +67,53 @@ jobs:
           PY
           python3 -m py_compile "$RUNNER_TEMP/apply-hepta-ui-v5-gap-closure.py"
           python3 - <<'PY'
+          import os
           from pathlib import Path
 
-          path = Path("codex-rs/core-plugins/src/manager_tests.rs")
+          path = Path(os.environ["RUNNER_TEMP"]) / "apply-hepta-ui-v5-gap-closure.py"
           text = path.read_text(encoding="utf-8")
-          needle = (
-              "    let config = load_config(codex_home.path(), codex_home.path()).await;\n"
-              "    let manager = PluginsManager::new(codex_home.path().to_path_buf());\n"
-              "    manager.write_remote_installed_plugins_cache(vec![RemoteInstalledPlugin {\n"
-          )
-          target = "async fn remote_installed_cache_adds_plugin_skill_roots_without_remote_plugin_flag()"
-          target_start = text.index(target)
-          target_end = text.index("\n}\n\n#[tokio::test]", target_start)
-          positions = []
-          cursor = 0
-          while True:
-              position = text.find(needle, cursor)
-              if position < 0:
-                  break
-              positions.append(position)
-              cursor = position + len(needle)
-          if len(positions) != 3:
-              raise SystemExit(f"expected three broad remote-cache anchors, found {len(positions)}")
-          target_positions = [
-              position for position in positions if target_start < position < target_end
+          prefix = """async fn remote_installed_cache_adds_plugin_skill_roots_without_remote_plugin_flag() {
+              let codex_home = TempDir::new().unwrap();
+              let plugin_base = codex_home
+                  .path()
+                  .join(\"plugins/cache/chatgpt-global/linear\");
+              write_plugin(&plugin_base, \"local\", \"linear\");
+              write_file(
+                  &codex_home.path().join(CONFIG_TOML_FILE),
+                  r#\"[features]
+          plugins = true
+          \"#,
+              );
+
+          """
+          config_line = "    let config = load_config(codex_home.path(), codex_home.path()).await;\n"
+          edits = [
+              (
+                  "needle",
+                  "    needle = '''" + config_line,
+                  "    needle = '''" + prefix + config_line,
+              ),
+              (
+                  "replacement",
+                  "    replacement = '''" + config_line,
+                  "    replacement = '''" + prefix + config_line,
+              ),
           ]
-          if len(target_positions) != 1:
-              raise SystemExit(
-                  f"expected one target remote-cache anchor, found {len(target_positions)}"
-              )
-          marker = "    // hepta-ui-v5-bootstrap-anchor-isolation\n"
-          isolated = needle.replace(
-              "    let manager = PluginsManager::new(codex_home.path().to_path_buf());\n",
-              marker
-              + "    let manager = PluginsManager::new(codex_home.path().to_path_buf());\n",
-          )
-          target_position = target_positions[0]
-          for position in reversed(positions):
-              if position == target_position:
-                  continue
-              text = text[:position] + isolated + text[position + len(needle) :]
-          if text.count(marker) != 2 or text.count(needle) != 1:
-              raise SystemExit("failed to isolate exactly one target remote-cache anchor")
+          for label, old, new in edits:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"expected one {label} applicator anchor, found {count}"
+                  )
+              text = text.replace(old, new, 1)
           path.write_text(text, encoding="utf-8", newline="\n")
           PY
+          python3 -m py_compile "$RUNNER_TEMP/apply-hepta-ui-v5-gap-closure.py"
           set +e
           python3 "$RUNNER_TEMP/apply-hepta-ui-v5-gap-closure.py" "$GITHUB_WORKSPACE" \
             > artifacts/ui-v5-gap-closure/bootstrap.log 2>&1
           rc=$?
           set -e
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path("codex-rs/core-plugins/src/manager_tests.rs")
-          text = path.read_text(encoding="utf-8")
-          marker = "    // hepta-ui-v5-bootstrap-anchor-isolation\n"
-          if text.count(marker) != 2:
-              raise SystemExit(
-                  f"expected two temporary anchor markers, found {text.count(marker)}"
-              )
-          path.write_text(text.replace(marker, ""), encoding="utf-8", newline="\n")
-          PY
           cat artifacts/ui-v5-gap-closure/bootstrap.log
           exit "$rc"
 
