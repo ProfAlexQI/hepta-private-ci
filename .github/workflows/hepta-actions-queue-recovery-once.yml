@@ -22,7 +22,6 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       TARGET_BRANCH: codex/ui-v4-executable-final-gap-closure-v3-20260829
-      PROTECTED_WORKFLOWS: hepta-ui-v4-final-gap-closure-v4,hepta-ui-v4-rust-served-cross-browser-final,hepta-ui-v4-windows-dwm-ack-producer,hepta-ui-v4-windows-material-profile-exact
     steps:
       - name: Checkout exact target branch
         uses: actions/checkout@v4
@@ -36,48 +35,52 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts/remediation
+          printf '%s\n' "started" > artifacts/remediation/start.txt
           before_sha="$(git rev-parse HEAD)"
           before_tree="$(git rev-parse 'HEAD^{tree}')"
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
-          branch = "codex/ui-v4-executable-final-gap-closure-v3-20260829"
+          branch_stem = "codex/ui-v4-executable-final-gap-closure-v3-"
+
+          def gha(body: str) -> str:
+              return "$" + "{{ " + body + " }}"
 
           def remove_duplicate_push(path: str) -> None:
               file = Path(path)
               text = file.read_text()
-              pattern = re.compile(
-                  r'^on:\n  push:\n    branches:\n      - ["\']?'
-                  + re.escape(branch)
-                  + r'["\']?\n  pull_request:\n',
-                  re.MULTILINE,
-              )
-              updated, count = pattern.subn("on:\n  pull_request:\n", text, count=1)
-              if count == 0:
-                  trigger_prefix = text.split("permissions:", 1)[0]
-                  if "  push:\n" in trigger_prefix:
-                      raise SystemExit(f"unrecognized push trigger in {path}")
-              file.write_text(updated)
+              permissions_at = text.find("\npermissions:")
+              if permissions_at < 0:
+                  raise SystemExit(f"permissions marker missing in {path}")
+              trigger = text[:permissions_at]
+              push_marker = "  push:\n"
+              pull_marker = "  pull_request:\n"
+              if push_marker not in trigger:
+                  return
+              push_at = text.index(push_marker)
+              pull_at = text.index(pull_marker, push_at)
+              push_block = text[push_at:pull_at]
+              if branch_stem not in push_block:
+                  raise SystemExit(f"refusing to remove unrecognized push block in {path}")
+              file.write_text(text[:push_at] + text[pull_at:])
 
           remove_duplicate_push(".github/workflows/hepta-ui-v4-final-gap-closure-v4.yml")
           remove_duplicate_push(".github/workflows/hepta-ui-v4-rust-served-cross-browser-final.yml")
 
+          candidate_env = gha("env.HEPTA_CANDIDATE_SHA")
+          candidate_fallback = gha("github.event.pull_request.head.sha || github.sha")
+          github_sha = gha("github.sha")
+
           dwm_path = Path(".github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml")
           dwm = dwm_path.read_text()
+          dwm = dwm.replace(github_sha, candidate_env)
+          marker = "permissions:\n  contents: read\n"
           if "env:\n  HEPTA_CANDIDATE_SHA:" not in dwm:
-              dwm = dwm.replace(
-                  "${{ github.sha }}",
-                  "${{ env.HEPTA_CANDIDATE_SHA }}",
-              )
-              marker = "permissions:\n  contents: read\n"
               if marker not in dwm:
                   raise SystemExit("DWM permissions marker missing")
               dwm = dwm.replace(
                   marker,
-                  marker
-                  + "\nenv:\n"
-                  + "  HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}\n",
+                  marker + "\nenv:\n  HEPTA_CANDIDATE_SHA: " + candidate_fallback + "\n",
                   1,
               )
           dwm = dwm.replace(
@@ -85,23 +88,22 @@ jobs:
               'ENV.fetch("HEPTA_CANDIDATE_SHA")',
           )
           lines = dwm.splitlines(keepends=True)
-          exact_checkout = "          ref: ${{ env.HEPTA_CANDIDATE_SHA }}\n"
+          exact_checkout = "          ref: " + candidate_env + "\n"
           output = []
-          inserted = 0
           for index, line in enumerate(lines):
               output.append(line)
-              if line == "        uses: actions/checkout@v4\n":
-                  cursor = index + 1
-                  while cursor < len(lines) and not lines[cursor].strip():
-                      cursor += 1
-                  if cursor >= len(lines) or lines[cursor].strip() != "with:":
-                      output.extend([
-                          "        with:\n",
-                          exact_checkout,
-                          "          fetch-depth: 1\n",
-                          "          persist-credentials: false\n",
-                      ])
-                      inserted += 1
+              if line != "        uses: actions/checkout@v4\n":
+                  continue
+              cursor = index + 1
+              while cursor < len(lines) and not lines[cursor].strip():
+                  cursor += 1
+              if cursor >= len(lines) or lines[cursor].strip() != "with:":
+                  output.extend([
+                      "        with:\n",
+                      exact_checkout,
+                      "          fetch-depth: 1\n",
+                      "          persist-credentials: false\n",
+                  ])
           dwm = "".join(output)
           if exact_checkout.strip() not in dwm:
               raise SystemExit("DWM exact checkout was not materialized")
@@ -132,16 +134,13 @@ jobs:
                   raise SystemExit("window-ack workflow read marker missing")
               gate = gate.replace(old_read, new_read, 1)
 
-          old_check = '''checks["workflow.read_only_source_compile_and_manual_matrix"] =
+          if "canonical_replacement =" not in gate:
+              check_start = gate.index('checks["workflow.read_only_source_compile_and_manual_matrix"] =\n')
+              check_end = gate.index("\n\nfailed = checks.reject", check_start)
+              exact_ref_literal = "ref: " + candidate_env
+              new_check = f'''legacy_workflow =
             workflow.include?("ruby scripts/hepta-ui-v4-window-ack-matrix-gate") &&
-            %w[ubuntu-latest windows-latest macos-latest].all? { |os| workflow.include?(os) } &&
-            workflow.include?("run_component_matrix") && workflow.include?("xvfb-run") &&
-            workflow.include?("contents: read") &&
-            !workflow.match?(/^\\s*(?:deploy|publish|release)\\s*:/i)
-          '''
-          new_check = '''legacy_workflow =
-            workflow.include?("ruby scripts/hepta-ui-v4-window-ack-matrix-gate") &&
-            %w[ubuntu-latest windows-latest macos-latest].all? { |os| workflow.include?(os) } &&
+            %w[ubuntu-latest windows-latest macos-latest].all? {{ |os| workflow.include?(os) }} &&
             workflow.include?("run_component_matrix") && workflow.include?("xvfb-run") &&
             workflow.include?("contents: read") &&
             !workflow.match?(/^\\s*(?:deploy|publish|release)\\s*:/i)
@@ -160,8 +159,8 @@ jobs:
             dwm_workflow.include?("name: hepta-ui-v4-windows-dwm-ack-producer") &&
             dwm_workflow.include?("ruby scripts/hepta-ui-v4-window-ack-matrix-gate") &&
             dwm_workflow.include?("HEPTA_CANDIDATE_SHA") &&
-            dwm_workflow.include?('ref: ${{ env.HEPTA_CANDIDATE_SHA }}') &&
-            %w[ubuntu-latest windows-latest macos-latest].all? { |os| dwm_workflow.include?(os) } &&
+            dwm_workflow.include?({exact_ref_literal!r}) &&
+            %w[ubuntu-latest windows-latest macos-latest].all? {{ |os| dwm_workflow.include?(os) }} &&
             dwm_workflow.include?("contents: read") &&
             !dwm_workflow.match?(/^\\s*(?:deploy|publish|release)\\s*:/i)
           checks["workflow.read_only_source_compile_and_manual_matrix"] =
@@ -169,12 +168,8 @@ jobs:
           checks["workflow.archived_legacy_is_manual_only"] =
             legacy_workflow || archived_workflow
           checks["workflow.canonical_replacement_exact_head"] =
-            legacy_workflow || canonical_replacement
-          '''
-          if old_check in gate:
-              gate = gate.replace(old_check, new_check, 1)
-          elif "canonical_replacement =" not in gate:
-              raise SystemExit("window-ack workflow check marker missing")
+            legacy_workflow || canonical_replacement'''
+              gate = gate[:check_start] + new_check + gate[check_end:]
           gate_path.write_text(gate)
           PY
 
@@ -213,7 +208,7 @@ jobs:
           printf '%s\n' "$latest_tree" > artifacts/remediation/after-tree.txt
           echo "LATEST_TARGET_SHA=$latest_sha" >> "$GITHUB_ENV"
 
-      - name: Cancel superseded target-branch runs
+      - name: Cancel stale target-branch runs
         shell: bash
         run: |
           set -euo pipefail
@@ -229,20 +224,14 @@ jobs:
           ruby -rjson -rdigest -e '
             payload=JSON.parse(File.read("artifacts/remediation/branch-runs.json"))
             active=%w[queued in_progress pending waiting requested_action]
-            protected=ENV.fetch("PROTECTED_WORKFLOWS").split(",")
             latest=ENV.fetch("LATEST_TARGET_SHA")
             candidates=payload.fetch("workflow_runs").select do |run|
-              active.include?(run["status"]) && !(
-                run["head_sha"]==latest &&
-                run["event"]=="pull_request" &&
-                protected.include?(run["name"])
-              )
+              active.include?(run["status"]) && run["head_sha"] != latest
             end
             result={
               "schema"=>"hepta.ui.v4.exact-head-queue-remediation.v1",
               "targetBranch"=>ENV.fetch("TARGET_BRANCH"),
               "targetHead"=>latest,
-              "protectedWorkflows"=>protected,
               "cancelRunIds"=>candidates.map{|run|run.fetch("id")}.sort,
               "cancelled"=>[],
               "failures"=>[]
@@ -267,8 +256,7 @@ jobs:
             fi
           done < artifacts/remediation/run-ids.txt
           ruby -rjson -e '
-            path="artifacts/remediation/queue-plan.json"
-            result=JSON.parse(File.read(path))
+            result=JSON.parse(File.read("artifacts/remediation/queue-plan.json"))
             result["cancelled"]=File.exist?("artifacts/remediation/cancelled.txt") ? File.readlines("artifacts/remediation/cancelled.txt",chomp:true).reject(&:empty?).map(&:to_i) : []
             result["failures"]=File.exist?("artifacts/remediation/failures.txt") ? File.readlines("artifacts/remediation/failures.txt",chomp:true).reject(&:empty?) : []
             File.write("artifacts/remediation/queue-result.json",JSON.pretty_generate(result)+"\n")
