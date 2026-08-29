@@ -1,0 +1,187 @@
+name: Hepta inference INF-3 through INF-5 source publisher v3
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-gap-closure-scratch-check-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf345-publish-v3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-inf345-publish-v3
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Qualify and publish scheduling routing and semantic contracts v3
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    env:
+      TARGET_BRANCH: codex/hepta-inference-gap-closure-20260829
+      EXPECTED_PARENT: 38d3f67f91eca4b25430dbf5f5d3af532edce450
+      PAYLOAD_SOURCE_COMMIT: 5ccaa339cb67a62b191516549ee3ee0067501d60
+      EXPECTED_PAYLOAD_SHA256: b93358164507b857bd2eddf7ae6aeaf4a8e67a81c13d652b57f36ff7f892b4c5
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          ref: ${{ env.EXPECTED_PARENT }}
+          fetch-depth: 0
+
+      - name: Verify exact immutable parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_PARENT"
+          test -z "$(git status --porcelain)"
+          git fetch --no-tags origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_PARENT"
+          git cat-file -e "$PAYLOAD_SOURCE_COMMIT^{commit}"
+
+      - name: Recover and materialize frozen payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          frozen="$RUNNER_TEMP/frozen-inf345-workflow.yml"
+          archive="$RUNNER_TEMP/inf345-source.tar.gz"
+          git show "$PAYLOAD_SOURCE_COMMIT:.github/workflows/hepta-inference-inf345-publish.yml" > "$frozen"
+          python3 - "$frozen" "$archive" "$EXPECTED_PAYLOAD_SHA256" <<'PY'
+          import base64
+          import hashlib
+          import pathlib
+          import re
+          import sys
+
+          source = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+          archive = pathlib.Path(sys.argv[2])
+          expected = sys.argv[3]
+          digest_match = re.search(r"^\s*PAYLOAD_SHA256:\s*([0-9a-f]{64})\s*$", source, re.MULTILINE)
+          payload_match = re.search(r"^\s*PAYLOAD_BASE64:\s*([A-Za-z0-9+/=]+)\s*$", source, re.MULTILINE)
+          if digest_match is None or payload_match is None:
+              raise SystemExit("frozen payload fields missing")
+          if digest_match.group(1) != expected:
+              raise SystemExit("frozen payload declaration drift")
+          encoded = payload_match.group(1).rstrip("=")
+          encoded += "=" * (-len(encoded) % 4)
+          payload = base64.b64decode(encoded, validate=True)
+          actual = hashlib.sha256(payload).hexdigest()
+          if actual != expected:
+              raise SystemExit(f"payload digest mismatch: {actual}")
+          archive.write_bytes(payload)
+          PY
+          python3 - "$archive" <<'PY'
+          import pathlib
+          import sys
+          import tarfile
+
+          archive = pathlib.Path(sys.argv[1])
+          expected = {
+              "codex-rs/hepta-infer-core/src/lib.rs",
+              "codex-rs/hepta-infer-core/src/scheduler.rs",
+              "codex-rs/hepta-infer-core/src/qualification.rs",
+              "codex-rs/hepta-infer-core/src/semantic.rs",
+          }
+          with tarfile.open(archive, "r:gz") as handle:
+              members = handle.getmembers()
+              files = {member.name.removeprefix("./") for member in members if member.isfile()}
+              if files != expected:
+                  raise SystemExit(f"payload paths drift: {sorted(files)}")
+              for member in members:
+                  path = pathlib.PurePosixPath(member.name)
+                  if path.is_absolute() or ".." in path.parts or member.issym() or member.islnk():
+                      raise SystemExit(f"unsafe archive entry: {member.name}")
+              handle.extractall(path=".")
+          PY
+          git diff --check
+
+      - name: Enforce source and authority shape
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only | sort | paste -sd, -)" = "codex-rs/hepta-infer-core/src/lib.rs,codex-rs/hepta-infer-core/src/qualification.rs,codex-rs/hepta-infer-core/src/scheduler.rs,codex-rs/hepta-infer-core/src/semantic.rs"
+          grep -F 'AdmissionScheduler' codex-rs/hepta-infer-core/src/scheduler.rs >/dev/null
+          grep -F 'CacheScopeKey' codex-rs/hepta-infer-core/src/scheduler.rs >/dev/null
+          grep -F 'ResourceCircuitBreaker' codex-rs/hepta-infer-core/src/scheduler.rs >/dev/null
+          grep -F 'QualificationRouter' codex-rs/hepta-infer-core/src/qualification.rs >/dev/null
+          grep -F 'KnownGapNotRouted' codex-rs/hepta-infer-core/src/qualification.rs >/dev/null
+          grep -F 'RunStartSnapshotBinding' codex-rs/hepta-infer-core/src/semantic.rs >/dev/null
+          grep -F 'TypedSemanticEnvelope' codex-rs/hepta-infer-core/src/semantic.rs >/dev/null
+          ! grep -R -F 'raw_prompt' codex-rs/hepta-infer-core/src/{scheduler,qualification,semantic}.rs
+          ! grep -R -F 'TcpListener' codex-rs/hepta-infer-core/src/{scheduler,qualification,semantic}.rs
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Format exact inference packages
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-infer-core -p codex-hepta-infer-client -p codex-hepta-inferd
+          cargo fmt -p codex-hepta-infer-core -p codex-hepta-infer-client -p codex-hepta-inferd -- --check
+
+      - name: Verify inherited source and authority contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/hepta-inference-inf0-source-gate.py
+          python3 scripts/hepta-inference-inf0-source-gate.py
+
+      - name: Locked check
+        shell: bash
+        working-directory: codex-rs
+        run: cargo check --locked --all-targets -p codex-hepta-infer-core -p codex-hepta-infer-client -p codex-hepta-inferd
+
+      - name: All-target tests
+        shell: bash
+        working-directory: codex-rs
+        run: cargo test --locked --all-targets -p codex-hepta-infer-core -p codex-hepta-infer-client -p codex-hepta-inferd
+
+      - name: Strict Clippy
+        shell: bash
+        working-directory: codex-rs
+        run: cargo clippy --locked --all-targets --no-deps -p codex-hepta-infer-core -p codex-hepta-infer-client -p codex-hepta-inferd -- -D warnings
+
+      - name: Create bounded source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add codex-rs/hepta-infer-core/src/lib.rs codex-rs/hepta-infer-core/src/scheduler.rs codex-rs/hepta-infer-core/src/qualification.rs codex-rs/hepta-infer-core/src/semantic.rs
+          test -z "$(git diff --name-only)"
+          git commit -m "feat(inference): add INF-3 scheduling INF-4 routing and INF-5 semantics"
+          echo "CANDIDATE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "CANDIDATE_TREE=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_ENV"
+
+      - name: Revalidate and fast-forward target branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_PARENT"
+          git push origin HEAD:"$TARGET_BRANCH"
+
+      - name: Record fail-closed publisher result
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Hepta inference INF-3 through INF-5 publisher v3"
+            echo
+            echo "- expected parent: $EXPECTED_PARENT"
+            echo "- candidate: ${CANDIDATE_SHA:-not-created}"
+            echo "- candidate tree: ${CANDIDATE_TREE:-not-created}"
+            echo "- qualification_only: true"
+            echo "- measured production route: false"
+            echo "- Memory/KG/effect authority: false"
+            echo "- operator acceptance: false"
+            echo "- promotion: false"
+            echo "- release: false"
+          } >> "$GITHUB_STEP_SUMMARY"
