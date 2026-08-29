@@ -1,0 +1,24 @@
+name: Hepta Intelligence A0.2 exact payload publisher
+on:
+  push:
+    branches:
+      - codex/hepta-intelligence-a0-2-evidence-gap-closure-20260829
+permissions:
+  contents: write
+concurrency:
+  group: hepta-intelligence-a0-2-publisher-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    name: Publish exact A0.2 one-child candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact bootstrap carrier
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Verify, materialize and replace carrier
+        shell: bash
+        run: bash .hepta-a02-payload/publish.sh

@@ -1,0 +1,16 @@
+.github/workflows/hepta-intelligence-a0-authority.yml
+.github/workflows/hepta-intelligence-master-plan.yml
+plans/hepta-intelligence/AGENTS.md
+plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json
+plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json
+plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_ACCEPTANCE_POLICY_V1.json
+plans/hepta-intelligence/HEPTA_INTELLIGENCE_GAP_LEDGER_V1.json
+plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json
+plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md
+scripts/hepta-intelligence-current-truth.py
+scripts/hepta_intelligence_governance_common.py
+scripts/verify-hepta-intelligence-a0-authority.py
+scripts/verify-hepta-intelligence-a0-evidence.py
+scripts/verify-hepta-intelligence-document-authority.py
+scripts/verify-hepta-intelligence-gap-ledger.py
+scripts/verify-hepta-intelligence-master-plan.py
