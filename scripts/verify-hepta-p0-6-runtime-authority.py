@@ -125,8 +125,9 @@ def verify_agentd_wiring() -> None:
         (
             "RuntimeProfileContract::for_authority(&authority)",
             "runtime_authority_context(&record, &identity, &authority)",
-            "record.release_state.generation",
-            "record.lifecycle.generation",
+            "let authority_epoch = record",
+            ".release_state\n        .generation",
+            "let owner_epoch = record.lifecycle.generation;",
             "runtime_fencing_token(record, identity, authority)",
             "RuntimeInstanceGraph::agent_composed(",
             "&runtime_authority,",
@@ -155,7 +156,7 @@ def verify_agentd_wiring() -> None:
         (
             "Arc<Mutex<RuntimeInstanceGraph>>",
             "monitor_runtime_with_instance(",
-            "instance.mark_ready(ProductComponentId::AppServer)",
+            ".mark_ready(ProductComponentId::AppServer)",
             "if !instance.ready()",
         ),
     )
@@ -209,6 +210,11 @@ def verify_status_and_ledger() -> None:
     ledger = load_json(LEDGER)
     if ledger.get("schema") != "hepta.architecture-gap-ledger.v2":
         fail("gap ledger schema drifted")
+    subject = ledger.get("subject")
+    if not isinstance(subject, dict) or subject.get("branch") != (
+        "codex/hepta-gap-closure-p0-6-20260829"
+    ):
+        fail("gap ledger is not bound to the P0.6 source branch")
     closed = ledger.get("closedSourceGaps")
     if not isinstance(closed, dict):
         fail("closedSourceGaps is missing")
