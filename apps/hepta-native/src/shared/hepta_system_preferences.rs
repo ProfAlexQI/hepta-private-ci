@@ -283,8 +283,7 @@ mod ios {
     }
 
     pub(super) fn probe() -> HeptaSystemPreferenceSnapshot {
-        let reduce_transparency =
-            unsafe { UIAccessibilityIsReduceTransparencyEnabled() != 0 };
+        let reduce_transparency = unsafe { UIAccessibilityIsReduceTransparencyEnabled() != 0 };
         let reduced_motion = unsafe { UIAccessibilityIsReduceMotionEnabled() != 0 };
         let high_contrast = unsafe { UIAccessibilityDarkerSystemColorsEnabled() != 0 };
 

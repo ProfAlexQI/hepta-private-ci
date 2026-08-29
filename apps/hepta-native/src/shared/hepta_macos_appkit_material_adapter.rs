@@ -38,9 +38,7 @@ pub struct HeptaMacosAppKitHostIdentity {
 
 impl HeptaMacosAppKitHostIdentity {
     pub const fn is_valid(self) -> bool {
-        self.chrome_view != 0
-            && self.transient_view != 0
-            && self.chrome_view != self.transient_view
+        self.chrome_view != 0 && self.transient_view != 0 && self.chrome_view != self.transient_view
     }
 }
 
@@ -80,10 +78,7 @@ pub trait HeptaMacosAppKitApi {
         material: HeptaMacosAppKitMaterial,
         active: bool,
     ) -> Result<(), i32>;
-    fn observe_material(
-        &mut self,
-        view: isize,
-    ) -> Result<HeptaMacosAppKitMaterial, i32>;
+    fn observe_material(&mut self, view: isize) -> Result<HeptaMacosAppKitMaterial, i32>;
 }
 
 pub struct HeptaMacosAppKitAdapter<A> {
@@ -105,9 +100,7 @@ impl<A> HeptaMacosAppKitAdapter<A> {
         self.bound
     }
 
-    pub fn scoped_receipt(
-        &mut self,
-    ) -> Result<HeptaMacosAppKitScopedReceipt, HeptaMacosAppKitError>
+    pub fn scoped_receipt(&mut self) -> Result<HeptaMacosAppKitScopedReceipt, HeptaMacosAppKitError>
     where
         A: HeptaMacosAppKitApi,
     {
@@ -237,10 +230,10 @@ impl<A: HeptaMacosAppKitApi> HeptaSystemMaterialAdapter for HeptaMacosAppKitAdap
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::hepta_platform_material::{
         HeptaPlatformMaterialCapabilities, platform_material_profile_with_capabilities,
     };
+    use super::*;
 
     #[derive(Default)]
     struct FakeApi {
@@ -251,20 +244,39 @@ mod tests {
     }
 
     impl Default for HeptaMacosAppKitMaterial {
-        fn default() -> Self { Self::Solid }
+        fn default() -> Self {
+            Self::Solid
+        }
     }
 
     impl HeptaMacosAppKitApi for FakeApi {
         fn preferences(&mut self) -> Result<HeptaMacosAccessibilitySnapshot, i32> {
             self.preferences.ok_or(-1)
         }
-        fn apply_material(&mut self, view: isize, material: HeptaMacosAppKitMaterial, _active: bool) -> Result<(), i32> {
-            if material == HeptaMacosAppKitMaterial::Popover && self.reject_popover { return Err(-2); }
-            if view == 11 { self.chrome = material; } else if view == 12 { self.transient = material; } else { return Err(-3); }
+        fn apply_material(
+            &mut self,
+            view: isize,
+            material: HeptaMacosAppKitMaterial,
+            _active: bool,
+        ) -> Result<(), i32> {
+            if material == HeptaMacosAppKitMaterial::Popover && self.reject_popover {
+                return Err(-2);
+            }
+            if view == 11 {
+                self.chrome = material;
+            } else if view == 12 {
+                self.transient = material;
+            } else {
+                return Err(-3);
+            }
             Ok(())
         }
         fn observe_material(&mut self, view: isize) -> Result<HeptaMacosAppKitMaterial, i32> {
-            match view { 11 => Ok(self.chrome), 12 => Ok(self.transient), _ => Err(-4) }
+            match view {
+                11 => Ok(self.chrome),
+                12 => Ok(self.transient),
+                _ => Err(-4),
+            }
         }
     }
 
@@ -277,14 +289,26 @@ mod tests {
     }
 
     fn allowed() -> HeptaMacosAccessibilitySnapshot {
-        HeptaMacosAccessibilitySnapshot { reduce_transparency: false, increase_contrast: false, reduce_motion: false, window_active: true, verified: true }
+        HeptaMacosAccessibilitySnapshot {
+            reduce_transparency: false,
+            increase_contrast: false,
+            reduce_motion: false,
+            window_active: true,
+            verified: true,
+        }
     }
 
     #[test]
     fn macos_binds_exact_roles_transactionally() {
         let mut adapter = HeptaMacosAppKitAdapter::new(
-            HeptaMacosAppKitHostIdentity { chrome_view: 11, transient_view: 12 },
-            FakeApi { preferences: Some(allowed()), ..FakeApi::default() },
+            HeptaMacosAppKitHostIdentity {
+                chrome_view: 11,
+                transient_view: 12,
+            },
+            FakeApi {
+                preferences: Some(allowed()),
+                ..FakeApi::default()
+            },
         );
         let receipt = adapter.bind(profile()).unwrap();
         assert!(receipt.system_material_bound);
@@ -296,13 +320,32 @@ mod tests {
     #[test]
     fn preference_or_partial_failure_rolls_back() {
         let mut adapter = HeptaMacosAppKitAdapter::new(
-            HeptaMacosAppKitHostIdentity { chrome_view: 11, transient_view: 12 },
-            FakeApi { preferences: Some(HeptaMacosAccessibilitySnapshot { reduce_transparency: true, ..allowed() }), ..FakeApi::default() },
+            HeptaMacosAppKitHostIdentity {
+                chrome_view: 11,
+                transient_view: 12,
+            },
+            FakeApi {
+                preferences: Some(HeptaMacosAccessibilitySnapshot {
+                    reduce_transparency: true,
+                    ..allowed()
+                }),
+                ..FakeApi::default()
+            },
         );
-        assert_eq!(adapter.bind(profile()), Err(HeptaSystemMaterialError::UserTransparencyDisabled));
+        assert_eq!(
+            adapter.bind(profile()),
+            Err(HeptaSystemMaterialError::UserTransparencyDisabled)
+        );
         let mut adapter = HeptaMacosAppKitAdapter::new(
-            HeptaMacosAppKitHostIdentity { chrome_view: 11, transient_view: 12 },
-            FakeApi { preferences: Some(allowed()), reject_popover: true, ..FakeApi::default() },
+            HeptaMacosAppKitHostIdentity {
+                chrome_view: 11,
+                transient_view: 12,
+            },
+            FakeApi {
+                preferences: Some(allowed()),
+                reject_popover: true,
+                ..FakeApi::default()
+            },
         );
         assert!(adapter.bind(profile()).is_err());
         assert!(!adapter.is_bound());

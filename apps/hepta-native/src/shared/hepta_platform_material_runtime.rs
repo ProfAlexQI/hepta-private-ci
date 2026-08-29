@@ -8,10 +8,8 @@ use super::hepta_platform_material::{
     HeptaMaterialRenderer, HeptaPlatform, HeptaPlatformMaterialCapabilities,
     HeptaPlatformMaterialProfile, platform_material_profile_with_capabilities,
 };
-use super::hepta_system_preferences::{
-    HeptaSystemPreferenceSnapshot, current_system_preferences,
-};
 pub use super::hepta_system_preferences::HeptaMaterialRuntimePreferences;
+use super::hepta_system_preferences::{HeptaSystemPreferenceSnapshot, current_system_preferences};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HeptaSystemMaterialBinding {
@@ -176,7 +174,11 @@ pub fn resolve_material_runtime_from_snapshot(
 pub fn resolve_current_material_runtime(
     binding: HeptaSystemMaterialBinding,
 ) -> HeptaCurrentMaterialRuntime {
-    resolve_material_runtime_from_snapshot(current_platform(), current_system_preferences(), binding)
+    resolve_material_runtime_from_snapshot(
+        current_platform(),
+        current_system_preferences(),
+        binding,
+    )
 }
 
 pub fn bind_material_runtime<A: HeptaSystemMaterialAdapter>(
@@ -246,7 +248,10 @@ mod tests {
             transparent_preferences(),
             HeptaSystemMaterialBinding::Unbound,
         );
-        assert_eq!(intent.status, HeptaMaterialBindingStatus::SemanticIntentOnly);
+        assert_eq!(
+            intent.status,
+            HeptaMaterialBindingStatus::SemanticIntentOnly
+        );
         assert_eq!(intent.profile.content, HeptaMaterialRenderer::Solid);
         assert!(intent.profile.max_visible_backdrop_layers <= 2);
 
