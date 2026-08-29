@@ -1,0 +1,71 @@
+{
+  "schema": "hepta.inference.inf1_source_receipt.v1",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
+  "source_candidate_commit": "0ba5b438e72ddb90b0468f3dbfdffa0c0801e9d5",
+  "source_candidate_tree": "913f3ff8b532106144855bd243e02294f32b2a78",
+  "qualification": {
+    "workflow_run_id": 33235675152,
+    "job_id": 99056119977,
+    "runner": "ubuntu-24.04-arm",
+    "rust_toolchain": "1.95.0",
+    "payload_materialization": "PASS",
+    "workspace_integration": "PASS",
+    "cargo_lock_generation": "PASS",
+    "cargo_fmt": "PASS",
+    "cargo_check_locked": "PASS",
+    "core_tests": {
+      "passed": 7,
+      "failed": 0
+    },
+    "daemon_tests": {
+      "passed": 4,
+      "failed": 0,
+      "single_threaded": true
+    },
+    "strict_clippy": {
+      "all_targets": true,
+      "no_deps": true,
+      "deny_warnings": true,
+      "status": "PASS"
+    },
+    "source_and_negative_authority_gate": "PASS"
+  },
+  "implemented": {
+    "backend_neutral_controller": true,
+    "bounded_canonical_cbor_protocol": true,
+    "same_user_uds_peer_gate": true,
+    "single_instance_socket": true,
+    "connection_local_peer_and_protocol_failure": true,
+    "infrastructure_failure_escalation": true,
+    "request_generation_fence": true,
+    "backend_generation_fence": true,
+    "cancel_generation_fence": true,
+    "per_tenant_queue_bound": true,
+    "terminal_receipt_store": true,
+    "forced_worker_termination_receipt": true,
+    "controlled_restart_generation_increment": true,
+    "truncated_connection_recovery": true
+  },
+  "claim": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+  "source_qualified": true,
+  "runtime_activated": false,
+  "product_wired": false,
+  "production_qualified": false,
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
