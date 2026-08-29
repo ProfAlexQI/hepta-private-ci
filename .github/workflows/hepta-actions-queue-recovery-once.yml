@@ -1,4 +1,4 @@
-name: hepta-actions-queue-recovery-once
+name: hepta-ui-v4-gap-remediation-once
 
 on:
   push:
@@ -6,96 +6,280 @@ on:
       - "ops/hepta-actions-queue-recovery-20260829"
 
 permissions:
-  contents: read
+  contents: write
   actions: write
+  pull-requests: write
 
 concurrency:
-  group: hepta-actions-queue-recovery-once
+  group: hepta-ui-v4-gap-remediation-once
   cancel-in-progress: true
 
 jobs:
-  prune-stale-ui-queue:
-    name: Cancel superseded queued UI runs
+  remediate:
+    name: Patch exact-head UI qualification and cancel stale runs
     runs-on: macos-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
-      PROTECTED_BRANCH: codex/ui-v4-executable-final-gap-closure-v3-20260829
-      PROTECTED_EVENT: pull_request
-      PROTECTED_WORKFLOWS: hepta-ui-v4-final-gap-closure-v4,hepta-ui-v4-rust-served-cross-browser-final
+      TARGET_BRANCH: codex/ui-v4-executable-final-gap-closure-v3-20260829
+      PROTECTED_WORKFLOWS: hepta-ui-v4-final-gap-closure-v4,hepta-ui-v4-rust-served-cross-browser-final,hepta-ui-v4-windows-dwm-ack-producer,hepta-ui-v4-windows-material-profile-exact
     steps:
-      - name: Build and execute bounded cancellation plan
+      - name: Checkout exact target branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Patch and validate repository-controlled blockers
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p artifacts
-          protected_sha="$(curl --fail --silent --show-error \
+          mkdir -p artifacts/remediation
+          before_sha="$(git rev-parse HEAD)"
+          before_tree="$(git rev-parse 'HEAD^{tree}')"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          branch = "codex/ui-v4-executable-final-gap-closure-v3-20260829"
+
+          def remove_duplicate_push(path: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              pattern = re.compile(
+                  r'^on:\n  push:\n    branches:\n      - ["\']?'
+                  + re.escape(branch)
+                  + r'["\']?\n  pull_request:\n',
+                  re.MULTILINE,
+              )
+              updated, count = pattern.subn("on:\n  pull_request:\n", text, count=1)
+              if count == 0:
+                  trigger_prefix = text.split("permissions:", 1)[0]
+                  if "  push:\n" in trigger_prefix:
+                      raise SystemExit(f"unrecognized push trigger in {path}")
+              file.write_text(updated)
+
+          remove_duplicate_push(".github/workflows/hepta-ui-v4-final-gap-closure-v4.yml")
+          remove_duplicate_push(".github/workflows/hepta-ui-v4-rust-served-cross-browser-final.yml")
+
+          dwm_path = Path(".github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml")
+          dwm = dwm_path.read_text()
+          if "env:\n  HEPTA_CANDIDATE_SHA:" not in dwm:
+              dwm = dwm.replace(
+                  "${{ github.sha }}",
+                  "${{ env.HEPTA_CANDIDATE_SHA }}",
+              )
+              marker = "permissions:\n  contents: read\n"
+              if marker not in dwm:
+                  raise SystemExit("DWM permissions marker missing")
+              dwm = dwm.replace(
+                  marker,
+                  marker
+                  + "\nenv:\n"
+                  + "  HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}\n",
+                  1,
+              )
+          dwm = dwm.replace(
+              'ENV.fetch("GITHUB_SHA")',
+              'ENV.fetch("HEPTA_CANDIDATE_SHA")',
+          )
+          lines = dwm.splitlines(keepends=True)
+          exact_checkout = "          ref: ${{ env.HEPTA_CANDIDATE_SHA }}\n"
+          output = []
+          inserted = 0
+          for index, line in enumerate(lines):
+              output.append(line)
+              if line == "        uses: actions/checkout@v4\n":
+                  cursor = index + 1
+                  while cursor < len(lines) and not lines[cursor].strip():
+                      cursor += 1
+                  if cursor >= len(lines) or lines[cursor].strip() != "with:":
+                      output.extend([
+                          "        with:\n",
+                          exact_checkout,
+                          "          fetch-depth: 1\n",
+                          "          persist-credentials: false\n",
+                      ])
+                      inserted += 1
+          dwm = "".join(output)
+          if exact_checkout.strip() not in dwm:
+              raise SystemExit("DWM exact checkout was not materialized")
+          if "ENV.fetch(\"GITHUB_SHA\")" in dwm:
+              raise SystemExit("DWM receipt still binds merge SHA")
+          dwm_path.write_text(dwm)
+
+          gate_path = Path("scripts/hepta-ui-v4-window-ack-matrix-gate")
+          gate = gate_path.read_text()
+          if "canonical_workflow:" not in gate:
+              old_entry = '  workflow: root.join(".github/workflows/hepta-ui-v4-window-ack-matrix.yml")\n'
+              new_entry = (
+                  '  canonical_workflow: root.join(".github/workflows/hepta-ui-v4-final-gap-closure-v4.yml"),\n'
+                  '  dwm_workflow: root.join(".github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml"),\n'
+                  + old_entry
+              )
+              if old_entry not in gate:
+                  raise SystemExit("window-ack workflow registry marker missing")
+              gate = gate.replace(old_entry, new_entry, 1)
+          if "canonical_workflow = files.fetch" not in gate:
+              old_read = "workflow = files.fetch(:workflow).read\n"
+              new_read = (
+                  "canonical_workflow = files.fetch(:canonical_workflow).read\n"
+                  "dwm_workflow = files.fetch(:dwm_workflow).read\n"
+                  + old_read
+              )
+              if old_read not in gate:
+                  raise SystemExit("window-ack workflow read marker missing")
+              gate = gate.replace(old_read, new_read, 1)
+
+          old_check = '''checks["workflow.read_only_source_compile_and_manual_matrix"] =
+            workflow.include?("ruby scripts/hepta-ui-v4-window-ack-matrix-gate") &&
+            %w[ubuntu-latest windows-latest macos-latest].all? { |os| workflow.include?(os) } &&
+            workflow.include?("run_component_matrix") && workflow.include?("xvfb-run") &&
+            workflow.include?("contents: read") &&
+            !workflow.match?(/^\\s*(?:deploy|publish|release)\\s*:/i)
+          '''
+          new_check = '''legacy_workflow =
+            workflow.include?("ruby scripts/hepta-ui-v4-window-ack-matrix-gate") &&
+            %w[ubuntu-latest windows-latest macos-latest].all? { |os| workflow.include?(os) } &&
+            workflow.include?("run_component_matrix") && workflow.include?("xvfb-run") &&
+            workflow.include?("contents: read") &&
+            !workflow.match?(/^\\s*(?:deploy|publish|release)\\s*:/i)
+          archived_workflow =
+            workflow.include?("name: archived-ui-v4-contract") &&
+            workflow.include?("workflow_dispatch:") &&
+            workflow.include?("contents: read") &&
+            !workflow.match?(/^\\s*(?:push|pull_request)\\s*:/) &&
+            !workflow.match?(/^\\s*(?:deploy|publish|release)\\s*:/i)
+          canonical_replacement =
+            archived_workflow &&
+            canonical_workflow.include?("name: hepta-ui-v4-final-gap-closure-v4") &&
+            canonical_workflow.include?("HEPTA_CANDIDATE_SHA") &&
+            canonical_workflow.include?("scripts/hepta-ui-v4-executable-final-gap-closure-v3-gate") &&
+            canonical_workflow.include?("contents: read") &&
+            dwm_workflow.include?("name: hepta-ui-v4-windows-dwm-ack-producer") &&
+            dwm_workflow.include?("ruby scripts/hepta-ui-v4-window-ack-matrix-gate") &&
+            dwm_workflow.include?("HEPTA_CANDIDATE_SHA") &&
+            dwm_workflow.include?('ref: ${{ env.HEPTA_CANDIDATE_SHA }}') &&
+            %w[ubuntu-latest windows-latest macos-latest].all? { |os| dwm_workflow.include?(os) } &&
+            dwm_workflow.include?("contents: read") &&
+            !dwm_workflow.match?(/^\\s*(?:deploy|publish|release)\\s*:/i)
+          checks["workflow.read_only_source_compile_and_manual_matrix"] =
+            legacy_workflow || canonical_replacement
+          checks["workflow.archived_legacy_is_manual_only"] =
+            legacy_workflow || archived_workflow
+          checks["workflow.canonical_replacement_exact_head"] =
+            legacy_workflow || canonical_replacement
+          '''
+          if old_check in gate:
+              gate = gate.replace(old_check, new_check, 1)
+          elif "canonical_replacement =" not in gate:
+              raise SystemExit("window-ack workflow check marker missing")
+          gate_path.write_text(gate)
+          PY
+
+          ruby -c scripts/hepta-ui-v4-window-ack-matrix-gate
+          ruby scripts/hepta-ui-v4-window-ack-matrix-gate \
+            | tee artifacts/remediation/window-ack-source-gate.json
+          ruby -rjson -e '
+            receipt=JSON.parse(File.read("artifacts/remediation/window-ack-source-gate.json"))
+            abort "window acknowledgement source gate did not close" unless
+              receipt.fetch("status")=="PASS_WINDOW_ACK_COMPONENT_MATRIX_SOURCE_ONLY" &&
+              receipt.fetch("failures").empty?
+          '
+          ruby -e 'require "yaml"; ARGV.each { |path| YAML.parse_file(path) }' \
+            .github/workflows/hepta-ui-v4-final-gap-closure-v4.yml \
+            .github/workflows/hepta-ui-v4-rust-served-cross-browser-final.yml \
+            .github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml
+          git diff --check
+          git config user.name "Hepta qualification bot"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git add \
+            .github/workflows/hepta-ui-v4-final-gap-closure-v4.yml \
+            .github/workflows/hepta-ui-v4-rust-served-cross-browser-final.yml \
+            .github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml \
+            scripts/hepta-ui-v4-window-ack-matrix-gate
+          if git diff --cached --quiet; then
+            echo "No repository-controlled remediation changes remained"
+          else
+            git commit -m "ci(ui): close exact-head DWM and duplicate-trigger gaps"
+            git push origin "HEAD:$TARGET_BRANCH"
+          fi
+          latest_sha="$(git rev-parse HEAD)"
+          latest_tree="$(git rev-parse 'HEAD^{tree}')"
+          printf '%s\n' "$before_sha" > artifacts/remediation/before-commit.txt
+          printf '%s\n' "$before_tree" > artifacts/remediation/before-tree.txt
+          printf '%s\n' "$latest_sha" > artifacts/remediation/after-commit.txt
+          printf '%s\n' "$latest_tree" > artifacts/remediation/after-tree.txt
+          echo "LATEST_TARGET_SHA=$latest_sha" >> "$GITHUB_ENV"
+
+      - name: Cancel superseded target-branch runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          sleep 20
+          curl --fail --silent --show-error --get \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/branches/$PROTECTED_BRANCH" \
-            | ruby -rjson -e 'puts JSON.parse(STDIN.read).fetch("commit").fetch("sha")')"
-          [[ "$protected_sha" =~ ^[0-9a-f]{40}$ ]]
-          export PROTECTED_HEAD_SHA="$protected_sha"
-          curl --fail --silent --show-error \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?status=queued&per_page=100" \
-            > artifacts/queued.json
+            --data-urlencode "branch=$TARGET_BRANCH" \
+            --data-urlencode "per_page=100" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs" \
+            > artifacts/remediation/branch-runs.json
+          export LATEST_TARGET_SHA
           ruby -rjson -rdigest -e '
-            payload=JSON.parse(File.read("artifacts/queued.json"))
-            branch=ENV.fetch("PROTECTED_BRANCH")
-            sha=ENV.fetch("PROTECTED_HEAD_SHA")
-            event=ENV.fetch("PROTECTED_EVENT")
-            workflows=ENV.fetch("PROTECTED_WORKFLOWS").split(",")
+            payload=JSON.parse(File.read("artifacts/remediation/branch-runs.json"))
+            active=%w[queued in_progress pending waiting requested_action]
+            protected=ENV.fetch("PROTECTED_WORKFLOWS").split(",")
+            latest=ENV.fetch("LATEST_TARGET_SHA")
             candidates=payload.fetch("workflow_runs").select do |run|
-              ui=run["head_branch"].to_s.start_with?("codex/ui-v4-")
-              protected=run["head_branch"]==branch && run["head_sha"]==sha &&
-                run["event"]==event && workflows.include?(run["name"])
-              ui && !protected
+              active.include?(run["status"]) && !(
+                run["head_sha"]==latest &&
+                run["event"]=="pull_request" &&
+                protected.include?(run["name"])
+              )
             end
-            plan={
-              "schema"=>"hepta.actions.queue-recovery.once.v5",
-              "repository"=>ENV.fetch("GITHUB_REPOSITORY"),
-              "protectedBranch"=>branch,
-              "protectedHeadSha"=>sha,
-              "protectedEvent"=>event,
-              "protectedWorkflows"=>workflows,
-              "queuedObserved"=>payload.fetch("total_count"),
+            result={
+              "schema"=>"hepta.ui.v4.exact-head-queue-remediation.v1",
+              "targetBranch"=>ENV.fetch("TARGET_BRANCH"),
+              "targetHead"=>latest,
+              "protectedWorkflows"=>protected,
               "cancelRunIds"=>candidates.map{|run|run.fetch("id")}.sort,
               "cancelled"=>[],
               "failures"=>[]
             }
-            plan["planSha256"]=Digest::SHA256.hexdigest(JSON.generate(plan.reject{|key,_|%w[cancelled failures].include?(key)}))
-            File.write("artifacts/plan.json",JSON.pretty_generate(plan)+"\n")
-            File.write("artifacts/run-ids.txt",plan.fetch("cancelRunIds").join("\n")+(plan.fetch("cancelRunIds").empty? ? "" : "\n"))
+            result["planSha256"]=Digest::SHA256.hexdigest(JSON.generate(result.reject{|key,_|%w[cancelled failures].include?(key)}))
+            File.write("artifacts/remediation/queue-plan.json",JSON.pretty_generate(result)+"\n")
+            File.write("artifacts/remediation/run-ids.txt",result.fetch("cancelRunIds").join("\n")+(result.fetch("cancelRunIds").empty? ? "" : "\n"))
           '
           while IFS= read -r run_id; do
             [[ -n "$run_id" ]] || continue
             code="$(curl --silent --show-error \
-              --output "artifacts/cancel-$run_id.json" \
+              --output "artifacts/remediation/cancel-$run_id.json" \
               --write-out '%{http_code}' \
               -X POST \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/cancel")"
             if [[ "$code" == 202 || "$code" == 409 ]]; then
-              echo "$run_id" >> artifacts/cancelled.txt
+              echo "$run_id" >> artifacts/remediation/cancelled.txt
             else
-              printf '%s %s\n' "$run_id" "$code" >> artifacts/failures.txt
+              printf '%s %s\n' "$run_id" "$code" >> artifacts/remediation/failures.txt
             fi
-          done < artifacts/run-ids.txt
+          done < artifacts/remediation/run-ids.txt
           ruby -rjson -e '
-            plan=JSON.parse(File.read("artifacts/plan.json"))
-            plan["cancelled"]=File.exist?("artifacts/cancelled.txt") ? File.readlines("artifacts/cancelled.txt",chomp:true).reject(&:empty?).map(&:to_i) : []
-            plan["failures"]=File.exist?("artifacts/failures.txt") ? File.readlines("artifacts/failures.txt",chomp:true).reject(&:empty?) : []
-            File.write("artifacts/result.json",JSON.pretty_generate(plan)+"\n")
-            abort "queue recovery failures" unless plan.fetch("failures").empty?
+            path="artifacts/remediation/queue-plan.json"
+            result=JSON.parse(File.read(path))
+            result["cancelled"]=File.exist?("artifacts/remediation/cancelled.txt") ? File.readlines("artifacts/remediation/cancelled.txt",chomp:true).reject(&:empty?).map(&:to_i) : []
+            result["failures"]=File.exist?("artifacts/remediation/failures.txt") ? File.readlines("artifacts/remediation/failures.txt",chomp:true).reject(&:empty?) : []
+            File.write("artifacts/remediation/queue-result.json",JSON.pretty_generate(result)+"\n")
+            abort "stale target-run cancellation failed" unless result.fetch("failures").empty?
           '
-      - name: Upload queue recovery evidence
+
+      - name: Upload remediation evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-actions-queue-recovery-${{ github.run_id }}
-          path: artifacts
+          name: hepta-ui-v4-gap-remediation-${{ github.run_id }}
+          path: artifacts/remediation
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
