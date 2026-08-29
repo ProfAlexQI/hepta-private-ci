@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: hepta-intelligence-master-plan-${{ github.ref }}
@@ -101,3 +101,115 @@ jobs:
 
       - name: Assert read-only clean worktree
         run: git diff --exit-code
+
+  bazel-runner-closure-carrier:
+    name: Close Bazel hosted-runner checkout gaps
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'codex/hepta-intelligence-plan-v3-20260828'
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      SOURCE_SHA: 5bc538454a71612697e19b7948ae88a882427351
+      CARRIER_SHA: ${{ github.event.pull_request.head.sha }}
+      TARGET_BRANCH: codex/hepta-intelligence-plan-v3-20260828
+      MASTER_WORKFLOW: .github/workflows/hepta-intelligence-master-plan.yml
+      UNUSED_CARRIER: .github/workflows/hepta-q0-bazel-runner-closure-carrier.yml
+      BAZEL_WORKFLOW: .github/workflows/bazel.yml
+      Q0_WORKFLOW: .github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml
+    steps:
+      - name: Checkout exact registered carrier commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.CARRIER_SHA }}
+          fetch-depth: 2
+
+      - name: Verify exact carrier lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CARRIER_SHA"
+          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
+          test "$(git diff --name-only "$SOURCE_SHA"..HEAD)" = "$MASTER_WORKFLOW"
+
+      - name: Apply exact runner closure and retire carriers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          bazel_path = Path(os.environ["BAZEL_WORKFLOW"])
+          text = bazel_path.read_text(encoding="utf-8")
+          if text.count("macos-15-xlarge") != 4:
+              raise SystemExit("unexpected macos-15-xlarge matrix count")
+          text = text.replace("macos-15-xlarge", "macos-15")
+
+          checkout = "      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2\n"
+          preflight = (
+              "      - name: Enable Windows long paths before checkout\n"
+              "        if: runner.os == 'Windows'\n"
+              "        shell: pwsh\n"
+              "        run: git config --system core.longpaths true\n\n"
+          )
+          if text.count(checkout) != 5:
+              raise SystemExit("unexpected Bazel checkout-site count")
+          if "Enable Windows long paths before checkout" in text:
+              raise SystemExit("long-path preflight already exists")
+          bazel_path.write_text(text.replace(checkout, preflight + checkout), encoding="utf-8")
+
+          q0_path = Path(os.environ["Q0_WORKFLOW"])
+          q0 = q0_path.read_text(encoding="utf-8")
+          matches = re.findall(r"(?m)^  EXPECTED_PARENT: ([0-9a-f]{40})$", q0)
+          if matches != ["18c2af1563b863fc3cc4d4eede986a90884441d3"]:
+              raise SystemExit(f"unexpected Q0 parent binding: {matches}")
+          q0_path.write_text(
+              re.sub(
+                  r"(?m)^  EXPECTED_PARENT: [0-9a-f]{40}$",
+                  f"  EXPECTED_PARENT: {os.environ['CARRIER_SHA']}",
+                  q0,
+                  count=1,
+              ),
+              encoding="utf-8",
+          )
+          PY
+
+          git checkout "$SOURCE_SHA" -- "$MASTER_WORKFLOW"
+          rm "$UNUSED_CARRIER"
+
+          test "$(grep -c 'macos-15-xlarge' "$BAZEL_WORKFLOW" || true)" = "0"
+          test "$(grep -c -- '- os: macos-15$' "$BAZEL_WORKFLOW")" = "4"
+          test "$(grep -c 'Enable Windows long paths before checkout' "$BAZEL_WORKFLOW")" = "5"
+          test "$(grep -c 'git config --system core.longpaths true' "$BAZEL_WORKFLOW")" = "5"
+          test "$(grep -c "EXPECTED_PARENT: $CARRIER_SHA" "$Q0_WORKFLOW")" = "1"
+          ruby -e 'require "yaml"; YAML.parse_file(ARGV.fetch(0))' "$BAZEL_WORKFLOW"
+          ruby -e 'require "yaml"; YAML.parse_file(ARGV.fetch(0))' "$Q0_WORKFLOW"
+          ruby -e 'require "yaml"; YAML.parse_file(ARGV.fetch(0))' "$MASTER_WORKFLOW"
+          git diff --check
+
+          python3 - <<'PY'
+          import subprocess
+          expected = [
+              ".github/workflows/bazel.yml",
+              ".github/workflows/hepta-intelligence-master-plan.yml",
+              ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml",
+              ".github/workflows/hepta-q0-bazel-runner-closure-carrier.yml",
+          ]
+          actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          if actual != expected:
+              raise SystemExit({"expected": expected, "actual": actual})
+          PY
+
+      - name: Commit and fast-forward the canonical branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Hepta Qualification Bot"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git add -A -- "$BAZEL_WORKFLOW" "$Q0_WORKFLOW" "$MASTER_WORKFLOW" "$UNUSED_CARRIER"
+          git commit -m "ci: close Bazel hosted-runner checkout gaps"
+          candidate="$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD^)" = "$CARRIER_SHA"
+          git fetch --no-tags origin "+refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          test "$(git rev-parse "refs/remotes/origin/$TARGET_BRANCH")" = "$CARRIER_SHA"
+          git push origin "$candidate:refs/heads/$TARGET_BRANCH"
