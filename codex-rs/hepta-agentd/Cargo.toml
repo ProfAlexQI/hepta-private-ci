@@ -64,6 +64,7 @@ app_test_support = { workspace = true }
 codex-hepta-supervisor = { workspace = true }
 codex-state = { workspace = true }
 core_test_support = { workspace = true }
+ed25519-dalek = { workspace = true }
 pretty_assertions = { workspace = true }
 sqlx = { workspace = true }
 tempfile = { workspace = true }
