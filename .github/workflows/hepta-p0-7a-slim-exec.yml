@@ -1,0 +1,280 @@
+name: Hepta P0.7a exact slim qualification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - qualification/hepta-p0-7a-slim-exec-f69e5a4-20260830
+    paths:
+      - .github/workflows/hepta-p0-7a-slim-exec.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-p0-7a-slim-exec-f69e5a4
+  cancel-in-progress: false
+
+env:
+  P07A_PR: "83"
+  P07A_BASE_BRANCH: codex/hepta-architecture-v4-p0-7a-source-closure-arm-20260830
+  P07A_BASE_SHA: cbc0fed26d5b1a38f131ddfb5b7864fe6eeb4992
+  P07A_HEAD_BRANCH: codex/hepta-architecture-v4-p0-7a-executable-closure-20260830
+  P07A_SOURCE_SHA: f69e5a4a5068a2657f1470da43c26b1410d53c6f
+  P07A_SOURCE_TREE: 532307507d2b02a479d3c76042d42cc948b499df
+  P07A_MERGE_SHA: 5824cbd2cc471b26a5d54238f74d34142e3f602e
+  P07A_MERGE_TREE: 532307507d2b02a479d3c76042d42cc948b499df
+
+jobs:
+  qualify:
+    name: P0.7a ${{ matrix.identity }} exact executable qualification
+    runs-on: ubuntu-slim
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - identity: source-head
+            commit: f69e5a4a5068a2657f1470da43c26b1410d53c6f
+            tree: 532307507d2b02a479d3c76042d42cc948b499df
+          - identity: merge-candidate
+            commit: 5824cbd2cc471b26a5d54238f74d34142e3f602e
+            tree: 532307507d2b02a479d3c76042d42cc948b499df
+    env:
+      QUALIFICATION_IDENTITY: ${{ matrix.identity }}
+      EXPECTED_COMMIT: ${{ matrix.commit }}
+      EXPECTED_TREE: ${{ matrix.tree }}
+      CARGO_INCREMENTAL: "0"
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      CARGO_TERM_COLOR: always
+      RUST_MIN_STACK: "8388608"
+      NEXTEST_PROFILE: local
+
+    steps:
+      - name: Checkout exact immutable qualification subject
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ matrix.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify current PR refs and exact Git identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$EXPECTED_TREE"
+          test "$(git ls-remote origin "refs/heads/$P07A_BASE_BRANCH" | awk '{print $1}')" = "$P07A_BASE_SHA"
+          test "$(git ls-remote origin "refs/heads/$P07A_HEAD_BRANCH" | awk '{print $1}')" = "$P07A_SOURCE_SHA"
+          test "$(git ls-remote origin "refs/pull/$P07A_PR/merge" | awk '{print $1}')" = "$P07A_MERGE_SHA"
+          git merge-base --is-ancestor "$P07A_BASE_SHA" "$P07A_SOURCE_SHA"
+          if [[ "$QUALIFICATION_IDENTITY" == merge-candidate ]]; then
+            test "$(git show -s --format=%P HEAD)" = "$P07A_BASE_SHA $P07A_SOURCE_SHA"
+          else
+            test "$EXPECTED_COMMIT" = "$P07A_SOURCE_SHA"
+          fi
+          git diff --exit-code
+          git diff --cached --exit-code
+          {
+            echo "identity=$QUALIFICATION_IDENTITY"
+            echo "commit=$EXPECTED_COMMIT"
+            echo "tree=$EXPECTED_TREE"
+            echo "base=$P07A_BASE_SHA"
+            echo "source=$P07A_SOURCE_SHA"
+            echo "merge=$P07A_MERGE_SHA"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install native build prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_privileged() {
+            if [[ "$(id -u)" == 0 ]]; then
+              "$@"
+            elif command -v sudo >/dev/null 2>&1; then
+              sudo "$@"
+            else
+              echo "ubuntu-slim runner is neither root nor sudo-capable" >&2
+              exit 1
+            fi
+          }
+          run_privileged apt-get update
+          run_privileged env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            clang \
+            cmake \
+            curl \
+            git \
+            libcap-dev \
+            libseccomp-dev \
+            libsqlite3-dev \
+            libssl-dev \
+            openjdk-21-jdk-headless \
+            perl \
+            pkg-config \
+            python3 \
+            zlib1g-dev
+          df -h
+          free -h || true
+
+      - name: Configure isolated build paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_root="$RUNNER_TEMP/hepta-p07a-$QUALIFICATION_IDENTITY"
+          mkdir -p "$build_root/cargo-target" "$build_root/tmp" "$build_root/bazel-repository-cache"
+          {
+            echo "CODEX_REPO_ROOT=$GITHUB_WORKSPACE"
+            echo "CARGO_TARGET_DIR=$build_root/cargo-target"
+            echo "TEMP=$build_root/tmp"
+            echo "TMP=$build_root/tmp"
+            echo "BAZEL_REPOSITORY_CACHE=$build_root/bazel-repository-cache"
+          } >> "$GITHUB_ENV"
+
+      - name: Install Rust 1.95 qualification toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Install DotSlash
+        uses: facebook/install-dotslash@1e4e7b3e07eaca387acb98f1d4720e0bee8dbb6a # v2
+
+      - name: Install just
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: just@1.51.0
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: cargo-nextest@0.9.143
+
+      - name: Verify qualification tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --version --verbose
+          cargo --version
+          cargo nextest --version
+          just --version
+          dotslash --version
+          python3 --version
+          java -version
+
+      - name: Verify committed locks and scoped Rust format
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --manifest-path codex-rs/Cargo.toml --locked --no-deps --format-version 1 >/dev/null
+          python3 scripts/verify-hepta-p0-7a-format.py --check
+          just bazel-lock-check
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Regenerate lock graphs and require zero drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --manifest-path codex-rs/Cargo.toml --format-version 1 >/dev/null
+          just bazel-lock-update
+          git diff --exit-code -- codex-rs/Cargo.lock MODULE.bazel.lock
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Run P0.7a package tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          just test -p codex-hepta-contracts
+          just test -p codex-hepta-fleet
+          just test -p codex-hepta-supervisor
+          just test -p codex-hepta-agentd
+
+      - name: Check all P0.7a targets
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd
+
+      - name: Run strict P0.7a Clippy
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd \
+            -- -D warnings
+
+      - name: Verify V4 source truth and clean output
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-architecture-plan-v4.py
+          git diff --check
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Write immutable success receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          receipt="$RUNNER_TEMP/hepta-p0-7a-$QUALIFICATION_IDENTITY-receipt.json"
+          python3 - "$receipt" <<'PY'
+          import json
+          import os
+          import pathlib
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          value = {
+              "schema": "hepta.p0-7a-executable-receipt.v1",
+              "qualificationIdentity": os.environ["QUALIFICATION_IDENTITY"],
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "pullRequest": int(os.environ["P07A_PR"]),
+              "commit": os.environ["EXPECTED_COMMIT"],
+              "tree": os.environ["EXPECTED_TREE"],
+              "baseCommit": os.environ["P07A_BASE_SHA"],
+              "sourceCommit": os.environ["P07A_SOURCE_SHA"],
+              "mergeCommit": os.environ["P07A_MERGE_SHA"],
+              "workflowRunId": int(os.environ["GITHUB_RUN_ID"]),
+              "workflowRunAttempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "job": os.environ["GITHUB_JOB"],
+              "runnerName": os.environ.get("RUNNER_NAME"),
+              "runnerOs": os.environ.get("RUNNER_OS"),
+              "runnerArch": os.environ.get("RUNNER_ARCH"),
+              "rustToolchain": "1.95.0",
+              "lockedMetadata": "passed",
+              "scopedFormat": "passed",
+              "lockRegeneration": "passed_no_diff",
+              "tests": "passed",
+              "cargoCheck": "passed",
+              "strictClippy": "passed",
+              "v4SourceVerifier": "passed",
+              "cleanWorktree": "passed",
+              "sourceMutation": False,
+              "authorityDelta": "none",
+              "operatorAcceptance": False,
+              "promotion": False,
+              "release": False,
+          }
+          path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          print(path.read_text(encoding="utf-8"))
+          PY
+
+      - name: Upload immutable qualification receipt
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-p0-7a-${{ matrix.identity }}-${{ matrix.commit }}
+          path: ${{ runner.temp }}/hepta-p0-7a-${{ matrix.identity }}-receipt.json
+          if-no-files-found: error
+          retention-days: 7
