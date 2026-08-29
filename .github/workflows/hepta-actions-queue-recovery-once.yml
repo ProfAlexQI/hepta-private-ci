@@ -21,7 +21,8 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       PROTECTED_BRANCH: codex/ui-v4-executable-final-gap-closure-v3-20260829
-      GRACE_SECONDS: "180"
+      PROTECTED_WORKFLOWS: hepta-ui-v4-final-gap-closure-v4,hepta-ui-v4-rust-served-cross-browser-final
+      GRACE_SECONDS: "0"
     steps:
       - name: Build and execute bounded cancellation plan
         shell: bash
@@ -46,18 +47,21 @@ jobs:
             cutoff = now - Integer(ENV.fetch("GRACE_SECONDS"))
             protected_sha = ENV.fetch("PROTECTED_HEAD_SHA")
             protected_branch = ENV.fetch("PROTECTED_BRANCH")
+            protected_workflows = ENV.fetch("PROTECTED_WORKFLOWS").split(",")
             candidates = payload.fetch("workflow_runs").select do |run|
               branch = run["head_branch"].to_s
               created = Time.parse(run.fetch("created_at")).to_i
-              branch.start_with?("codex/ui-v4-") &&
-                !(branch == protected_branch && run["head_sha"] == protected_sha) &&
-                created <= cutoff
+              exact_protected = branch == protected_branch &&
+                run["head_sha"] == protected_sha &&
+                protected_workflows.include?(run["name"])
+              branch.start_with?("codex/ui-v4-") && !exact_protected && created <= cutoff
             end
             plan = {
-              "schema" => "hepta.actions.queue-recovery.once.v2",
+              "schema" => "hepta.actions.queue-recovery.once.v3",
               "repository" => ENV.fetch("GITHUB_REPOSITORY"),
               "protectedBranch" => protected_branch,
               "protectedHeadSha" => protected_sha,
+              "protectedWorkflows" => protected_workflows,
               "cutoffUnix" => cutoff,
               "queuedObserved" => payload.fetch("total_count"),
               "cancelRunIds" => candidates.map { |run| run.fetch("id") }.sort,
