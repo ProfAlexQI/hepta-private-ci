@@ -1,1270 +1,1047 @@
-# Hepta Intelligence 统一主开发计划
+# Hepta Intelligence Master Development Plan
 
-## Governed Continual Learning, Adaptive Signals, Calibrated Intuition and Bio-inspired Mechanisms
-
-**文档版本**：4.0.0  
-**日期**：2026-08-28（Asia/Toronto）  
-**状态**：`CANONICAL_CURRENT / PLAN_ONLY / FAIL_CLOSED`  
-**仓库**：`ProfAlexQI/hepta-private-ci`  
-**稳定路径**：`plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md`  
-**机器入口**：`plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json`
-
-> 本文件是 Hepta Intelligence 唯一有效的人类可读开发计划。任何带日期或版本号的旧计划、tranche 文档、PR body、receipt、Dropbox snapshot、qualification index、实现说明或聊天结论均只保留为历史证据，不得作为当前实施顺序、能力状态或权限依据。所有 session 必须先读取机器入口，再读取本文件；二者不一致时立即 fail closed。
-
----
-
-# 0. 文档权威与 Session 协议
-
-## 0.1 唯一权威规则
-
-当前开发事实只由以下两层表达：
-
-1. `HEPTA_INTELLIGENCE_CURRENT_PLAN.json`：机器可读的当前版本、精确基线、阶段、claim、阻断与权限；
-2. `HEPTA_INTELLIGENCE_MASTER_PLAN.md`：唯一的人类可读架构、路线图、合同、测试与 DoD。
-
-历史文件可以被引用以追溯来源，但不得覆盖本文件。以后禁止再创建新的 `HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V*.md`、日期版总计划或平行 roadmap。计划变更必须直接更新本稳定路径，并在同一 PR 中：
-
-```text
-更新 master plan
-→ 更新 CURRENT_PLAN.json
-→ 运行唯一 verifier
-→ 生成 append-only plan receipt
-→ 更新 PR body
-```
-
-## 0.2 每个 Session 的启动顺序
-
-每个开发、审计、评审或研究 session 必须：
-
-1. 读取 `HEPTA_INTELLIGENCE_CURRENT_PLAN.json`；
-2. 读取本文件；
-3. 核对 repository、branch、base/head、active phase、blocked phases；
-4. 核对 `implemented/wired/qualified/efficacy_proven/operator_accepted/promoted` 六阶段状态；
-5. 只执行 `next_actions` 中未被阻断的最前一项；
-6. 不从旧 PR、旧 plan、源码命名或 source-only receipt 推导更高能力；
-7. 结束时更新精确 head、验证结果、阻断原因和下一步，不创建第二份计划。
-
-## 0.3 Claim 纪律
-
-以下词语必须有对应 claim receipt 才可使用：
-
-```text
-自我进化
-长期学习
-闭环学习
-经验直觉
-仿生神经元
-神经可塑性
-结构生长
-类脑
-神经形态
-自主进化
-```
-
-源码、schema、shadow、fixture、toy replay、loss 下降、source gate 或空 runner 均不足以支持这些声明。
+> **CANONICAL_CURRENT / PLAN_ONLY / FAIL_CLOSED**
+>
+> Plan ID: `HEPTA_INTELLIGENCE_MASTER_PLAN_V4`
+>
+> Version: `4.3.0`
+>
+> Repository: `ProfHepta/hepta-private-ci`
+>
+> Current program phase: `A0_CANONICAL_CAPABILITY_AND_EVIDENCE_AUTHORITY`
+>
+> Current capability claims: `L0 / N0 / I0`
+>
+> 本文件是**唯一有效的人类可读开发计划**。任何 PR 正文、旧 status、workflow 日志、artifact、fixture、Draft 分支或附属执行规范都不得单独替代本文件，也不得授予 runtime、operator、production、promotion、release 或 `CALLERS` authority。
 
 ---
 
-# 1. 当前精确事实与最终判断
+## 0. V4.3 变更摘要
 
-## 1.1 精确开发基线
+V4.3 在 V4.2 的安全与证据框架之上，补齐此前仍然偏“路线图化”的部分，使后续每个工作包都能由不同 agent 按同一契约独立实现、验证、交接和恢复。
 
-当前计划继承的冻结实现基线：
+本版本新增或深化：
+
+1. **状态漂移闭合规则**：checked-in `SOURCE_SNAPSHOT`、外部 `LIVE_EVIDENCE`、PR body、Git ref 与 synthetic merge candidate 的优先级和失效规则；
+2. **A0 独立评审与 canonical selection 契约**：明确实现者、publisher、reviewer、selector、operator 五类身份不能互相替代；
+3. **RepositoryCheckAttributionReceiptV1**：逐 check 归因、base/head/merge-candidate 三向比较、取消/过期/基础设施状态的处理；
+4. **B0 九包边界的字段级 API/依赖/迁移计划**；
+5. **C0/M0/J0 的存储所有权、事务边界、replay、checkpoint、归档和 E3 failure campaign**；
+6. **R1 真实语义 artifact、host-owned evidence、产品 feature matrix 与多语言 efficacy 证据链**；
+7. **N1/I1/L1/C1 的训练、propensity、credit、OPE、abstention、next-snapshot、canary 与 rollback 契约**；
+8. **跨包 Definition of Ready / Definition of Done**；
+9. **每个 blocker 的 stop/resume predicate、可伪造性边界和 closure evidence class**；
+10. **开发顺序硬门**：A0 未完成 review/selection/merge admission 时，禁止 B0/runtime-adjacent source 落盘。
+
+本版本仍不改变任何产品行为；`self_evolution=false`、`closed_loop_learning=false`、`neuromorphic_mechanism=false`。
+
+---
+
+## 1. 权威读取顺序与事实模型
+
+每次开发、审计、资格化、恢复、restack、晋级或回滚必须依次读取：
 
 ```text
-base PR: #23
-base branch: codex/hepta-intelligence-shadow-host-adapter-v4c-20260828
-base head: 7691978b786dd00c69477d1a3355be13db2c4d67
-base tree: bc2342443fe28d2b803cf1c8273c5d3cd4171ced
-P0.4c hardened source candidate: 7bb26ec016c2e2c83084756485ea324e79bcddbe
+HEPTA_INTELLIGENCE_CURRENT_PLAN.json
+→ HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json
+→ HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json
+→ HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json
+→ HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json
+→ HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json
+→ HEPTA_INTELLIGENCE_MASTER_PLAN.md
+→ HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md
 ```
 
-当前 P0.1–P0.4c 具备的主要 source surface：
+事实分层：
 
 ```text
-P0.1 source-span fact grounding
-P0.2 durable fact-grounding ledger
-P0.3 grounded tool/projection shadow gate
-P0.4a typed intelligence mutation state machine
-P0.4b SQLite transition journal and failpoints
-P0.4c shadow host orchestration adapter
+SOURCE_SNAPSHOT
+  checked-in、deterministic、tree-bound
+  只表达发布时已知且经 source publisher 落盘的事实
+
+LIVE_EVIDENCE
+  GitHub API / runner / artifact / external reviewer 的实时事实
+  必须由 receipt 绑定 exact repository/branch/head/tree/parent/run/job/
+  runner/steps/artifact/digest/expiry
+
+SELECTION_TRUTH
+  由独立 selector 绑定一个 exact candidate 与 rollback base
+  不得由实现者、CI workflow 或 PR prose 自行生成
+
+RUNTIME_TRUTH
+  由 E3/E4 证据、operator acceptance 与独立 CALLERS receipt 共同形成
+  不得从 source qualification 推导
 ```
 
-真实状态仍为：
+失效规则：
+
+- head、tree、parent、workflow SHA、artifact digest、review target 任一变化，旧 evidence 立即 `STALE_SUPERSEDED`；
+- PR head evidence 与 synthetic merge candidate evidence 不可互换；
+- queued、pending、cancelled、`steps=[]`、`runner_id=0`、过期 artifact、source-only receipt 均不是 PASS；
+- live API 观察不得直接改写 canonical source；
+- 未知字段、未知 capability、未知 positive authority、未登记 side stack 均 fail closed；
+- same commit 被移动到新 branch 时，branch-bound receipt 不自动复用。
+
+---
+
+## 2. 当前精确基线与 A0 边界
+
+### 2.1 Q0 exact candidate
 
 ```text
-implemented=true
-wired=false
-qualified=false
-efficacy_proven=false
-operator_accepted=false
-promoted=false
+repository = ProfHepta/hepta-private-ci
+branch = codex/hepta-intelligence-plan-v3-20260828
+head = c768bcbeb4c1168088d2499828c24da521a2a73a
+tree = ca455a9ef797cd95164c880c7b8faba80b305589
+parent = aeb8ac0bfb30d570a16c4914b6e4b31ce035dd62
+run = 33252922404
+E1 job = 99101597686
+E2 job = 99101597800
+pair job = 99105393694
+qualified_candidate = true
+runtime_capability_qualified = false
+full_repository_merge_green = false
 ```
 
-已观察到的 hosted jobs 为 `steps=[]`、`runner_id=0`，没有 checkout、fmt、test、clippy、SQLite、failpoint 或 runtime 命令执行。它们既不是 PASS，也不是代码失败。
+### 2.2 A0 replacement protocol
 
-## 1.2 当前能力结论
+A0 candidate 必须是 Q0 head 的恰好一个直接子提交。任何文档、registry、verifier 或 read-only workflow 修复都必须：
 
 ```text
-较强：治理、权限边界、digest、receipt、CAS、SQLite、memory/KG/provenance 基础
-部分：长期记忆、compaction、trajectory、artifact/rollback contract
-未闭合：统一 LearningEpisode、durable causal learning ledger、真实 outcome/credit、trainer、OPE/CI、跨窗口 efficacy
-H5：N0_METAPHORICAL_TYPED_PROPOSAL
-H6：I0_DETERMINISTIC_SELECTIVE_POLICY
-系统：L0_STATIC_SHADOW_WITH_PARTIAL_L1_FOUNDATIONS
+revalidate Q0 exact head/tree
+→ build replacement tree
+→ create one sole-parent commit(parent=Q0 head)
+→ atomically move the A0 branch
+→ invalidate all prior A0 evidence
+→ run fresh exact-head source/finalizer workflows
+→ obtain independent review
+→ obtain canonical selection
+→ qualify the selected synthetic merge candidate
 ```
 
-因此当前必须保持：
+A0 当前允许的变更面只有：
 
 ```text
+DOCUMENTATION
+REGISTRY
+VERIFIER
+READ_ONLY_WORKFLOW
+```
+
+禁止：
+
+```text
+Rust runtime source
+SQL migration
+product caller
+model/provider dispatch
+H5/H6/H7 runtime
+CALLERS
+promotion
+release
+self-review
+self-approval
+self-merge
+```
+
+### 2.3 A0 角色隔离
+
+| 角色 | 允许 | 禁止替代 |
+|---|---|---|
+| implementer | 修改允许路径、生成 source candidate | reviewer、selector、operator |
+| source publisher | 通过受认证 Git write 发布 exact candidate | CI evidence workflow |
+| CI evidence workflow | read-only 执行与产出 artifact | source writeback、selection |
+| independent reviewer | 评审 exact source/evidence，签发 Q1 | implementer/publisher |
+| canonical selector | 选择唯一 integration candidate | 由 PR 作者自行选择 |
+| operator | 接受 runtime/rollback/production 风险 | 由测试密钥或 fixture 替代 |
+
+`最高权限` 不改变 separation-of-duty；它只允许执行 repository-controlled 工作，不允许伪造独立事实。
+
+---
+
+## 3. Capability 与 Claim Ladder
+
+统一生命周期：
+
+```text
+implemented
+→ candidate_qualified
+→ selected
+→ wired
+→ runtime_qualified
+→ efficacy_proven
+→ operator_accepted
+→ promoted
+```
+
+当前真实声明：
+
+```text
+system_learning=L0_STATIC_SHADOW_WITH_PARTIAL_L1_FOUNDATIONS
+H5=N0_METAPHORICAL_TYPED_PROPOSAL
+H6=I0_DETERMINISTIC_SELECTIVE_POLICY
 self_evolution=false
 longitudinal_learning_efficacy=false
 closed_loop_learning=false
 structural_plasticity=false
 neuromorphic_mechanism=false
 biological_mechanism_replication=false
+local_small_model_used_by_h5=false
+local_small_model_used_by_h6=false
 ```
 
-## 1.3 本计划允许的“自我改进”定义
-
-允许目标是：
-
-> **受治理、跨快照、可回放、可统计验证、可回滚的参数、校准、检索、路由和策略适应。**
-
-永远禁止学习器直接修改：
+H5 ladder：
 
 ```text
-system goal
-trust root
-authority/capability
-CALLERS
-production writer ownership
-safety invariant
-workflow effect boundary
-credential/provider policy
-release policy
+N0_METAPHORICAL_TYPED_PROPOSAL
+→ N1_ADAPTIVE_SIGNAL_UNIT
+→ N2_TEMPORAL_RECURRENT_SIGNAL_NETWORK
+→ N3_ISOLATED_NEUROMORPHIC_RESEARCH
 ```
+
+H6 ladder：
+
+```text
+I0_DETERMINISTIC_SELECTIVE_POLICY
+→ I1_CALIBRATED_FAST_POLICY
+→ I2_LONGITUDINALLY_VALIDATED_FAST_POLICY
+```
+
+任何 source/test fixture 最多推进 `candidate_qualified`，不能推进 selected、wired、runtime-qualified 或 efficacy。
 
 ---
 
-# 2. 必须修复的架构断点
+## 4. Integration Candidate 与 Repository Check Attribution
 
-## 2.1 治理闭环不等于学习闭环
-
-当前系统可以证明“谁提出了什么、绑定什么 snapshot、是否越权、是否持久化、receipt 是否可重算”，但还不能证明：
+`IntegrationCandidateManifestV1` 必须绑定：
 
 ```text
-从哪条经验学到了什么
-哪个行为导致了哪个结果
-参数为何改变
-改变后是否长期改善
-旧能力是否遗忘
-correction/forget 是否进入后续 dataset/artifact
+repository/repository_id
+base/head/tree/parent
+ordered commit list
+selected side-stack decisions
+changed path + blob SHA + content SHA-256
+Cargo/Bazel/feature dependency graph
+toolchain and lock identities
+required source/head/merge-candidate checks
+tranche receipts and expiry
+synthetic merge candidate
+authority flags
+rollback base
 ```
 
-真实学习闭环必须是：
+`RepositoryCheckAttributionReceiptV1` 每个 check 至少包含：
 
 ```text
-state/candidate set
-→ behavior policy and propensity
-→ selected action
-→ authorized execution/postcondition
-→ immediate or delayed outcome
-→ causal credit
-→ immutable dataset snapshot
-→ train candidate
-→ independent evaluation
-→ signed artifact
-→ next-snapshot reload
-→ retained improvement
+check_name
+workflow_path/workflow_sha
+base_conclusion
+head_conclusion
+merge_candidate_conclusion
+run_id/job_id/runner_id
+steps_non_empty
+first_failure_step
+annotation_digest
+log_digest
+classification
+owner_class
+repair_commit
+retest_run
 ```
 
-## 2.2 长期存储不等于长期学习
-
-Memory/KG 可以保存、验证、纠正、tombstone 和 recall，但这不自动改变 policy。长期学习必须增加独立的 learning eligibility、dataset lineage、anti-forgetting、evaluation 和 artifact promotion。
-
-## 2.3 H7 双真相必须合并
-
-现有 durable trajectory 偏 lifecycle，纯 feedback/OPE oracle 偏内存 replay。二者不得继续平行演化。必须迁移到唯一 `LearningEventV1` 和独立 `hepta-learning-ledger`，形成同一条 durable causal chain。
-
-## 2.4 当前 OPE 只够 exploratory
-
-任何把 supported sample 直接等同 sample、把 coverage 固定为 100%、只报告点估计或未计算 ESS/CI 的实现都不能用于 promotion。必须实现真实 support coverage、weight diagnostics、IPS/SNIPS/DR、clustered CI、LCB/UCB 和 subgroup gates。
-
-## 2.5 确定性策略缺乏 counterfactual support
-
-如果 behavior policy 永远 deterministic top-1，其他候选没有真实 propensity/support，OPE 无法识别替代动作。必须增加受治理的 `ExplorationPolicyReceiptV1`，且初期只允许无外部副作用的低风险 position。
-
-## 2.6 H5/H6 当前不是本地小模型 runtime
-
-当前 H5 是整数 feature aggregate 与 bounded delta proposal；当前 H6 是 hard filter、rank、tie-break 和 abstain。二者均不得声称已经调用本地小模型或形成经验直觉。
-
-## 2.7 `codex-hepta-memory` god crate 必须提前拆边界
-
-Learning ledger、policy runtime、evaluation 和 artifact 不得继续依赖 memory crate 私有布局。完整拆分可以分阶段，但 learning 边界必须在新增闭环 source 前完成。
-
-## 2.8 未 qualification 栈必须冻结
-
-最后一个 executable-qualified base 之后最多允许两层 source implementation Draft。当前栈已超过预算，因此 Q0 关闭前禁止：
+合法 classification：
 
 ```text
-新 runtime source
-新 migration
-P1.1 activation
-H5/H6/H7 runtime tranche
-production caller
-CALLERS ratchet
+PASS
+INTRODUCED_BY_CANDIDATE
+PRE_EXISTING_ON_BASE
+MERGE_INTERACTION
+RUNNER_OR_PLATFORM_INFRA
+CANCELLED_OR_SUPERSEDED
+NOT_REQUIRED_BY_SELECTED_POLICY
+UNKNOWN_FAIL_CLOSED
 ```
 
-允许：plan、schema、verifier、receipt、runner infrastructure 和原 tranche 修复。
+规则：
+
+- `UNKNOWN_FAIL_CLOSED` 阻塞 merge；
+- target exclusion 必须由独立 policy authority 签名；
+- 不得用专项 Q0/A0 绿灯覆盖全仓 required check；
+- 不得把 base 已存在失败伪装成本 tranche runtime failure；
+- 修复只允许针对选定 candidate，不得在未选择前无限追 side-stack。
 
 ---
 
-# 3. 不可破坏的不变量
+## 5. B0 九包边界与所有权
 
-## 3.1 Authority 不变量
-
-1. Agent-local writer 是唯一 authoritative mutation owner。
-2. H5/H6/H7 不拥有 provider、tool、memory、KG、outbox、credential 或 CALLERS authority。
-3. 同一 run 只使用一个 immutable `RunStartSnapshotV2`。
-4. 当前 run 内不得更换 policy/model/head/calibration/graph artifact。
-5. 新 artifact 只能在 next snapshot 原子加载；失败回退上一 approved artifact。
-6. TaskFlow/authority plane 执行动作；policy 只选择或 abstain。
-7. topology 只能 proposal-only，经 compiler、shadow、canary、operator、rollback。
-8. receipt、snapshot、dataset、artifact 或 policy digest 不匹配必须 fail closed。
-9. source PASS、executable qualification、efficacy、operator acceptance、promotion 互不替代。
-
-## 3.2 数据不变量
+目标 crate：
 
 ```text
-source_witness != fact_grounding != truth_status
-recall_eligible != training_eligible != evaluation_eligible != promotion_eligible
+codex-rs/hepta-intelligence-contracts
+codex-rs/hepta-grounding
+codex-rs/hepta-mutation-core
+codex-rs/hepta-mutation-journal
+codex-rs/hepta-mutation-coordinator
+codex-rs/hepta-retrieval
+codex-rs/hepta-policy-runtime
+codex-rs/hepta-learning-ledger
+codex-rs/hepta-intelligence-eval
 ```
 
-- model-generated/external content 默认 `training_eligible=false`；
-- remembered instruction 默认只是 data，只有显式 policy 可提升 authority；
-- correction、forget、revocation 必须传播至 dataset snapshot、cache、index、candidate 和 artifact state；
-- telemetry 默认不存 raw query/body/citation/secret/PII；
-- privacy filter 失败时 learning admission fail closed，但不能阻塞 baseline 回答。
+允许 DAG：
 
-## 3.3 Learning 不变量
+```text
+contracts
+├─ grounding
+├─ mutation-core
+├─ learning-ledger
+├─ retrieval ─→ grounding
+├─ mutation-journal ─→ mutation-core
+├─ policy-runtime ─→ retrieval + contracts
+├─ mutation-coordinator ─→ grounding + mutation-core + mutation-journal
+└─ intelligence-eval ─→ retrieval + policy-runtime + learning-ledger
+```
 
-1. 没有真实 action/outcome/feedback，只能称 observational/shadow。
-2. 模型自评不能作为唯一 reward。
-3. behavior propensity 必须来自实际 behavior policy，不得事后猜测。
-4. unsupported action 不进入 IPS/SNIPS/DR。
-5. delayed outcome 必须显式链接原 episode/action。
-6. credit 总量必须守恒、可重算、可审计。
-7. missing/censored/timeout 必须有明确 policy。
-8. 每次训练使用 immutable dataset snapshot。
-9. split 必须按 episode/workspace/time，防止 leakage。
-10. 学习不可用时 deterministic baseline 必须继续运行。
-11. OOD、证据不足或不确定性高时优先 abstain。
+禁止：
+
+- runtime → eval；
+- contracts → 任何实现 crate；
+- journal → coordinator；
+- retrieval → policy-runtime；
+- qualification workspace 复制生产算法；
+- `codex-hepta-memory` 继续吸收跨域 orchestration；
+- hidden default feature 启用 runtime authority。
+
+B0 包顺序及最小切片：
+
+| 包 | 输入 | 产物 | 行为变化 | 最低证据 |
+|---|---|---|---|---|
+| B0.1 | Q0/A0 selected base | contracts crate | 无 | E1/E2 |
+| B0.2 | B0.1 | pure mutation state | 无 | property tests |
+| B0.3 | B0.1 | grounding crate | 无 | compatibility |
+| B0.4 | B0.2 | journal adapter | 无 | replay parity |
+| B0.5 | B0.1/B0.3 | retrieval contracts | 无 | deterministic fixtures |
+| B0.6 | B0.1 | learning ledger contracts | 无 | schema/fuzz |
+| B0.7 | B0.5/B0.6 | policy/eval boundary | 无 | no reverse deps |
+| B0.8 | 全部 | Cargo/Bazel parity | 无 | full workspace/merge |
+
+每个包必须有 `B0ContractsExtractionReceiptV1` 或对应 handoff，绑定 old/new API surface、moved symbols、consumer inventory、Cargo/Bazel graph、no-behavior-change tests 和 rollback。
 
 ---
 
-# 4. 目标架构
+## 6. Field-level Causal Contracts
+
+所有契约使用 `deny_unknown_fields`、canonical serialization、domain-separated SHA-256、显式版本、最大 encoded bytes、最大 cardinality、owner/tenant/agent/run/episode binding 和 authority-negative fields。
+
+### 6.1 RunStartSnapshotV2
 
 ```text
-┌──────────────────────── Authority / Governance Plane ────────────────────────┐
-│ capability · lease · generation · policy · budget · approval · CALLERS     │
-└──────────────────────────────────┬────────────────────────────────────────────┘
-                                   │ RunStartSnapshotV2
-                                   ▼
-┌──────────────────────── Knowledge / Retrieval Plane ─────────────────────────┐
-│ source → memory lifecycle → grounding → truth → lexical/ANN/KG/recency      │
-└──────────────────────────────────┬────────────────────────────────────────────┘
-                                   │ CandidateSetReceiptV1
-                                   ▼
-┌──────────────────────── Fast Decision Plane ─────────────────────────────────┐
-│ FeatureBuilder → H5 Signal Network → H6 Selective Policy → abstain/choice   │
-│ no authority · no mid-run artifact mutation · explicit OOD/uncertainty      │
-└──────────────────────────────────┬────────────────────────────────────────────┘
-                                   │ PolicyDecisionReceiptV2
-                                   ▼
-┌──────────────────────── TaskFlow / Execution Spine ──────────────────────────┐
-│ approved workflow → step → effect intent/receipt → postcondition/reconcile  │
-└──────────────────────────────────┬────────────────────────────────────────────┘
-                                   │ immutable causal events
-                                   ▼
-┌──────────────────────── Learning Event Plane ─────────────────────────────────┐
-│ Episode → candidates → decision → action → outcome → correction → credit    │
-└──────────────────────────────────┬────────────────────────────────────────────┘
-                                   │ DatasetSnapshotV1
-                                   ▼
-┌──────────────────────── Slow Consolidation Plane ─────────────────────────────┐
-│ replay → train head/adapter/calibration → OPE/CI → retention/no-regression   │
-└──────────────────────────────────┬────────────────────────────────────────────┘
-                                   │ signed next-snapshot artifact
-                                   ▼
-┌──────────────────────── Artifact / Promotion Plane ───────────────────────────┐
-│ registry → shadow → canary → operator → CALLERS → rollback/retire/revoke     │
-└───────────────────────────────────────────────────────────────────────────────┘
-
-Optional isolated research:
-spike/event-time → LIF/STDP/homeostasis simulation → research receipts only
+snapshot_id
+run_id
+agent_id / tenant_id
+code_commit/tree
+configuration_digest
+memory_revision
+projection_generation
+retrieval_index_generation
+policy_artifact_id/digest
+model/tokenizer/adapter identities
+dataset eligibility policy
+started_at_monotonic_counter
+schema_version
 ```
 
-## 4.1 Fast loop
+上限：128 KiB；不可包含 raw secret、credential 或未脱敏 context。
+
+### 6.2 LearningEpisodeV1 / LearningEventV1
 
 ```text
-one frozen snapshot
-→ deterministic bounded features
-→ H5 signals and temporal state
-→ H6 distribution + OOD + abstain
-→ baseline/shadow/canary choice
-→ authority-controlled TaskFlow
-→ postcondition/outcome
-```
-
-Fast loop不得训练、改 graph、改 authority、安装 artifact 或写长期 truth。
-
-## 4.2 Slow loop
-
-```text
-immutable episodes
-→ eligibility/privacy filter
-→ dataset freeze
-→ candidate training
-→ replay/OPE/ESS/CI
-→ subgroup/retention/forgetting
-→ signed artifact
-→ shadow/canary
-→ next snapshot
-```
-
----
-
-# 5. Canonical Contracts
-
-## 5.1 `RunStartSnapshotV2`
-
-必须绑定：
-
-```text
-snapshot_id/run_id/turn_id
-agent_id/spawn_generation/workspace_scope_digest
-authority_epoch/owner_epoch/generation/fencing_token/lease_expiry
-definition/graph/policy/capability digests
-memory/KG projection generation
-model registry/model/head/adapter/calibration/tokenizer digests
-artifact manifest digest
-privacy profile/execution scope/resource budget
-logical clock/rng seed
-```
-
-## 5.2 `LearningEpisodeV1`
-
-唯一顶层因果身份：
-
-```text
-episode_id/schema/namespace/snapshot_digest
-agent/spawn/workspace/turn/task/risk
-opened logical clock/terminal state/head seq/head digest
-privacy class
-four eligibility axes
-```
-
-状态：
-
-```text
-Opened → CandidateSetBound → DecisionBound → ActionObserved
-→ OutcomePending → OutcomeObserved → CreditReady → Evaluated → Archived
-
-exception: Indeterminate | Quarantined | RevocationPending | Revoked
-```
-
-## 5.3 `LearningEventV1`
-
-事件至少包括：
-
-```text
-SnapshotStart QueryPlan CandidateSet H5Signal H6Decision BaselineDecision
-CanaryDecision TaskFlowStart ActionPrepared EffectReceipt Postcondition
-ImmediateOutcome DelayedOutcome UserCorrection ForgetRequest Revocation
-SafetyObservation Terminal
-```
-
-每条事件带连续 sequence、精确 causal parent、state/policy/candidate/decision/action/outcome digests、propensity/support、eligibility、privacy/trust 和 event digest。
-
-## 5.4 `CandidateSetReceiptV1`
-
-必须保存完整候选集，而非只保存 chosen：
-
-```text
-candidate IDs/digests
-availability mask
-channel scores
-grounding/truth/trust/risk/evidence status
-behavior distribution/support
-query/retrieval/tokenizer/model/index digests
-```
-
-## 5.5 `NeuronSignalReceiptV2`
-
-```text
-neuron/group/kernel/artifact IDs
-feature vector + provenance + missingness mask
-input/snapshot/state/output digests
-signal value/distribution
-uncertainty/calibration/attribution
-activation/inhibition/homeostasis metadata
-device/latency/resource/fallback
-negative authority flags
-```
-
-## 5.6 `PlasticityStateV1`
-
-区分 run 内短期状态与跨快照 artifact：
-
-```text
-temporal activation
-eligibility traces
-recent failure/correction state
-refractory/suppression state
-homeostatic target and budget
-neuromodulator digest
-TTL/snapshot/generation binding
-rebuild digest
-```
-
-它不得包含 production weight mutation、authority 或 truth。
-
-## 5.7 `PolicyDecisionReceiptV2`
-
-```text
-full candidate probability distribution
-selected candidate or abstain
-confidence/calibration/OOD/novelty
-risk/evidence veto
-behavior propensity
-reason attribution
-H5/candidate/snapshot/policy digests
-mode: baseline | shadow | canary
-negative authority flags
-```
-
-## 5.8 `ExplorationPolicyReceiptV1`
-
-用于真实 support 获取：
-
-```text
-position/risk class
-eligible candidate mask
-safety mask
-full behavior distribution
-epsilon/temperature/method
-exact RNG seed
-selected action and propensity
-exploration budget and expiry
-kill switch
-```
-
-初期只允许 `MemoryRetrievalRank`、`ContextSalience` 等无外部副作用位置。
-
-## 5.9 `OutcomeReceiptV1`
-
-reward 必须拆分：
-
-```text
-task success
-postcondition correctness
-user correction
-forget/revocation
-tool/provider verified result
-safety violation
-latency/cost/resource
-abstain appropriateness
-delayed satisfaction
-```
-
-每项记录 source、confidence、observed_at、causal distance、missing/censored 和 digest。
-
-## 5.10 `CreditLedgerV1`
-
-- hierarchical credit；
-- total conservation；
-- bounded temporal decay；
-- deterministic baseline first；
-- learned credit 只能并行候选；
-- no model-only reward。
-
-## 5.11 `DatasetSnapshotV1`
-
-```text
-dataset_id/query/version
-included/excluded episode manifests
-eligibility/privacy/trust filters
+episode_id
+snapshot_id
+event_sequence
+event_kind
+context_digest
+candidate_set_digest
+decision_digest
+effect_intent_digest
+effect_receipt_digest
+outcome_digest
+credit_digest
 correction/forget/revocation lineage
-train/eval split by episode/workspace/time
-feature/label schema digests
-parent artifact and code/toolchain digests
+privacy_eligibility
+training_eligibility
+retention_class
+causal_parent_digest
+event_digest
 ```
 
-## 5.12 `EvaluationReceiptV2`
+事件严格 append-only；sequence 连续；同 episode 单一 owner；任何 correction 不重写历史，而生成 superseding event。
 
-必须包含：
+### 6.3 CandidateSetReceiptV1
 
 ```text
-sample/supported count
-coverage
+query/scope/risk digests
+complete candidate inventory
+candidate source channel
+grounding/truth/lifecycle state
+feature vector digest
+eligibility/rejection reason
+candidate count and truncation proof
+selection support
+```
+
+没有完整 candidate set 就不得计算 propensity、IPS 或 DR。
+
+### 6.4 PolicyDecisionReceiptV2
+
+```text
+policy/model/tokenizer/adapter identity
+candidate_set_digest
+selected action
+logged propensity
+support floor
+confidence
+calibration bucket
+OOD score
+abstain/veto/slow-path reason
+risk class
+latency/resource counters
+decision digest
+```
+
+高风险 action 必须 abstain、reject 或走慢路径；`propensity=0` 的 action 不得进入离线反事实估计。
+
+### 6.5 OutcomeReceiptV1 / CreditLedgerV1
+
+Outcome 支持 delayed、censored、corrected、revoked；Credit 必须守恒：
+
+```text
+sum(assigned_credit) == bounded_episode_outcome
+```
+
+credit 分配绑定 policy snapshot，不能事后把新策略解释为旧策略行为。
+
+### 6.6 DatasetSnapshotV1 / EvaluationReceiptV2
+
+绑定：
+
+```text
+immutable row manifest
+source episode/event digests
+privacy/training eligibility
+split strategy
+leakage controls
+negative controls
+metrics/subgroups
+support/ESS/IPS/SNIPS/DR
+cluster/bootstrap CI
+candidate LCB / baseline UCB
+resource/energy
+```
+
+晋级必要条件保留：
+
+```text
+candidate LCB > baseline UCB
+```
+
+### 6.7 PolicyArtifactManifestV2
+
+```text
+artifact bytes/digest
+base model/backbone
+adapter/head
+training code/tree
+dataset snapshot
+hyperparameters
+evaluation receipt
+signature/role/scope/expiry/revocation
+rollback predecessor
+```
+
+只允许生成 **next-snapshot**；当前运行快照永不原地自改。
+
+### 6.8 UnlearningComplianceReceiptV1
+
+覆盖 source、memory、KG、index、dataset、adapter、policy、evaluation 派生链。审计表只保留无原文 digest/provenance；删除通过 tombstone、key destruction 或 crypto-shredding 失效。
+
+---
+
+## 7. C0 — Durable Learning Ledger
+
+### Definition of Ready
+
+- A0 selected merge candidate admitted；
+- B0.1/B0.6 完成；
+- schema、size/cardinality、retention、unlearning policy 冻结；
+- no runtime writer default enabled。
+
+### 存储所有权
+
+`hepta-learning-ledger` 是唯一 causal episode/event writer；memory、retrieval、policy 只能提交 typed append request，不能直接写内部表。
+
+### 不变量
+
+- operation/episode/event identity 不复用；
+- causal parent 精确；
+- duplicate exact retry 返回 Replay；
+- changed retry 冲突；
+- outcome/credit/correction/revocation 可重放；
+- raw content 不进入 telemetry；
+- reopen verification 能从 genesis/checkpoint 重建。
+
+### 证据
+
+```text
+schema oracle
+migration checksum
+append/replay property tests
+cross-agent/tenant confusion tests
+size/cardinality bounds
+fuzz decoder
+correction/forget/revocation lineage
+clean Cargo/Bazel dependency graph
+```
+
+### DoD
+
+只推进 `C0 candidate_qualified`。没有 runtime writer、E3 recovery、operator 或 `CALLERS` authority。
+
+---
+
+## 8. M0 — Transactional Mutation Coordinator
+
+现有 shadow journal 只能证明 receipt 序列自洽，不能证明真实 memory/KG/projection/outbox 已发生。M0 采用 host-owned producer：
+
+```text
+prepare
+→ durable caller request
+→ BEGIN transaction
+→ source/memory/KG mutation
+→ mutation transition
+→ transactional outbox intent
+→ COMMIT
+→ async projection/send
+→ store-derived acknowledgement
+→ reconciliation
+```
+
+关键规则：
+
+- 普通 caller 不得自报 `MemoryWritten`、`ProjectionPublished`、`ReconcileApplied`；
+- 同 SQLite/Postgres 的 write/journal/outbox 必须同事务；
+- 外部副作用只通过 transactional outbox；
+- post-commit ACK loss 用 exact prepared envelope 采纳；
+- lease、revision、generation、owner、tenant、causal root 全绑定；
+- convenience `prepare+append` 只允许测试，不允许生产调用。
+
+E3 failure matrix：
+
+```text
+before intent insert
+after intent before memory write
+after memory write before journal
+after journal before outbox
+after outbox before commit
+after commit before return
+dispatcher before send
+send success before ack persist
+reconciliation during owner/lease change
+process kill / disk full / permission loss / page corruption
+```
+
+DoD 要求每个窗口都有零/一次副作用证明、reopen replay、source-derived receipt、duplicate delivery 和 rollback rehearsal。
+
+---
+
+## 9. J0 — Journal Lifecycle, Recovery and Capacity
+
+设计：
+
+```text
+active epoch
+→ terminal checkpoint
+→ immutable checkpoint manifest
+→ archive pack
+→ verified restore
+→ active index compaction without history rewrite
+```
+
+每个 checkpoint 绑定：
+
+```text
+epoch_id
+first/last operation
+operation/event counts
+prior checkpoint digest
+Merkle/hash-chain root
+schema/migration identities
+archive digest/location class
+retention/unlearning policy
+created_by software identity
+```
+
+必须支持：
+
+- incremental startup recovery；
+- background full scrub；
+- corruption quarantine；
+- backup/restore；
+- capacity admission/backpressure；
+- active/history 分离；
+- archive verification；
+- bounded startup/recovery/storage growth。
+
+预注册设计目标：
+
+```text
+active operations per epoch <= 8,000
+transitions per operation <= 64
+incremental recovery <= 5 s / 10,000 active operations
+checkpoint verify <= 30 s / 1,000,000 archived transitions
+critical replay mismatch = 0
+```
+
+这些是设计预算，不是性能达标事实；真实硬件与 soak 属于 E4。
+
+---
+
+## 10. R1 — Grounded Hybrid Retrieval
+
+产品化顺序：
+
+```text
+host-owned source span resolution
+→ grounded/truth/lifecycle/risk eligibility
+→ lexical candidates
+→ local semantic candidates
+→ bounded KG traversal
+→ deterministic fusion
+→ optional calibrated reranker
+→ context budget compiler
+→ shadow comparison
+→ canary
+```
+
+真实 semantic artifact package 必须包含 `SemanticArtifactEvidencePackageV1`：
+
+```text
+model/tokenizer/config bytes + SHA-256
+license/provenance
+dimension/metric/quantization
+max batch/input/output
+hardware/runtime compatibility
+signature/role/scope/expiry/revocation
+deterministic smoke vectors
+resource envelope
+```
+
+禁止把 hash-one-hot、qualification tokenizer 或 synthetic seed 当作语义 efficacy。
+
+真实 corpus package 使用 `ReviewedCorpusEvidencePackageV1`：
+
+```text
+immutable corpus manifest/digest
+query/candidate/locale/task/risk labels
+two independent reviews per candidate
+adjudicator independence
+license/provenance
+PII/secret/redaction evidence
+reviewer keys/signatures/revocation
+complete 1:1 projection into evaluation rows
+```
+
+评估 lanes：
+
+```text
+lexical
+vector
+KG
+lexical+vector
+lexical+KG
+vector+KG
+full fusion
+full fusion + reranker
+```
+
+指标：
+
+```text
+Recall@k / nDCG@k
+citation precision/coverage
+contradiction and false-memory rate
+P50/P95/P99 latency
+token/CPU/RAM/GPU/energy
+locale/task/risk/privacy subgroup
+regression corpus
+blind review
+```
+
+R1 源码必须进入 product workspace feature matrix，qualification wrapper 只可薄封装生产实现。
+
+---
+
+## 11. N1 — H5 Adaptive Signal Unit
+
+N1 不是名称升级，而是可训练、可校准、可回滚的 signal unit：
+
+```text
+shared frozen local encoder/backbone
++ small task head/adapter
++ sparse activation
++ lateral inhibition
++ homeostasis
++ bounded eligibility trace
++ calibrated confidence
++ OOD/abstention
+```
+
+输入必须来自 C0 snapshot/episode 和 R1 grounded candidates；输出 `NeuronSignalReceiptV2`，不得直接执行 tool/provider/mutation。
+
+必要试验：
+
+- lesion/ablation；
+- frozen-backbone vs head-only；
+- sparse density/homeostasis stability；
+- calibration/OOD；
+- subgroup/safety；
+- next-snapshot determinism；
+- rollback predecessor；
+- long-horizon drift。
+
+达到 N1 仍不能声称 biological replication 或 neuromorphic mechanism。
+
+---
+
+## 12. I1 — H6 Calibrated Fast Policy
+
+I1 只对低风险、可逆、只读 action 提供快速选择。必须记录完整 candidate set 与 propensity。
+
+硬 veto：
+
+```text
+credential/auth mutation
+external physical send
+irreversible tool
+high-risk provider effect
+topology mutation
+unknown/OOD input
+missing grounding/truth
+```
+
+必要证据：
+
+- calibration error；
+- abstention precision/coverage；
+- OOD detection；
+- propensity support；
+- slow-path parity；
+- latency/resource；
+- subgroup false-positive；
+- adversarial prompt/memory poisoning；
+- rollback。
+
+没有 C0 causal ledger 和 N1/R1 input，不得从 I0 升级。
+
+---
+
+## 13. L1 — H7 Causal Evaluation and Artifact Pipeline
+
+离线评价必须同时报告：
+
+```text
+support coverage
 ESS
-weight p50/p95/max
-clipped ratio
-IPS/SNIPS/DR
-cluster/block confidence interval
-candidate LCB/baseline UCB
-practical improvement
-critical subgroup results
-calibration/OOD/abstain
-1d/7d/30d/90d retention
-drift/forgetting/privacy/resource
-```
-
-## 5.13 `PolicyArtifactManifestV2`
-
-```text
-artifact/position/parent IDs
-training dataset and code/toolchain digests
-model/head/adapter/calibration/normalization digests
-evaluation/safety/privacy receipts
-compatibility matrix
-expiry/revocation/rollback pointer
-signature/trust anchor
-```
-
-## 5.14 `UnlearningComplianceReceiptV1`
-
-forget lineage 不等于模型已遗忘。该 receipt 必须列出：
-
-```text
-affected episodes/datasets/caches/indexes/artifacts
-immediate exclusion actions
-revocation_pending artifacts
-clean retrain or verified unlearning method
-behavioral forget tests
-completion/remaining contamination state
-```
-
-无法证明 weight-level unlearning 时，旧 artifact 必须 retire/revoke 并从 clean snapshot 重训。
-
-## 5.15 `TopologyProposalV1`
-
-仅 proposal-only：
-
-```text
-add/split/merge/retire expert
-rewire bounded signal dependency
-add retrieval channel/feature
-change sparse routing
-```
-
-必须绑定 compiler、authority/cycle check、ablation、lesion、support-aware replay、shadow、canary、operator 和 rollback。
-
----
-
-# 6. Knowledge、Memory 与 Eligibility
-
-## 6.1 三层 truth
-
-```text
-SourceWitness: 原始来源是否存在且字节可验证
-FactGrounding: 某 fact 是否被精确 span 支撑
-TruthStatus: fact 是否经冲突、时效、scope、authority 验证
-```
-
-Grounded 不自动等于 true；可 recall 不自动可训练。
-
-## 6.2 四轴 eligibility
-
-每个 memory、event、episode、candidate 和 dataset member独立保存：
-
-```text
-recall_eligible
-training_eligible
-evaluation_eligible
-promotion_eligible
-```
-
-默认：
-
-- 用户明确事实/纠正：可进入审查；
-- 模型输出：只作为 provisional proposal；
-- 外部内容：默认不可训练；
-- secret/PII/高熵 token：全部 false；
-- forgotten/revoked：未来 snapshot 全部 false。
-
-## 6.3 双速记忆与巩固
-
-```text
-Fast Episodic Store:
-  exact episode/action/outcome/correction/forget
-
-Slow Consolidation:
-  dataset freeze/replay/anti-forgetting/eval/artifact
-```
-
-单次 run 内不更新长期 policy 或 truth。
-
----
-
-# 7. H5 Neuron 深化计划
-
-## 7.1 Claim ladder
-
-```text
-N0_METAPHORICAL_TYPED_PROPOSAL        当前
-N1_ADAPTIVE_SIGNAL_UNIT               近期产品目标
-N2_TEMPORAL_RECURRENT_SIGNAL_NETWORK  中期功能级仿生目标
-N3_NEUROMORPHIC_RESEARCH              独立研究
-N4_BIOLOGICAL_NEURON_REPLICA           永久禁止声明
-```
-
-## 7.2 H5.0 Claim closure
-
-- 现有 `NeuronProposal` 标记 N0；
-- receipt 增加 `bio_claim_level`；
-- README/PR/verifier 禁止“仿生神经元已实现”；
-- 所有 authority flags 编译期为 false。
-
-## 7.3 H5.1 Deterministic Feature Builder
-
-输入只能来自冻结 snapshot 和 bounded evidence：
-
-```text
-retrieval channels/grounding/truth/trust/freshness/contradiction
-diversity/recent success-failure/latency/budget/risk/task/workspace
-```
-
-要求 canonical order、missingness mask、provenance、normalization digest、no secret/PII、overflow/adversarial tests。
-
-## 7.4 H5.2 Interpretable Signal Kernel
-
-第一版只使用：
-
-```text
-regularized linear scorer
-small tree/ranker
-small MLP or calibration head when justified
-```
-
-禁止第一版使用生成模型决定 signal。输出必须有 per-feature attribution、uncertainty、calibration、resource receipt 和 deterministic fallback。
-
-## 7.5 H5.3 Temporal State
-
-加入 bounded：
-
-```text
-exponential decay
-recent failure/correction state
-short recurrent state
-eligibility trace
-competition/inhibition proxy
-homeostatic activation budget
-```
-
-状态 Agent-local、snapshot/generation-bound、bounded size/TTL、可 crash/rebuild、不写长期 truth、不跨 workspace。
-
-## 7.6 H5.4 Shared Local Backbone
-
-不是“每个 neuron 一个小模型”，而是：
-
-```text
-one shared frozen local encoder/backbone
-+ task-specific small heads/adapters
-+ independent typed schemas and temporal states
-+ sparse routing and resource budgets
-```
-
-首批适合本地模型的任务：entity/relation proposal、semantic representation、risk/novelty、retrieval rerank。Authority、truth 和 effect approval 永远不用模型替代。
-
-## 7.7 H5.5 Offline Artifact Update
-
-可更新：weights、head/adapter、normalization、temperature、threshold。禁止更新 position registry、authority、graph topology、effect rules 和 safety floor。
-
-## 7.8 H5.6 Calibration、Ablation、Lesion
-
-必须评测 signal calibration、feature ablation、neuron/group lesion、shortcut/leakage、dominant feature、OOD abstain、cross-language/workspace/risk subgroup 和 7d/30d retention。
-
-## 7.9 H5.7 N2 Temporal Recurrent Network
-
-只有 N1 稳定后才加入：
-
-```text
-k-of-N sparse activation
-lateral inhibition
-winner/coalition formation
-bounded recurrent refinement
-oscillation detection
-homeostatic scaling
-neuromodulator-controlled plasticity
-```
-
-固定最大迭代、总激活、latency/energy budget；不收敛时 abstain 或回 deterministic baseline。
-
-## 7.10 H5.8 N3 Neuromorphic Research
-
-独立非生产 track 可研究 event/spike time、LIF、STDP-like local update、homeostasis 和 sparse competition。必须与 production registry、authority 和 promotion 完全隔离；只有仿真/硬件、能耗、稳定性和 efficacy receipts 后才可称 experimental neuromorphic research。
-
----
-
-# 8. H6 Intuition 深化计划
-
-## 8.1 当前边界
-
-当前 H6 只是 `I0_DETERMINISTIC_SELECTIVE_POLICY`：hard filter → rank → tie-break → threshold → suggest/abstain。调用者提供 score/risk，它没有经验学习、hidden state、OOD 或概率分布。
-
-## 8.2 Claim ladder
-
-```text
-I0_DETERMINISTIC_SELECTIVE_POLICY  当前
-I1_CALIBRATED_FAST_POLICY          近期目标
-I2_EXPERIENCE_SHAPED_FAST_POLICY   闭环与跨窗口验证后
-I3_HUMAN_LIKE_INTUITION            永久禁止声明
-```
-
-## 8.3 H6.0 Receipt V2
-
-receipt 必须可由 immutable inputs 完全重算；candidate order 不影响 canonical result；self-consistent but wrong decision、stale/cross-policy replay 必须拒绝。
-
-## 8.4 H6.1 Distributional Selective Policy
-
-输出完整候选概率与 abstain mass。第一阶段可用 softmax、Platt、isotonic、calibrated tree；hard veto 永远在 rank 前。
-
-## 8.5 H6.2 Uncertainty/OOD
-
-至少包含：
-
-```text
-epistemic proxy
-score margin/aleatoric proxy
-candidate coverage
-feature missingness
-distance-to-training-support
-novelty/OOD
-```
-
-OOD 高必须提高 abstain，不允许以高 confidence 掩盖无支持区域。
-
-## 8.6 H6.3 Bounded Temporal Context
-
-只允许 recent failure、correction、provider indeterminate、retrieval instability 和 budget pressure 等可解释状态；不得把未经治理的整段 memory 作为 hidden prompt。
-
-## 8.7 H6.4 Calibration Gates
-
-指标：ECE、Brier、NLL、coverage、selective risk、abstain precision/recall、OOD AUROC/AUPRC、regret、safety veto false-negative；按 language/workspace/task/risk/backend 分组。
-
-## 8.8 H6.5 Safe Exploration
-
-阶段：
-
-```text
-SuggestOnly
-→ ShadowCompare
-→ PrepareOnly
-→ LowRiskExplorationShadow
-→ LowRiskCanarySelect
-```
-
-探索由 `ExplorationPolicyReceiptV1` 控制。tool/provider/auth/credential/high-risk branch 禁止作为第一闭环。
-
-## 8.9 H6.6 I2 晋升
-
-需要 durable closed-loop episodes、真实 behavior propensity/support、next-snapshot artifact update、7d/30d retention、无 critical subgroup regression、calibrated abstain 和 operator-reviewed rollback。
-
----
-
-# 9. H7 统一长期学习计划
-
-## 9.1 唯一目标
-
-```text
-durable causal episode
-+ full candidate set
-+ behavior action/propensity/support
-+ execution/postcondition
-+ immediate/delayed outcome
-+ correction/forget/revocation
-+ conserved credit
-+ immutable dataset
-+ OPE/ESS/CI
-+ signed artifact
-+ next-snapshot reload/rollback
-```
-
-## 9.2 H7.0 Contract Reconciliation
-
-- 定义唯一 `LearningEventV1`；
-- 现有 durable trajectory 和 pure feedback oracle 只作为 migration input；
-- 禁止新 dual-write；
-- collision/cross-scope/stale-fence/property tests；
-- 无新 production caller。
-
-## 9.3 H7.1 `hepta-learning-ledger`
-
-独立 crate/SQLite：
-
-```text
-learning_episodes
-learning_events
-learning_outcomes
-learning_credit_entries
-learning_corrections
-learning_revocations
-learning_dataset_membership
-```
-
-要求 append-only、hash chain、exact replay、changed replay conflict、one snapshot/spawn/generation、contiguous parent、terminal + delayed outcome、WAL/crash/reopen/corruption/failpoints、read-only verifier、no effect authority。
-
-## 9.4 H7.2 Action、Propensity、Support
-
-```text
-behavior_propensity > 0
-target_propensity >= 0
-selected action in support
-candidate set and availability mask exact
-```
-
-禁止事后猜 propensity、丢失 unselected candidates、让 unsupported episode 进入 OPE。
-
-## 9.5 H7.3 Delayed Outcome
-
-支持 immediate postcondition、same/next-turn correction、task completion、7d satisfaction、forget/revocation；记录 delay、censoring、confidence 和 causal binding。
-
-## 9.6 H7.4 Credit
-
-先采用可解释 terminal decomposition、bounded decay、hierarchical conservation。learned credit model 后置且只作为候选，与 deterministic baseline 并行。
-
-## 9.7 H7.5 OPE
-
-最少：IPS、SNIPS、doubly robust、weight clipping diagnostics、support coverage、negative control。只报告 offline loss 或点估计禁止晋升。
-
-## 9.8 H7.6 ESS、CI、Sequential Policy
-
-```text
-ESS = (sum w)^2 / sum(w^2)
-clustered/bootstrap CI by episode/workspace/time
+IPS
+SNIPS
+doubly robust
+cluster/bootstrap CI
 candidate LCB
 baseline UCB
-practical improvement
-pre-registered sequential peeking policy
+subgroup/safety/retention/privacy/resource
 ```
 
-## 9.9 H7.7 Retention、Drift、Forgetting
+处理：
 
-窗口：1d、7d、30d、90d。评测 old-task retention、new-task gain、correction adoption、forget compliance、truth pollution、calibration/subgroup drift、artifact age decay。
+- delayed/censored outcomes；
+- repeated-user/episode clustering；
+- clipping 与 clipped ratio；
+- zero-support rejection；
+- multiple testing；
+- pre-registered thresholds；
+- negative controls；
+- leakage tests；
+- correction/forget/revocation 重算；
+- artifact signature/expiry/revocation。
 
-## 9.10 H7.8 Artifact Registry
-
-```text
-Draft → Trained → OfflineEvaluated → ShadowApproved
-→ CanaryApproved → OperatorAccepted → Promoted
-→ RolledBack | Retired | RevocationPending | Revoked
-```
-
-artifact 与 approval/trust anchor 分离；当前 run 禁止 mid-flight replacement。
-
----
-
-# 10. 本地模型与资源架构
-
-## 10.1 当前事实
-
-本地 inference 分支目前是 source-present/not-run；没有 real-model E2E、hardware/NPU receipt、hepta-inferd 或 H5/H6 runtime wiring。因此当前 H5/H6 不得声称使用本地小模型。
-
-## 10.2 目标执行方式
+最低 pilot 建议：
 
 ```text
-Rust host
-→ typed UDS/IPC request
-→ shared local model pool/sidecar
-→ typed result + confidence + attribution + ModelReceipt
-```
-
-- Mac：Core ML/ANE 优先，CPU/MLX 作为显式 fallback；
-- RTX 4060：较重 batch/embedding/rerank qualification；
-- j3160：deterministic rule/remote only，不加载本地 model pool；
-- Ollama/LM Studio 只能通过 loopback、exact model manifest、no proxy/redirect、无隐式安装的资格路径。
-
-## 10.3 Position-specific fallback
-
-```text
-guard_deterministic: rule only, remote forbidden
-privacy_local: NPU → local CPU/GPU → rule, remote forbidden
-proposal_local: NPU → local → policy-allowed remote → rule, proposal only
-```
-
-每次 fallback 生成 receipt，不得静默改变 policy。资源超限只停止当前 invocation/run，不能破坏 CognitiveStore、TaskFlow 或 peer Agent。
-
-## 10.4 资源指标
-
-每次 invocation 记录 p50/p95/p99、peak RSS/VRAM、queue wait、fallback ratio、error/abstain、thermal/throttle、energy proxy、artifact/device digests。每个 group 有 concurrency、memory、latency、energy 和 circuit-breaker budget。
-
----
-
-# 11. 功能级仿生机制
-
-## 11.1 不追求生物复制
-
-Hepta 的目标不是模拟完整生物脑，而是实现可验证的功能级机制：
-
-```text
-temporal state
-sparse activation
-competition/lateral inhibition
-homeostasis
-eligibility traces
-neuromodulation
-multi-timescale adaptation
-offline replay/consolidation
-lesion/ablation
-graceful degradation
-proposal-only structural plasticity
-```
-
-## 11.2 Neuromodulator Vector
-
-独立信号：
-
-```text
-reward prediction error
-novelty/surprise
-uncertainty
-user correction
-safety risk
-memory pollution
-resource pressure
-latency/cost
-```
-
-用于控制 episodic admission、trace TTL、探索预算、abstain、slow consolidation 和 topology proposal；hard safety veto 永远不能被 reward 抵消。
-
-## 11.3 多时间尺度
-
-```text
-milliseconds/seconds: activation, inhibition, recurrent refinement
-minutes/hours: episodic state, eligibility, local calibration observation
-days/weeks: dataset freeze, artifact training, replay, retention, promotion
-```
-
-## 11.4 Graceful Degradation
-
-必须通过 group/feature/model lesion 证明：移除某单元后系统能回 deterministic baseline、冗余 expert 或 abstain，不产生 authority escape 或 silent quality collapse。
-
----
-
-# 12. 路线图与依赖 DAG
-
-```text
-Q0 Qualification Debt Closure
-→ A0 Canonical Capability/Evidence Authority
-→ B0 Learning Boundary Extraction
-→ C0 LearningEpisode + Durable Ledger
-→ R1 Grounded Retrieval/Telemetry/Security
-→ N1 H5 Adaptive Signal Unit
-→ I1 H6 Calibrated Fast Policy
-→ L1 H7 Causal Evaluation/Artifact
-→ C1 Low-risk Closed Loop
-→ N2 Temporal Recurrent Signal Network
-→ S1 Governed Structural Plasticity
-→ N3 Isolated Neuromorphic Research
-```
-
-## 12.1 Q0 — Qualification Debt Closure
-
-**Entry**：当前。  
-**交付**：冻结 P0.1–P0.4c exact heads/trees/toolchain/migrations；E1 local executable；E2 independent runner；source/fmt/focused/full tests/clippy；SQLite upgrade/reopen/corruption/failpoints；Agentd default-off；可读 artifacts。  
-**Exit**：同一冻结候选通过；所有 runtime/production authority 仍 false。  
-**Blocked**：新 runtime、migration、P1/H5/H6/H7 source。
-
-## 12.2 A0 — Canonical Authority
-
-交付 capability/evidence/PR-stack registry；一个命令输出 current truth；自动核对 branch/head/status/authority。历史文件不得作为 current。
-
-## 12.3 B0 — Boundary Extraction
-
-最少拆出：
-
-```text
-hepta-learning-contracts
-hepta-learning-ledger
-hepta-policy-runtime
-hepta-evaluation
-hepta-intelligence narrow façade
-```
-
-先 compatibility adapter、双读、no-cycle、API receipt，再切 owner；每步可回滚。
-
-## 12.4 C0 — Episode and Eligibility
-
-实现 contracts、durable ledger、correction/forget/revocation、feature-default-off Agentd host。Exit：完整 synthetic episode 可 reopen/replay，changed replay conflict，无 memory/KG/outbox/effect authority。
-
-## 12.5 R1 — Grounded Retrieval and Data Quality
-
-lexical/alias/ANN/bounded KG/rerank、no-content telemetry、federation snapshot merge、semantic security、multilingual efficacy dataset。没有数据质量和 eligibility，禁止 policy learning。
-
-## 12.6 N1 — H5 Adaptive Signal
-
-claim closure → feature builder → linear/tree kernel → temporal state → offline artifact → calibration/ablation。Exit 最多 N1；7d retention、资源预算、无 subgroup regression、no authority。
-
-## 12.7 I1 — H6 Calibrated Fast Policy
-
-DecisionReceiptV2 → distribution → OOD/abstain → bounded temporal context → calibration/selective risk → shadow compare。baseline 仍是产品 decision；尚不 canary。
-
-## 12.8 L1 — H7 Evaluation and Artifact
-
-trajectory/feedback reconciliation → durable action/outcome → credit → OPE → ESS/CI → retention/unlearning → signed artifact。只允许 local qualification snapshot reload/rollback。
-
-## 12.9 C1 — Low-risk Closed Loop
-
-第一 position：`MemoryRetrievalRank`；第二候选：`ContextSalience`。阶段：baseline+shadow → governed exploration → 1% low-risk canary → bounded workspace → operator。禁止 tool/provider/auth/credential/topology/high-risk branch。
-
-Exit：candidate LCB > baseline UCB + practical threshold；ESS/coverage/clip/safety/subgroup/7d retention/rollback 全通过。
-
-## 12.10 N2 — Recurrent Functional Bio-inspiration
-
-实现 sparse competition、lateral inhibition、homeostasis、eligibility、bounded recurrent loop、lesion 和 graceful degradation。仍无 authority。
-
-## 12.11 S1 — Structural Plasticity
-
-仅 TopologyProposal；GraphCompiler、cycle/authority、ablation/lesion、support replay、shadow/canary/operator/rollback。运行中 graph 永不改变。
-
-## 12.12 N3 — Neuromorphic Research
-
-LIF/STDP/event-time/hardware-simulation 独立 registry 和 CI；不能继承产品 authority 或 claim。
-
----
-
-# 13. PR 与提交顺序
-
-任何阶段不得超过两层未 qualification source stack。
-
-## Q0 tranche
-
-1. freeze exact stack manifest；
-2. reproducible local runner；
-3. grounding/mutation SQLite matrix；
-4. Agentd default-off matrix；
-5. append-only E1/E2 receipts。
-
-## Boundary tranche
-
-1. learning contracts；
-2. learning ledger；
-3. policy runtime；
-4. evaluation；
-5. façade compatibility/no-cycle receipts。
-
-## Causal ledger tranche
-
-1. LearningEpisode/Event；
-2. outcome/correction/forget/revocation；
-3. crash/reopen/replay/corruption；
-4. no-authority host。
-
-## Retrieval tranche
-
-query/tokenizer/channel registry → local embedding adapter/fallback → candidate set receipt → telemetry/security → efficacy receipt。
-
-## H5/H6/H7 tranche
-
-每个编号子阶段独立 PR；未通过前一 exact-head gate，不得启动下一 runtime tranche。
-
----
-
-# 14. Evidence 与 Qualification 等级
-
-| Class | 证据 | 可支持声明 |
-|---|---|---|
-| E0_SOURCE | schema/static/source verifier | source-present/implemented |
-| E1_LOCAL_EXECUTABLE | exact-head local fmt/test/clippy/SQLite | developer executable confidence |
-| E2_INDEPENDENT_RUNNER | independent exact-head logs/artifacts | qualified candidate |
-| E3_RUNTIME | real loopback/runtime/restart/failpoint/hardware | wired runtime behavior |
-| E4_EFFICACY | pre-registered corpus/controlled experiment | efficacy proven |
-| E5_GOVERNANCE | operator/rollback/CALLERS | accepted/promoted |
-
-每个 capability 使用：
-
-```text
-implemented → wired → qualified → efficacy_proven → operator_accepted → promoted
-```
-
-任一上游 false，下游必须 false。
-
----
-
-# 15. 测试与评测矩阵
-
-## 15.1 Source/Contract
-
-JSON/Schema、canonical serialization、unknown fields、digest、negative authority、current pointer、single-plan uniqueness、forbidden claims。
-
-## 15.2 Rust
-
-fmt、focused/full tests、strict clippy、feature-default-off、dependency/no-cycle、property/fuzz、cross-platform deterministic fixtures。
-
-## 15.3 SQLite
-
-migration checksum、upgrade、BEGIN IMMEDIATE、pre/post commit failpoint、exact/changed replay、corruption、reopen、WAL checkpoint/restart、bounded growth、revocation lineage。
-
-## 15.4 Fault Injection
-
-kill/timeout/disconnect/restart/disk full/corruption/generation rollover/stale owner/duplicate callback，在 intent 前后、dispatch、result/receipt、postcondition、commit、compact、approval、artifact reload 各窗口都有明确 terminal/recovery/indeterminate。
-
-## 15.5 Security/Privacy
-
-prompt-injection memory、external/model training admission、instruction escalation、scope escape、stale capability、secret/PII/high entropy、receipt forgery、dataset leakage、forget bypass、artifact revocation。
-
-## 15.6 Retrieval
-
-Recall@4、nDCG@4、citation precision、false/stale/contradicted memory attachment、task success、token cost、p95/p99。
-
-## 15.7 H5/H6
-
-ECE、Brier、NLL、selective risk、OOD AUROC/AUPRC、abstain quality、regret、feature ablation、group lesion、activation sparsity、homeostatic stability、resource/energy。
-
-## 15.8 H7
-
-coverage、ESS、weight clipping、IPS/SNIPS/DR、CI/LCB/UCB、negative controls、subgroup、retention/forgetting、drift、unlearning compliance。
-
----
-
-# 16. 初始 Pilot 阈值注册
-
-低风险 pilot 默认建议：
-
-```text
-minimum episodes >= 5,000
+episodes >= 5,000
 supported episodes >= 2,000
 ESS >= 500
 support coverage >= 80%
 clipped ratio <= 5%
-candidate LCB improvement >= 2% absolute or pre-registered practical threshold
 critical safety regression = 0
-false-memory attachment not worse than baseline
-p95 decision overhead <= 20% of baseline or bounded absolute budget
+candidate LCB > baseline UCB
 7d retention before canary expansion
 30d retention before broad promotion
 ```
 
-阈值按 position/risk 预注册，不能从结果反向选择；它们不自动授予 production authority。
+阈值必须在结果之前冻结。
 
 ---
 
-# 17. Rollback、Kill Switch 与 Unlearning
+## 14. C1 — Low-risk Closed Loop
 
-每个 artifact/canary 预生成 previous artifact、rollback artifact/transaction、scope、expiry、kill switch、recovery target、schema compatibility。
+首个闭环固定为可逆、只读 `MemoryRetrievalRank`，禁止 tool/provider/auth/credential/topology/high-risk action。
 
-触发：signature/digest、OOD/abstain collapse、safety/subgroup/calibration、false-memory、revocation contamination、latency/resource、operator stop。
-
-Rollback 必须幂等、离线可执行、不依赖 candidate、生成 receipt、下一 snapshot 验证、保留历史。
-
-Forget/revocation：立即阻止未来 recall/training/eval/promotion；污染 artifact 进入 `RevocationPending`；没有可信 unlearning evidence 时 retire 并 clean retrain。
-
----
-
-# 18. Observability
-
-只记录 no-content metrics：episode state、candidate size、abstain/veto、support/coverage、missing/censored outcome、correction/forget/revocation、dataset include/exclude、artifact transitions、latency/resource buckets。
-
-Dashboard：capability truth、qualification、learning data health、support/OPE、calibration/OOD、retention/forgetting、privacy/revocation、artifact/canary/rollback。禁止展示 raw memory/query/secret。
-
----
-
-# 19. 风险清单
-
-| 风险 | 严重度 | 硬缓解 |
-|---|---:|---|
-| source receipt 被当 qualification | Critical | evidence classes + verifier |
-| 未 qualification 栈增长 | High | two-layer budget + Q0 freeze |
-| grounding 被当 truth | Critical | three-layer truth |
-| recall 被当 training eligibility | Critical | four axes |
-| H7 双真相 | Critical | canonical learning ledger |
-| propensity 事后猜测 | Critical | behavior/exploration receipt |
-| support 不足仍 OPE | High | hard support/ESS gate |
-| point estimate 假阳性 | High | CI/LCB/UCB/sequential policy |
-| delayed outcome 错归因 | High | explicit causal/censoring |
-| forget 未传播 | Critical | lineage + unlearning receipt |
-| god crate 耦合 | High | early boundary extraction |
-| H5/H6 过度宣传 | High | claim ladder + forbidden terms |
-| catastrophic forgetting | High | replay/retention/no-regression |
-| telemetry 泄露 | Critical | no-content schemas |
-| mid-run artifact replacement | Critical | next-snapshot-only |
-| topology 越权 | Critical | proposal/compiler/operator |
-| low-sample overfit | High | shared artifact/local calibration |
-| runner blocker掩盖 defect | High | E1 local + E2 independent |
-| 本地模型资源失控 | High | shared pool/budget/circuit breaker |
-| reward hacking | Critical | decomposed outcome + hard safety |
-
----
-
-# 20. Definition of Done
-
-## 20.1 统一计划 DoD
-
-- 稳定 master 是唯一 current human plan；
-- CURRENT_PLAN、verifier、session AGENTS 指向同一文件；
-- 旧版本计划标记 historical；
-- authority flags false；
-- 计划不声称已实现自我进化、长期 efficacy 或仿生机制。
-
-## 20.2 Q0 DoD
-
-exact frozen heads、non-empty steps、Rust exact、fmt/test/clippy、migration/reopen/corruption/failpoint、zero-write negatives、Agentd default-off、readable artifacts、qualified receipt；operator/promotion false。
-
-## 20.3 L1 Observational Continual DoD
-
-durable observations、eligibility/lineage、immutable dataset、offline calibration/retrieval update、next-snapshot reload/rollback、7d/30d retention、forget compliance。
-
-## 20.4 L2 Closed-loop DoD
-
-LearningEpisode durable、真实 propensity/support、effect/postcondition/outcome、delayed correction/forget、credit conservation、OPE/ESS/CI、subgroup/no-regression、signed artifact、shadow/canary、rollback rehearsal、operator、独立 CALLERS promotion。
-
-## 20.5 N2 Functional Bio-inspired DoD
-
-temporal state、sparse competition、lateral inhibition、homeostasis、neuromodulation、lesion/ablation、graceful degradation、multi-timescale retention，且无 authority escape。
-
----
-
-# 21. 当前唯一执行顺序
-
-严格执行：
-
-1. 冻结 P0.1–P0.4c exact stack；
-2. 修复/建立本地可复现 executable runner，产出 E1；
-3. 恢复独立 runner，产出 E2；
-4. 对冻结候选执行 source/fmt/test/clippy/SQLite/reopen/failpoint/default-off；
-5. 失败则只修原 tranche，不继续上堆；
-6. Q0 通过后建立 A0 capability/evidence registries；
-7. 提前拆出 learning contracts/ledger/policy/evaluation；
-8. 实现 LearningEpisode、eligibility、correction/forget/revocation；
-9. 完成 grounded retrieval、telemetry、security 和 efficacy；
-10. 启动 H5 N1；
-11. 启动 H6 I1；
-12. 统一 H7 durable learning、trainer、OPE/CI；
-13. 在 MemoryRetrievalRank 做受治理低风险探索与 canary；
-14. 证明 L2 后再做 N2/S1；
-15. N3 永远是隔离研究 track。
-
----
-
-# 22. 最终架构决策
-
-Hepta 的最佳方向不是把每个所谓 Neuron 包装成一个小语言模型，也不是模拟完整生物神经系统，而是建设：
-
-> **事实可证、因果可回放、信号有状态、策略可校准、探索受治理、学习可统计验证、遗忘可追踪、artifact 可晋升、失败可回滚的长期智能系统。**
-
-产品级演进顺序必须严格区分：
+C1 路径：
 
 ```text
-metaphorical typed proposal
-→ adaptive signal unit
-→ calibrated fast policy
-→ observational continual learning
-→ governed closed-loop learning
-→ functional temporal/recurrent bio-inspiration
-→ proposal-only structural plasticity
-→ isolated neuromorphic research
+frozen baseline
+→ offline candidate
+→ shadow replay
+→ canary with hard quota
+→ delayed outcome
+→ causal evaluation
+→ independent operator acceptance
+→ separate CALLERS receipt
+→ bounded promotion
 ```
 
-任何阶段都不能自动继承下一阶段的 claim 或 authority。
+必须具备：
+
+- kill switch；
+- canary tenant/user/rate/duration 上限；
+- rollback rehearsal；
+- baseline artifact 永久可用；
+- no in-place self modification；
+- fault isolation；
+- privacy/unlearning propagation；
+- audit without raw content。
+
+---
+
+## 15. Security, Privacy and Supply-chain
+
+威胁模型：
+
+```text
+prompt injection
+memory/KG poisoning
+citation laundering
+cross-agent/tenant confusion
+embedding inversion
+membership inference
+artifact substitution
+receipt replay
+reviewer-key compromise
+malicious corpus intake
+telemetry leakage
+rollback artifact deletion
+```
+
+控制：
+
+- trust / grounding / truth 分离；
+- signed/scoped/expiring/revocable artifacts；
+- nonce/replay domain；
+- software identity 与 human acceptance 分离；
+- secret/PII redaction before persistence；
+- training eligibility 与 retrieval eligibility 分离；
+- provenance/SBOM/lock/toolchain binding；
+- commit/tag or merge-queue identity；
+- artifact attestation；
+- key rotation/revocation；
+- high-risk abstention/veto；
+- no raw content in telemetry；
+- unlearning lineage。
+
+---
+
+## 16. Cross-package Validation Matrix
+
+### E0 Source/static
+
+```text
+schema
+required/forbidden fields
+size/cardinality constants
+digest/read-order/canonical uniqueness
+Cargo/Bazel DAG
+default-off feature
+unknown authority fail closed
+```
+
+### E1 Local executable
+
+```text
+fmt
+focused/full tests
+strict Clippy
+property/fuzz/adversarial
+deterministic receipt twice
+clean tree
+```
+
+### E2 Independent runner/platform
+
+```text
+x86_64 + ARM64
+Linux plus selected macOS/Windows support policy
+toolchain/lock identity
+artifact attestation
+cross-platform deterministic fixtures
+```
+
+### E3 Runtime/recovery
+
+```text
+real process kill/restart
+BEGIN IMMEDIATE contention
+pre/post-commit windows
+WAL/checkpoint
+disk full/permission loss
+page/bit corruption
+duplicate delivery
+clock regression
+owner/tenant confusion
+backup/restore/archive
+```
+
+### E4 Longitudinal/operator
+
+```text
+soak
+retention
+efficacy
+resource/energy
+subgroups
+unlearning
+operator acceptance
+rollback rehearsal
+CALLERS promotion
+```
+
+---
+
+## 17. Package Handoff and Gap Loop
+
+每个工作单元输出 `PackageHandoffReceiptV1`：
+
+```text
+package_id/version
+repository/branch/head/tree/parent
+dependency receipts
+changed paths/blob/content digests
+commands/exits
+artifacts/digests/expiry
+closed/open/external gaps
+authority flags
+rollback pointer
+resume predicate
+stop reason
+```
+
+Gap loop：
+
+```text
+REVALIDATE
+→ CLASSIFY
+→ IMPLEMENT smallest coherent source-controlled slice
+→ RUN exact gates
+→ EMIT receipt
+→ REVALIDATE dependencies
+→ CLOSE or BLOCK with machine-readable predicate
+```
+
+合法 terminal classification：
+
+```text
+CLOSED_SOURCE_CONTROLLED
+OPEN_SOURCE_CONTROLLED
+BLOCKED_EXTERNAL_EVIDENCE
+BLOCKED_UPSTREAM
+STOP_CONDITION
+```
+
+Fixture 只能证明 mechanics，不能关闭真实 corpus、reviewer、hardware、soak、operator、CALLERS、promotion、release 或 production fact。
+
+---
+
+## 18. Stage Definition of Ready / Done
+
+### A0 DoR
+
+- Q0 exact paired receipt valid；
+- A0 sole-parent protocol；
+- 17-path allowlist；
+- runtime freeze；
+- all authority=false。
+
+### A0 DoD
+
+- exact-head source/finalizer PASS；
+- unique unexpired artifacts；
+- independent Q1 review；
+- canonical selection；
+- selected synthetic merge check attribution；
+- repository-controlled required checks all green or independently approved exclusion；
+- no self-merge。
+
+### B0 DoD
+
+- nine-package boundary manifest；
+- no cycles/reverse dependency；
+- qualification wrapper parity；
+- Cargo/Bazel parity；
+- no behavior change；
+- Q0 compatibility regression green。
+
+### C0/M0/J0 DoD
+
+- store-owned facts；
+- append/replay and exact retry；
+- atomic transaction/outbox；
+- E3 failure matrix；
+- checkpoint/archive/restore；
+- bounded recovery；
+- rollback。
+
+### R1/N1/I1/L1/C1 DoD
+
+- real artifacts/corpus；
+- product workspace integration；
+- calibrated abstention/OOD；
+- complete support/propensity；
+- causal metrics and CIs；
+- subgroup/safety/retention/unlearning；
+- next-snapshot signature；
+- canary/kill switch/rollback；
+- independent operator and CALLERS。
+
+---
+
+## 19. Final Execution Order
+
+```text
+1. Publish V4.3 as one exact-parent A0 replacement
+2. Obtain fresh A0 exact-head executable evidence
+3. Obtain independent review and canonical selection
+4. Build selected synthetic merge candidate
+5. Attribute and repair all repository-controlled required checks
+6. Extract B0.1 → B0.8
+7. Implement C0 durable causal ledger
+8. Implement M0 transactional coordinator
+9. Implement J0 lifecycle/recovery
+10. Restack and integrate R1
+11. Implement N1
+12. Implement I1
+13. Implement L1
+14. Pilot C1 MemoryRetrievalRank
+15. Only after longitudinal DoD: N2/S1
+16. N3 remains isolated research
+```
+
+在第 3–5 步完成前，不得落盘 B0/runtime-adjacent source。任何阶段都不得自行把 `candidate_qualified` 提升为 runtime、efficacy、operator、promotion 或 production authority。缺少真实外部输入的 gap 必须保持 `BLOCKED_EXTERNAL_EVIDENCE`。

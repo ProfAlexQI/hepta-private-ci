@@ -1,0 +1,451 @@
+{
+  "allowed_changed_paths": [
+    ".github/workflows/hepta-intelligence-a0-authority.yml",
+    ".github/workflows/hepta-intelligence-execution-spec.yml",
+    ".github/workflows/hepta-intelligence-master-plan.yml",
+    "plans/hepta-intelligence/AGENTS.md",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json",
+    "scripts/hepta-intelligence-current-truth.py",
+    "scripts/verify-hepta-intelligence-a0-authority.py",
+    "scripts/verify-hepta-intelligence-document-authority.py",
+    "scripts/verify-hepta-intelligence-master-plan.py"
+  ],
+  "authority": {
+    "callers_ratchet": false,
+    "default_open_wired": false,
+    "external_effects": false,
+    "learning_write_authority": false,
+    "memory_write_authority": false,
+    "model_runtime_authority": false,
+    "operator_acceptance": false,
+    "outbox_dispatch_authority": false,
+    "product_module_registered": false,
+    "production_authority": false,
+    "projection_write_authority": false,
+    "promotion": false,
+    "provider_dispatch_authority": false,
+    "release_authority": false,
+    "runtime_wired": false,
+    "tool_registered": false
+  },
+  "base": {
+    "branch": "codex/hepta-intelligence-plan-v3-20260828",
+    "head": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+    "parent": "aeb8ac0bfb30d570a16c4914b6e4b31ce035dd62",
+    "q0_candidate_qualified": true,
+    "tree": "ca455a9ef797cd95164c880c7b8faba80b305589"
+  },
+  "branch": "codex/hepta-intelligence-a0-authority-gap-closure-20260829",
+  "candidate_head_binding": "GITHUB_SHA_AT_EXECUTABLE_QUALIFICATION",
+  "candidate_id": "HEPTA_INTELLIGENCE_A0_AUTHORITY_GAP_CLOSURE_2026-08-30",
+  "candidate_provenance_policy": {
+    "candidate_workflow_may_write_source": false,
+    "commit_must_have_exactly_one_parent": true,
+    "publisher_must_be_separate_from_candidate_workflow": true,
+    "replacement_parent": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+    "superseded_head_evidence_reusable": false
+  },
+  "classification": "SOURCE_ONLY_GOVERNANCE_CANDIDATE",
+  "excluded_side_stack_pr_numbers": [
+    28,
+    30,
+    34,
+    40,
+    45,
+    49,
+    54,
+    58,
+    64
+  ],
+  "expected_changed_path_count": 17,
+  "expected_parent": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+  "external_unmerged_dependency_pr_numbers": [
+    53
+  ],
+  "gap_closure_ledger": {
+    "as_of_utc": "2026-08-30T00:00:00Z",
+    "entries": [
+      {
+        "authority_effect": "NONE",
+        "classification": "CLOSED_SOURCE_CONTROLLED",
+        "closure_evidence": [
+          "HEPTA_INTELLIGENCE_MASTER_PLAN.md version 4.2.0",
+          "HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md version 1.1.0",
+          "field-level contracts, package DAG, commands, receipts, failure matrix, SLO and external evidence schemas"
+        ],
+        "gap_id": "A0-DOC-001",
+        "next_action": "Qualify this exact replacement head",
+        "owner_class": "REPOSITORY_DOCUMENTATION",
+        "resume_predicate": "replacement head is exact child of Q0 and all document digests match",
+        "status": "CLOSED_IN_REPLACEMENT_SOURCE_AWAITING_EXACT_HEAD_EVIDENCE",
+        "title": "Canonical plan lacked field-level package implementation detail"
+      },
+      {
+        "authority_effect": "NONE",
+        "classification": "OPEN_SOURCE_CONTROLLED",
+        "closure_evidence": [
+          "replacement commit with sole parent c768bcbeb4c1168088d2499828c24da521a2a73a",
+          "fresh check runs on exact replacement head",
+          "source_writeback=false"
+        ],
+        "gap_id": "A0-TRIGGER-001",
+        "next_action": "Publish replacement through separately authenticated Git data write",
+        "owner_class": "SOURCE_PUBLISHER_AND_CI",
+        "resume_predicate": "new head has exact Q0 parent and workflow run head equals candidate head",
+        "status": "REPLACEMENT_PUBLISH_AND_FRESH_TRIGGER_REQUIRED",
+        "title": "Every replacement head requires fresh non-writeback workflow triggering"
+      },
+      {
+        "authority_effect": "CANDIDATE_QUALIFICATION_ONLY",
+        "blocked_by": [
+          "A0-TRIGGER-001"
+        ],
+        "classification": "OPEN_SOURCE_CONTROLLED",
+        "closure_evidence": [
+          "real runner_id > 0",
+          "non-empty successful steps",
+          "unique unexpired SHA-256 artifacts",
+          "exact repository/branch/head/tree/parent",
+          "PASS_HEPTA_INTELLIGENCE_A0_EXECUTABLE_QUALIFICATION"
+        ],
+        "gap_id": "A0-EVIDENCE-001",
+        "next_action": "Run read-only A0 source and finalizer jobs",
+        "owner_class": "CI_EVIDENCE",
+        "resume_predicate": "A0 source workflow completed successfully on current exact head",
+        "status": "BLOCKED_BY_FRESH_REPLACEMENT_TRIGGER",
+        "title": "A0 exact-head executable qualification receipt is required"
+      },
+      {
+        "authority_effect": "NO_PRODUCTION_OR_RELEASE_AUTHORITY",
+        "blocked_by": [
+          "A0-EVIDENCE-001"
+        ],
+        "classification": "BLOCKED_EXTERNAL_EVIDENCE",
+        "closure_evidence": [
+          "A0IndependentReviewReceiptV1",
+          "reviewer independence/conflict declaration",
+          "decision bound to exact head/tree and evidence artifacts"
+        ],
+        "gap_id": "A0-REVIEW-001",
+        "next_action": "Independent reviewer evaluates exact-head source and receipts",
+        "owner_class": "INDEPENDENT_REVIEWER",
+        "resume_predicate": "exact-head executable receipt exists and remains unexpired",
+        "status": "BLOCKED_BY_A0_EXECUTABLE_RECEIPT",
+        "title": "Independent A0 review and canonical selection are incomplete"
+      },
+      {
+        "authority_effect": "MERGE_ELIGIBILITY_ONLY",
+        "blocked_by": [
+          "A0-REVIEW-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "selected synthetic merge candidate",
+          "RepositoryCheckAttributionReceiptV1",
+          "all required checks pass or policy-approved target exclusions",
+          "no unresolved stale/cancelled required check"
+        ],
+        "gap_id": "A0-MERGE-001",
+        "next_action": "Attribute and repair only selected-candidate failures",
+        "owner_class": "REPOSITORY_INTEGRATION",
+        "resume_predicate": "independent approval and canonical selection identify one candidate",
+        "status": "BLOCKED_BY_CANONICAL_SELECTION",
+        "title": "Full repository selected merge candidate is not admitted"
+      },
+      {
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "A0-MERGE-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "nine-package boundary manifest",
+          "forbidden dependency DAG",
+          "qualification wrapper parity",
+          "Cargo/Bazel parity",
+          "Q0 no-behavior-change receipt"
+        ],
+        "gap_id": "B0-BOUNDARY-001",
+        "next_action": "Extract B0.1 contracts as smallest dependency-neutral slice",
+        "owner_class": "ARCHITECTURE",
+        "resume_predicate": "selected A0 integration candidate is admitted and rollback base frozen",
+        "status": "BLOCKED_BY_A0",
+        "title": "Learning, mutation, retrieval and evaluation ownership remains coupled"
+      },
+      {
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "B0-BOUNDARY-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "bounded versioned causal contracts",
+          "append/replay property tests",
+          "outcome and credit conservation",
+          "correction/forget/revocation lineage"
+        ],
+        "gap_id": "C0-LEDGER-001",
+        "next_action": "Implement default-off C0 contracts and storage after B0",
+        "owner_class": "LEARNING_LEDGER",
+        "resume_predicate": "exact dependencies and authority-negative state remain valid",
+        "status": "BLOCKED_BY_B0",
+        "title": "No canonical durable LearningEpisode causal ledger"
+      },
+      {
+        "authority_effect": "NONE_UNTIL_SEPARATE_RUNTIME_TRANCHE",
+        "blocked_by": [
+          "B0-BOUNDARY-001",
+          "C0-LEDGER-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "atomic memory/KG/journal/outbox transaction tests",
+          "store-derived receipts",
+          "post-commit retry adoption",
+          "E3 process-kill/recovery campaign"
+        ],
+        "gap_id": "M0-COORDINATOR-001",
+        "next_action": "Implement host-owned coordinator after B0/C0",
+        "owner_class": "MUTATION_COORDINATOR",
+        "resume_predicate": "exact dependencies and authority-negative state remain valid",
+        "status": "BLOCKED_BY_B0_AND_C0",
+        "title": "Mutation journal observes caller receipts instead of owning product facts"
+      },
+      {
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "B0-BOUNDARY-001",
+          "M0-COORDINATOR-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "bounded recovery SLO",
+          "checkpoint hash proof",
+          "archive/restore replay",
+          "disk/permission/corruption campaign"
+        ],
+        "gap_id": "J0-LIFECYCLE-001",
+        "next_action": "Implement lifecycle only after coordinator storage ownership freezes",
+        "owner_class": "JOURNAL_STORAGE",
+        "resume_predicate": "exact dependencies and authority-negative state remain valid",
+        "status": "BLOCKED_BY_B0_AND_M0",
+        "title": "Append-only journal lacks production partition/checkpoint/archive lifecycle"
+      },
+      {
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "A0-MERGE-001",
+          "B0-BOUNDARY-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "side-stack selection receipt",
+          "restacked exact-head qualification",
+          "product workspace feature matrix",
+          "real semantic artifact binding"
+        ],
+        "gap_id": "R1-RETRIEVAL-001",
+        "next_action": "Apply include/rewrite/split decisions for PRs 28/30/34/40/64",
+        "owner_class": "RETRIEVAL",
+        "resume_predicate": "exact dependencies and authority-negative state remain valid",
+        "status": "SIDE_STACK_NOT_SELECTED",
+        "title": "No selected product-integrated grounded semantic retrieval candidate"
+      },
+      {
+        "authority_effect": "EFFICACY_EVIDENCE_ONLY",
+        "blocked_by": [
+          "R1-RETRIEVAL-001"
+        ],
+        "classification": "BLOCKED_EXTERNAL_EVIDENCE",
+        "closure_evidence": [
+          "ReviewedCorpusEvidencePackageV1",
+          "immutable corpus digest",
+          "independent reviewer/adjudicator signatures",
+          "license/provenance and privacy/redaction approval"
+        ],
+        "gap_id": "R1-CORPUS-001",
+        "next_action": "Supply externally governed corpus package",
+        "owner_class": "DATA_GOVERNANCE_AND_REVIEWERS",
+        "resume_predicate": "selected retrieval candidate and validator are executable-qualified",
+        "status": "EXTERNAL_INPUT_REQUIRED",
+        "title": "Reviewed multilingual efficacy corpus and signatures are absent"
+      },
+      {
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "C0-LEDGER-001",
+          "R1-RETRIEVAL-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "sparse/inhibition/homeostasis implementation",
+          "calibration/OOD/abstention",
+          "next-snapshot adapter manifest",
+          "lesion and ablation"
+        ],
+        "gap_id": "N1-NEURON-001",
+        "next_action": "Remain N0 until C0 and R1 close",
+        "owner_class": "ADAPTIVE_SIGNAL",
+        "resume_predicate": "exact dependencies and authority-negative state remain valid",
+        "status": "N0_ONLY",
+        "title": "H5 has no qualified adaptive signal implementation"
+      },
+      {
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "N1-NEURON-001",
+          "C0-LEDGER-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "PolicyDecisionReceiptV2",
+          "complete candidate set",
+          "propensity/support proof",
+          "calibration/OOD/abstention/high-risk veto"
+        ],
+        "gap_id": "I1-INTUITION-001",
+        "next_action": "Remain I0 until N1 and C0 close",
+        "owner_class": "FAST_POLICY",
+        "resume_predicate": "exact dependencies and authority-negative state remain valid",
+        "status": "I0_ONLY",
+        "title": "H6 has no calibrated fast policy with logged propensities"
+      },
+      {
+        "authority_effect": "NONE",
+        "blocked_by": [
+          "C0-LEDGER-001",
+          "I1-INTUITION-001",
+          "R1-CORPUS-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "support/ESS/IPS/SNIPS/DR",
+          "cluster/bootstrap confidence intervals",
+          "candidate LCB > baseline UCB",
+          "subgroup/retention/unlearning",
+          "signed rollback-capable artifact"
+        ],
+        "gap_id": "L1-LEARNING-001",
+        "next_action": "Do not claim closed-loop learning",
+        "owner_class": "CAUSAL_EVALUATION",
+        "resume_predicate": "exact dependencies and authority-negative state remain valid",
+        "status": "L0_STATIC_SHADOW",
+        "title": "No longitudinal causal evaluation or signed next-snapshot artifact"
+      },
+      {
+        "authority_effect": "SEPARATE_OPERATOR_AND_CALLERS_DECISION_REQUIRED",
+        "blocked_by": [
+          "L1-LEARNING-001",
+          "A0-MERGE-001"
+        ],
+        "classification": "BLOCKED_UPSTREAM",
+        "closure_evidence": [
+          "read-only MemoryRetrievalRank pilot",
+          "shadow/canary/kill switch",
+          "rollback rehearsal",
+          "independent operator acceptance"
+        ],
+        "gap_id": "C1-CLOSED-LOOP-001",
+        "next_action": "Keep runtime and learning authority false",
+        "owner_class": "CONTROLLED_RUNTIME",
+        "resume_predicate": "exact dependencies and authority-negative state remain valid",
+        "status": "NOT_AUTHORIZED",
+        "title": "Low-risk closed-loop learning is not implemented or authorized"
+      },
+      {
+        "authority_effect": "NONE",
+        "classification": "BLOCKED_EXTERNAL_EVIDENCE",
+        "closure_evidence": [
+          "SemanticArtifactEvidencePackageV1",
+          "bound hardware inventory",
+          "reproducible benchmark",
+          "latency/memory/CPU/GPU/energy receipt"
+        ],
+        "gap_id": "EXT-HARDWARE-001",
+        "next_action": "Collect after a runnable candidate exists",
+        "owner_class": "HARDWARE_EVALUATION",
+        "resume_predicate": "selected runtime candidate and benchmark protocol are frozen",
+        "status": "EXTERNAL_INPUT_REQUIRED",
+        "title": "Real hardware resource and energy evidence is absent"
+      },
+      {
+        "authority_effect": "EXTERNAL_ONLY",
+        "blocked_by": [
+          "C1-CLOSED-LOOP-001"
+        ],
+        "classification": "BLOCKED_EXTERNAL_EVIDENCE",
+        "closure_evidence": [
+          "OperatorAcceptancePackageV1",
+          "independent operator signature",
+          "CALLERS ratchet receipt",
+          "promotion and release decisions"
+        ],
+        "gap_id": "EXT-OPERATOR-001",
+        "next_action": "Remain blocked until C1 and all evidence gates close",
+        "owner_class": "OPERATOR_RELEASE",
+        "resume_predicate": "exact dependencies and authority-negative state remain valid",
+        "status": "EXTERNAL_INPUT_REQUIRED",
+        "title": "Operator, CALLERS, promotion and release decisions are external"
+      }
+    ],
+    "invariants": {
+      "external_evidence_may_be_synthesized": false,
+      "fixture_may_close_external_gap": false,
+      "live_evidence_may_directly_mutate_source": false,
+      "positive_authority_allowed": false,
+      "source_closed_requires_exact_head_executable_evidence": true,
+      "source_snapshot_is_live_evidence": false,
+      "unknown_gap_fails_closed": true
+    },
+    "schema": "hepta_intelligence_gap_closure_ledger_v1"
+  },
+  "merge_policy": {
+    "canonical_selection_required": true,
+    "full_repository_required_checks_green": true,
+    "independent_review_required": true,
+    "self_merge_allowed": false,
+    "source_head_evidence_equals_merge_candidate_evidence": false
+  },
+  "operational_documents": [
+    {
+      "classification": "SUBORDINATE_EXECUTION_SPEC_NO_AUTHORITY",
+      "content_sha256": "7e4caaf7ea096e826617e993a669a68a3f05629297dfa13a645bd4e4afa4df01",
+      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md",
+      "version": "1.1.0"
+    }
+  ],
+  "repository": "ProfHepta/hepta-private-ci",
+  "schema": "hepta_intelligence_integration_candidate_v1",
+  "side_stack_decisions": {
+    "28": "REWRITE_AS_PRODUCT_MODULE",
+    "30": "INCLUDE_AFTER_RESTACK",
+    "34": "SPLIT_PROVIDER_INDEX_CONTRACTS",
+    "40": "INCLUDE_AFTER_RESTACK",
+    "45": "RETAIN_EVAL_MECHANICS_ONLY",
+    "49": "RETAIN_GOVERNANCE_MECHANICS_ONLY",
+    "54": "RETAIN_BLOCKED_RERUN_MECHANICS",
+    "58": "RETAIN_TRUST_GATE_MECHANICS",
+    "64": "SPLIT_AND_REWRITE"
+  },
+  "source_freeze": {
+    "h5_h6_h7_runtime_allowed": false,
+    "model_provider_effects_allowed": false,
+    "product_callers_allowed": false,
+    "rust_runtime_changes_allowed": false,
+    "sql_migrations_allowed": false
+  },
+  "source_snapshot_policy": {
+    "classification": "SOURCE_SNAPSHOT_NOT_LIVE_CI",
+    "live_receipt_required": true,
+    "queued_or_incomplete_is_pass": false,
+    "superseded_evidence_reusable": false
+  }
+}
