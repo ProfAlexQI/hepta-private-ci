@@ -1,0 +1,167 @@
+name: Hepta inference INF-0C cancel capability v4 real ARM
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0c-real-services-arm-20260828
+    paths:
+      - ".github/workflows/hepta-inference-inf0c-cancel-capability-v4-real-arm.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  classify:
+    name: Classify fixed-tuple explicit cancellation capability
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    env:
+      EXPECTED_PARENT: e54aea1ccca3509b36dd3eda7850289025dded16
+      SELF: .github/workflows/hepta-inference-inf0c-cancel-capability-v4-real-arm.yml
+      V4_BRANCH: codex/hepta-inference-inf0c-cancel-capability-v3-20260828
+      V4_RECEIPT: b252fcc22f45f4151ecec7a82e5f5fb99a28d0fb
+      V4_SOURCE: 8ff6dcf797309ca9966bc6bf2f8fa84c9784fee0
+      V4_TREE: 935fb228042ad3f86db31b6c71841fc03a71ab8f
+      SOURCE_WORKFLOW: .github/workflows/hepta-inference-inf0c-restart-cancel-arm-v8.yml
+      SOURCE_WORKFLOW_BLOB: e44de3b1dbbbd39913b71b5643ca996903f2b818
+      OLLAMA_MODEL: granite4:1b
+      LMSTUDIO_MODEL: ibm/granite-4-micro
+      LMSTUDIO_DOWNLOAD: ibm/granite-4-micro@q4_k_m
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_CONTEXT_LENGTH: "2048"
+      EXPECTED_OLLAMA_INSTALLER_SHA256: 25f64b810b947145095956533e1bdf56eacea2673c55a7e586be4515fc882c9f
+      EXPECTED_LMSTUDIO_INSTALLER_SHA256: f6492caf54327951d55f281133d0d9646efd62985c2465c597bfff8d35b6795f
+      CI: "1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify isolated workflow and detach v4 receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          test "$(git hash-object "$SOURCE_WORKFLOW")" = "$SOURCE_WORKFLOW_BLOB"
+          cp "$SOURCE_WORKFLOW" "$RUNNER_TEMP/hepta-inf0c-v8-source.yml"
+          echo "WORKFLOW_COMMIT=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "WORKFLOW_TREE=$(git rev-parse HEAD^{tree})" >> "$GITHUB_ENV"
+          git fetch --no-tags origin "refs/heads/$V4_BRANCH:refs/remotes/origin/hepta-inf0c-cancel-v4"
+          test "$(git rev-parse refs/remotes/origin/hepta-inf0c-cancel-v4)" = "$V4_RECEIPT"
+          test "$(git rev-parse "$V4_RECEIPT^")" = "$V4_SOURCE"
+          test "$(git show -s --format=%T "$V4_SOURCE")" = "$V4_TREE"
+          git checkout --detach "$V4_RECEIPT"
+          python3 -m py_compile \
+            scripts/hepta-inference-inf0c-real-e2e.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v3.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v4.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v4-selftest.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v4-source-gate.py
+          python3 scripts/hepta-inference-inf0c-cancel-capability-v4-selftest.py
+          python3 scripts/hepta-inference-inf0c-cancel-capability-v4-source-gate.py
+
+      - name: Execute audited runtime and exact-model setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/hepta-inf0c-v8-source.yml" <<'PY'
+          import os, pathlib, subprocess, sys, tempfile
+          lines=pathlib.Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()
+          blocks={};i=0
+          while i < len(lines):
+              if not lines[i].startswith('      - name: '): i+=1; continue
+              name=lines[i][14:];j=i+1
+              while j < len(lines) and lines[j] != '        run: |':
+                  if lines[j].startswith('      - '): break
+                  j+=1
+              if j >= len(lines) or lines[j] != '        run: |': i+=1; continue
+              j+=1;body=[]
+              while j < len(lines) and (not lines[j] or lines[j].startswith('          ')):
+                  body.append(lines[j][10:] if lines[j].startswith('          ') else '');j+=1
+              blocks[name]='\n'.join(body)+'\n';i=j
+          targets=[
+            'Prepare private qualification roots',
+            'Install exact audited runtimes',
+            'Start Ollama and explicitly provision exact model',
+            'Stabilize LM Studio and explicitly provision exact GGUF',
+          ]
+          env=dict(os.environ); ge=pathlib.Path(env['GITHUB_ENV']); gp=pathlib.Path(env['GITHUB_PATH'])
+          def refresh():
+              if ge.exists():
+                  for raw in ge.read_text().splitlines():
+                      if raw and '=' in raw and '<<' not in raw:
+                          key,value=raw.split('=',1);env[key]=value
+              if gp.exists():
+                  values=[x for x in gp.read_text().splitlines() if x]
+                  if values: env['PATH']=os.pathsep.join(reversed(values))+os.pathsep+env.get('PATH','')
+          for name in targets:
+              if name not in blocks: raise SystemExit(f'missing audited setup: {name}')
+              with tempfile.NamedTemporaryFile('w',suffix='.sh',delete=False) as f:
+                  f.write(blocks[name]);path=f.name
+              result=subprocess.run(['/usr/bin/bash',path],cwd=os.environ['GITHUB_WORKSPACE'],env=env)
+              pathlib.Path(path).unlink(missing_ok=True)
+              if result.returncode: raise SystemExit(f'audited setup failed: {name}')
+              refresh()
+          PY
+
+      - name: Execute corrected explicit cancel classification
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/hepta-inf0c-cancel-v4-real"
+          install -d -m 700 "$root"
+          set +e
+          python3 scripts/hepta-inference-inf0c-cancel-capability-v4.py \
+            --execute \
+            --timeout-seconds 180 \
+            --poll-timeout-seconds 60 \
+            --ollama-model "$OLLAMA_MODEL" \
+            --lmstudio-model "$LMSTUDIO_MODEL" \
+            --receipt "$root/cancel-capability-v4.json"
+          probe_status=$?
+          set -e
+          test -s "$root/cancel-capability-v4.json"
+          python3 - "$root/cancel-capability-v4.json" "$probe_status" <<'PY'
+          import json, pathlib, sys
+          path=pathlib.Path(sys.argv[1]);status=int(sys.argv[2]);value=json.loads(path.read_text())
+          providers=value['providers'];assert set(providers)=={'ollama','lmstudio'}
+          allowed={'explicit_background_cancel_acknowledged','explicit_cancel_unsupported'}
+          for provider,result in providers.items():
+              assert result['classification'] in allowed, (provider,result)
+              assert result['provider_cancel_capability_classified'] is True
+              assert result['transport_disconnect_used'] is False
+              assert result['provider_cancel_acknowledged'] is (result['classification']=='explicit_background_cancel_acknowledged')
+          acknowledged=all(x['provider_cancel_acknowledged'] for x in providers.values())
+          assert (status==0)==acknowledged
+          summary={
+            'schema':'hepta.inference.inf0c.cancel_capability_real_v4.v1',
+            'v4_receipt': 'b252fcc22f45f4151ecec7a82e5f5fb99a28d0fb',
+            'v4_source': '8ff6dcf797309ca9966bc6bf2f8fa84c9784fee0',
+            'provider_cancel_capability_evidence_complete': True,
+            'backend_cancellation_acknowledged': acknowledged,
+            'unsupported_is_not_acknowledgement': True,
+            'controlled_worker_termination_required': not acknowledged,
+            'transport_disconnect_used': False,
+            'providers': providers,
+            'production_qualified': False,
+            'operator_accepted': False,
+            'promoted': False,
+          }
+          path.with_name('cancel-capability-v4-classification.json').write_text(json.dumps(summary,indent=2)+'\n')
+          PY
+          chmod 600 "$root"/*.json
+          find "$root" -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > "$root/SHA256SUMS"
+          echo "PASS_HEPTA_INFERENCE_INF0C_CANCEL_CAPABILITY_CLASSIFIED" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload real cancellation capability evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0c-cancel-capability-v4-real-${{ env.V4_RECEIPT }}
+          path: ${{ runner.temp }}/hepta-inf0c-cancel-v4-real
+          if-no-files-found: warn
+          retention-days: 14
