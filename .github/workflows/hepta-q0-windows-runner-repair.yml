@@ -31,7 +31,7 @@ jobs:
         shell: bash
         env:
           EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-          EXPECTED_PARENT: 4e41e182c89807e2d1c91c31b44987f6e400641c
+          EXPECTED_PARENT: 428e6769400256336eda9c93c45f0a28b93ce0dc
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "ProfHepta/hepta-private-ci"
@@ -49,36 +49,51 @@ jobs:
           path = Path(".github/workflows/bazel.yml")
           text = path.read_text(encoding="utf-8")
 
-          custom_job_runner = '''    runs-on:
-              group: ${{ github.event.repository.name }}-runners
-              labels: ${{ github.event.repository.name }}-windows-x64
-          '''
-          if text.count(custom_job_runner) != 2:
+          # Split the expression token so GitHub does not interpolate the
+          # matcher inside this run script before Python reads bazel.yml.
+          repository_expression = "$" + "{{ github.event.repository.name }}"
+          matrix_runner_expression = "$" + "{{ matrix.runs_on || matrix.os }}"
+          matrix_os_expression = "$" + "{{ matrix.os }}"
+
+          custom_job_runner = (
+              "    runs-on:\n"
+              f"      group: {repository_expression}-runners\n"
+              f"      labels: {repository_expression}-windows-x64\n"
+          )
+          count = text.count(custom_job_runner)
+          if count != 2:
               raise AssertionError(
-                  f"expected two job-level custom Windows runners, found {text.count(custom_job_runner)}"
+                  f"expected two job-level custom Windows runners, found {count}"
               )
           text = text.replace(custom_job_runner, "    runs-on: windows-latest\n", 2)
 
-          custom_matrix_runner = '''            runs_on:
-                        group: ${{ github.event.repository.name }}-runners
-                        labels: ${{ github.event.repository.name }}-windows-x64
-          '''
-          if text.count(custom_matrix_runner) != 2:
+          custom_matrix_runner = (
+              "            runs_on:\n"
+              f"              group: {repository_expression}-runners\n"
+              f"              labels: {repository_expression}-windows-x64\n"
+          )
+          count = text.count(custom_matrix_runner)
+          if count != 2:
               raise AssertionError(
-                  f"expected two matrix custom Windows runners, found {text.count(custom_matrix_runner)}"
+                  f"expected two matrix custom Windows runners, found {count}"
               )
           text = text.replace(custom_matrix_runner, "", 2)
 
-          dynamic_runner = "    runs-on: ${{ matrix.runs_on || matrix.os }}\n"
-          if text.count(dynamic_runner) != 2:
+          dynamic_runner = f"    runs-on: {matrix_runner_expression}\n"
+          count = text.count(dynamic_runner)
+          if count != 2:
               raise AssertionError(
-                  f"expected two dynamic runner selectors, found {text.count(dynamic_runner)}"
+                  f"expected two dynamic runner selectors, found {count}"
               )
-          text = text.replace(dynamic_runner, "    runs-on: ${{ matrix.os }}\n", 2)
+          text = text.replace(
+              dynamic_runner,
+              f"    runs-on: {matrix_os_expression}\n",
+              2,
+          )
 
           for forbidden in (
-              "${{ github.event.repository.name }}-runners",
-              "${{ github.event.repository.name }}-windows-x64",
+              f"{repository_expression}-runners",
+              f"{repository_expression}-windows-x64",
               "matrix.runs_on",
           ):
               if forbidden in text:
