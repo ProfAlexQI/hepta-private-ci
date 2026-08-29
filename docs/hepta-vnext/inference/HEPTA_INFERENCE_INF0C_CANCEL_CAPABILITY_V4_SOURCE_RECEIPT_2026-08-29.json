@@ -1,0 +1,45 @@
+{
+  "schema": "hepta.inference.inf0c.cancel_capability_v4_source_receipt.v1",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
+  "plan_git_blob_sha1": "4381207acce1bf6371c248dc3280fff1f2ae59ce",
+  "branch": "codex/hepta-inference-inf0c-cancel-capability-v3-20260828",
+  "parent_receipt": "6109b43cd303253d84c9ef0a16ae4592d9e96cd0",
+  "source_candidate_commit": "8ff6dcf797309ca9966bc6bf2f8fa84c9784fee0",
+  "source_candidate_tree": "935fb228042ad3f86db31b6c71841fc03a71ab8f",
+  "source_components": {
+    "v3_contract_preserved": true,
+    "known_unsupported_non_json_http_classification": true,
+    "unsupported_media_type_allowlist": true,
+    "successful_response_json_only": true,
+    "unexpected_error_media_type_fail_closed": true,
+    "bounded_body_and_digest_only_receipt": true,
+    "hermetic_http_fixture": true
+  },
+  "validation": {
+    "python_syntax": "LOCAL_PASS",
+    "hermetic_http_fixture": "LOCAL_PASS",
+    "hosted_source_gate": "NOT_RUN_FOR_RECEIPT_HEAD",
+    "real_provider_cancel_capability": "NOT_RUN_FOR_RECEIPT_HEAD"
+  },
+  "claim": "SOURCE_PRESENT_NOT_RUN",
+  "qualified": false,
+  "provider_cancel_capability_classified": false,
+  "backend_cancellation_acknowledged": false,
+  "controlled_worker_termination_required": true,
+  "authority": {
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
