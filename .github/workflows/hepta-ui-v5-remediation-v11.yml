@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: hepta-ui-v5-remediation-v11
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   remediate:
@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 60
     env:
       BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
-      EXPECTED_PARENT: 3e0cf14de1d3a441295d1825a0299e48c8bbfb14
+      EXPECTED_PARENT: a63baaa531e614a860d413a38253482477e5bab9
       BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-remediation-v11.yml
       UPSTREAM_URL: https://github.com/openai/codex.git
       UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
@@ -29,7 +29,7 @@ jobs:
       UPSTREAM_FROZEN_REF: refs/remotes/upstream/hepta-intake-20260830-r12
       UPSTREAM_INTAKE_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R12.json
       UPSTREAM_RECORD_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
-      V10_DRIVER_COMMIT: bb8e40e70ce3c8121e8edc7f3274ed2e4a1665ec
+      V12_DRIVER_COMMIT: 554d710f6a561166553f3c01fafc5b27cd8c28b9
     steps:
       - name: Check out exact v11 driver commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -46,14 +46,14 @@ jobs:
           sudo apt-get install --yes jq ripgrep ruby patch
           rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
 
-      - name: Execute the exact v10 remediation logic on ARM
+      - name: Execute the exact v12 remediation logic on ARM
         shell: bash
         run: |
           set -euo pipefail
-          source_workflow="$RUNNER_TEMP/hepta-ui-v5-remediation-v10.yml"
+          source_workflow="$RUNNER_TEMP/hepta-ui-v5-remediation-v12.yml"
           generated_driver="$RUNNER_TEMP/hepta-ui-v5-remediation-v11-driver.sh"
-          git cat-file -e "$V10_DRIVER_COMMIT^{commit}"
-          git show "$V10_DRIVER_COMMIT:.github/workflows/hepta-ui-v5-remediation-v10.yml" > "$source_workflow"
+          git cat-file -e "$V12_DRIVER_COMMIT^{commit}"
+          git show "$V12_DRIVER_COMMIT:.github/workflows/hepta-ui-v5-remediation-v12.yml" > "$source_workflow"
           awk '
             /      - name: Extend, verify, and publish the exact remediation/ { found=1; next }
             found && /        shell: bash/ { next }
