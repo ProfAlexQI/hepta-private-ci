@@ -1,0 +1,112 @@
+name: Hepta UI v5 remediation v7
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-remediation-v7-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-remediation-v7.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-remediation-v7
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    env:
+      BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_PARENT: 3e0cf14de1d3a441295d1825a0299e48c8bbfb14
+      BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-remediation-v7.yml
+      UPSTREAM_URL: https://github.com/openai/codex.git
+      UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
+      UPSTREAM_ROLE: current_r12
+      UPSTREAM_FROZEN_REF: refs/remotes/upstream/hepta-intake-20260830-r12
+      UPSTREAM_INTAKE_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R12.json
+      UPSTREAM_RECORD_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+    steps:
+      - name: Check out exact v7 driver commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install deterministic remediation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes jq ripgrep ruby patch
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+
+      - name: Extend, verify, and publish the exact remediation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source_driver=.github/workflows/hepta-ui-v5-remediation-v6.yml
+          generated_driver="$RUNNER_TEMP/hepta-ui-v5-remediate-v7-driver.sh"
+          test -f "$source_driver"
+          awk '
+            /      - name: Generate, verify, and publish the exact remediation/ { found=1; next }
+            found && /        shell: bash/ { next }
+            found && /        run: \|/ { in_run=1; next }
+            in_run { sub(/^          /, ""); print }
+          ' "$source_driver" > "$generated_driver"
+
+          export GENERATED_DRIVER="$generated_driver"
+          python3 <<'PY'
+          from __future__ import annotations
+
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["GENERATED_DRIVER"])
+          text = path.read_text(encoding="utf-8")
+          anchor = 'bash -x "$generated_script"\n'
+          if text.count(anchor) != 1:
+              raise SystemExit(
+                  f"v7 execution anchor: expected 1 match, found {text.count(anchor)}"
+              )
+          extension = r'''export GENERATED_REMEDIATION_SCRIPT="$generated_script"
+          python3 <<'PATCH'
+          from __future__ import annotations
+
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["GENERATED_REMEDIATION_SCRIPT"])
+          text = path.read_text(encoding="utf-8")
+
+          hash_anchor = "dep_contract_path.write_text(\n    json.dumps(dep_contract, indent=2, ensure_ascii=False) + \"\\\\n\",\n    encoding=\"utf-8\",\n)\ndep_gate_path = root / \"scripts/hepta-dependency-security\"\n"
+          hash_replacement = "for input_id, input_entry in dep_contract[\"inputs\"].items():\n    if input_id == \"cargo_locks\":\n        continue\n    if not isinstance(input_entry, dict):\n        continue\n    if \"path\" not in input_entry or \"sha256\" not in input_entry:\n        continue\n    input_entry[\"sha256\"] = sha256_path(root / input_entry[\"path\"])\ndep_contract_path.write_text(\n    json.dumps(dep_contract, indent=2, ensure_ascii=False) + \"\\\\n\",\n    encoding=\"utf-8\",\n)\ndep_gate_path = root / \"scripts/hepta-dependency-security\"\n"
+          if text.count(hash_anchor) != 1:
+              raise SystemExit(
+                  f"dependency input hash anchor: expected 1 match, found {text.count(hash_anchor)}"
+              )
+          text = text.replace(hash_anchor, hash_replacement)
+
+          cleanup_anchor = 'git rm "$BOOTSTRAP_PATH" \\\n  .github/workflows/hepta-ui-v5-blocker-remediation-bootstrap.yml\n'
+          cleanup_replacement = 'git rm "$BOOTSTRAP_PATH" \\\n  .github/workflows/hepta-ui-v5-blocker-remediation-bootstrap.yml \\\n  .github/workflows/hepta-ui-v5-remediation-v6.yml\n'
+          if text.count(cleanup_anchor) != 1:
+              raise SystemExit(
+                  f"remediation helper cleanup anchor: expected 1 match, found {text.count(cleanup_anchor)}"
+              )
+          text = text.replace(cleanup_anchor, cleanup_replacement)
+          path.write_text(text, encoding="utf-8")
+          PATCH
+          bash -n "$generated_script"
+          bash -x "$generated_script"
+          '''
+          text = text.replace(anchor, extension)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          bash -n "$generated_driver"
+          bash -x "$generated_driver"
