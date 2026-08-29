@@ -228,14 +228,29 @@ def verify_provider_operation() -> None:
             "self.provider.dispatch_once(intent.clone()).await",
         ),
     )
+    require_markers(
+        "codex-rs/hepta-contracts/src/checked_provider_operation.rs",
+        (
+            "pub struct ProviderOperationCoordinator<A, V>",
+            "V: CapabilityUseVerifier",
+            "self.verify_now(observed_at_unix_seconds)?;",
+            "verify_capability_use(",
+            ".dispatch_once(intent, observed_at_unix_seconds)",
+            ".reconcile(intent, observed_at_unix_seconds)",
+        ),
+    )
     contracts = require_markers(
         "codex-rs/hepta-contracts/src/lib.rs",
         (
+            "mod checked_provider_operation;",
             "mod provider_operation;",
-            "pub use provider_operation::ProviderOperationCoordinator;",
+            "pub use checked_provider_operation::ProviderOperationCoordinator;",
             "pub use provider_operation::ProviderOperationRecord;",
+            "pub use runtime_authority::CapabilityUseVerifier;",
         ),
     )
+    if "pub use provider_operation::ProviderOperationCoordinator;" in contracts:
+        fail("unchecked provider operation coordinator remains publicly exported")
     if "pub fn authorize_provider_operation_without_capability" in contracts:
         fail("provider operation exposes an authority bypass")
 

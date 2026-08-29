@@ -15,6 +15,15 @@
     "codex-rs/hepta-contracts/src/product_graph.rs": [
       "product_graph_unit_tests"
     ],
+    "codex-rs/hepta-contracts/src/provider_operation.rs": [
+      "provider_operation_unit_tests"
+    ],
+    "codex-rs/hepta-contracts/src/runtime_authority.rs": [
+      "runtime_authority_unit_tests"
+    ],
+    "codex-rs/hepta-contracts/src/runtime_instance.rs": [
+      "runtime_instance_unit_tests"
+    ],
     "codex-rs/hepta-memory/src/cognitive_runtime.rs": [
       "authority_facade_unit_tests"
     ],
@@ -26,9 +35,6 @@
     ],
     "codex-rs/hepta-agentd/src/runtime_profile.rs": [
       "runtime_profile_contract_unit_tests"
-    ],
-    "codex-rs/hepta-contracts/src/provider_operation.rs": [
-      "provider_operation_unit_tests"
     ]
   },
   "forbiddenProductRequests": [
