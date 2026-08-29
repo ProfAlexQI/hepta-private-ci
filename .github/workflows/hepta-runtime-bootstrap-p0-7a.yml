@@ -1,0 +1,129 @@
+name: Hepta P0.7a runtime bootstrap
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "codex-rs/hepta-contracts/**"
+      - "codex-rs/hepta-fleet/**"
+      - "codex-rs/hepta-supervisor/**"
+      - "codex-rs/hepta-agentd/**"
+      - "docs/architecture/**"
+      - "scripts/verify-hepta-architecture-plan-v3.py"
+      - ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-p0-7a-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-qualification:
+    name: P0.7a source qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: codex-rs
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Locked metadata
+        run: cargo metadata --locked --no-deps --format-version 1 >/dev/null
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Runtime bootstrap tests
+        run: |
+          set -euo pipefail
+          cargo test --locked \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd
+
+      - name: Runtime bootstrap check
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd
+
+      - name: Runtime bootstrap strict Clippy
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd \
+            -- -D warnings
+
+      - name: V3 architecture source verifier
+        working-directory: .
+        run: python3 scripts/verify-hepta-architecture-plan-v3.py
+
+      - name: Clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
+
+  lock-refresh-artifact:
+    name: P0.7a lock refresh artifact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+
+      - name: Refresh Cargo and Bazel locks without publishing source
+        run: |
+          set -euo pipefail
+          cargo metadata --manifest-path codex-rs/Cargo.toml --format-version 1 >/dev/null
+          just bazel-lock-update
+          git diff -- codex-rs/Cargo.lock MODULE.bazel.lock > "$RUNNER_TEMP/hepta-p0-7a-locks.patch"
+
+      - name: Upload generated locks for reviewed application
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-p0-7a-lock-refresh
+          path: |
+            codex-rs/Cargo.lock
+            MODULE.bazel.lock
+            ${{ runner.temp }}/hepta-p0-7a-locks.patch
+          if-no-files-found: error
+          retention-days: 3
+
+  required:
+    name: Hepta P0.7a required
+    if: ${{ always() }}
+    needs:
+      - source-qualification
+      - lock-refresh-artifact
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require successful P0.7a dependencies
+        env:
+          SOURCE_RESULT: ${{ needs.source-qualification.result }}
+          LOCK_RESULT: ${{ needs.lock-refresh-artifact.result }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RESULT" == success ]]
+          [[ "$LOCK_RESULT" == success ]]
