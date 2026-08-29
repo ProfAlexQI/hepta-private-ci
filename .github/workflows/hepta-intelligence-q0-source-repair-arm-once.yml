@@ -1,0 +1,232 @@
+name: Hepta Q0 ARM64 supervisor repair once
+
+on:
+  push:
+    branches:
+      - codex/hepta-intelligence-plan-v3-20260828
+    paths:
+      - .github/workflows/hepta-intelligence-q0-source-repair-arm-once.yml
+      - ci/q0-supervisor-repair-once.py
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-q0-one-shot-source-repair
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    name: Repair supervisor blockers on canonical overlay ARM64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 240
+    steps:
+      - name: Checkout exact ARM64 carrier
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Apply exact supervisor source repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "ProfHepta/hepta-private-ci"
+          test "$GITHUB_REF_NAME" = "codex/hepta-intelligence-plan-v3-20260828"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mapfile -t carrier_changed < <(git diff --name-only HEAD^ HEAD | LC_ALL=C sort)
+          expected_carrier=(
+            .github/workflows/hepta-intelligence-q0-source-repair-arm-once.yml
+            ci/q0-supervisor-repair-once.py
+          )
+          test "${#carrier_changed[@]}" = "${#expected_carrier[@]}"
+          for index in "${!expected_carrier[@]}"; do
+            test "${carrier_changed[$index]}" = "${expected_carrier[$index]}"
+          done
+          python3 -m py_compile ci/q0-supervisor-repair-once.py
+          python3 ci/q0-supervisor-repair-once.py
+
+          supervisor_files=(
+            codex-rs/hepta-supervisor/src/signed_authority.rs
+            codex-rs/hepta-supervisor/src/signed_intent.rs
+            codex-rs/hepta-supervisor/src/supervisor.rs
+          )
+          mapfile -t changed < <(git diff --name-only | LC_ALL=C sort)
+          test "${#changed[@]}" = "${#supervisor_files[@]}"
+          for index in "${!supervisor_files[@]}"; do
+            test "${changed[$index]}" = "${supervisor_files[$index]}"
+          done
+          for path in "${supervisor_files[@]}"; do
+            rustfmt --edition 2024 --config skip_children=true "$path"
+            rustfmt --edition 2024 --check --config skip_children=true "$path"
+          done
+          git diff --check
+          ! git diff --unified=0 -- '*.rs' \
+            | grep -E '^\+.*(#\!?\[allow\(clippy|#\[ignore\]|todo!\(|unimplemented!\()'
+
+      - name: Materialize canonical Q0 overlay without source writeback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          needle = r"        rf'(?:async[ \t]+)?fn[ \t]+{re.escape(name)}[ \t]*\('"
+          assert lines.count(needle) == 1, lines.count(needle)
+          index = lines.index(needle)
+          assert lines[index + 1] == '    )', lines[index + 1]
+          lines.insert(index + 1, "        r')'")
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+          python3 -m py_compile \
+            .github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py \
+            .github/scripts/hepta-intelligence-q0-reconstruct-v7.py \
+            .github/scripts/hepta-intelligence-q0-supplemental-repair-v1.py
+          python3 .github/scripts/hepta-intelligence-q0-reconstruct-v7.py
+          python3 .github/scripts/hepta-intelligence-q0-supplemental-repair-v1.py
+          git restore --source=HEAD -- \
+            .github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py
+          mapfile -t overlay_files < <(git diff --name-only -- '*.rs' | LC_ALL=C sort)
+          test "${#overlay_files[@]}" -gt 3
+          for path in "${overlay_files[@]}"; do
+            rustfmt --edition 2024 --config skip_children=true "$path"
+          done
+          git diff --check
+          ! git diff --unified=0 -- '*.rs' \
+            | grep -E '^\+.*(#\!?\[allow\(clippy|#\[ignore\]|todo!\(|unimplemented!\()'
+
+      - name: Prove supervisor strict Clippy on canonical overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/hepta-q0-source-repair-arm
+          (
+            cd codex-rs
+            cargo clippy --locked -p codex-hepta-supervisor --all-targets -- -D warnings
+          ) 2>&1 | tee artifacts/hepta-q0-source-repair-arm/supervisor-clippy.log
+
+      - name: Prove durable queue recovery five times
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/hepta-q0-source-repair-arm/queue
+          test_name=killed_agent_recovers_same_turn_then_dispatches_queue_once_while_peer_stays_live
+          failures=0
+          for attempt in 1 2 3 4 5; do
+            log="artifacts/hepta-q0-source-repair-arm/queue/attempt-${attempt}.log"
+            printf 'attempt=%s test=%s\n' "$attempt" "$test_name" | tee "$log"
+            set +e
+            (
+              cd codex-rs
+              cargo test --locked -p codex-hepta-agentd \
+                --test two_agent_turn_recovery \
+                "$test_name" -- --exact --nocapture
+            ) 2>&1 | tee -a "$log"
+            code=${PIPESTATUS[0]}
+            set -e
+            if test "$code" = "0" && ! grep -F "test ${test_name} ... ok" "$log" >/dev/null; then
+              printf 'exact-test execution marker missing\n' | tee -a "$log"
+              code=97
+            fi
+            printf '%s\n' "$code" > \
+              "artifacts/hepta-q0-source-repair-arm/queue/attempt-${attempt}.exit"
+            if test "$code" != "0"; then failures=$((failures + 1)); fi
+          done
+          python3 - "$failures" "$GITHUB_SHA" "$(uname -m)" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          failures = int(sys.argv[1])
+          root = pathlib.Path("artifacts/hepta-q0-source-repair-arm/queue")
+          results = {
+              path.stem: int(path.read_text(encoding="utf-8").strip())
+              for path in sorted(root.glob("*.exit"))
+          }
+          if len(results) != 5:
+              raise SystemExit(f"expected 5 exact test results, found {len(results)}")
+          payload = {
+              "schema": "hepta.intelligence.q0.durable_queue_probe.v1",
+              "carrier_sha": sys.argv[2],
+              "architecture": sys.argv[3],
+              "status": "PASS_REPEATABLE" if failures == 0 else "OBSERVED_FAILURE",
+              "attempts": 5,
+              "failures": failures,
+              "results": results,
+              "qualification_authority": False,
+              "runtime_authority": False,
+              "production_authority": False,
+          }
+          (root / "receipt.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+          test "$failures" = "0"
+
+      - name: Commit supervisor repair and retire all carriers
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$GITHUB_REF_NAME"
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          preserve=$(mktemp -d)
+          supervisor_files=(
+            codex-rs/hepta-supervisor/src/signed_authority.rs
+            codex-rs/hepta-supervisor/src/signed_intent.rs
+            codex-rs/hepta-supervisor/src/supervisor.rs
+          )
+          for path in "${supervisor_files[@]}"; do
+            mkdir -p "$preserve/$(dirname "$path")"
+            cp "$path" "$preserve/$path"
+          done
+          git restore --source=HEAD --worktree -- .
+          for path in "${supervisor_files[@]}"; do
+            cp "$preserve/$path" "$path"
+          done
+          rm .github/workflows/hepta-intelligence-q0-source-repair-arm-once.yml
+          rm .github/workflows/hepta-intelligence-q0-source-repair-once.yml
+          rm ci/q0-supervisor-repair-once.py
+          mapfile -t changed < <(git diff --name-only | LC_ALL=C sort)
+          expected=(
+            .github/workflows/hepta-intelligence-q0-source-repair-arm-once.yml
+            .github/workflows/hepta-intelligence-q0-source-repair-once.yml
+            ci/q0-supervisor-repair-once.py
+            codex-rs/hepta-supervisor/src/signed_authority.rs
+            codex-rs/hepta-supervisor/src/signed_intent.rs
+            codex-rs/hepta-supervisor/src/supervisor.rs
+          )
+          test "${#changed[@]}" = "${#expected[@]}"
+          for index in "${!expected[@]}"; do
+            test "${changed[$index]}" = "${expected[$index]}"
+          done
+          git diff --check
+          git config user.name hepta-q0-bot
+          git config user.email hepta-q0-bot@users.noreply.github.com
+          git add -A -- \
+            .github/workflows/hepta-intelligence-q0-source-repair-arm-once.yml \
+            .github/workflows/hepta-intelligence-q0-source-repair-once.yml \
+            ci/q0-supervisor-repair-once.py \
+            "${supervisor_files[@]}"
+          git diff --cached --check
+          git commit -m "fix(supervisor): close strict Q0 Clippy blockers"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Upload ARM64 repair diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-q0-source-repair-arm-${{ github.sha }}
+          path: artifacts/hepta-q0-source-repair-arm/**
+          if-no-files-found: warn
+          retention-days: 30
