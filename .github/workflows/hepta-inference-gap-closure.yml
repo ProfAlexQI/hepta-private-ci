@@ -1,0 +1,92 @@
+name: Hepta inference gap closure qualification
+
+on:
+  pull_request:
+    paths:
+      - "codex-rs/hepta-infer-core/**"
+      - "codex-rs/hepta-inferd/**"
+      - "codex-rs/hepta-infer-client/**"
+      - "codex-rs/hepta-infer-adapters/**"
+      - "docs/hepta-vnext/inference/**"
+      - "scripts/hepta-inference-inf0-source-gate.py"
+      - "scripts/hepta-inference-inf0c-cancel-reclassifier.py"
+      - ".github/workflows/hepta-inference-gap-closure.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evidence-contract:
+    name: Immutable evidence and authority contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Verify Python sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-inference-inf0-source-gate.py \
+            scripts/hepta-inference-inf0c-cancel-reclassifier.py
+      - name: Verify descendant-safe source and authority binding
+        shell: bash
+        run: python3 scripts/hepta-inference-inf0-source-gate.py
+      - name: Verify cancellation evidence reclassification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-cancel-reclassifier.py \
+            --self-test \
+            --receipt docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_RECEIPT_2026-08-29.json
+
+  inf1-rust:
+    name: INF-1 exact-head Rust qualification
+    needs: evidence-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: codex-rs
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+      - name: Formatting
+        run: cargo fmt -p codex-hepta-infer-core -p codex-hepta-inferd -- --check
+      - name: Locked check
+        run: cargo check --locked -p codex-hepta-infer-core -p codex-hepta-inferd
+      - name: Tests
+        run: cargo test --locked -p codex-hepta-infer-core -p codex-hepta-inferd
+      - name: Strict Clippy
+        run: |
+          cargo clippy --locked --all-targets --no-deps \
+            -p codex-hepta-infer-core -p codex-hepta-inferd -- -D warnings
+
+  aggregate:
+    name: Gap closure aggregate
+    if: always()
+    needs: [evidence-contract, inf1-rust]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Enforce qualification-only result
+        shell: bash
+        env:
+          EVIDENCE: ${{ needs.evidence-contract.result }}
+          RUST: ${{ needs.inf1-rust.result }}
+        run: |
+          set -euo pipefail
+          test "$EVIDENCE" = success
+          test "$RUST" = success
+          echo PASS_HEPTA_INFERENCE_GAP_CLOSURE_BASELINE

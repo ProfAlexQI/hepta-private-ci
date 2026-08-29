@@ -1,0 +1,41 @@
+{
+  "schema": "hepta.inference.stage_matrix.v3",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
+  "plan_version": "2.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "current_stage": "INF-2A",
+  "current_stage_status": "NOT_STARTED",
+  "historical_matrix": "HEPTA_INFERENCE_STAGE_MATRIX_V2.json",
+  "stages": [
+    {"id": "INF-0A", "status": "EXECUTED_PASSED_QUALIFICATION_ONLY", "qualified": true, "operator_accepted": false, "promoted": false},
+    {"id": "INF-0B", "status": "EXECUTED_PASSED_QUALIFICATION_ONLY", "qualified": true, "operator_accepted": false, "promoted": false},
+    {"id": "INF-0C", "status": "EXECUTED_PASSED_QUALIFICATION_ONLY", "qualified": true, "operator_accepted": false, "promoted": false},
+    {"id": "INF-1", "status": "EXECUTED_PASSED_QUALIFICATION_ONLY", "qualified": true, "product_wired": false, "runtime_activated": false, "operator_accepted": false, "promoted": false},
+    {"id": "INF-2A", "status": "NOT_STARTED", "qualified": false, "operator_accepted": false, "promoted": false},
+    {"id": "INF-2B", "status": "NOT_STARTED", "qualified": false, "operator_accepted": false, "promoted": false},
+    {"id": "INF-3", "status": "NOT_STARTED", "qualified": false, "operator_accepted": false, "promoted": false},
+    {"id": "INF-4", "status": "NOT_STARTED", "qualified": false, "operator_accepted": false, "promoted": false},
+    {"id": "INF-5", "status": "NOT_STARTED", "qualified": false, "operator_accepted": false, "promoted": false},
+    {"id": "INF-6", "status": "NOT_STARTED", "qualified": false, "operator_accepted": false, "promoted": false},
+    {"id": "INF-7", "status": "NOT_STARTED", "qualified": false, "operator_accepted": false, "promoted": false},
+    {"id": "INF-8", "status": "NOT_STARTED", "qualified": false, "operator_accepted": false, "promoted": false}
+  ],
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

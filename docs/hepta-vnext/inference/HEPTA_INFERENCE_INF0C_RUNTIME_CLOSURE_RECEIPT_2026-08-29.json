@@ -1,0 +1,111 @@
+{
+  "schema": "hepta.inference.inf0c.runtime_closure.v1",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
+  "scope": "QUALIFICATION_ONLY_FIXED_TUPLE_RUNTIME_CAPABILITY",
+  "immutable_evidence": {
+    "workflow_run_id": 33239546304,
+    "job_id": 99066422684,
+    "artifact_id": 9711096479,
+    "artifact_sha256": "83f5346ee3d7107b794e6466a5aef007d3b087f30ff2850074a73d8a71e353ad",
+    "source": {
+      "commit": "cd3344d767667b177d6d21c7198bade228d010bb",
+      "tree": "be25744e47d3b2396aceaf4dcac81b720b5112e3"
+    },
+    "control_helper_sha256": "sha256:71d48e016743002cef9993467eee71c7a223d075833f2c551c1f81091d114287"
+  },
+  "fixed_tuples": {
+    "ollama": {
+      "provider": "ollama",
+      "runtime_version": "0.33.2",
+      "model_id": "granite4:1b",
+      "model_id_sha256": "5e3d0ccafe264414f936b0e80d3ff9478da9509cce105f414878295902f82ba4"
+    },
+    "lmstudio": {
+      "provider": "lmstudio",
+      "runtime_commit": "07b7252",
+      "cli_sha256": "sha256:216bc156977974b1637327c62c673f7b388d3c587a0caab0dcdc98ef13639e30",
+      "model_id": "ibm/granite-4-micro",
+      "model_id_sha256": "834047c1a83968ab6d6b52dc1e00dc6cce748733cfad05bf27d05d85a0039900",
+      "quantization": "q4_k_m"
+    }
+  },
+  "runtime_results": {
+    "semantic_output_verified": true,
+    "transport_disconnect": {
+      "ollama": "PASS",
+      "lmstudio": "PASS"
+    },
+    "controlled_restart": {
+      "ollama": "PASS",
+      "lmstudio": "PASS",
+      "helper_revalidated_per_invocation": true
+    },
+    "post_restart_exact_model_rediscovered": {
+      "ollama": true,
+      "lmstudio": true
+    },
+    "post_restart_semantic_inference_verified": {
+      "ollama": true,
+      "lmstudio": true
+    },
+    "implicit_download": false,
+    "raw_prompt_persisted": false,
+    "raw_model_output_persisted": false,
+    "raw_helper_output_persisted": false
+  },
+  "explicit_provider_cancellation": {
+    "evidence_interpretation": "The bounded v8.2 2xx JSON create response did not enter queued or in_progress, so the exact probe exposed no cancellable provider handle. This is conservatively classified as unsupported; it is not cancellation acknowledgement.",
+    "providers": {
+      "ollama": {
+        "original_probe_classification": "failed_closed",
+        "original_error_digest": "b07613b8d211f69a1bc507e39327a58bf1935d7c341c9ac93622b7f30e7e0105",
+        "classification": "UNSUPPORTED_FAIL_CLOSED",
+        "provider_cancel_capability_classified": true,
+        "provider_cancel_acknowledged": false,
+        "transport_disconnect_used": false
+      },
+      "lmstudio": {
+        "original_probe_classification": "failed_closed",
+        "original_error_digest": "8aed81c0ac3c040234296e28ef00da3da8eda2856b7de8e9bfc56da24a62565d",
+        "classification": "UNSUPPORTED_FAIL_CLOSED",
+        "provider_cancel_capability_classified": true,
+        "provider_cancel_acknowledged": false,
+        "transport_disconnect_used": false
+      }
+    },
+    "backend_cancellation_acknowledged": false,
+    "transport_disconnect_used_as_ack": false,
+    "dispatch_policy": {
+      "cancel_required_request": "REJECT_BEFORE_BACKEND_DISPATCH",
+      "text_fallback": false,
+      "remote_fallback": false,
+      "implicit_model_switch": false,
+      "implicit_model_install": false
+    }
+  },
+  "qualification": {
+    "runtime_capability_evidence_complete": true,
+    "fixed_tuple_capability_matrix_qualified": true,
+    "production_qualified": false,
+    "operator_accepted": false,
+    "promoted": false,
+    "released": false
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
