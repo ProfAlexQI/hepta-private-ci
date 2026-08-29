@@ -22,6 +22,13 @@ BUDGETS = "docs/architecture/HEPTA_RESOURCE_BUDGETS_V1.md"
 SOURCE = "codex-rs/hepta-contracts/src/verified_use.rs"
 TESTS = "codex-rs/hepta-contracts/src/verified_use_tests.rs"
 LIB = "codex-rs/hepta-contracts/src/lib.rs"
+ROUTER = "scripts/verify-hepta-selected-architecture-plan.py"
+V4_VERIFIER = "scripts/verify-hepta-architecture-plan-v4.py"
+V5_VERIFIER = "scripts/verify-hepta-architecture-plan-v5.py"
+FORMAT = "scripts/verify-hepta-v5-b0-format.py"
+V4_WORKFLOW = ".github/workflows/hepta-architecture-plan-v4.yml"
+P07A_WORKFLOW = ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml"
+P07A_ARM_WORKFLOW = ".github/workflows/hepta-p0-7a-direct-arm.yml"
 WORKFLOW = ".github/workflows/hepta-architecture-v5-b0-verified-use.yml"
 
 PACKAGE_IDS = [
@@ -55,6 +62,45 @@ PHYSICAL_KINDS = [
     "OperatorAcceptance",
     "ReleasePromotion",
 ]
+
+B0_OWNED_PATHS = {
+    SOURCE,
+    TESTS,
+    LIB,
+    DELIVERY,
+    PLAN,
+    LEDGER,
+    POINTER,
+    INDEX,
+    STATUS,
+    ROUTER,
+    V5_VERIFIER,
+    FORMAT,
+    V4_WORKFLOW,
+    P07A_WORKFLOW,
+    P07A_ARM_WORKFLOW,
+    WORKFLOW,
+}
+
+INDEXED_V5_PATHS = {
+    POINTER,
+    MODEL,
+    PLAN,
+    LEDGER,
+    STATUS,
+    DELIVERY,
+    BOUNDARY,
+    FAULTS,
+    BUDGETS,
+    ROUTER,
+    V4_VERIFIER,
+    V5_VERIFIER,
+    FORMAT,
+    V4_WORKFLOW,
+    P07A_WORKFLOW,
+    P07A_ARM_WORKFLOW,
+    WORKFLOW,
+}
 
 
 def fail(message: str) -> NoReturn:
@@ -104,21 +150,13 @@ def require_false_authority(value: Any, location: str) -> None:
 
 
 def verify_required_files() -> None:
-    for relative in (
-        POINTER,
-        MODEL,
-        PLAN,
-        LEDGER,
-        INDEX,
-        STATUS,
-        DELIVERY,
-        BOUNDARY,
-        FAULTS,
-        BUDGETS,
-        SOURCE,
-        TESTS,
-        LIB,
-        WORKFLOW,
+    for relative in sorted(
+        INDEXED_V5_PATHS
+        | {
+            SOURCE,
+            TESTS,
+            LIB,
+        }
     ):
         if not (ROOT / relative).is_file():
             fail(f"required V5/B0 file is missing: {relative}")
@@ -159,6 +197,13 @@ def verify_pointer() -> None:
     ):
         if claims.get(key) is not False:
             fail(f"current plan claim {key} must remain false")
+    binding = pointer.get("candidateBinding")
+    if not isinstance(binding, dict):
+        fail("current plan candidate binding must be an object")
+    if binding.get("stackParentCommit") != "f69e5a4a5068a2657f1470da43c26b1410d53c6f":
+        fail("current plan stack-parent commit drifted")
+    if binding.get("stackParentTree") != "532307507d2b02a479d3c76042d42cc948b499df":
+        fail("current plan stack-parent tree drifted")
     require_false_authority(pointer.get("authority"), "current plan authority")
 
 
@@ -184,21 +229,9 @@ def verify_document_index() -> None:
         by_path[path] = entry
         if not (ROOT / path).exists():
             fail(f"indexed path is missing: {path}")
-    for required in (
-        POINTER,
-        MODEL,
-        PLAN,
-        LEDGER,
-        STATUS,
-        DELIVERY,
-        BOUNDARY,
-        FAULTS,
-        BUDGETS,
-        "scripts/verify-hepta-architecture-plan-v5.py",
-        WORKFLOW,
-    ):
-        if required not in by_path:
-            fail(f"document authority index is missing {required}")
+    missing = sorted(INDEXED_V5_PATHS - set(by_path))
+    if missing:
+        fail(f"document authority index is missing V5 paths: {missing}")
     rules = index.get("rules")
     if not isinstance(rules, dict):
         fail("document authority rules must be an object")
@@ -280,6 +313,20 @@ def verify_ledger() -> None:
         fail("V5 current package drifted")
     if ledger.get("allGapsClosed") is not False:
         fail("V5 cannot claim all gaps closed")
+    stack_parent = ledger.get("stackParent")
+    if not isinstance(stack_parent, dict):
+        fail("V5 gap ledger stack parent must be an object")
+    if stack_parent.get("commit") != "f69e5a4a5068a2657f1470da43c26b1410d53c6f":
+        fail("V5 gap ledger stack-parent commit drifted")
+    if stack_parent.get("tree") != "532307507d2b02a479d3c76042d42cc948b499df":
+        fail("V5 gap ledger stack-parent tree drifted")
+    identity_policy = ledger.get("candidateIdentityPolicy")
+    if not isinstance(identity_policy, dict):
+        fail("candidate identity policy must be an object")
+    for key in ("queuedIsEvidence", "emptyStepsAreEvidence", "sourceVerifierIsExecutableEvidence"):
+        if identity_policy.get(key) is not False:
+            fail(f"candidate identity rule {key} must remain false")
+
     packages = ledger.get("packages")
     if not isinstance(packages, list) or len(packages) != len(PACKAGE_IDS):
         fail("V5 package inventory is incomplete")
@@ -295,15 +342,35 @@ def verify_ledger() -> None:
     by_id = {package["id"]: package for package in packages}
     if by_id[PACKAGE_IDS[0]].get("state") != "source_implemented_executable_qualification_pending":
         fail("P0.7a state must remain executable-qualification pending")
-    if by_id[PACKAGE_IDS[1]].get("state") not in {
-        "source_in_progress",
-        "source_implemented",
-        "source_verified",
-    }:
+    b0 = by_id[PACKAGE_IDS[1]]
+    if b0.get("state") not in {"source_in_progress", "source_implemented", "source_verified"}:
         fail("B0 source state is invalid for this candidate")
+    owned_paths = b0.get("ownedPaths")
+    if not isinstance(owned_paths, list) or set(owned_paths) != B0_OWNED_PATHS:
+        fail("B0 owned-path allowlist drifted")
+    required_facts = b0.get("requiredFacts")
+    if not isinstance(required_facts, list):
+        fail("B0 required facts must be a list")
+    for fact in (
+        "closed_physical_capability_kind",
+        "final_operation_and_payload_binding",
+        "current_revision_verifier",
+        "nonclone_nonserializable_private_token",
+        "consume_by_value",
+        "selected_plan_verifier_routing",
+        "no_product_caller_change",
+    ):
+        if fact not in required_facts:
+            fail(f"B0 required fact is missing: {fact}")
     for package_id in PACKAGE_IDS[2:]:
         if by_id[package_id].get("state") != "open":
             fail(f"future package {package_id} overclaims progress")
+    fault_rows = by_id["P0.7d_common_durable_fault_matrix"].get("requiredRows")
+    if not isinstance(fault_rows, list) or len(fault_rows) != 18:
+        fail("V5 durable fault matrix must retain all 18 rows")
+    if not fault_rows[0].startswith("F01_") or not fault_rows[-1].startswith("F18_"):
+        fail("V5 durable fault matrix boundary rows drifted")
+
     external = ledger.get("externalGates")
     if not isinstance(external, list) or len(external) != 8:
         fail("external gate inventory must contain eight issuer-bound rows")
@@ -331,13 +398,45 @@ def verify_status() -> None:
         fail("qualification status plan binding drifted")
     if status.get("claimLevel") != "source_execution_in_progress_unqualified":
         fail("qualification status overclaims executable evidence")
+    execution_states = set(status.get("executionStateVocabulary", []))
+    expected_execution_states = {
+        "not_run",
+        "queued",
+        "running",
+        "passed",
+        "failed",
+        "blocked",
+        "superseded",
+    }
+    if execution_states != expected_execution_states:
+        fail("execution-state vocabulary drifted")
+    package_states = set(status.get("packageStateVocabulary", []))
+    expected_package_states = {
+        "open",
+        "source_in_progress",
+        "source_implemented",
+        "source_verified",
+        "qualified_exact",
+        "merge_candidate_qualified",
+        "blocked_external",
+        "closed",
+    }
+    if package_states != expected_package_states:
+        fail("package-state vocabulary drifted")
     observed = status.get("observedExecution")
     if not isinstance(observed, dict):
         fail("qualification status lacks observed execution")
     for name in ("b0ExactHead", "b0MergeCandidate"):
         row = observed.get(name)
-        if not isinstance(row, dict) or row.get("qualificationClaim") != "not_run":
-            fail(f"{name} must remain not_run in source status")
+        if not isinstance(row, dict) or row.get("state") not in execution_states:
+            fail(f"{name} contains an invalid execution state")
+        if row.get("state") == "passed":
+            for id_key in ("runId", "jobId", "runnerId", "stepCount"):
+                value = row.get(id_key)
+                if not isinstance(value, int) or value <= 0:
+                    fail(f"{name} passed without positive {id_key}")
+        elif row.get("qualificationClaim") not in {"not_run", "failed", "blocked"}:
+            fail(f"{name} overclaims qualification before a passed run")
     decisions = status.get("externalDecisions")
     if not isinstance(decisions, dict) or not decisions:
         fail("external decision status is missing")
@@ -421,16 +520,15 @@ def verify_verified_use_source() -> None:
     token_declaration = source.find("pub struct VerifiedUseToken<C>")
     if token_declaration < 0:
         fail("VerifiedUseToken declaration is missing")
-    preceding = source[max(0, token_declaration - 100) : token_declaration]
+    preceding = source[max(0, token_declaration - 120) : token_declaration]
     if "#[derive" in preceding:
         fail("VerifiedUseToken must not derive Clone, Copy or Serde traits")
-    forbidden_impls = (
+    for marker in (
         "impl<C> Clone for VerifiedUseToken",
         "impl<C> Copy for VerifiedUseToken",
         "impl<C> Serialize for VerifiedUseToken",
         "impl<'de, C> Deserialize<'de> for VerifiedUseToken",
-    )
-    for marker in forbidden_impls:
+    ):
         if marker in source:
             fail(f"VerifiedUseToken contains forbidden implementation {marker}")
     token_impl_match = re.search(
@@ -442,6 +540,7 @@ def verify_verified_use_source() -> None:
         fail("cannot locate VerifiedUseToken implementation boundary")
     if "pub fn new" in token_impl_match.group(0):
         fail("VerifiedUseToken exposes a public constructor")
+
     construction_sites: list[str] = []
     for path in (ROOT / "codex-rs").rglob("*.rs"):
         candidate = path.read_text(encoding="utf-8")
@@ -449,17 +548,18 @@ def verify_verified_use_source() -> None:
             construction_sites.append(path.relative_to(ROOT).as_posix())
     if construction_sites != [SOURCE]:
         fail(f"VerifiedUseToken construction escaped the kernel: {construction_sites}")
-    callsite_allowlist = {SOURCE, TESTS, LIB}
+
     callsites: set[str] = set()
     for path in (ROOT / "codex-rs").rglob("*.rs"):
         candidate = path.read_text(encoding="utf-8")
         if "verify_physical_capability_use" in candidate:
             callsites.add(path.relative_to(ROOT).as_posix())
-    if callsites != callsite_allowlist:
+    expected_callsites = {SOURCE, TESTS, LIB}
+    if callsites != expected_callsites:
         fail(f"B0 changed or missed product verified-use call sites: {sorted(callsites)}")
 
 
-def verify_tests() -> None:
+def verify_tests_and_exports() -> None:
     require_markers(
         TESTS,
         (
@@ -491,6 +591,61 @@ def verify_tests() -> None:
             fail(f"hepta-contracts public verified-use surface is missing {marker}")
 
 
+def verify_selected_plan_routing() -> None:
+    require_markers(
+        ROUTER,
+        (
+            "HEPTA_CURRENT_PLAN.json",
+            "HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V4.md",
+            "HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md",
+            "object_pairs_hook=hook",
+            "no allowlisted verifier for selected plan",
+            "subprocess.run",
+        ),
+    )
+    for relative in (V4_WORKFLOW, P07A_WORKFLOW, P07A_ARM_WORKFLOW, WORKFLOW):
+        require_markers(
+            relative,
+            (
+                "scripts/verify-hepta-selected-architecture-plan.py",
+                "git diff --exit-code",
+            ),
+        )
+    require_markers(
+        WORKFLOW,
+        (
+            "V5 B0 source qualification",
+            "scripts/verify-hepta-v5-b0-format.py --check",
+            "just test -p codex-hepta-contracts verified_use",
+            "just test -p codex-hepta-contracts",
+            "cargo check --locked --all-targets -p codex-hepta-contracts",
+            "cargo clippy --locked --all-targets -p codex-hepta-contracts -- -D warnings",
+            "just bazel-lock-check",
+            "Upload exact-candidate evidence",
+            "Hepta V5 B0 required",
+        ),
+    )
+
+
+def verify_scoped_formatter() -> None:
+    formatter = require_markers(
+        FORMAT,
+        (
+            "codex-rs/hepta-contracts/src/lib.rs",
+            "codex-rs/hepta-contracts/src/verified_use.rs",
+            "codex-rs/hepta-contracts/src/verified_use_tests.rs",
+            '"rustfmt"',
+            '"--edition"',
+            '"2024"',
+            '"--config-path"',
+            "rustfmt.toml",
+            '"--check"',
+        ),
+    )
+    if "rglob" in formatter or "cargo fmt --all" in formatter:
+        fail("B0 scoped formatter expanded beyond its source-owned Rust files")
+
+
 def main() -> None:
     verify_required_files()
     verify_pointer()
@@ -500,7 +655,9 @@ def main() -> None:
     verify_status()
     verify_delivery_contract()
     verify_verified_use_source()
-    verify_tests()
+    verify_tests_and_exports()
+    verify_selected_plan_routing()
+    verify_scoped_formatter()
     print("PASS_HEPTA_ARCHITECTURE_PLAN_V5_B0_SOURCE")
 
 
