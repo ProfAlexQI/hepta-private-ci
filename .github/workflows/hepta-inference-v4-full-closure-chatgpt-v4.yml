@@ -1,0 +1,340 @@
+name: Hepta inference V4 unified repository-source closure
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-v4-full-closure-chatgpt-20260830
+    paths:
+      - .github/workflows/hepta-inference-v4-full-closure-chatgpt-v4.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-v4-unified-repository-source
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  materialize-qualify-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact isolated closure head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: codex/hepta-inference-v4-full-closure-chatgpt-20260830
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Guard branch, parent, and clean checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = codex/hepta-inference-v4-full-closure-chatgpt-20260830
+          test "$(git branch --show-current)" = "$GITHUB_REF_NAME"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = 705c0916098c39ddd0ef9e6b069e1efe072f410b
+          test -z "$(git status --porcelain)"
+
+      - name: Repair V4 source truth toolchain binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/hepta-inference-v4-source-truth.py")
+          source = path.read_text(encoding="utf-8")
+          count = source.count("rust-toolchain.toml")
+          if count < 3:
+              raise SystemExit(f"unexpected toolchain marker count: {count}")
+          source = source.replace("rust-toolchain.toml", "codex-rs/rust-toolchain.toml")
+          path.write_text(source, encoding="utf-8")
+          PY
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add scripts/hepta-inference-v4-source-truth.py
+          git commit -m "fix(inference): bind source truth to workspace toolchain"
+          test -z "$(git status --porcelain)"
+
+      - name: Prove immutable V4 baseline truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-v4-source-truth.py \
+            > "$RUNNER_TEMP/hepta-inference-v4-baseline-source-truth.json"
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Verify and materialize all V4 source packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            tools/hepta-inference-v4-payloads/apply_payload_steps.py \
+            tools/hepta-inference-v4-payloads/post_materialize_hardening.py
+          python3 tools/hepta-inference-v4-payloads/apply_payload_steps.py
+          python3 tools/hepta-inference-v4-payloads/post_materialize_hardening.py
+          find tools/hepta-inference-v4-payloads -type d -name __pycache__ -prune -exec rm -rf {} +
+
+      - name: Repair exact-head test helper shadowing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-infer-core/src/tests.rs")
+          source = path.read_text(encoding="utf-8")
+
+          def patch_test(name: str) -> None:
+              global source
+              marker = f"fn {name}() {{"
+              start = source.find(marker)
+              if start < 0:
+                  raise SystemExit(f"test marker missing: {name}")
+              end = source.find("\n#[test]", start + len(marker))
+              if end < 0:
+                  end = len(source)
+              block = source[start:end]
+              if "let candidate = request(" in block:
+                  return
+              replacements = (
+                  ("    let request = request(", "    let candidate = request("),
+                  (
+                      "    let request_id = request.identity.request_id.clone();",
+                      "    let request_id = candidate.identity.request_id.clone();",
+                  ),
+                  (
+                      "    must(controller.admit(request, 1));",
+                      "    must(controller.admit(candidate, 1));",
+                  ),
+              )
+              for old, new in replacements:
+                  if block.count(old) != 1:
+                      raise SystemExit(f"{name}: expected one marker {old!r}")
+                  block = block.replace(old, new, 1)
+              source = source[:start] + block + source[end:]
+
+          patch_test("queued_cancel_releases_accounting_and_terminal_can_be_forgotten")
+          patch_test("active_deadline_expiry_is_terminal_and_releases_capacity")
+          path.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Enforce complete source shape and closed authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          required = (
+              "codex-rs/hepta-infer-core/src/capability.rs",
+              "codex-rs/hepta-infer-core/src/scheduler.rs",
+              "codex-rs/hepta-infer-core/tests/running_cancel.rs",
+              "codex-rs/hepta-infer-client/src/shadow_bridge.rs",
+              "codex-rs/hepta-inferd/src/private_control.rs",
+              "codex-rs/hepta-inferd/src/cancel_supervisor.rs",
+              "codex-rs/hepta-inferd/src/receipt_retention.rs",
+              "codex-rs/hepta-inferd/src/provider_host.rs",
+              "codex-rs/hepta-infer-worker-host/Cargo.toml",
+              "codex-rs/hepta-infer-worker-host/src/protocol.rs",
+              "codex-rs/hepta-infer-worker-host/src/abi.rs",
+              "codex-rs/hepta-infer-worker-host/src/lib.rs",
+              "codex-rs/hepta-infer-worker-host/src/main.rs",
+              "codex-rs/hepta-infer-worker-host/tests/abi.rs",
+              "codex-rs/hepta-infer-worker-host/tests/process.rs",
+          )
+          missing = [relative for relative in required if not Path(relative).is_file()]
+          if missing:
+              raise SystemExit(f"required V4 source missing: {missing}")
+
+          markers = {
+              "codex-rs/hepta-infer-core/src/lib.rs": (
+                  "mod capability;",
+                  "mod scheduler;",
+                  "pub use controller::RunningCancelPhase;",
+                  "pub use scheduler::DeterministicScheduler;",
+              ),
+              "codex-rs/hepta-infer-client/src/lib.rs": (
+                  "mod shadow_bridge;",
+                  "pub use shadow_bridge::ProductShadowBridge;",
+              ),
+              "codex-rs/hepta-inferd/src/lib.rs": (
+                  "mod cancel_supervisor;",
+                  "mod private_control;",
+                  "mod provider_host;",
+                  "mod receipt_retention;",
+              ),
+              "codex-rs/Cargo.toml": (
+                  '"hepta-infer-worker-host"',
+                  'codex-hepta-infer-worker-host = { path = "hepta-infer-worker-host" }',
+                  'libloading = "0.8.9"',
+              ),
+          }
+          for relative, expected in markers.items():
+              text = Path(relative).read_text(encoding="utf-8")
+              for marker in expected:
+                  if text.count(marker) != 1:
+                      raise SystemExit(f"marker drift: {relative}: {marker!r}")
+
+          provider = Path("codex-rs/hepta-inferd/src/provider_host.rs").read_text(encoding="utf-8")
+          if provider.count("let real_provider_executed = false;") != 1:
+              raise SystemExit("provider source overclaims real execution")
+          if 'starts_with("application/json")' in provider:
+              raise SystemExit("provider accepts ambiguous media types")
+
+          worker = Path("codex-rs/hepta-infer-worker-host/src/lib.rs").read_text(encoding="utf-8")
+          for marker in (
+              "fixture_only: true",
+              "real_native_model_executed: false",
+              "remote_fallback_attempted: false",
+          ):
+              if marker not in worker:
+                  raise SystemExit(f"worker truth marker missing: {marker}")
+          if ".saturating_add(1)" in worker:
+              raise SystemExit("worker sequence arithmetic saturates")
+
+          shadow = Path("codex-rs/hepta-infer-client/src/shadow_bridge.rs").read_text(encoding="utf-8")
+          for marker in (
+              "RouteMode::ShadowCompareOnly",
+              "primary_output_authoritative: true",
+              "shadow_output_authoritative: false",
+              "memory_write: false",
+              "shared_kg_write: false",
+              "effect_write: false",
+              "route_write: false",
+          ):
+              if marker not in shadow:
+                  raise SystemExit(f"shadow authority marker missing: {marker}")
+
+          private_control = Path("codex-rs/hepta-inferd/src/private_control.rs").read_text(encoding="utf-8")
+          for marker in (
+              "CapabilityKey",
+              "WorkerAuthenticationTag",
+              "RequestGrant",
+              "constant_time_equal",
+              "rollover_generation",
+              "disable_operator_endpoint",
+          ):
+              if marker not in private_control:
+                  raise SystemExit(f"private control marker missing: {marker}")
+          PY
+
+      - name: Materialize and verify Cargo and Bazel locks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --manifest-path codex-rs/Cargo.toml --format-version 1 \
+            > "$RUNNER_TEMP/hepta-inference-v4-metadata-unlocked.json"
+          just bazel-lock-update
+          cargo metadata --locked --manifest-path codex-rs/Cargo.toml --no-deps --format-version 1 \
+            > "$RUNNER_TEMP/hepta-inference-v4-metadata-locked.json"
+          just bazel-lock-check
+
+      - name: Rust 1.95 format, compile, tests, and strict Clippy
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          packages=(
+            -p codex-hepta-infer-core
+            -p codex-hepta-infer-client
+            -p codex-hepta-inferd
+            -p codex-hepta-infer-worker-host
+          )
+          cargo fmt "${packages[@]}"
+          cargo fmt "${packages[@]}" -- --check
+          cargo check --locked --all-targets "${packages[@]}"
+          cargo test --locked --all-targets "${packages[@]}" -- --test-threads=1
+          cargo clippy --locked --all-targets --no-deps "${packages[@]}" -- -D warnings
+
+      - name: Reject materialization scope escape
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+
+          exact = {
+              "MODULE.bazel.lock",
+              "codex-rs/Cargo.lock",
+              "codex-rs/Cargo.toml",
+          }
+          prefixes = (
+              "codex-rs/hepta-infer-core/",
+              "codex-rs/hepta-infer-client/",
+              "codex-rs/hepta-inferd/",
+              "codex-rs/hepta-infer-worker-host/",
+          )
+          entries = subprocess.check_output(
+              ["git", "status", "--porcelain=v1", "--untracked-files=normal"],
+              text=True,
+          ).splitlines()
+          paths = [entry[3:].split(" -> ")[-1] for entry in entries]
+          unexpected = [
+              path for path in paths
+              if path not in exact and not path.startswith(prefixes)
+          ]
+          if unexpected:
+              raise SystemExit(f"materialization scope escape: {unexpected}")
+          if not paths:
+              raise SystemExit("materialization produced no source changes")
+          PY
+          git diff --check
+
+      - name: Commit qualified repository-source candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/hepta-inference-v4-full-closure-chatgpt*.yml
+          git add -A
+          git diff --cached --check
+          git commit -m "feat(inference): materialize unified V4 repository-source closure"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Emit qualification-only receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "head=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "rustc=$(rustc --version)"
+            echo "cargo=$(cargo --version)"
+            echo "repository_source_packages=S1,S2,S3,S4,R1,R2,R3"
+            echo "fmt=PASS"
+            echo "check=PASS"
+            echo "test=PASS"
+            echo "clippy_D_warnings=PASS"
+            echo "qualification_only=true"
+            echo "real_provider_executed=false"
+            echo "real_native_model_executed=false"
+            echo "hardware_qualified=false"
+            echo "product_default_route_changed=false"
+            echo "operator_accepted=false"
+            echo "promoted=false"
+            echo "released=false"
+          } | tee "$RUNNER_TEMP/hepta-inference-v4-unified-source-receipt.txt"
+
+      - name: Upload exact source evidence
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-v4-unified-source-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/hepta-inference-v4-baseline-source-truth.json
+            ${{ runner.temp }}/hepta-inference-v4-metadata-unlocked.json
+            ${{ runner.temp }}/hepta-inference-v4-metadata-locked.json
+            ${{ runner.temp }}/hepta-inference-v4-unified-source-receipt.txt
+          if-no-files-found: error
+          retention-days: 30
