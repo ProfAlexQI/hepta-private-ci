@@ -6,19 +6,26 @@ use tokio_util::sync::CancellationToken;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let options = parse_options()?;
+    let Options {
+        fleet_root,
+        grant_verifier,
+        runtime_bootstrap_issuer,
+    } = parse_options()?;
+    if let Some(issuer) = runtime_bootstrap_issuer {
+        codex_hepta_supervisor::install_process_runtime_bootstrap_issuer(issuer)?;
+    }
     let cancellation = CancellationToken::new();
     spawn_shutdown_signal(cancellation.clone());
-    match options.grant_verifier {
+    match grant_verifier {
         Some(verifier) => {
             codex_hepta_supervisor::run_supervisord_with_grant_verifier(
-                options.fleet_root,
+                fleet_root,
                 cancellation,
                 verifier,
             )
             .await?;
         }
-        None => codex_hepta_supervisor::run_supervisord(options.fleet_root, cancellation).await?,
+        None => codex_hepta_supervisor::run_supervisord(fleet_root, cancellation).await?,
     }
     Ok(())
 }
@@ -26,6 +33,7 @@ async fn main() -> anyhow::Result<()> {
 struct Options {
     fleet_root: HeptaFleetRoot,
     grant_verifier: Option<codex_hepta_supervisor::H7H89ProductionGrantVerifier>,
+    runtime_bootstrap_issuer: Option<codex_hepta_supervisor::RuntimeBootstrapIssuer>,
 }
 
 fn parse_options() -> anyhow::Result<Options> {
@@ -37,6 +45,10 @@ fn parse_options() -> anyhow::Result<Options> {
     let mut h7_key_path = None;
     let mut h7_signer_id = None;
     let mut h7_signer_epoch = None;
+    let mut runtime_bootstrap_key_fd = None;
+    let mut runtime_bootstrap_signer_id = None;
+    let mut runtime_bootstrap_signer_epoch = None;
+    let mut runtime_bootstrap_lifetime_seconds = None;
     while let Some(flag) = arguments.next() {
         let value = arguments
             .next()
@@ -49,8 +61,26 @@ fn parse_options() -> anyhow::Result<Options> {
             Some("--h7-verifier-key") if h7_key_path.is_none() => h7_key_path = Some(value),
             Some("--h7-signer-id") if h7_signer_id.is_none() => h7_signer_id = Some(value),
             Some("--h7-signer-epoch") if h7_signer_epoch.is_none() => h7_signer_epoch = Some(value),
+            Some("--runtime-bootstrap-key-fd") if runtime_bootstrap_key_fd.is_none() => {
+                runtime_bootstrap_key_fd = Some(value)
+            }
+            Some("--runtime-bootstrap-signer-id")
+                if runtime_bootstrap_signer_id.is_none() =>
+            {
+                runtime_bootstrap_signer_id = Some(value)
+            }
+            Some("--runtime-bootstrap-signer-epoch")
+                if runtime_bootstrap_signer_epoch.is_none() =>
+            {
+                runtime_bootstrap_signer_epoch = Some(value)
+            }
+            Some("--runtime-bootstrap-lifetime-seconds")
+                if runtime_bootstrap_lifetime_seconds.is_none() =>
+            {
+                runtime_bootstrap_lifetime_seconds = Some(value)
+            }
             _ => anyhow::bail!(
-                "usage: hepta-supervisord --fleet-root ABSOLUTE_PATH [--grant-verifier-key ABSOLUTE_PATH --grant-signer-id ID --grant-signer-epoch N --h7-verifier-key ABSOLUTE_PATH --h7-signer-id ID --h7-signer-epoch N]"
+                "usage: hepta-supervisord --fleet-root ABSOLUTE_PATH [--runtime-bootstrap-key-fd N --runtime-bootstrap-signer-id ID --runtime-bootstrap-signer-epoch N [--runtime-bootstrap-lifetime-seconds N]] [--grant-verifier-key ABSOLUTE_PATH --grant-signer-id ID --grant-signer-epoch N --h7-verifier-key ABSOLUTE_PATH --h7-signer-id ID --h7-signer-epoch N]"
             ),
         }
     }
@@ -92,9 +122,42 @@ fn parse_options() -> anyhow::Result<Options> {
         }
         _ => anyhow::bail!("grant and H7 verifier key/id/epoch triplets must be supplied together"),
     };
+    let runtime_bootstrap_issuer = match (
+        runtime_bootstrap_key_fd,
+        runtime_bootstrap_signer_id,
+        runtime_bootstrap_signer_epoch,
+        runtime_bootstrap_lifetime_seconds,
+    ) {
+        (None, None, None, None) => None,
+        (Some(key_fd), Some(signer_id), Some(signer_epoch), lifetime) => {
+            let key_fd = parse_i32(key_fd, "runtime bootstrap key fd")?;
+            if key_fd < 0 {
+                anyhow::bail!("runtime bootstrap key fd must be non-negative");
+            }
+            let signer_id = signer_id
+                .into_string()
+                .map_err(|_| anyhow::anyhow!("runtime bootstrap signer id is not UTF-8"))?;
+            let signer_epoch = parse_epoch(signer_epoch, "runtime bootstrap signer epoch")?;
+            let lifetime_seconds = match lifetime {
+                Some(value) => parse_epoch(value, "runtime bootstrap lifetime")?,
+                None => codex_hepta_supervisor::RUNTIME_BOOTSTRAP_DEFAULT_LIFETIME_SECONDS,
+            };
+            let signing_key = codex_hepta_supervisor::load_signing_key_from_fd(key_fd)?;
+            Some(codex_hepta_supervisor::RuntimeBootstrapIssuer::new(
+                signer_id,
+                signer_epoch,
+                signing_key,
+                lifetime_seconds,
+            )?)
+        }
+        _ => anyhow::bail!(
+            "runtime bootstrap key fd, signer id and signer epoch must be supplied together; lifetime is optional"
+        ),
+    };
     Ok(Options {
         fleet_root,
         grant_verifier,
+        runtime_bootstrap_issuer,
     })
 }
 
@@ -144,6 +207,14 @@ fn parse_epoch(value: std::ffi::OsString, label: &str) -> anyhow::Result<u64> {
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("{label} is not UTF-8"))?
         .parse::<u64>()
+        .map_err(|error| anyhow::anyhow!("{label} is invalid: {error}"))
+}
+
+fn parse_i32(value: std::ffi::OsString, label: &str) -> anyhow::Result<i32> {
+    value
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("{label} is not UTF-8"))?
+        .parse::<i32>()
         .map_err(|error| anyhow::anyhow!("{label} is invalid: {error}"))
 }
 
