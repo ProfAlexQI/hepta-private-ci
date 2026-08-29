@@ -1,0 +1,110 @@
+name: Hepta runtime strict remediation allowlist patch once
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-convergence-p0-2-20260828
+    paths:
+      - .github/workflows/hepta-runtime-strict-allowlist-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-strict-clippy-remediation-once
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    if: "${{ github.event.head_commit.message == 'ci: patch Hepta strict remediation allowlist once' }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_PARENT: 51055dd7894fe7c85d03a11377835538deb0ec5f
+      BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
+      TARGET_WORKFLOW: .github/workflows/hepta-runtime-strict-remediation-once.yml
+      WORKFLOW_PATH: .github/workflows/hepta-runtime-strict-allowlist-once.yml
+    steps:
+      - name: Checkout guarded patch commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+
+      - name: Verify immutable patch boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git branch --show-current)" = ""
+          test -z "$(git status --porcelain)"
+
+      - name: Patch exact parent and exact changed path
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import os
+
+          path = Path(os.environ["TARGET_WORKFLOW"])
+          source = path.read_text()
+
+          old_parent = "      EXPECTED_PARENT: 8d27dc216bde821110fd966bea331af7d56810c0\n"
+          new_parent = f"      EXPECTED_PARENT: {os.environ['GITHUB_SHA']}\n"
+          if source.count(old_parent) != 1:
+              raise SystemExit("target bootstrap parent marker is missing or ambiguous")
+          source = source.replace(old_parent, new_parent, 1)
+
+          marker = "              codex-rs/hepta-agentd/src/runtime_tests.rs) ;;\n"
+          addition = "              codex-rs/hepta-agentd/src/production_writer_host.rs) ;;\n"
+          if source.count(marker) != 2:
+              raise SystemExit("target allowlist marker count is not two")
+          if addition in source:
+              raise SystemExit("production writer host path already allowlisted")
+          source = source.replace(marker, marker + addition)
+          path.write_text(source)
+          PY
+          git rm -- "$WORKFLOW_PATH"
+
+      - name: Verify bounded workflow-only mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          actual="$(git diff --name-only | LC_ALL=C sort)"
+          expected="$(printf '%s\n' "$TARGET_WORKFLOW" "$WORKFLOW_PATH" | LC_ALL=C sort)"
+          test "$actual" = "$expected"
+          grep -F "EXPECTED_PARENT: $GITHUB_SHA" "$TARGET_WORKFLOW"
+          test "$(grep -Fc 'codex-rs/hepta-agentd/src/production_writer_host.rs) ;;' "$TARGET_WORKFLOW")" = 2
+
+      - name: Commit patched bootstrap and self-delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "hepta-ci-remediation"
+          git config user.email "hepta-ci-remediation@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "ci: repair Hepta runtime lifecycle and strict-clippy blockers"
+          git fetch --no-tags origin "refs/heads/$BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          git push origin "HEAD:refs/heads/$BRANCH"
+
+      - name: Record non-authoritative patch receipt
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "schema=hepta_runtime_strict_allowlist_once_v1"
+            echo "bootstrap_head=$GITHUB_SHA"
+            echo "expected_parent=$EXPECTED_PARENT"
+            echo "job_status=${{ job.status }}"
+            echo "production_authority=false"
+            echo "effect_authority=false"
+            echo "model_invocation_authority=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release=false"
+          } >> "$GITHUB_STEP_SUMMARY"
