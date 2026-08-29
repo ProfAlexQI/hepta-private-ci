@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   repair:
-    name: Repair split grounding visibility and strict Q0 baseline
+    name: Repair supervisor blockers against canonical Q0 overlay
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     steps:
@@ -33,7 +33,7 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt,clippy
 
-      - name: Apply exact bounded source repair
+      - name: Apply exact supervisor source repair
         shell: bash
         run: |
           set -euo pipefail
@@ -57,92 +57,6 @@ jobs:
                   )
               file.write_text(text.replace(old, new, expected), encoding="utf-8")
 
-          root = "codex-rs/hepta-memory/src/fact_grounding/durable/grounding"
-          replace_exact(
-              f"{root}/ledger.rs",
-              "pub(super) use insert::insert_tx;",
-              "pub(in super::super) use insert::insert_tx;",
-          )
-          replace_exact(
-              f"{root}/ledger.rs",
-              "pub(super) use verify::verify_receipts;",
-              "pub(in super::super) use verify::verify_receipts;",
-          )
-          replace_exact(
-              f"{root}/ledger/insert.rs",
-              "use super::*;\n",
-              "use super::*;\nuse super::support::{durable_receipt_digest, to_i64_len};\n",
-          )
-          replace_exact(
-              f"{root}/ledger/insert.rs",
-              "pub(super) async fn insert_tx(",
-              "pub(in super::super) async fn insert_tx(",
-          )
-          replace_exact(
-              f"{root}/ledger/verify.rs",
-              "use super::*;\n",
-              "use super::*;\n"
-              "use super::support::{\n"
-              "    durable_receipt_digest, limit_plus_one, parse_fact_kind, stored_fact_supports,\n"
-              "    validate_span_range_corrupt,\n"
-              "};\n",
-          )
-          replace_exact(
-              f"{root}/ledger/verify.rs",
-              "pub(super) async fn verify_receipts(",
-              "pub(in super::super) async fn verify_receipts(",
-          )
-          support = f"{root}/ledger/support.rs"
-          replace_exact(
-              support,
-              "use super::*;\n",
-              "use super::*;\nuse crate::framing::frame_part;\n",
-          )
-          for old, new in (
-              ("async fn stored_fact_supports(", "pub(super) async fn stored_fact_supports("),
-              ("fn durable_receipt_digest(", "pub(super) fn durable_receipt_digest("),
-              ("fn parse_fact_kind(", "pub(super) fn parse_fact_kind("),
-              ("fn validate_span_range_corrupt(", "pub(super) fn validate_span_range_corrupt("),
-              ("fn to_i64_len(", "pub(super) fn to_i64_len("),
-              ("fn limit_plus_one(", "pub(super) fn limit_plus_one("),
-          ):
-              replace_exact(support, old, new)
-          replace_exact(support, "super::super::frame_part", "frame_part", expected=16)
-
-          prepare = f"{root}/prepare.rs"
-          for name in (
-              "validate_source_binding",
-              "require_groundable_revision",
-              "bind_exact_citation",
-              "prepare",
-              "validate_canonical_identity_binding",
-          ):
-              replace_exact(
-                  prepare,
-                  f"pub(super) fn {name}(",
-                  f"pub(in super::super) fn {name}(",
-              )
-
-          replace_exact(
-              "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
-              "use sqlx::Executor;\n",
-              "",
-          )
-          replace_exact(
-              "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
-              "use super::intelligence_mutation_state::IntelligenceMutationState;\n",
-              "",
-          )
-          replace_exact(
-              "codex-rs/hepta-agent-protocol/src/lib.rs",
-              "impl HostTurnAuthorityBinding {\n    pub fn new(",
-              "impl HostTurnAuthorityBinding {\n"
-              "    #[expect(\n"
-              "        clippy::too_many_arguments,\n"
-              "        reason = \"the transport commits every persisted authority-binding field explicitly\"\n"
-              "    )]\n"
-              "    pub fn new(",
-          )
           replace_exact(
               "codex-rs/hepta-supervisor/src/signed_authority.rs",
               "H7ArtifactVerifier::new(signer_id.clone(), signer_epoch, verifying_key.clone())",
@@ -207,25 +121,17 @@ jobs:
           )
           PY
 
-          mapfile -t changed < <(git diff --name-only | LC_ALL=C sort)
-          expected=(
-            codex-rs/hepta-agent-protocol/src/lib.rs
-            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs
-            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs
-            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs
-            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs
-            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs
-            codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs
-            codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs
+          supervisor_files=(
             codex-rs/hepta-supervisor/src/signed_authority.rs
             codex-rs/hepta-supervisor/src/signed_intent.rs
             codex-rs/hepta-supervisor/src/supervisor.rs
           )
-          test "${#changed[@]}" = "${#expected[@]}"
-          for index in "${!expected[@]}"; do
-            test "${changed[$index]}" = "${expected[$index]}"
+          mapfile -t changed < <(git diff --name-only | LC_ALL=C sort)
+          test "${#changed[@]}" = "${#supervisor_files[@]}"
+          for index in "${!supervisor_files[@]}"; do
+            test "${changed[$index]}" = "${supervisor_files[$index]}"
           done
-          for path in "${changed[@]}"; do
+          for path in "${supervisor_files[@]}"; do
             rustfmt --edition 2024 --config skip_children=true "$path"
             rustfmt --edition 2024 --check --config skip_children=true "$path"
           done
@@ -233,25 +139,50 @@ jobs:
           ! git diff --unified=0 -- '*.rs' \
             | grep -E '^\+.*(#\!?\[allow\(clippy|#\[ignore\]|todo!\(|unimplemented!\()'
 
-      - name: Prove compile and strict known-blocker baseline
+      - name: Materialize canonical Q0 overlay without source writeback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          needle = r"        rf'(?:async[ \t]+)?fn[ \t]+{re.escape(name)}[ \t]*\('"
+          assert lines.count(needle) == 1, lines.count(needle)
+          index = lines.index(needle)
+          assert lines[index + 1] == '    )', lines[index + 1]
+          lines.insert(index + 1, "        r')'")
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+          python3 -m py_compile \
+            .github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py \
+            .github/scripts/hepta-intelligence-q0-reconstruct-v7.py \
+            .github/scripts/hepta-intelligence-q0-supplemental-repair-v1.py
+          python3 .github/scripts/hepta-intelligence-q0-reconstruct-v7.py
+          python3 .github/scripts/hepta-intelligence-q0-supplemental-repair-v1.py
+          git restore --source=HEAD -- \
+            .github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py
+          mapfile -t overlay_files < <(git diff --name-only -- '*.rs' | LC_ALL=C sort)
+          test "${#overlay_files[@]}" -gt 3
+          for path in "${overlay_files[@]}"; do
+            rustfmt --edition 2024 --config skip_children=true "$path"
+          done
+          git diff --check
+          ! git diff --unified=0 -- '*.rs' \
+            | grep -E '^\+.*(#\!?\[allow\(clippy|#\[ignore\]|todo!\(|unimplemented!\()'
+
+      - name: Prove supervisor strict Clippy on canonical overlay
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts/hepta-q0-source-repair
           (
             cd codex-rs
-            cargo check --locked -p codex-hepta-memory --all-targets
-          ) 2>&1 | tee artifacts/hepta-q0-source-repair/memory-check.log
-          (
-            cd codex-rs
-            cargo clippy --locked -p codex-hepta-agent-protocol --all-targets -- -D warnings
-          ) 2>&1 | tee artifacts/hepta-q0-source-repair/agent-protocol-clippy.log
-          (
-            cd codex-rs
             cargo clippy --locked -p codex-hepta-supervisor --all-targets -- -D warnings
           ) 2>&1 | tee artifacts/hepta-q0-source-repair/supervisor-clippy.log
 
-      - name: Prove durable queue recovery repeatedly
+      - name: Prove durable queue recovery repeatedly on canonical overlay
         shell: bash
         run: |
           set -euo pipefail
@@ -311,24 +242,30 @@ jobs:
           PY
           test "$failures" = "0"
 
-      - name: Commit one atomic source repair and retire carrier
+      - name: Commit only supervisor repair and retire carrier
         shell: bash
         run: |
           set -euo pipefail
           git fetch --no-tags origin "$GITHUB_REF_NAME"
           test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          preserve=$(mktemp -d)
+          supervisor_files=(
+            codex-rs/hepta-supervisor/src/signed_authority.rs
+            codex-rs/hepta-supervisor/src/signed_intent.rs
+            codex-rs/hepta-supervisor/src/supervisor.rs
+          )
+          for path in "${supervisor_files[@]}"; do
+            mkdir -p "$preserve/$(dirname "$path")"
+            cp "$path" "$preserve/$path"
+          done
+          git restore --source=HEAD --worktree -- .
+          for path in "${supervisor_files[@]}"; do
+            cp "$preserve/$path" "$path"
+          done
           rm .github/workflows/hepta-intelligence-q0-source-repair-once.yml
           mapfile -t changed < <(git diff --name-only | LC_ALL=C sort)
           expected=(
             .github/workflows/hepta-intelligence-q0-source-repair-once.yml
-            codex-rs/hepta-agent-protocol/src/lib.rs
-            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs
-            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs
-            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs
-            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs
-            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs
-            codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs
-            codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs
             codex-rs/hepta-supervisor/src/signed_authority.rs
             codex-rs/hepta-supervisor/src/signed_intent.rs
             codex-rs/hepta-supervisor/src/supervisor.rs
@@ -340,9 +277,11 @@ jobs:
           git diff --check
           git config user.name hepta-q0-bot
           git config user.email hepta-q0-bot@users.noreply.github.com
-          git add -A
+          git add -A -- \
+            .github/workflows/hepta-intelligence-q0-source-repair-once.yml \
+            "${supervisor_files[@]}"
           git diff --cached --check
-          git commit -m "fix(q0): repair split grounding visibility and strict clippy"
+          git commit -m "fix(supervisor): close strict Q0 Clippy blockers"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Upload one-shot repair diagnostics
