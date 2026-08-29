@@ -32,7 +32,7 @@ jobs:
         env:
           EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
           EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-          EXPECTED_PARENT: e4610e5acc608be86c45e73ba6e19d2e6cc215d2
+          EXPECTED_PARENT: 6a2e2325f08d4eeb249005ed373a38b865cca620
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
@@ -145,7 +145,7 @@ jobs:
           replace_exact(
               ".codespellignore",
               "iTerm\niTerm2\nnumer\npsuedo\nSOM\nte\nTE",
-              "iTerm\niTerm2\nnumer\npsuedo\nSOM\nte\nTE\nANE\nWIT\nWRONLY\n",
+              "iTerm\niTerm2\nnumer\npsuedo\nSOM\nte\nTE\nANE\nWIT\nWRONLY",
           )
           replace_exact(
               "codex-rs/hepta-memory/src/local_lease_outbox.rs",
