@@ -5,6 +5,8 @@ use codex_hepta_authbus_p1_qualification::*;
 use codex_hepta_contracts::IdentityBinding;
 use codex_hepta_contracts::IdentityPeerEvidence;
 use codex_hepta_contracts::Sha256Digest;
+use codex_state::SqliteConfig;
+use codex_utils_absolute_path::AbsolutePathBuf;
 use ed25519_dalek::Signer;
 use ed25519_dalek::SigningKey;
 use pretty_assertions::assert_eq;
@@ -491,8 +493,11 @@ async fn key_identity_is_namespaced_by_purpose_across_reopen_and_revocation() {
     assert_eq!(durable_status.revoked_at_unix_seconds, None);
     assert_ne!(durable_identity.public_key, durable_status.public_key);
 
-    let database_url = format!("sqlite://{}", reopened.database_path().display());
-    let inspection = sqlx::SqlitePool::connect(&database_url)
+    let sqlite_home =
+        AbsolutePathBuf::try_from(fs::canonicalize(root.path()).expect("canonical P1.2 tempdir"))
+            .expect("absolute P1.2 tempdir");
+    let inspection = SqliteConfig::from_sqlite_home(sqlite_home)
+        .open_durable_evidence_pool(reopened.database_path())
         .await
         .expect("inspection pool");
     let mut connection = inspection.acquire().await.expect("inspection connection");

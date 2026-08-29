@@ -214,6 +214,18 @@ def main() -> int:
         require(marker in model, f"missing typed P1.2 model: {marker}")
 
     tests = text(CRATE / "tests/p1_2.rs")
+    for marker in [
+        "use codex_state::SqliteConfig;",
+        "use codex_utils_absolute_path::AbsolutePathBuf;",
+        "open_durable_evidence_pool",
+    ]:
+        require(marker in tests, f"qualification test bypasses canonical SQLite shim: {marker}")
+    for forbidden in [
+        "sqlx::SqlitePool::connect",
+        "SqlitePoolOptions",
+        "SqliteConnectOptions",
+    ]:
+        require(forbidden not in tests, f"direct SQLite construction survived in tests: {forbidden}")
     for test_name in TESTS:
         require(f"async fn {test_name}" in tests, f"missing executable regression {test_name}")
     for failpoint in [
