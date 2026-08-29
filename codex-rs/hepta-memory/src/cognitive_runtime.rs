@@ -253,7 +253,9 @@ mod authority_tests {
         };
         assert!(matches!(
             CognitiveRuntime::Absent.cognitive_write_store_available(&authority),
-            Err(AuthorityError::ActionDenied(AuthorityAction::WriteCognitiveState))
+            Err(AuthorityError::ActionDenied(
+                AuthorityAction::WriteCognitiveState
+            ))
         ));
     }
 

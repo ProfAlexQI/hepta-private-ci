@@ -155,16 +155,22 @@ impl fmt::Display for ProductGraphError {
                 formatter.write_str("authority profile cannot host the Agent product graph")
             }
             Self::EscapedAuthority(actions) => {
-                write!(formatter, "product graph received escaped authority: {actions:?}")
+                write!(
+                    formatter,
+                    "product graph received escaped authority: {actions:?}"
+                )
             }
             Self::MissingRequiredAuthority(action) => write!(
                 formatter,
                 "product graph is missing required authority {}",
                 action.as_str()
             ),
-            Self::DuplicateComponent => formatter.write_str("product graph has duplicate components"),
-            Self::QualificationComponentInProductGraph => formatter
-                .write_str("qualification plane cannot be a product runtime component"),
+            Self::DuplicateComponent => {
+                formatter.write_str("product graph has duplicate components")
+            }
+            Self::QualificationComponentInProductGraph => {
+                formatter.write_str("qualification plane cannot be a product runtime component")
+            }
             Self::EdgeReferencesUnknownComponent => {
                 formatter.write_str("product graph edge references an unknown component")
             }
@@ -346,10 +352,7 @@ impl ProductGraph {
         let mut bytes = Vec::new();
         frame(&mut bytes, b"hepta:product-graph:v2");
         frame(&mut bytes, &self.schema_version.to_be_bytes());
-        frame(
-            &mut bytes,
-            self.authority_grant_sha256.as_str().as_bytes(),
-        );
+        frame(&mut bytes, self.authority_grant_sha256.as_str().as_bytes());
         for component in &self.components {
             frame(&mut bytes, component.as_str().as_bytes());
         }
@@ -470,8 +473,7 @@ mod tests {
     const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 
     fn agent_id() -> AgentId {
-        AgentId::parse(AGENT_ID)
-            .unwrap_or_else(|error| panic!("test AgentId must parse: {error}"))
+        AgentId::parse(AGENT_ID).unwrap_or_else(|error| panic!("test AgentId must parse: {error}"))
     }
 
     #[test]
@@ -494,10 +496,17 @@ mod tests {
                 .components()
                 .contains(&ProductComponentId::ProviderEffectAdapter)
         );
-        assert!(!graph.data_authorities().iter().any(|authority| {
-            authority.writer == ProductComponentId::ProviderEffectAdapter
-        }));
-        assert!(!graph.components().contains(&ProductComponentId::QualificationPlane));
+        assert!(
+            !graph
+                .data_authorities()
+                .iter()
+                .any(|authority| { authority.writer == ProductComponentId::ProviderEffectAdapter })
+        );
+        assert!(
+            !graph
+                .components()
+                .contains(&ProductComponentId::QualificationPlane)
+        );
     }
 
     #[test]

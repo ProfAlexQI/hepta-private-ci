@@ -139,12 +139,9 @@ mod tests {
         let agent_id = AgentId::parse(AGENT_ID).expect("valid agent id");
         let binding =
             WorkspaceBinding::new(workspace.clone(), &fleet_root).expect("bind workspace");
-        let manifest = AgentManifest::new(
-            agent_id.clone(),
-            binding,
-            ResourceBudget::local_default(),
-        )
-        .expect("valid manifest");
+        let manifest =
+            AgentManifest::new(agent_id.clone(), binding, ResourceBudget::local_default())
+                .expect("valid manifest");
         let record = registry.register(manifest).expect("register agent");
         registry
             .compare_and_transition(&agent_id, 0, AgentLifecycle::Starting)

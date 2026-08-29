@@ -146,7 +146,9 @@ pub enum MemoryRuntimeBoundaryError {
 impl fmt::Display for MemoryRuntimeBoundaryError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Authority(error) => write!(formatter, "memory runtime authority rejected: {error}"),
+            Self::Authority(error) => {
+                write!(formatter, "memory runtime authority rejected: {error}")
+            }
             Self::AuthorityDrift => {
                 formatter.write_str("memory runtime authority grant digest drifted")
             }
@@ -168,8 +170,7 @@ mod tests {
     const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 
     fn agent_id() -> AgentId {
-        AgentId::parse(AGENT_ID)
-            .unwrap_or_else(|error| panic!("test AgentId must parse: {error}"))
+        AgentId::parse(AGENT_ID).unwrap_or_else(|error| panic!("test AgentId must parse: {error}"))
     }
 
     fn absent_runtime(authority: &AuthorityGrant) -> AgentMemoryRuntime {

@@ -32,9 +32,11 @@ impl AgentMemoryService {
             .map_err(|error| {
                 AgentdError::Protocol(format!("validate Memory authority binding: {error}"))
             })?;
-        let read = authority.authorize::<MemoryReadCapability>().map_err(|error| {
-            AgentdError::Protocol(format!("authorize Memory read service: {error}"))
-        })?;
+        let read = authority
+            .authorize::<MemoryReadCapability>()
+            .map_err(|error| {
+                AgentdError::Protocol(format!("authorize Memory read service: {error}"))
+            })?;
         let cognitive_write = if authority.allows(AuthorityAction::WriteCognitiveState) {
             Some(
                 authority
@@ -50,15 +52,12 @@ impl AgentMemoryService {
         };
 
         state.refresh_generation()?;
-        let mut runtime = AgentMemoryRuntime::open(
-            identity.agent_id.clone(),
-            &identity.layout,
-            authority,
-        )
-        .await
-        .map_err(|error| {
-            AgentdError::Protocol(format!("open Agent Memory runtime facade: {error}"))
-        })?;
+        let mut runtime =
+            AgentMemoryRuntime::open(identity.agent_id.clone(), &identity.layout, authority)
+                .await
+                .map_err(|error| {
+                    AgentdError::Protocol(format!("open Agent Memory runtime facade: {error}"))
+                })?;
         state.refresh_generation()?;
 
         if cognitive_write.is_some()

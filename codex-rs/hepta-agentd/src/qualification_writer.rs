@@ -152,11 +152,11 @@ async fn prepare_qualification_turn_writer_input_with_request(
 
     use codex_hepta_contracts::Sha256Digest;
     use codex_hepta_memory::CompactFence;
+    use codex_hepta_memory::LocalTurnLifecycleBinding;
     use codex_hepta_memory::LogicalTurnAttemptRequest;
     use codex_hepta_memory::LogicalTurnRegistryError;
     use codex_hepta_memory::LogicalTurnRequest;
     use codex_hepta_memory::LogicalTurnReservation;
-    use codex_hepta_memory::LocalTurnLifecycleBinding;
     use codex_hepta_memory_extension::QualificationTurnWriterInput;
     use codex_hepta_memory_extension::QualificationTurnWriterInputError;
 
@@ -309,7 +309,9 @@ async fn prepare_qualification_turn_writer_input_with_request(
         .await
         .map_err(|error| QualificationTurnWriterInputError::Invalid(error.to_string()))?;
     let head = match inspected.disposition {
-        codex_hepta_memory::LocalLeaseHeadDisposition::Active => inspected.head.ok_or_else(fenced)?,
+        codex_hepta_memory::LocalLeaseHeadDisposition::Active => {
+            inspected.head.ok_or_else(fenced)?
+        }
         codex_hepta_memory::LocalLeaseHeadDisposition::ExpiredActive
         | codex_hepta_memory::LocalLeaseHeadDisposition::Released
         | codex_hepta_memory::LocalLeaseHeadDisposition::RolledBack

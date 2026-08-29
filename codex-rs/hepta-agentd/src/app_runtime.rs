@@ -315,9 +315,12 @@ mod tests {
         let authority = authority_for_identity(&identity).expect("valid build authority");
         let expected = authority.allows(AuthorityAction::WriteCognitiveState);
         let overrides = app_server_config_overrides(expected);
-        assert!(overrides.raw_overrides.iter().any(|value| {
-            value == &format!("features.hepta_cognitive_write={expected}")
-        }));
+        assert!(
+            overrides
+                .raw_overrides
+                .iter()
+                .any(|value| { value == &format!("features.hepta_cognitive_write={expected}") })
+        );
     }
 
     #[test]

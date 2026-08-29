@@ -4,6 +4,7 @@ use codex_hepta_contracts::Sha256Digest;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 
+use crate::MODEL_RECEIPT_NAMESPACE;
 use crate::ModelApprovalState;
 use crate::ModelClaimLevel;
 use crate::ModelEfficacyStatus;
@@ -13,7 +14,6 @@ use crate::ModelReceipt;
 use crate::ModelReceiptBindings;
 use crate::ModelReceiptChain;
 use crate::ModelReceiptError;
-use crate::MODEL_RECEIPT_NAMESPACE;
 
 fn digest(label: &str) -> Sha256Digest {
     Sha256Digest::for_bytes(label.as_bytes())

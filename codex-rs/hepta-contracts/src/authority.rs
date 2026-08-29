@@ -104,7 +104,10 @@ impl fmt::Display for AuthorityError {
                 write!(formatter, "authority lease expired at {deadline}")
             }
             Self::VerificationRejected(reason) => {
-                write!(formatter, "authority verifier rejected capability: {reason}")
+                write!(
+                    formatter,
+                    "authority verifier rejected capability: {reason}"
+                )
             }
         }
     }
@@ -135,10 +138,7 @@ impl AuthorityGrant {
         )
     }
 
-    pub fn agent_local(
-        subject_agent_id: AgentId,
-        generation: u64,
-    ) -> Result<Self, AuthorityError> {
+    pub fn agent_local(subject_agent_id: AgentId, generation: u64) -> Result<Self, AuthorityError> {
         Self::new(
             subject_agent_id,
             generation,
@@ -276,9 +276,9 @@ impl AuthorityGrant {
             return Err(AuthorityError::ProfileInvariant);
         }
         let expected: BTreeSet<AuthorityAction> = match self.profile {
-            RuntimeAuthorityProfile::SnapshotReadOnly => [AuthorityAction::ReadMemory]
-                .into_iter()
-                .collect(),
+            RuntimeAuthorityProfile::SnapshotReadOnly => {
+                [AuthorityAction::ReadMemory].into_iter().collect()
+            }
             RuntimeAuthorityProfile::AgentLocal => [
                 AuthorityAction::ServeSession,
                 AuthorityAction::ReadMemory,
@@ -396,10 +396,7 @@ impl AuthorityLeaseBinding {
         frame(&mut bytes, &self.authority_epoch.to_be_bytes());
         frame(&mut bytes, &self.owner_epoch.to_be_bytes());
         frame(&mut bytes, &self.generation.to_be_bytes());
-        frame(
-            &mut bytes,
-            self.fencing_token_sha256.as_str().as_bytes(),
-        );
+        frame(&mut bytes, self.fencing_token_sha256.as_str().as_bytes());
         frame(&mut bytes, &self.expires_at_unix_seconds.to_be_bytes());
         Sha256Digest::for_bytes(&bytes)
     }
@@ -525,10 +522,16 @@ capability!(
     AuthorityAction::WriteCognitiveState
 );
 capability!(ModelInvocationCapability, AuthorityAction::InvokeModel);
-capability!(ProviderDispatchCapability, AuthorityAction::DispatchProvider);
+capability!(
+    ProviderDispatchCapability,
+    AuthorityAction::DispatchProvider
+);
 capability!(ExternalEffectCapability, AuthorityAction::ExternalEffect);
 capability!(FleetMutationCapability, AuthorityAction::MutateFleet);
-capability!(OperatorAcceptanceCapability, AuthorityAction::AcceptOperator);
+capability!(
+    OperatorAcceptanceCapability,
+    AuthorityAction::AcceptOperator
+);
 capability!(ReleasePromotionCapability, AuthorityAction::PromoteRelease);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -658,11 +661,15 @@ mod tests {
         assert!(grant.authorize::<AutomationMutationCapability>().is_ok());
         assert!(matches!(
             grant.authorize::<CognitiveWriteCapability>(),
-            Err(AuthorityError::ActionDenied(AuthorityAction::WriteCognitiveState))
+            Err(AuthorityError::ActionDenied(
+                AuthorityAction::WriteCognitiveState
+            ))
         ));
         assert!(matches!(
             grant.authorize::<ExternalEffectCapability>(),
-            Err(AuthorityError::ActionDenied(AuthorityAction::ExternalEffect))
+            Err(AuthorityError::ActionDenied(
+                AuthorityAction::ExternalEffect
+            ))
         ));
     }
 

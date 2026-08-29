@@ -172,10 +172,7 @@ impl OperationBinding {
         frame(&mut bytes, &self.schema_version.to_be_bytes());
         frame(&mut bytes, self.operation_id.as_str().as_bytes());
         frame(&mut bytes, self.idempotency_key.as_str().as_bytes());
-        frame(
-            &mut bytes,
-            self.source_owner_agent_id.as_str().as_bytes(),
-        );
+        frame(&mut bytes, self.source_owner_agent_id.as_str().as_bytes());
         frame(&mut bytes, self.source_component.as_str().as_bytes());
         frame(
             &mut bytes,
@@ -186,10 +183,7 @@ impl OperationBinding {
         frame(&mut bytes, &self.authority_epoch.to_be_bytes());
         frame(&mut bytes, &self.owner_epoch.to_be_bytes());
         frame(&mut bytes, &self.generation.to_be_bytes());
-        frame(
-            &mut bytes,
-            self.fencing_token_sha256.as_str().as_bytes(),
-        );
+        frame(&mut bytes, self.fencing_token_sha256.as_str().as_bytes());
         frame(&mut bytes, self.command_sha256.as_str().as_bytes());
         frame(&mut bytes, &self.command_bytes.to_be_bytes());
         Sha256Digest::for_bytes(&bytes)
@@ -300,7 +294,10 @@ pub fn recovery_decision(
         OperationPhase::IntentAppended
         | OperationPhase::SourceCommitted
         | OperationPhase::OutboxPending
-            if !delivery_may_have_crossed_boundary => RecoveryDecision::RetryBeforeDelivery,
+            if !delivery_may_have_crossed_boundary =>
+        {
+            RecoveryDecision::RetryBeforeDelivery
+        }
         OperationPhase::DestinationCommitted => RecoveryDecision::AdoptAcknowledgement,
         OperationPhase::DeliveryClaimed | OperationPhase::Indeterminate => {
             RecoveryDecision::LookupOnly
@@ -340,9 +337,9 @@ impl fmt::Display for OperationContractError {
             Self::SameOwner => formatter.write_str(
                 "cross-owner operation source and destination component owners must differ",
             ),
-            Self::ZeroFence => formatter.write_str(
-                "authority epoch, owner epoch, and generation must be non-zero",
-            ),
+            Self::ZeroFence => {
+                formatter.write_str("authority epoch, owner epoch, and generation must be non-zero")
+            }
             Self::CommandSize => write!(
                 formatter,
                 "command size must be between 1 and {MAX_COMMAND_BYTES} bytes",
@@ -375,10 +372,7 @@ pub fn validate_transition(
     }
 }
 
-fn parse_identifier(
-    value: String,
-    label: &'static str,
-) -> Result<String, OperationContractError> {
+fn parse_identifier(value: String, label: &'static str) -> Result<String, OperationContractError> {
     if value.trim().is_empty()
         || value.len() > MAX_IDENTIFIER_BYTES
         || value.as_bytes().contains(&0)
@@ -479,11 +473,9 @@ mod tests {
     fn acknowledgement_requires_exact_outbox_identity() {
         let envelope = OutboxEnvelope::pending(binding(), 1)
             .unwrap_or_else(|error| panic!("outbox must be valid: {error}"));
-        let acknowledgement = DestinationAcknowledgement::committed(
-            &envelope,
-            Sha256Digest::for_bytes(b"receipt"),
-        )
-        .unwrap_or_else(|error| panic!("acknowledgement must be valid: {error}"));
+        let acknowledgement =
+            DestinationAcknowledgement::committed(&envelope, Sha256Digest::for_bytes(b"receipt"))
+                .unwrap_or_else(|error| panic!("acknowledgement must be valid: {error}"));
         assert!(acknowledgement.validate_against(&envelope).is_ok());
         let mut changed = acknowledgement;
         changed.sequence += 1;
@@ -515,11 +507,13 @@ mod tests {
 
     #[test]
     fn transition_graph_rejects_skips_and_terminal_reopen() {
-        assert!(validate_transition(
-            OperationPhase::IntentAppended,
-            OperationPhase::SourceCommitted
-        )
-        .is_ok());
+        assert!(
+            validate_transition(
+                OperationPhase::IntentAppended,
+                OperationPhase::SourceCommitted
+            )
+            .is_ok()
+        );
         assert!(matches!(
             validate_transition(
                 OperationPhase::IntentAppended,
@@ -528,10 +522,7 @@ mod tests {
             Err(OperationContractError::InvalidTransition { .. })
         ));
         assert!(matches!(
-            validate_transition(
-                OperationPhase::Acknowledged,
-                OperationPhase::OutboxPending
-            ),
+            validate_transition(OperationPhase::Acknowledged, OperationPhase::OutboxPending),
             Err(OperationContractError::InvalidTransition { .. })
         ));
     }

@@ -699,9 +699,12 @@ fn validate_outcome_status(
             if !matches!(
                 provider_status,
                 SecretProviderStatus::Succeeded | SecretProviderStatus::Rotated
-            ) => Err(error(
+            ) =>
+        {
+            Err(error(
                 "successful SecretRef outcome requires a positive provider status",
-            )),
+            ))
+        }
         SecretRefOutcome::TransientFailure
             if matches!(
                 provider_status,
@@ -710,21 +713,25 @@ fn validate_outcome_status(
                     | SecretProviderStatus::InvalidGrant
                     | SecretProviderStatus::Quarantined
                     | SecretProviderStatus::Unknown
-            ) => Err(error(
-                "transient SecretRef outcome cannot carry a terminal or unknown provider status",
-            )),
-        SecretRefOutcome::Indeterminate if provider_status != SecretProviderStatus::Unknown => {
+            ) =>
+        {
             Err(error(
-                "indeterminate SecretRef outcome requires unknown provider status",
+                "transient SecretRef outcome cannot carry a terminal or unknown provider status",
             ))
         }
+        SecretRefOutcome::Indeterminate if provider_status != SecretProviderStatus::Unknown => Err(
+            error("indeterminate SecretRef outcome requires unknown provider status"),
+        ),
         SecretRefOutcome::Quarantined
             if !matches!(
                 provider_status,
                 SecretProviderStatus::InvalidGrant | SecretProviderStatus::Quarantined
-            ) => Err(error(
+            ) =>
+        {
+            Err(error(
                 "quarantined SecretRef outcome requires invalid-grant provider status",
-            )),
+            ))
+        }
         _ => Ok(()),
     }
 }

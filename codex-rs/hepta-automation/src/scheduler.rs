@@ -92,11 +92,7 @@ where
         self.store
             .record_dispatch_uncertain(&lease, &admission.operation, now_ms)
             .await?;
-        let result = timeout(
-            self.dispatch_timeout,
-            self.queue.enqueue(admission.clone()),
-        )
-        .await;
+        let result = timeout(self.dispatch_timeout, self.queue.enqueue(admission.clone())).await;
         let receipt = match result {
             Ok(Ok(receipt)) => receipt,
             // Owner/generation fencing is not a transient dispatch failure.

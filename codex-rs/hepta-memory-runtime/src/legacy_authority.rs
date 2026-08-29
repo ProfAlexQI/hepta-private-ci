@@ -116,8 +116,7 @@ where
             || binding.authority_epoch() != self.lease.authority_epoch
             || binding.owner_epoch() != self.lease.owner_epoch
             || binding.generation() != request.expected_generation()
-            || binding.expires_at_unix_seconds()
-                != self.lease.lease_expires_at_unix_seconds
+            || binding.expires_at_unix_seconds() != self.lease.lease_expires_at_unix_seconds
             || binding.fencing_token_sha256() != &fencing_token_sha256
         {
             return Err("legacy production lease drifted from typed binding".to_string());
@@ -151,8 +150,7 @@ mod tests {
     const OTHER_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c13";
 
     fn agent_id(value: &str) -> AgentId {
-        AgentId::parse(value)
-            .unwrap_or_else(|error| panic!("test AgentId must parse: {error}"))
+        AgentId::parse(value).unwrap_or_else(|error| panic!("test AgentId must parse: {error}"))
     }
 
     fn lease() -> ProductionAuthorityLease {

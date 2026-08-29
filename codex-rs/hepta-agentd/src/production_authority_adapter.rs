@@ -22,8 +22,7 @@ mod tests {
     const OTHER_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c13";
 
     fn agent_id(value: &str) -> AgentId {
-        AgentId::parse(value)
-            .unwrap_or_else(|error| panic!("test AgentId must parse: {error}"))
+        AgentId::parse(value).unwrap_or_else(|error| panic!("test AgentId must parse: {error}"))
     }
 
     fn lease() -> ProductionAuthorityLease {

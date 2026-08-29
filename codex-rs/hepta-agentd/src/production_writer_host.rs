@@ -87,7 +87,9 @@ impl AgentdProductionWriterHost {
         )
         .await
         .map_err(|error| {
-            AgentdError::Protocol(format!("open authorized production Memory runtime: {error}"))
+            AgentdError::Protocol(format!(
+                "open authorized production Memory runtime: {error}"
+            ))
         })?;
         Ok(Self::from_runtime(runtime))
     }
@@ -120,7 +122,9 @@ impl AgentdProductionWriterHost {
         )
         .await
         .map_err(|error| {
-            AgentdError::Protocol(format!("open authorized production Memory runtime: {error}"))
+            AgentdError::Protocol(format!(
+                "open authorized production Memory runtime: {error}"
+            ))
         })?;
         Ok(Self::from_runtime(runtime))
     }
@@ -344,18 +348,12 @@ mod tests {
             Ok(capability) => capability,
             Err(error) => panic!("external effect must authorize: {error}"),
         };
-        assert!(validate_external_effect_capability(
-            &cognitive_write,
-            &external_effect,
-            100
-        )
-        .is_ok());
-        assert!(validate_external_effect_capability(
-            &cognitive_write,
-            &external_effect,
-            500
-        )
-        .is_err());
+        assert!(
+            validate_external_effect_capability(&cognitive_write, &external_effect, 100).is_ok()
+        );
+        assert!(
+            validate_external_effect_capability(&cognitive_write, &external_effect, 500).is_err()
+        );
 
         let other = agent_id(OTHER_ID);
         let other_effect = match authorize_verified_capability::<ExternalEffectCapability, _>(
@@ -368,12 +366,7 @@ mod tests {
             Ok(capability) => capability,
             Err(error) => panic!("other effect must authorize: {error}"),
         };
-        assert!(validate_external_effect_capability(
-            &cognitive_write,
-            &other_effect,
-            100
-        )
-        .is_err());
+        assert!(validate_external_effect_capability(&cognitive_write, &other_effect, 100).is_err());
 
         let newer_effect = match authorize_verified_capability::<ExternalEffectCapability, _>(
             binding(owner.clone(), 4, 7, 11, 500),
@@ -385,29 +378,21 @@ mod tests {
             Ok(capability) => capability,
             Err(error) => panic!("newer effect must authorize: {error}"),
         };
-        assert!(validate_external_effect_capability(
-            &cognitive_write,
-            &newer_effect,
-            100
-        )
-        .is_err());
+        assert!(validate_external_effect_capability(&cognitive_write, &newer_effect, 100).is_err());
 
-        let changed_epoch_effect =
-            match authorize_verified_capability::<ExternalEffectCapability, _>(
-                binding(owner.clone(), 3, 8, 11, 500),
-                &owner,
-                3,
-                100,
-                &ExactActionVerifier(AuthorityAction::ExternalEffect),
-            ) {
-                Ok(capability) => capability,
-                Err(error) => panic!("changed-epoch effect must authorize alone: {error}"),
-            };
-        assert!(validate_external_effect_capability(
-            &cognitive_write,
-            &changed_epoch_effect,
-            100
-        )
-        .is_err());
+        let changed_epoch_effect = match authorize_verified_capability::<ExternalEffectCapability, _>(
+            binding(owner.clone(), 3, 8, 11, 500),
+            &owner,
+            3,
+            100,
+            &ExactActionVerifier(AuthorityAction::ExternalEffect),
+        ) {
+            Ok(capability) => capability,
+            Err(error) => panic!("changed-epoch effect must authorize alone: {error}"),
+        };
+        assert!(
+            validate_external_effect_capability(&cognitive_write, &changed_epoch_effect, 100)
+                .is_err()
+        );
     }
 }

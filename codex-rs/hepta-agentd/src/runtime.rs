@@ -75,11 +75,8 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
     let mut control_task = tokio::spawn(control.run());
     let mut app_server_task = tokio::spawn(app_server.run());
     let mut monitor_task = tokio::spawn(monitor_runtime(Arc::clone(&state)));
-    let mut automation_task = tokio::spawn(automation_service.run(
-        Arc::clone(&state),
-        identity,
-        cancellation.clone(),
-    ));
+    let mut automation_task =
+        tokio::spawn(automation_service.run(Arc::clone(&state), identity, cancellation.clone()));
 
     let (outcome, completed_task) = tokio::select! {
         result = &mut control_task => (
