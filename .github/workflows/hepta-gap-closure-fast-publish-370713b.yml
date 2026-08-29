@@ -1,4 +1,4 @@
-name: Hepta gap closure fast publish 591a500
+name: Hepta gap closure fast publish 6e4c0fc
 
 on:
   push:
@@ -12,13 +12,13 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-gap-closure-delivery-591a500
+  group: hepta-gap-closure-delivery-6e4c0fc
   cancel-in-progress: true
 
 env:
   DELIVERY_BRANCH: codex/hepta-gap-closure-delivery-6cd9ff0-20260829
   TARGET_BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
-  EXPECTED_TARGET_HEAD: 591a50005bba363dca287078a9326a30f3158b0a
+  EXPECTED_TARGET_HEAD: 6e4c0fce8131155cef3c4fb43c80af27a097f0a5
   PAYLOAD_ROOT: delivery/hepta-gap-closure-6cd9ff0
   PATCH_GZ_SHA256: ec47d855c19f3f1c0c4eba35cfdac5a213fe5d63c50d2c5c6a8282fbc358f24a
   PATCH_SHA256: 3141f02aef4abb509649c3eb31d8ae9fb57c3ce22bd7b8d9d1743be374709149
@@ -66,9 +66,8 @@ jobs:
             --exclude=codex-rs/hepta-memory/src/h7_trajectory_store_tests.rs \
             "$patch"
 
-          # The normal closure source already contains the bounded Automation
-          # compatibility wrapper, so retire the competing source-mutating lane.
-          git rm -f .github/workflows/hepta-architecture-automation-callsite-remediation.yml
+          git rm -f --ignore-unmatch \
+            .github/workflows/hepta-architecture-automation-callsite-remediation.yml
 
           test ! -e .github/workflows/hepta-architecture-product-test-diagnostic.yml
           test ! -e .github/workflows/hepta-architecture-h7-expiry-remediation.yml
@@ -120,7 +119,7 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo "schema=hepta_gap_closure_fast_publish_v3"
+            echo "schema=hepta_gap_closure_fast_publish_v4"
             echo "delivery_head=$GITHUB_SHA"
             echo "expected_target_head=$EXPECTED_TARGET_HEAD"
             echo "patch_sha256=$PATCH_SHA256"
