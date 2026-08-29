@@ -1,0 +1,120 @@
+name: AuthBus P1.3 clean-replay ARM resume
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/authbus-p1-3-clean-replay-runner-20260830
+    paths:
+      - .github/workflows/authbus-p1-3-clean-replay-resume.yml
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: authbus-p1-3-clean-replay-arm-resume
+  cancel-in-progress: false
+
+env:
+  BASE_BRANCH: integration/vnext-main-full-ci-authbus-p1-3-20260829
+  BASE_SHA: 6b7aa91d7702a92a50297b1b1bd8170ffb7cb184
+  BASE_TREE: f46fa8c6d541742eaea62d70ea62c0fe316dbaf9
+  SEED_SHA: 92c9b73299de18b870511ce81e66476868da0913
+  TARGET_BRANCH: codex/authbus-p1-3-clean-replay-20260830
+  STAGE_BRANCH: codex/authbus-p1-3-clean-replay-staged-20260830
+  P02_MANIFEST: codex-rs/hepta-authbus-qualification/Cargo.toml
+  P03_MANIFEST: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
+  P11_MANIFEST: codex-rs/hepta-authbus-p1-qualification/Cargo.toml
+  P12_MANIFEST: codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
+  P13_MANIFEST: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
+  CARGO_INCREMENTAL: "0"
+  CARGO_BUILD_JOBS: "1"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_NET_RETRY: "10"
+  CARGO_HTTP_TIMEOUT: "120"
+  CARGO_TARGET_DIR: /tmp/authbus-p1-3-clean-replay-target
+
+jobs:
+  resume-source:
+    name: Rebuild, qualify, and stage exact canonical-parent source
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact resume commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Bind helper and capture audited source recipe
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git rev-parse HEAD^)" = "${SEED_SHA}"
+          cp .github/workflows/authbus-p1-3-clean-replay-runner.yml /tmp/builder.yml
+          cat > /tmp/extract-workflow-step.py <<'PY'
+          from pathlib import Path
+          import sys
+
+          lines = Path(sys.argv[1]).read_text().splitlines()
+          target = f"- name: {sys.argv[2]}"
+          start = next(i for i, line in enumerate(lines) if line.strip() == target)
+          run = next(i for i in range(start + 1, len(lines)) if lines[i].strip() == "run: |")
+          indent = len(lines[run]) - len(lines[run].lstrip())
+          output = []
+          for line in lines[run + 1:]:
+              if line and len(line) - len(line.lstrip()) <= indent:
+                  break
+              output.append(line[indent + 2:] if line else "")
+          print("\n".join(output))
+          PY
+          python3 -m py_compile /tmp/extract-workflow-step.py
+
+      - name: Switch to canonical base with exact seed inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract-workflow-step.py /tmp/builder.yml \
+            "Capture seed inputs and switch to canonical base" > /tmp/resume-step.sh
+          bash /tmp/resume-step.sh
+
+      - name: Materialize canonical P1.3 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract-workflow-step.py /tmp/builder.yml \
+            "Extract and run seed materialization block" > /tmp/resume-step.sh
+          bash /tmp/resume-step.sh
+
+      - name: Apply strict-lint closure and refresh plan truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract-workflow-step.py /tmp/builder.yml \
+            "Close strict lint and refresh latest plan truth" > /tmp/resume-step.sh
+          bash /tmp/resume-step.sh
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Run inherited format, test, check, and strict lint blocks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract-workflow-step.py /tmp/builder.yml \
+            "Run inherited format, test, check, and strict lint blocks" > /tmp/resume-step.sh
+          bash /tmp/resume-step.sh
+
+      - name: Retire one-shot files and publish exact staging commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract-workflow-step.py /tmp/builder.yml \
+            "Retire one-shot files and publish exact staging commit" > /tmp/resume-step.sh
+          bash /tmp/resume-step.sh
