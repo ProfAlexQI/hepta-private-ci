@@ -34,10 +34,17 @@
       "ownedPaths": [
         "codex-rs/hepta-contracts/src/runtime_bootstrap.rs",
         "codex-rs/hepta-contracts/src/runtime_bootstrap_tests.rs",
-        "codex-rs/hepta-supervisor/src/agent_runtime_bootstrap.rs",
+        "codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs",
+        "codex-rs/hepta-fleet/src/runtime_bootstrap_registry_tests.rs",
+        "codex-rs/hepta-supervisor/src/runtime_bootstrap.rs",
+        "codex-rs/hepta-supervisor/src/runtime_bootstrap_tests.rs",
         "codex-rs/hepta-agentd/src/runtime_bootstrap.rs",
-        ".github/workflows/hepta-p0-7a-runtime-bootstrap.yml",
-        ".github/workflows/hepta-p0-7a-direct-qualification-arm.yml"
+        "codex-rs/hepta-agentd/src/runtime_bootstrap_tests.rs",
+        "codex-rs/Cargo.lock",
+        "MODULE.bazel.lock",
+        "scripts/verify-hepta-p0-7a-format.py",
+        ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml",
+        ".github/workflows/hepta-p0-7a-direct-arm.yml"
       ],
       "exitCriteria": [
         "rust_1_95_format_pass",
@@ -66,7 +73,14 @@
         "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md",
         "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json",
         "docs/architecture/HEPTA_CURRENT_PLAN.json",
+        "docs/architecture/HEPTA_DOCUMENT_AUTHORITY_INDEX_V4.json",
+        "docs/architecture/HEPTA_QUALIFICATION_STATUS_V4.json",
+        "scripts/verify-hepta-selected-architecture-plan.py",
         "scripts/verify-hepta-architecture-plan-v5.py",
+        "scripts/verify-hepta-v5-b0-format.py",
+        ".github/workflows/hepta-architecture-plan-v4.yml",
+        ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml",
+        ".github/workflows/hepta-p0-7a-direct-arm.yml",
         ".github/workflows/hepta-architecture-v5-b0-verified-use.yml"
       ],
       "requiredFacts": [
@@ -81,6 +95,7 @@
         "consume_by_value",
         "final_boundary_recheck",
         "digest_bound_witness",
+        "selected_plan_verifier_routing",
         "no_product_caller_change"
       ],
       "exitCriteria": [
@@ -90,6 +105,7 @@
         "codex_hepta_contracts_tests_pass",
         "locked_all_target_check_pass",
         "strict_clippy_pass",
+        "bazel_lock_pass",
         "clean_worktree_pass",
         "exact_head_nonempty_qualification",
         "merge_candidate_nonempty_qualification",
@@ -264,6 +280,7 @@
     "externalFilesystemMutation": false,
     "secretOperation": false,
     "matrixSend": false,
+    "externalEffect": false,
     "fleetMutation": false,
     "operatorAcceptance": false,
     "promotion": false,
