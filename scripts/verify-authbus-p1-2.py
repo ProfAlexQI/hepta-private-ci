@@ -191,12 +191,12 @@ def main() -> int:
 
     workflow = text(ROOT / ".github/workflows/authbus-p1-2-qualification.yml")
     require(
-        workflow.count("runs-on: ubuntu-slim") == 1,
-        "only the lightweight source-contract job may use ubuntu-slim",
+        workflow.count("runs-on: ubuntu-slim") == 0,
+        "exact qualification must not depend on a separate ubuntu-slim runner pool",
     )
     require(
-        workflow.count("runs-on: ubuntu-24.04") == 2,
-        "both heavy Rust jobs must use the standard ubuntu-24.04 runner",
+        workflow.count("runs-on: ubuntu-24.04") == 3,
+        "all three exact qualification jobs must use ubuntu-24.04",
     )
 
     model = text(CRATE / "src/model.rs")
