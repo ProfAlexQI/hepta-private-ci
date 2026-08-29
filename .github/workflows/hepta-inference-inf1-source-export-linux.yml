@@ -1,0 +1,81 @@
+name: Hepta inference INF-1 materialized source export Linux
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf1-source-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf1-source-export-linux.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-inf1-source-export-linux
+  cancel-in-progress: false
+
+jobs:
+  export:
+    name: Export materialized INF-1 source before Rust execution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+
+      - name: Materialize digest-bound payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-materialize.py
+          python3 -m py_compile \
+            scripts/hepta-inference-inf1-bootstrap.py \
+            scripts/hepta-inference-inf1-source-gate.py
+          test -f codex-rs/hepta-infer-core/Cargo.toml
+          test -f codex-rs/hepta-inferd/Cargo.toml
+
+      - name: Build deterministic source bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/hepta-inference-inf1-materialized"
+          mkdir -p "$out/codex-rs" "$out/scripts" "$out/docs/hepta-vnext/inference"
+          cp -R codex-rs/hepta-infer-core codex-rs/hepta-inferd "$out/codex-rs/"
+          cp scripts/hepta-inference-inf1-bootstrap.py "$out/scripts/"
+          cp scripts/hepta-inference-inf1-source-gate.py "$out/scripts/"
+          cp docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_CONTRACT_V1.md "$out/docs/hepta-vnext/inference/"
+          python3 - "$out" <<'PY'
+          import hashlib, json, os, pathlib, sys
+          root = pathlib.Path(sys.argv[1])
+          files = []
+          for path in sorted(root.rglob('*')):
+              if path.is_file():
+                  data = path.read_bytes()
+                  files.append({
+                      'path': str(path.relative_to(root)),
+                      'sha256': hashlib.sha256(data).hexdigest(),
+                      'byte_length': len(data),
+                  })
+          manifest = {
+              'schema': 'hepta.inference.inf1.materialized-source-linux.v1',
+              'head': os.environ['GITHUB_SHA'],
+              'files': files,
+              'qualified': False,
+              'inf1_active': False,
+              'authority': False,
+          }
+          (root / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          PY
+          find "$out" -type f -print0 | sort -z | xargs -0 sha256sum > "$out/SHA256SUMS"
+
+      - name: Upload materialized source
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf1-materialized-linux-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-inference-inf1-materialized
+          if-no-files-found: error
+          retention-days: 7
