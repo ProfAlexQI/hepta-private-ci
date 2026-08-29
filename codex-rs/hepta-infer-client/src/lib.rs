@@ -15,8 +15,8 @@ use codex_hepta_infer_core::ClientMessage;
 use codex_hepta_infer_core::ControllerSnapshot;
 use codex_hepta_infer_core::Digest;
 use codex_hepta_infer_core::InferenceRequest;
-use codex_hepta_infer_core::ServerMessage;
 use codex_hepta_infer_core::MAX_FRAME_BYTES;
+use codex_hepta_infer_core::ServerMessage;
 use codex_uds::UnixStream;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -38,9 +38,7 @@ impl InferenceCapability {
             Self::SemanticText => "semantic_text",
             Self::NativeToolCall => "native_tool_call",
             Self::StrictSse => "strict_sse",
-            Self::DirectBackendCancelAcknowledgement => {
-                "direct_backend_cancel_acknowledgement"
-            }
+            Self::DirectBackendCancelAcknowledgement => "direct_backend_cancel_acknowledgement",
         }
     }
 }
@@ -251,7 +249,11 @@ impl InferdClient {
         timeout(self.config.exchange_timeout, async {
             write_request(&mut stream, &message, self.config.max_frame_bytes).await?;
             let response = read_response(&mut stream, self.config.max_frame_bytes).await?;
-            stream.shutdown().await?;
+            match stream.shutdown().await {
+                Ok(()) => {}
+                Err(error) if error.kind() == ErrorKind::NotConnected => {}
+                Err(error) => return Err(error.into()),
+            }
             Ok(response)
         })
         .await
@@ -321,10 +323,7 @@ pub struct ShadowInferdClient {
 }
 
 impl ShadowInferdClient {
-    pub fn new(
-        transport: InferdClient,
-        capability_profile: ExactCapabilityProfile,
-    ) -> Self {
+    pub fn new(transport: InferdClient, capability_profile: ExactCapabilityProfile) -> Self {
         Self {
             transport,
             capability_profile,
@@ -382,7 +381,9 @@ async fn write_request(
 ) -> Result<()> {
     let bytes = message.encode_canonical()?;
     if bytes.is_empty() || bytes.len() > max_frame_bytes {
-        return Err(ClientError::Config("INF_CLIENT_REQUEST_FRAME_OUT_OF_BOUNDS"));
+        return Err(ClientError::Config(
+            "INF_CLIENT_REQUEST_FRAME_OUT_OF_BOUNDS",
+        ));
     }
     let length = u32::try_from(bytes.len())
         .map_err(|_| ClientError::Config("INF_CLIENT_REQUEST_FRAME_TOO_LARGE"))?;
