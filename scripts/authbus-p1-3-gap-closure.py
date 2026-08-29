@@ -15,7 +15,13 @@ def write(path: str, content: str) -> None:
     (ROOT / path).write_text(content, encoding="utf-8")
 
 
-def replace_exact(source: str, before: str, after: str, expected: int, label: str) -> tuple[str, int]:
+def replace_exact(
+    source: str,
+    before: str,
+    after: str,
+    expected: int,
+    label: str,
+) -> tuple[str, int]:
     count = source.count(before)
     if count != expected:
         raise SystemExit(f"{label}: expected {expected} anchors, found {count}")
@@ -58,14 +64,18 @@ write(model_path, model)
 store_path = "codex-rs/hepta-authbus-qualification/src/store.rs"
 store = read(store_path)
 store_repairs = 0
-store, count = replace_exact(
-    store,
+for unused_import in (
+    "use crate::VerifiedNoEffectTerminal;\n",
     "use crate::digest_length_delimited;\n",
-    "",
-    1,
-    "remove unused digest import",
-)
-store_repairs += count
+):
+    store, count = replace_exact(
+        store,
+        unused_import,
+        "",
+        1,
+        f"remove unused import {unused_import.strip()}",
+    )
+    store_repairs += count
 
 # Sha256Digest deliberately has no Display implementation. Persist its stable
 # lowercase text through as_str() rather than relying on ToString or formatting.
@@ -80,6 +90,14 @@ for pattern in patterns:
 
 store, count = replace_exact(
     store,
+    "Some(ack_sha256.as_str().to_owned().as_str())",
+    "Some(ack_sha256.as_str())",
+    1,
+    "avoid a temporary allocation for ACK replay comparison",
+)
+store_repairs += count
+store, count = replace_exact(
+    store,
     'let outbox_id = format!("authbus-outbox:v1:{payload_sha256}");',
     'let outbox_id = format!("authbus-outbox:v1:{}", payload_sha256.as_str());',
     1,
@@ -87,17 +105,63 @@ store, count = replace_exact(
 )
 store_repairs += count
 
-# SQLx treats &String as an unaudited dynamic SQL input. The max-page PRAGMA is
-# composed only from a previously read integer; make the audited &str boundary
-# explicit. Schema introspection uses a closed static statement allowlist.
+# Preserve fields used after with_ack consumes the current row. This keeps the
+# ownership boundary explicit and avoids cloning the complete payload record.
 store, count = replace_exact(
     store,
-    "sqlx::query_scalar(&statement)",
-    "sqlx::query_scalar(statement.as_str())",
+    "        let next = current.with_ack(ack_sha256.clone(), acked_at_ms)?;\n",
+    "        let current_sequence = current.sequence;\n"
+    "        let current_operation_id = current.operation_id.clone();\n"
+    "        let current_operation_revision = current.operation_revision;\n"
+    "        let next = current.with_ack(ack_sha256.clone(), acked_at_ms)?;\n",
     1,
-    "audited max-page PRAGMA",
+    "retain outbox identity before consuming the row",
 )
 store_repairs += count
+for before, after, label in (
+    (
+        "last_sequence.max(current.sequence)",
+        "last_sequence.max(current_sequence)",
+        "use retained outbox sequence",
+    ),
+    (
+        "            &current.operation_id,\n            \"OUTBOX_ACK_DURABLE\",\n            current.operation_revision,",
+        "            &current_operation_id,\n            \"OUTBOX_ACK_DURABLE\",\n            current_operation_revision,",
+        "use retained outbox operation binding",
+    ),
+):
+    store, count = replace_exact(store, before, after, 1, label)
+    store_repairs += count
+
+# SQLx 0.9 intentionally rejects runtime-composed SQL. SQLite clamps a
+# max_page_count request below the current page count to the current count, so
+# the static assignment below genuinely caps growth without dynamic SQL.
+old_page_cap = '''        let statement = format!("PRAGMA max_page_count = {page_count}");
+        let applied: i64 = sqlx::query_scalar(&statement)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(map_sqlx)?;
+        to_u64(applied)
+'''
+new_page_cap = '''        let applied: i64 = sqlx::query_scalar("PRAGMA max_page_count = 1")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(map_sqlx)?;
+        if applied < page_count {
+            return Err(QualificationError::Corrupt);
+        }
+        to_u64(applied)
+'''
+store, count = replace_exact(
+    store,
+    old_page_cap,
+    new_page_cap,
+    1,
+    "static max-page qualification cap",
+)
+store_repairs += count
+
+# Schema introspection and count helpers consume only closed static statements.
 old_schema_loop = '''        let tables = [
             "operations",
             "token_family_claims",
@@ -164,6 +228,8 @@ if remaining_digest_display:
     raise SystemExit(
         "unrepaired Sha256Digest text conversions:\n" + "\n".join(remaining_digest_display)
     )
+if "format!(\"PRAGMA" in store or "sqlx::query(&statement)" in store:
+    raise SystemExit("dynamic SQL remained after AuthBus P1.3 gap closure")
 write(store_path, store)
 
 print(f"applied_authbus_p1_3_model_compile_repairs={model_repairs}")
