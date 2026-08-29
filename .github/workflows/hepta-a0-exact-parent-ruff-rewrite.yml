@@ -1,0 +1,118 @@
+name: Hepta A0 exact-parent Ruff rewrite
+
+on:
+  push:
+    branches:
+      - codex/hepta-intelligence-q0-gap-closure-staging-20260829
+    paths:
+      - .github/workflows/hepta-a0-exact-parent-ruff-rewrite.yml
+
+permissions:
+  contents: write
+
+jobs:
+  rewrite:
+    runs-on: ubuntu-latest
+    env:
+      BASE_SHA: c768bcbeb4c1168088d2499828c24da521a2a73a
+      EXPECTED_HEAD: fc2f9d4694b11072c5e2a5c622d7ff8d0edf6814
+      TARGET_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+    steps:
+      - name: Checkout support branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Install exact repository formatter
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: 0.11.3
+          enable-cache: false
+      - name: Rebuild one-child A0 candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          observed="$(git ls-remote origin "refs/heads/${TARGET_BRANCH}" | cut -f1)"
+          test "$observed" = "$EXPECTED_HEAD"
+
+          git fetch origin "$BASE_SHA" "$EXPECTED_HEAD"
+          git checkout --detach "$EXPECTED_HEAD"
+          test "$(git rev-parse HEAD^)" = "$BASE_SHA"
+
+          a0_python=(
+            scripts/hepta-intelligence-current-truth.py
+            scripts/verify-hepta-intelligence-a0-authority.py
+            scripts/verify-hepta-intelligence-document-authority.py
+            scripts/verify-hepta-intelligence-master-plan.py
+          )
+          uv run --frozen --project scripts ruff format "${a0_python[@]}"
+          uv run --frozen --project scripts ruff format --check "${a0_python[@]}"
+
+          mapfile -t formatted_paths < <(git diff --name-only | LC_ALL=C sort)
+          expected_formatted=(
+            scripts/hepta-intelligence-current-truth.py
+            scripts/verify-hepta-intelligence-a0-authority.py
+            scripts/verify-hepta-intelligence-document-authority.py
+            scripts/verify-hepta-intelligence-master-plan.py
+          )
+          test "$(printf '%s\n' "${formatted_paths[@]}")" = "$(printf '%s\n' "${expected_formatted[@]}")"
+
+          git reset --soft "$BASE_SHA"
+          git add --all
+          git config user.name "hepta-gap-closure-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(intelligence): Ruff-format A0 authority gates"
+
+          test "$(git rev-parse HEAD^)" = "$BASE_SHA"
+          test "$(git rev-list --count "$BASE_SHA"..HEAD)" = 1
+
+          expected_paths="$RUNNER_TEMP/expected-paths.txt"
+          actual_paths="$RUNNER_TEMP/actual-paths.txt"
+          cat > "$expected_paths" <<'PATHS'
+          .github/workflows/hepta-intelligence-a0-authority.yml
+          .github/workflows/hepta-intelligence-master-plan.yml
+          plans/hepta-intelligence/AGENTS.md
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json
+          scripts/hepta-intelligence-current-truth.py
+          scripts/verify-hepta-intelligence-a0-authority.py
+          scripts/verify-hepta-intelligence-document-authority.py
+          scripts/verify-hepta-intelligence-master-plan.py
+          PATHS
+          git diff --name-only "$BASE_SHA" HEAD | LC_ALL=C sort > "$actual_paths"
+          diff -u "$expected_paths" "$actual_paths"
+          git diff --check "$BASE_SHA" HEAD
+
+          python3 scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-document-authority.py
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          python3 scripts/verify-hepta-intelligence-a0-authority.py \
+            --expected-head "$(git rev-parse HEAD)" \
+            --expected-tree "$(git rev-parse HEAD^{tree})" \
+            --expected-parent "$BASE_SHA" \
+            --expected-branch "$TARGET_BRANCH" \
+            --write-receipt "$RUNNER_TEMP/a0-ruff-rewrite-receipt.json"
+
+          new_head="$(git rev-parse HEAD)"
+          new_tree="$(git rev-parse HEAD^{tree})"
+          printf 'new_head=%s\nnew_tree=%s\n' "$new_head" "$new_tree" | tee "$RUNNER_TEMP/a0-ruff-rewrite-identity.txt"
+
+          git push \
+            --force-with-lease="refs/heads/${TARGET_BRANCH}:${EXPECTED_HEAD}" \
+            origin "HEAD:refs/heads/${TARGET_BRANCH}"
+      - name: Upload rewrite receipt
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-a0-exact-parent-ruff-rewrite
+          path: |
+            ${{ runner.temp }}/a0-ruff-rewrite-receipt.json
+            ${{ runner.temp }}/a0-ruff-rewrite-identity.txt
+          if-no-files-found: error
+          retention-days: 1
