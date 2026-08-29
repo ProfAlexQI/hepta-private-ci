@@ -1,4 +1,4 @@
-name: p034-qualified-publisher-cross-platform-v8
+name: p034-payload-forensics-v9
 
 on:
   push:
@@ -6,43 +6,20 @@ on:
       - codex/p034-payload-helper-arm-v1-20260829
     paths:
       - .github/workflows/p034-publisher-cross-platform-v1.yml
-      - ci/p034-qualified-publisher.py
-      - ci/p034-qualified-publisher-v2.py
-      - ci/p034-extract-full-payload.py
-      - ci/p034-forward-compat.py
-      - ci/p034-payload/part-00.b64
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: p034-qualified-publisher-cross-platform
   cancel-in-progress: true
 
 jobs:
-  qualify-and-publish:
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - ubuntu-24.04-arm
-          - macos-14
-          - windows-2025
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 180
-    env:
-      TARGET_BRANCH: codex/hepta-intelligence-legacy-governance-v2-20260829
-      EXPECTED_TARGET: 35de548b07d3957679800f694ecf1a6f3e001c36
-      P033_HEAD: eddcb59ca43a76ac83b64507983bd908f406ff48
-      PAYLOAD_SHA256: 0a3c110310edaf463bd7fd4a31148e3cb8dcbdbebc9f38700d94bfcdd5059373
+  forensics:
+    runs-on: macos-14
+    timeout-minutes: 30
     steps:
-      - name: Enable Windows long paths
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: git config --global core.longpaths true
-
-      - name: Checkout publisher helper
+      - name: Checkout helper payload
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
@@ -50,42 +27,166 @@ jobs:
           path: h
           sparse-checkout: |
             .github/workflows/p034-publisher-cross-platform-v1.yml
-            ci/p034-qualified-publisher.py
-            ci/p034-qualified-publisher-v2.py
-            ci/p034-extract-full-payload.py
-            ci/p034-forward-compat.py
             ci/p034-payload/part-00.b64
           sparse-checkout-cone-mode: false
 
-      - name: Checkout exact P0.3.4 staging branch
+      - name: Checkout immutable historical payload source
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.TARGET_BRANCH }}
-          fetch-depth: 0
-          path: t
+          ref: 4b3b78c7a059b335bcabb36d80958adfbe131078
+          fetch-depth: 1
+          path: s
+          sparse-checkout: .github/workflows/p034-payload-helper-arm-v1.yml
+          sparse-checkout-cone-mode: false
 
       - name: Install Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
-      - name: Validate canonical committed payload
-        run: python h/ci/p034-extract-full-payload.py h/ci/p034-payload/part-00.b64
+      - name: Stream-recover partial gzip and tar members
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
 
-      - name: Install repository Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.95.0
-          components: rustfmt,clippy
+          import base64
+          import hashlib
+          import json
+          import zlib
+          from pathlib import Path, PurePosixPath
 
-      - name: Apply, qualify, repair predecessor gate, squash, and publish
-        run: python h/ci/p034-qualified-publisher-v2.py t
+          ROOT = Path("h/artifacts/p034-payload-forensics")
+          ROOT.mkdir(parents=True, exist_ok=True)
+          ALPHABET = frozenset(
+              "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+          )
 
-      - name: Upload fail-closed diagnostics
+          def canonical_prefix(text: str) -> tuple[str, int | None]:
+              compact = "".join(text.split())
+              bad = next(
+                  (index for index, character in enumerate(compact) if character not in ALPHABET),
+                  None,
+              )
+              if bad is not None:
+                  compact = compact[:bad]
+              compact = compact[: len(compact) - (len(compact) % 4)]
+              return compact, bad
+
+          def recover(label: str, encoded_text: str) -> dict[str, object]:
+              encoded, bad_offset = canonical_prefix(encoded_text)
+              compressed = base64.b64decode(encoded, validate=True)
+              decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
+              raw = decoder.decompress(compressed)
+              try:
+                  raw += decoder.flush()
+              except zlib.error:
+                  pass
+
+              target = ROOT / label
+              target.mkdir()
+              (target / "compressed.partial.gz").write_bytes(compressed)
+              (target / "archive.partial.tar").write_bytes(raw)
+
+              members: list[dict[str, object]] = []
+              offset = 0
+              ordinal = 0
+              while offset + 512 <= len(raw):
+                  header = raw[offset : offset + 512]
+                  if not any(header):
+                      break
+                  raw_name = header[0:100].split(b"\0", 1)[0]
+                  name = raw_name.decode("utf-8", errors="replace") or f"member-{ordinal}"
+                  size_field = header[124:136].rstrip(b"\0 ").lstrip(b" ")
+                  try:
+                      size = int(size_field or b"0", 8)
+                  except ValueError:
+                      members.append(
+                          {
+                              "ordinal": ordinal,
+                              "name": name,
+                              "header_offset": offset,
+                              "invalid_size_field": size_field.decode("ascii", errors="replace"),
+                          }
+                      )
+                      break
+                  typeflag = header[156:157].decode("latin1")
+                  start = offset + 512
+                  available = max(0, min(size, len(raw) - start))
+                  data = raw[start : start + available]
+                  safe_name = PurePosixPath(name).name or f"member-{ordinal}"
+                  output = target / f"{ordinal:02d}-{safe_name}.partial"
+                  output.write_bytes(data)
+                  members.append(
+                      {
+                          "ordinal": ordinal,
+                          "name": name,
+                          "typeflag": typeflag,
+                          "declared_bytes": size,
+                          "recovered_bytes": available,
+                          "complete": available == size,
+                          "sha256_recovered": hashlib.sha256(data).hexdigest(),
+                          "output": output.relative_to(ROOT).as_posix(),
+                      }
+                  )
+                  next_offset = start + ((size + 511) // 512) * 512
+                  if next_offset > len(raw):
+                      break
+                  offset = next_offset
+                  ordinal += 1
+
+              result = {
+                  "label": label,
+                  "base64_characters": len(encoded),
+                  "first_invalid_compact_offset": bad_offset,
+                  "compressed_bytes": len(compressed),
+                  "compressed_sha256": hashlib.sha256(compressed).hexdigest(),
+                  "gzip_eof": decoder.eof,
+                  "decompressed_bytes": len(raw),
+                  "members": members,
+              }
+              (target / "metadata.json").write_text(
+                  json.dumps(result, indent=2, sort_keys=True) + "\n",
+                  encoding="utf-8",
+              )
+              return result
+
+          part = Path("h/ci/p034-payload/part-00.b64").read_text(encoding="ascii")
+          workflow = Path(
+              "s/.github/workflows/p034-payload-helper-arm-v1.yml"
+          ).read_text(encoding="utf-8").replace("\r\n", "\n")
+          marker = "cat > /tmp/p034-payload.b64 <<'EOF'\n"
+          if workflow.count(marker) != 1:
+              raise SystemExit("historical payload marker drifted")
+          historical = workflow.split(marker, 1)[1]
+          if "\nEOF\n" in historical:
+              historical = historical.split("\nEOF\n", 1)[0]
+
+          results = [
+              recover("committed-8000", part),
+              recover("historical-10000", historical),
+          ]
+          summary = {
+              "schema": "hepta_intelligence_p0_3_4_payload_forensics_v1",
+              "results": results,
+              "target_branch_written": False,
+              "wired": False,
+              "production_authority": False,
+              "external_effects": False,
+          }
+          (ROOT / "forensics-receipt.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload P0.3.4 reconstruction evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: p034-cross-platform-${{ matrix.os }}-${{ github.sha }}
-          path: t/artifacts/hepta-intelligence-legacy-grounding-governance-v1
-          if-no-files-found: warn
+          name: p034-payload-forensics-${{ github.sha }}
+          path: h/artifacts/p034-payload-forensics
+          if-no-files-found: error
           retention-days: 21
