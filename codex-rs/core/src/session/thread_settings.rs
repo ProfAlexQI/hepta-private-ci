@@ -56,7 +56,8 @@ async fn apply_standalone_update(
                 .is_some_and(|active_turn| active_turn.task_terminalization.is_some())
         {
             return Err(
-                "turn is terminalizing and cannot accept a standalone settings update".to_string(),
+                "turn is terminalizing and cannot accept a standalone settings update"
+                    .to_string(),
             );
         }
         let result = apply_update(session, submission_id, updates)
@@ -77,9 +78,12 @@ async fn apply_standalone_update(
             "turn is terminalizing and cannot accept a standalone settings update".to_string(),
         );
     }
-    if active.as_ref().is_some_and(|active_turn| {
-        active_turn.task_terminalization.is_some() || active_turn.task.is_none()
-    }) {
+    if active
+        .as_ref()
+        .is_some_and(|active_turn| {
+            active_turn.task_terminalization.is_some() || active_turn.task.is_none()
+        })
+    {
         return Err(
             "turn is transitioning and cannot accept a standalone settings update".to_string(),
         );

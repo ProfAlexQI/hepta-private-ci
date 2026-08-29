@@ -39,20 +39,19 @@ fn exact_allowed_program_resolves_without_requiring_provenance() {
         .allow_release(&agent_id, &release_id)
         .expect("allow");
 
-    let resolved = allowed_runtime_release_for_program(&registry, &agent_id, &installed.program)
-        .expect("lookup")
-        .expect("allowed release");
+    let resolved = allowed_runtime_release_for_program(
+        &registry,
+        &agent_id,
+        &installed.program,
+    )
+    .expect("lookup")
+    .expect("allowed release");
     assert_eq!(resolved.release_id, release_id);
-    assert_eq!(
-        resolved.program,
-        installed.program.canonicalize().expect("canonical")
-    );
+    assert_eq!(resolved.program, installed.program.canonicalize().expect("canonical"));
 
     let unknown = root.join("unknown-agentd");
     std::fs::write(&unknown, b"unknown").expect("unknown");
-    assert!(
-        allowed_runtime_release_for_program(&registry, &agent_id, &unknown)
-            .expect("lookup")
-            .is_none()
-    );
+    assert!(allowed_runtime_release_for_program(&registry, &agent_id, &unknown)
+        .expect("lookup")
+        .is_none());
 }

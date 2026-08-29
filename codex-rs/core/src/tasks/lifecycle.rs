@@ -73,8 +73,13 @@ impl Session {
         cause: ThreadIdleCause,
         terminalization_owner: Option<&std::sync::Arc<()>>,
     ) {
-        self.emit_thread_idle_lifecycle_if_idle_inner(cause, terminalization_owner, None, false)
-            .await;
+        self.emit_thread_idle_lifecycle_if_idle_inner(
+            cause,
+            terminalization_owner,
+            None,
+            false,
+        )
+        .await;
     }
 
     async fn emit_thread_idle_lifecycle_if_idle_inner(

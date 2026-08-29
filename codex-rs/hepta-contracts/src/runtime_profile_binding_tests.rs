@@ -51,10 +51,7 @@ fn profile_digest_binds_generation_and_profile() {
     assert_ne!(first.profile_sha256(), second.profile_sha256());
     assert_ne!(first.profile_sha256(), third.profile_sha256());
     assert_eq!(first.profile(), RuntimeAuthorityProfile::AgentLocal);
-    assert_eq!(
-        third.profile(),
-        RuntimeAuthorityProfile::QualificationCognitiveWrite
-    );
+    assert_eq!(third.profile(), RuntimeAuthorityProfile::QualificationCognitiveWrite);
 }
 
 #[test]
@@ -74,9 +71,7 @@ fn local_profile_rows_keep_all_external_actions_outside_the_profile() {
     }
     let binding = RuntimeProfileBinding::for_authority(&authority)
         .unwrap_or_else(|error| panic!("profile must build: {error}"));
-    assert!(
-        binding
-            .service_rows()
-            .contains(&"provider_effect_adapter|dormant_boundary|disabled|not_started|false")
-    );
+    assert!(binding
+        .service_rows()
+        .contains(&"provider_effect_adapter|dormant_boundary|disabled|not_started|false"));
 }

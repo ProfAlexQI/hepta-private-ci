@@ -324,17 +324,12 @@ mod tests {
         let capability = grant
             .authorize::<CognitiveWriteCapability>()
             .unwrap_or_else(|error| panic!("capability must authorize: {error}"));
-        verify_capability_use(
-            &capability,
-            &context,
-            100,
-            &|request: &CapabilityUseVerificationRequest<'_>| {
-                if request.external_binding().is_some() {
-                    return Err("local capability unexpectedly external".to_string());
-                }
-                Ok(())
-            },
-        )
+        verify_capability_use(&capability, &context, 100, &|request: &CapabilityUseVerificationRequest<'_>| {
+            if request.external_binding().is_some() {
+                return Err("local capability unexpectedly external".to_string());
+            }
+            Ok(())
+        })
         .unwrap_or_else(|error| panic!("local use must verify: {error}"));
 
         let changed = RuntimeAuthorityContext::new(
@@ -346,24 +341,23 @@ mod tests {
             Sha256Digest::for_bytes(b"changed-grant"),
         )
         .unwrap_or_else(|error| panic!("changed context must build: {error}"));
-        assert!(
-            verify_capability_use(
-                &capability,
-                &changed,
-                100,
-                &|_: &CapabilityUseVerificationRequest<'_>| Ok(())
-            )
-            .is_err()
-        );
+        assert!(verify_capability_use(&capability, &changed, 100, &|_: &CapabilityUseVerificationRequest<'_>| Ok(())).is_err());
     }
 
     #[test]
     fn external_capability_is_reverified_on_every_use_and_revocation_fails_closed() {
         let grant_digest = Sha256Digest::for_bytes(b"signed-effect-grant");
         let fence = Sha256Digest::for_bytes(b"effect-fence");
-        let binding =
-            AuthorityLeaseBinding::new(agent_id(), grant_digest.clone(), 7, 11, 3, fence, 500)
-                .unwrap_or_else(|error| panic!("binding must build: {error}"));
+        let binding = AuthorityLeaseBinding::new(
+            agent_id(),
+            grant_digest.clone(),
+            7,
+            11,
+            3,
+            fence,
+            500,
+        )
+        .unwrap_or_else(|error| panic!("binding must build: {error}"));
         let capability = authorize_verified_capability::<ExternalEffectCapability, _>(
             binding.clone(),
             &agent_id(),

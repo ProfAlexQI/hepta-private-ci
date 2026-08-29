@@ -89,9 +89,15 @@ async fn suspend_turn_and_shutdown_inner(
     // and detach by exact task/context/epoch identity only after the flush;
     // the typed marker remains installed until the writer is closed.
     let (reply_tx, reply_rx) = oneshot::channel();
-    let handoff_slot: SuspensionHandoffSlot = Arc::new(std::sync::Mutex::new(None));
+    let handoff_slot: SuspensionHandoffSlot =
+        Arc::new(std::sync::Mutex::new(None));
     let (identity, slot) = session
-        .take_task_for_suspension(handoff_slot, live_thread.clone(), submission_id, reply_tx)
+        .take_task_for_suspension(
+            handoff_slot,
+            live_thread.clone(),
+            submission_id,
+            reply_tx,
+        )
         .await
         .ok_or_else(|| CodexErr::Fatal("root turn changed during suspension".to_string()))?;
     let Some(started_rx) = spawn_suspension_handoff(
@@ -103,7 +109,8 @@ async fn suspend_turn_and_shutdown_inner(
         // shutdown ordering. Leave the full witness fenced for a later
         // shutdown drain instead of pretending the thread is idle.
         return Err(CodexErr::Fatal(
-            "root turn suspension owner could not be scheduled; handoff remains fenced".to_string(),
+            "root turn suspension owner could not be scheduled; handoff remains fenced"
+                .to_string(),
         ));
     };
     // `Handle::spawn` can accept a handle whose scheduler is already closing
@@ -164,7 +171,9 @@ fn take_suspension_handoff(slot: &SuspensionHandoffSlot) -> Option<SuspensionHan
 }
 
 fn retain_suspension_handoff(slot: &SuspensionHandoffSlot, handoff: SuspensionHandoff) {
-    let mut current = slot.lock().expect("suspension handoff slot mutex poisoned");
+    let mut current = slot
+        .lock()
+        .expect("suspension handoff slot mutex poisoned");
     if current.is_some() {
         warn!("suspension handoff slot already has an owner; retaining the existing fence");
     } else {
@@ -195,7 +204,9 @@ impl SuspensionHandoffOwner {
     }
 
     fn disarm(mut self) -> SuspensionHandoff {
-        self.handoff.take().expect("suspension owner remains armed")
+        self.handoff
+            .take()
+            .expect("suspension owner remains armed")
     }
 }
 
@@ -259,9 +270,7 @@ impl Drop for SuspensionRunningTaskGuard<'_> {
             if self.handoff.suspended.task.is_none() {
                 self.handoff.suspended.task = self.task.take();
             } else {
-                warn!(
-                    "suspension handoff already contains its running task during owner cancellation"
-                );
+                warn!("suspension handoff already contains its running task during owner cancellation");
             }
         }
     }
@@ -317,7 +326,10 @@ async fn drive_suspension_handoff(
 }
 
 fn take_handoff_identity(handoff: &SuspensionHandoff, identity: &Arc<()>) -> bool {
-    Arc::ptr_eq(&handoff.suspended.terminalization_identity, identity)
+    Arc::ptr_eq(
+        &handoff.suspended.terminalization_identity,
+        identity,
+    )
 }
 
 /// Performs every post-claim operation in the required order. The marker and
@@ -419,13 +431,11 @@ async fn run_suspension_handoff(
     // Stop all producers before flushing their final history and closing its
     // writer. Exclude this exact handoff from the recursive drain.
     handoff.phase = SuspensionHandoffPhase::RuntimeStopping;
-    Box::pin(
-        handlers::shutdown_session_runtime_excluding_with_suspension(
-            session,
-            Some(&handoff.suspended.terminalization_identity),
-            Some(&handoff.suspended.terminalization_identity),
-        ),
-    )
+    Box::pin(handlers::shutdown_session_runtime_excluding_with_suspension(
+        session,
+        Some(&handoff.suspended.terminalization_identity),
+        Some(&handoff.suspended.terminalization_identity),
+    ))
     .await;
     handoff.phase = SuspensionHandoffPhase::WriterFlushing;
     handoff.live_thread.flush().await.map_err(|error| {
@@ -480,7 +490,13 @@ pub(super) async fn drain_suspension_handoffs_for_shutdown_excluding(
                 continue;
             }
             adopted = true;
-            drive_suspension_handoff(Arc::clone(session), identity, slot, handoff).await;
+            drive_suspension_handoff(
+                Arc::clone(session),
+                identity,
+                slot,
+                handoff,
+            )
+            .await;
         }
         if !adopted {
             return;

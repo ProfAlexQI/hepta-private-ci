@@ -268,7 +268,10 @@ impl Session {
             return;
         }
         let active = self.active_turn.lock().await;
-        if self.shutdown_started() || self.has_pending_task_terminalization() || active.is_some() {
+        if self.shutdown_started()
+            || self.has_pending_task_terminalization()
+            || active.is_some()
+        {
             tracing::error!(
                 "active turn or terminalization fence changed while preparing an idle context injection; items were not recorded"
             );

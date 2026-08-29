@@ -828,7 +828,9 @@ pub(crate) fn spawn_approval_request_review(
     // fail closed by dropping the sender and letting the caller's oneshot
     // fallback produce a denial.
     let Some(runtime) = tokio::runtime::Handle::try_current().ok() else {
-        tracing::warn!("automatic approval review cannot start without a live Tokio runtime");
+        tracing::warn!(
+            "automatic approval review cannot start without a live Tokio runtime"
+        );
         return rx;
     };
     let spawn_result = std::thread::Builder::new()
