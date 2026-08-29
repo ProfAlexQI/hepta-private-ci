@@ -1,17 +1,38 @@
-# Security Policy
+# Hepta security policy
 
-Thank you for helping us keep Codex secure!
+## Hepta security boundary
 
-## Reporting Security Issues
+Hepta treats repository governance, typed capability issuance, Agent identity,
+lifecycle generation, owner epochs, fencing tokens, SQLite integrity, outbox
+recovery and candidate-bound qualification evidence as security boundaries.
 
-The security is essential to OpenAI's mission. We appreciate the work of security researchers acting in good faith to identify and responsibly report potential vulnerabilities, helping us maintain strong privacy and security standards for our users and technology.
+The default and qualification profiles do not authorize production effects,
+model/provider dispatch, fleet mutation, operator acceptance, promotion or
+release.
 
-Our security program is managed through Bugcrowd, and we ask that any validated vulnerabilities be reported via the [Bugcrowd program](https://bugcrowd.com/engagements/openai).
+## Reporting
 
-## Vulnerability Disclosure Program
+Report suspected vulnerabilities privately through the repository owner's
+GitHub security channel. Do not include credentials, private keys, access
+tokens, raw secrets, personal data or working exploit payloads in public pull
+requests, commit messages, logs or Actions artifacts.
 
-Our Vulnerability Program Guidelines are defined on our [Bugcrowd program page](https://bugcrowd.com/engagements/openai).
+A useful report includes the affected commit, component, trust boundary,
+reproduction conditions, expected fail-closed behavior and the minimum
+redacted evidence needed to verify the issue.
 
-## How to operate CODEX safely
+## Sensitive changes
 
-For details on Codex security boundaries, including sandboxing, approvals, and network controls, see [Agent approvals & security](https://developers.openai.com/codex/agent-approvals-security).
+Changes to these paths require explicit owner review:
+
+- `.github/workflows/`
+- `.github/CODEOWNERS`
+- `docs/architecture/`
+- `docs/governance/`
+- `codex-rs/hepta-contracts/`
+- `codex-rs/hepta-agentd/`
+- `codex-rs/hepta-memory-runtime/`
+- release, signing, authority, provider-effect and promotion code
+
+Qualification success is not security approval. Live repository rulesets,
+independent review, operator acceptance and release signing remain separate.

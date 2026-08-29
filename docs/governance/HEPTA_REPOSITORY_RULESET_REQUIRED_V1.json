@@ -1,0 +1,37 @@
+{
+  "schema": "hepta.repository-ruleset-required.v1",
+  "schemaVersion": 1,
+  "target": {
+    "repository": "ProfHepta/hepta-private-ci",
+    "ref": "refs/heads/integration/vnext-main-20260811"
+  },
+  "enforcement": {
+    "required": true,
+    "liveConfigurationIsSourceControlled": false,
+    "sourceContractIsAuthority": false,
+    "mergeMustRemainBlockedUntilLiveConfigurationMatches": true
+  },
+  "pullRequest": {
+    "required": true,
+    "requiredApprovingReviewCount": 1,
+    "dismissStaleReviews": true,
+    "requireCodeOwnerReview": true,
+    "requireLastPushApproval": true,
+    "requireConversationResolution": true
+  },
+  "history": {
+    "allowForcePush": false,
+    "allowDeletion": false,
+    "requireLinearHistory": true,
+    "requireSignedCommits": true
+  },
+  "requiredStatusChecks": [
+    "CI required",
+    "Hepta architecture convergence required"
+  ],
+  "bypass": {
+    "repositoryAdministrators": false,
+    "githubActionsSourceMutation": false,
+    "emergencyProcedure": "separately_signed_break_glass_receipt"
+  }
+}
