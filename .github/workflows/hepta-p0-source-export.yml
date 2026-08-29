@@ -1,0 +1,33 @@
+name: Hepta P0 exact-source export
+
+on:
+  push:
+    branches:
+      - codex/hepta-p0-source-export-20260829
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    name: Export exact owner-authored source snapshot
+    runs-on: macos-15-arm64
+    env:
+      TARGET_SOURCE: 370713b6bc5471b5239bf2d960dee074c9007d62
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - name: Verify exact source
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - name: Archive tracked source
+        shell: bash
+        run: git archive --format=tar HEAD | gzip -9 > "$RUNNER_TEMP/hepta-source.tar.gz"
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-source-370713b6bc5471b5239bf2d960dee074c9007d62
+          path: ${{ runner.temp }}/hepta-source.tar.gz
+          retention-days: 1
+          if-no-files-found: error
