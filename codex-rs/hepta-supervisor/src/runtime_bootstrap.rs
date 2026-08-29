@@ -3,6 +3,7 @@ use std::fs::OpenOptions;
 use std::io::ErrorKind;
 use std::io::Write;
 use std::path::Path;
+use std::sync::OnceLock;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::SystemTime;
@@ -24,23 +25,20 @@ use codex_hepta_contracts::runtime_bootstrap_claim_file_name;
 use codex_hepta_contracts::runtime_bootstrap_document_file_name;
 use codex_hepta_contracts::runtime_bootstrap_reservation_file_name;
 use codex_hepta_fleet::FleetRegistry;
+use codex_hepta_fleet::FleetRegistryError;
 use codex_hepta_fleet::RuntimeLaunchBinding;
+use codex_hepta_fleet::allowed_runtime_release_for_program;
 use ed25519_dalek::Signer as _;
 use ed25519_dalek::SigningKey;
 use uuid::Uuid;
 
-use crate::AdoptSpec;
-use crate::Adoption;
-use crate::MatrixAdoptSpec;
-use crate::MatrixSpawnSpec;
-use crate::ProcessDriver;
 use crate::ProcessDriverError;
 use crate::SpawnSpec;
-use crate::driver::SpawnedProcess;
 
 pub const RUNTIME_BOOTSTRAP_DEFAULT_LIFETIME_SECONDS: u64 = 120;
 const MAX_BOOTSTRAP_FILE_BYTES: usize = 64 * 1024;
 static PUBLISH_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+static PROCESS_RUNTIME_BOOTSTRAP_ISSUER: OnceLock<RuntimeBootstrapIssuer> = OnceLock::new();
 
 /// Supervisor-owned signer for one bounded Agentd startup identity.
 ///
@@ -182,73 +180,53 @@ impl RuntimeBootstrapIssuer {
     }
 }
 
-/// Process-driver decorator that publishes the signed bootstrap before the
-/// child process exists, then delegates all lifecycle operations unchanged.
-pub struct RuntimeBootstrapProcessDriver<D> {
-    inner: D,
-    registry: FleetRegistry,
-    issuer: Option<RuntimeBootstrapIssuer>,
+/// Installs the one process-wide bootstrap issuer before the supervisor daemon
+/// starts. The issuer cannot be replaced or reconfigured after installation.
+pub fn install_process_runtime_bootstrap_issuer(
+    issuer: RuntimeBootstrapIssuer,
+) -> Result<(), ProcessDriverError> {
+    PROCESS_RUNTIME_BOOTSTRAP_ISSUER
+        .set(issuer)
+        .map_err(|_| ProcessDriverError::new("runtime bootstrap issuer is already installed"))
 }
 
-impl<D> RuntimeBootstrapProcessDriver<D> {
-    pub fn passthrough(inner: D, registry: FleetRegistry) -> Self {
-        Self {
-            inner,
-            registry,
-            issuer: None,
-        }
-    }
-
-    pub fn with_issuer(
-        inner: D,
-        registry: FleetRegistry,
-        issuer: RuntimeBootstrapIssuer,
-    ) -> Self {
-        Self {
-            inner,
-            registry,
-            issuer: Some(issuer),
-        }
-    }
-
-    pub fn issuer(&self) -> Option<&RuntimeBootstrapIssuer> {
-        self.issuer.as_ref()
-    }
+pub fn process_runtime_bootstrap_issuer_installed() -> bool {
+    PROCESS_RUNTIME_BOOTSTRAP_ISSUER.get().is_some()
 }
 
-impl<D: ProcessDriver> ProcessDriver for RuntimeBootstrapProcessDriver<D> {
-    type Process = D::Process;
-
-    fn spawn(
-        &mut self,
-        spec: &SpawnSpec,
-    ) -> Result<SpawnedProcess<Self::Process>, ProcessDriverError> {
-        if let Some(issuer) = self.issuer.as_ref() {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_err(|_| ProcessDriverError::new("system clock is before the Unix epoch"))?
-                .as_secs();
-            issuer.prepare_spawn(&self.registry, spec, now)?;
-        }
-        self.inner.spawn(spec)
+/// Enforces the configured bootstrap policy at the unique Agentd spawn seam.
+///
+/// A provenance-bound release may never be spawned without the pinned signer.
+/// Legacy/unversioned launches remain on the existing closed local grant until
+/// their release is explicitly enrolled in the provenance registry.
+pub fn prepare_runtime_bootstrap_for_spawn(
+    registry: &FleetRegistry,
+    spec: &SpawnSpec,
+) -> Result<Option<RuntimeBootstrapDocument>, ProcessDriverError> {
+    if let Some(issuer) = PROCESS_RUNTIME_BOOTSTRAP_ISSUER.get() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| ProcessDriverError::new("system clock is before the Unix epoch"))?
+            .as_secs();
+        return issuer.prepare_spawn(registry, spec, now).map(Some);
     }
 
-    fn adopt(&mut self, spec: &AdoptSpec) -> Result<Adoption<Self::Process>, ProcessDriverError> {
-        self.inner.adopt(spec)
-    }
-
-    fn spawn_matrixd(
-        &mut self,
-        spec: &MatrixSpawnSpec,
-    ) -> Result<SpawnedProcess<Self::Process>, ProcessDriverError> {
-        self.inner.spawn_matrixd(spec)
-    }
-
-    fn adopt_matrixd(
-        &mut self,
-        spec: &MatrixAdoptSpec,
-    ) -> Result<Adoption<Self::Process>, ProcessDriverError> {
-        self.inner.adopt_matrixd(spec)
+    let allowed = allowed_runtime_release_for_program(
+        registry,
+        &spec.agent_id,
+        &spec.command.program,
+    )
+    .map_err(|error| ProcessDriverError::new(error.to_string()))?;
+    let Some(allowed) = allowed else {
+        return Ok(None);
+    };
+    match registry.resolve_runtime_release_provenance(&spec.agent_id, &allowed.release_id) {
+        Ok(_) => Err(ProcessDriverError::new(format!(
+            "provenance-bound release {} requires a process runtime bootstrap issuer",
+            allowed.release_id
+        ))),
+        Err(FleetRegistryError::Io(error)) if error.kind() == ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(ProcessDriverError::new(error.to_string())),
     }
 }
 
