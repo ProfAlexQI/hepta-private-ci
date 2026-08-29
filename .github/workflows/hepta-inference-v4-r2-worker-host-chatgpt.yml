@@ -1,0 +1,163 @@
+name: Hepta inference V4 INF-R2 worker-host closure
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-v4-r2-worker-host-chatgpt-20260830
+    paths:
+      - .github/workflows/hepta-inference-v4-r2-worker-host-chatgpt.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-v4-r2-worker-host-chatgpt
+  cancel-in-progress: false
+
+jobs:
+  integrate-and-qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 2
+
+      - name: Guard exact package parent and complete source inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = codex/hepta-inference-v4-r2-worker-host-chatgpt-20260830
+          test "$(git rev-parse HEAD^)" = 8cd8b21c77f322ca2dc65c21fe8c6684c56f2339
+          test -z "$(git status --porcelain)"
+          test -f codex-rs/hepta-infer-worker-host/Cargo.toml
+          test -f codex-rs/hepta-infer-worker-host/src/lib.rs
+          test -f codex-rs/hepta-infer-worker-host/src/main.rs
+          test -f codex-rs/hepta-infer-worker-host/src/protocol.rs
+          test -f codex-rs/hepta-infer-worker-host/src/abi.rs
+          test -f codex-rs/hepta-infer-worker-host/tests/process.rs
+          test -f codex-rs/hepta-infer-worker-host/tests/abi.rs
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Wire the one allowed runtime crate into the workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/Cargo.toml")
+          source = path.read_text(encoding="utf-8")
+          member = '    "hepta-inferd",\n'
+          dependency = 'codex-hepta-inferd = { path = "hepta-inferd" }\n'
+          if source.count(member) != 1 or source.count(dependency) != 1:
+              raise SystemExit("unexpected worker-host workspace markers")
+          source = source.replace(
+              member,
+              member + '    "hepta-infer-worker-host",\n',
+              1,
+          )
+          source = source.replace(
+              dependency,
+              dependency
+              + 'codex-hepta-infer-worker-host = { path = "hepta-infer-worker-host" }\n',
+              1,
+          )
+          path.write_text(source, encoding="utf-8")
+          PY
+
+          python3 - <<'PY'
+          import pathlib
+          import tomllib
+
+          manifest = tomllib.loads(
+              pathlib.Path("codex-rs/hepta-infer-worker-host/Cargo.toml").read_text(
+                  encoding="utf-8"
+              )
+          )
+          package = manifest.get("package", {})
+          if package.get("version", {}).get("workspace") is not True:
+              raise SystemExit("worker-host must inherit workspace version")
+          if package.get("edition", {}).get("workspace") is not True:
+              raise SystemExit("worker-host must inherit workspace edition")
+          if package.get("license", {}).get("workspace") is not True:
+              raise SystemExit("worker-host must inherit workspace license")
+          if manifest.get("lints", {}).get("workspace") is not True:
+              raise SystemExit("worker-host must inherit workspace lints")
+          if "features" in manifest:
+              raise SystemExit("worker-host crate features are forbidden")
+          PY
+
+      - name: Materialize Cargo and Bazel lock state
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --manifest-path codex-rs/Cargo.toml --format-version 1 >/dev/null
+          just bazel-lock-update
+          cargo metadata --locked --manifest-path codex-rs/Cargo.toml --no-deps --format-version 1 >/dev/null
+          just bazel-lock-check
+
+      - name: Format and qualify worker-host source
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-infer-worker-host
+          cargo check --locked --all-targets -p codex-hepta-infer-worker-host
+          cargo test --locked --all-targets \
+            -p codex-hepta-infer-worker-host -- --test-threads=1
+          cargo clippy --locked --all-targets --no-deps \
+            -p codex-hepta-infer-worker-host -- -D warnings
+
+      - name: Enforce exact package and generated change scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only"], text=True
+          ).splitlines()
+          allowed_exact = {
+              "MODULE.bazel.lock",
+              "codex-rs/Cargo.lock",
+              "codex-rs/Cargo.toml",
+          }
+          unexpected = [
+              path
+              for path in changed
+              if path not in allowed_exact
+              and not path.startswith("codex-rs/hepta-infer-worker-host/")
+          ]
+          if unexpected:
+              raise SystemExit("unexpected worker-host paths: " + ", ".join(unexpected))
+          for required in ("codex-rs/Cargo.lock", "codex-rs/Cargo.toml"):
+              if required not in changed:
+                  raise SystemExit(f"required generated path did not change: {required}")
+          PY
+          git diff --check
+          test -z "$(git status --porcelain --untracked-files=normal | grep '^??' || true)"
+
+      - name: Commit the qualified package and remove its one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/hepta-inference-v4-r2-worker-host-chatgpt.yml
+          git add -A \
+            .github/workflows/hepta-inference-v4-r2-worker-host-chatgpt.yml \
+            MODULE.bazel.lock \
+            codex-rs/Cargo.lock \
+            codex-rs/Cargo.toml \
+            codex-rs/hepta-infer-worker-host
+          git diff --cached --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "feat(inference): close INF-R2 isolated worker-host source"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
