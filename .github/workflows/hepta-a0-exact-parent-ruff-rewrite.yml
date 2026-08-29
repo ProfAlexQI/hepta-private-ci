@@ -93,16 +93,19 @@ jobs:
           python3 scripts/verify-hepta-intelligence-master-plan.py
           python3 scripts/verify-hepta-intelligence-document-authority.py
           python3 scripts/hepta-intelligence-current-truth.py --verify
-          python3 scripts/verify-hepta-intelligence-a0-authority.py \
-            --expected-head "$(git rev-parse HEAD)" \
-            --expected-tree "$(git rev-parse HEAD^{tree})" \
-            --expected-parent "$BASE_SHA" \
-            --expected-branch "$TARGET_BRANCH" \
-            --write-receipt "$RUNNER_TEMP/a0-ruff-rewrite-receipt.json"
+          generated_head="$(git rev-parse HEAD)"
+          generated_tree="$(git rev-parse HEAD^{tree})"
+          GITHUB_SHA="$generated_head" \
+          GITHUB_REF_NAME="$TARGET_BRANCH" \
+          GITHUB_HEAD_REF="$TARGET_BRANCH" \
+            python3 scripts/verify-hepta-intelligence-a0-authority.py \
+              --expected-head "$generated_head" \
+              --expected-tree "$generated_tree" \
+              --expected-parent "$BASE_SHA" \
+              --expected-branch "$TARGET_BRANCH" \
+              --write-receipt "$RUNNER_TEMP/a0-ruff-rewrite-receipt.json"
 
-          new_head="$(git rev-parse HEAD)"
-          new_tree="$(git rev-parse HEAD^{tree})"
-          printf 'new_head=%s\nnew_tree=%s\n' "$new_head" "$new_tree" | tee "$RUNNER_TEMP/a0-ruff-rewrite-identity.txt"
+          printf 'new_head=%s\nnew_tree=%s\n' "$generated_head" "$generated_tree" | tee "$RUNNER_TEMP/a0-ruff-rewrite-identity.txt"
 
           git push \
             --force-with-lease="refs/heads/${TARGET_BRANCH}:${EXPECTED_HEAD}" \
