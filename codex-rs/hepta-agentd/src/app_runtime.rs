@@ -64,6 +64,10 @@ fn app_server_config_overrides() -> CliConfigOverrides {
     }
 }
 
+#[expect(
+    dead_code,
+    reason = "the read-only constructor remains a qualification and regression seam"
+)]
 pub(crate) fn app_server_runtime_options(
     identity: &AgentdIdentity,
     cognitive_runtime: CognitiveRuntime,

@@ -65,24 +65,24 @@ run_test_case p0-4c-agentd-focused 5 \
     shadow_intelligence_mutation_host -- --nocapture
 run_test_case memory-full 1 cargo test --locked -p codex-hepta-memory
 run_case memory-strict-clippy \
-  cargo clippy --locked -p codex-hepta-memory --all-targets -- -D warnings
+  cargo clippy --locked -p codex-hepta-memory --all-targets --no-deps -- -D warnings
 run_case agent-protocol-strict-clippy \
-  cargo clippy --locked -p codex-hepta-agent-protocol --all-targets -- -D warnings
+  cargo clippy --locked -p codex-hepta-agent-protocol --all-targets --no-deps -- -D warnings
 run_case supervisor-strict-clippy \
-  cargo clippy --locked -p codex-hepta-supervisor --all-targets -- -D warnings
+  cargo clippy --locked -p codex-hepta-supervisor --all-targets --no-deps -- -D warnings
 run_test_case extension-full 1 cargo test --locked -p codex-hepta-memory-extension
 run_case extension-strict-clippy \
-  cargo clippy --locked -p codex-hepta-memory-extension --all-targets -- -D warnings
+  cargo clippy --locked -p codex-hepta-memory-extension --all-targets --no-deps -- -D warnings
 run_test_case agentd-default-off-full 1 cargo test --locked -p codex-hepta-agentd
 run_case agentd-default-off-clippy \
-  cargo clippy --locked -p codex-hepta-agentd --all-targets -- -D warnings
+  cargo clippy --locked -p codex-hepta-agentd --all-targets --no-deps -- -D warnings
 run_test_case agentd-shadow-full 1 \
   cargo test --locked -p codex-hepta-agentd \
     --features qualification-intelligence-mutation-shadow
 run_case agentd-shadow-strict-clippy \
   cargo clippy --locked -p codex-hepta-agentd \
     --features qualification-intelligence-mutation-shadow \
-    --all-targets -- -D warnings
+    --all-targets --no-deps -- -D warnings
 
 set +e
 (

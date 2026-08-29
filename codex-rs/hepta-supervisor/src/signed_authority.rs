@@ -738,7 +738,7 @@ mod tests {
                 actual: 8,
             })
         );
-        let mut tampered = grant.clone();
+        let mut tampered = grant;
         tampered.target_release = "release-v4".to_string();
         assert_eq!(
             verifier.verify(

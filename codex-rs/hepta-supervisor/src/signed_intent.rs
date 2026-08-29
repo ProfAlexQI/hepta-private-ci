@@ -221,7 +221,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp");
         let grant = Sha256Digest::for_bytes(b"grant");
         let first = SignedSupervisorIntent::new(
-            grant.clone(),
+            grant,
             "agent",
             H7H89ProductionTransition::Upgrade,
             "v1",

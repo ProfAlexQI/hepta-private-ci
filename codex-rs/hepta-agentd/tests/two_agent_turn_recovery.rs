@@ -465,7 +465,7 @@ impl Respond for DelayedFirstSequence {
         self.state
             .requests
             .lock()
-            .expect("request capture lock poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(request.clone());
         let index = self.state.calls.fetch_add(1, Ordering::AcqRel);
         let body = self
@@ -498,7 +498,7 @@ impl Respond for GatedFirstSequence {
         self.state
             .requests
             .lock()
-            .expect("request capture lock poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(request.clone());
         let index = self.state.calls.fetch_add(1, Ordering::AcqRel);
         let body = self
