@@ -1,0 +1,90 @@
+name: hepta-ui-v4-rustfmt-remediation
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-executable-gap-remediation-20260829"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v4-rustfmt-remediation-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  HEPTA_EXPECTED_BRANCH: codex/ui-v4-executable-gap-remediation-20260829
+
+jobs:
+  rustfmt-remediation:
+    name: Apply bounded Rust 1.95 formatting
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify bounded write target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$HEPTA_EXPECTED_BRANCH"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse --abbrev-ref HEAD)" = HEAD
+
+      - name: Install Rust 1.95 rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+
+      - name: Format exact UI Rust surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path apps/hepta-native/Cargo.toml
+          cargo fmt --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml
+          cargo fmt --manifest-path tools/hepta-ui-windows-product-host-safety/Cargo.toml
+          cargo fmt --manifest-path tools/hepta-ui-windows-product-host-device-drill/Cargo.toml
+
+      - name: Enforce formatting-only allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          ruby -e '
+            paths = `git diff --name-only`.lines(chomp: true).reject(&:empty?)
+            allowed = paths.all? do |path|
+              path.end_with?(".rs") && (
+                path.start_with?("apps/hepta-native/") ||
+                path.start_with?("tools/hepta-ui-global-platform-source-closure/") ||
+                path.start_with?("tools/hepta-ui-windows-product-host-safety/") ||
+                path.start_with?("tools/hepta-ui-windows-product-host-device-drill/")
+              )
+            end
+            abort "format remediation escaped allowlist: #{paths.join(", ")}" unless allowed
+            puts "formatted_paths=#{paths.length}"
+          '
+
+      - name: Commit bounded formatter output
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "Rust sources already match Rust 1.95 formatting"
+            exit 0
+          fi
+          git config user.name "hepta-ui-format-bot"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git add \
+            apps/hepta-native \
+            tools/hepta-ui-global-platform-source-closure \
+            tools/hepta-ui-windows-product-host-safety \
+            tools/hepta-ui-windows-product-host-device-drill
+          git commit -m "style(ui): apply Rust 1.95 formatting"
+          git push origin "HEAD:$HEPTA_EXPECTED_BRANCH"
