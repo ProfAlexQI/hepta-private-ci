@@ -1,119 +1,106 @@
 {
-  "schema": "hepta_intelligence_evidence_index_v1",
-  "generated_at": "2026-08-28T13:18:00Z",
-  "repository": "ProfAlexQI/hepta-private-ci",
-  "as_of_utc": "2026-08-28T13:18:00Z",
-  "scope": "IMMUTABLE_OR_TIME_BOUNDED_EVIDENCE_REFERENCES_ONLY",
-  "not_current_plan_authority": true,
+  "as_of_utc": "2026-08-29T14:20:00Z",
+  "authority": {
+    "callers_ratchet": false,
+    "default_open_wired": false,
+    "external_effects": false,
+    "learning_write_authority": false,
+    "memory_write_authority": false,
+    "model_runtime_authority": false,
+    "operator_acceptance": false,
+    "outbox_dispatch_authority": false,
+    "product_module_registered": false,
+    "production_authority": false,
+    "projection_write_authority": false,
+    "promotion": false,
+    "provider_dispatch_authority": false,
+    "release_authority": false,
+    "runtime_wired": false,
+    "tool_registered": false
+  },
+  "current_plan_source": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
   "entries": [
     {
-      "evidence_id": "PLAN-V4-HOSTED-SOURCE-1099821C",
-      "class": "E2_INDEPENDENT_RUNNER_SOURCE_ONLY",
-      "subject": "canonical_master_plan_source_gate",
-      "head_sha": "1099821cdf02595d716fa877fe2639cca92a6d8b",
-      "workflow_run": 33152382416,
-      "job_id": 98787148022,
-      "runner_id": 1000025882,
-      "steps_non_empty": true,
-      "result": "PASS",
-      "receipt": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN_V4_HOSTED_SOURCE_RECEIPT_2026-08-28.json",
-      "does_not_imply": [
-        "P0 Rust qualification",
-        "P0 SQLite qualification",
-        "P0 Agentd qualification",
-        "runtime wiring",
-        "efficacy",
-        "operator acceptance",
-        "promotion"
-      ]
+      "artifact_digest": "sha256:e2356966e107c4cd5f00cc59d04520883f7fdf9a78b0b4c6cf6e83ce70c3b24b",
+      "artifact_id": 9715334789,
+      "classification": "EXECUTABLE_EXACT_CANDIDATE",
+      "conclusion": "success",
+      "id": "Q0_E1_X86_64",
+      "job_id": 99101597686,
+      "run_id": 33252922404,
+      "runner_id": 1000037745
     },
     {
-      "evidence_id": "PLAN-V4-HOSTED-SOURCE-80BE14B1",
-      "class": "E2_INDEPENDENT_RUNNER_SOURCE_ONLY",
-      "subject": "canonical_master_plan_source_gate",
-      "head_sha": "80be14b1c42c76b9a7bd03393814b7e2b5a620de",
-      "workflow_run": 33152693078,
-      "job_id": 98788144215,
-      "runner_id": 1000025983,
-      "steps_non_empty": true,
-      "result": "PASS",
-      "receipt": null,
-      "does_not_imply": [
-        "downstream compatibility",
-        "P0 qualification",
-        "runtime wiring",
-        "efficacy"
-      ]
+      "artifact_digest": "sha256:8c794d42726746e80ee71bbd938866bb1a2e7202d8ca1a22636aa1529c16dde3",
+      "artifact_id": 9715221566,
+      "classification": "INDEPENDENT_EXECUTABLE_EXACT_CANDIDATE",
+      "conclusion": "success",
+      "id": "Q0_E2_ARM64",
+      "job_id": 99101597800,
+      "run_id": 33252922404,
+      "runner_id": 1000037696
     },
     {
-      "evidence_id": "DOC-COMPAT-REGRESSION-80BE14B1",
-      "class": "E2_INDEPENDENT_RUNNER_REGRESSION",
-      "subject": "legacy_P0_status_contracts_replaced_by_redirects",
-      "head_sha": "80be14b1c42c76b9a7bd03393814b7e2b5a620de",
-      "result": "FAIL",
-      "affected_jobs": [
-        {
-          "workflow_run": 33152693087,
-          "job_id": 98788147618,
-          "name": "P0.2 durable grounding source contract",
-          "runner_id": 1000026006,
-          "failure_step": "Run fail-closed source and SQLite gate"
-        },
-        {
-          "workflow_run": 33152693105,
-          "job_id": 98788148480,
-          "name": "P0.3 shadow grounding source contract",
-          "runner_id": 1000026114,
-          "failure_step": "Run fail-closed P0.3 source gate"
-        },
-        {
-          "workflow_run": 33152693077,
-          "job_id": 98788148841,
-          "name": "P0.4 mutation state source contract",
-          "runner_id": 1000026237,
-          "failure_step": "Run fail-closed P0.4 source gate"
-        },
-        {
-          "workflow_run": 33152693085,
-          "job_id": 98788147117,
-          "name": "P0.4c shadow host source contract",
-          "runner_id": 1000025987,
-          "failure_step": "Run fail-closed P0.4c source gate"
-        }
-      ],
-      "root_cause": "HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2/V3 machine contracts were replaced with minimal redirect schemas while frozen source verifiers still consumed their original fields",
-      "remediation_status": "COMPATIBILITY_SCHEMAS_RESTORED_PENDING_EXACT_RERUN"
+      "artifact_digest": "sha256:3d225febc5931759cca61729fff492e9e45596c36cd2463524054afd4e21d606",
+      "artifact_id": 9715623771,
+      "classification": "PAIRED_EXECUTABLE_QUALIFICATION",
+      "conclusion": "success",
+      "id": "Q0_E1_E2_PAIR",
+      "job_id": 99105393694,
+      "run_id": 33252922404,
+      "runner_id": 1000037821
     },
     {
-      "evidence_id": "P0-4B-RUST-FMT-80BE14B1",
-      "class": "E2_INDEPENDENT_RUNNER_EXECUTABLE_FAILURE",
-      "subject": "P0.4b mutation journal Rust qualification",
-      "head_sha": "80be14b1c42c76b9a7bd03393814b7e2b5a620de",
-      "workflow_run": 33152693088,
-      "job_id": 98788147807,
-      "runner_id": 1000026418,
-      "steps_non_empty": true,
-      "result": "FAIL",
-      "failure_step": "Check workspace formatting",
-      "tests_executed": false,
-      "clippy_executed": false,
-      "classification": "REAL_EXECUTABLE_FORMAT_FAILURE_REQUIRES_FROZEN_TRANCHE_FIX"
+      "artifact_id": 9693847531,
+      "canonical": false,
+      "classification": "QUALIFIED_NON_CANONICAL_SIDE_STACK",
+      "head": "fa59bb090043ba8d6fbf0991b167779d2385888c",
+      "id": "P0_3_2_SIDE_STACK",
+      "pr_number": 40,
+      "run_id": 33190943793
+    },
+    {
+      "artifact_id": 9707307831,
+      "canonical": false,
+      "classification": "QUALIFIED_NON_CANONICAL_SIDE_STACK",
+      "head": "eddcb59ca43a76ac83b64507983bd908f406ff48",
+      "id": "P0_3_3_SIDE_STACK",
+      "pr_number": 30,
+      "run_id": 33226392404
+    },
+    {
+      "blocks_default_branch_merge": true,
+      "classification": "DIAGNOSTIC_NOT_TRANCHE_QUALIFICATION",
+      "grants_capability_authority": false,
+      "head": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+      "id": "GLOBAL_REPOSITORY_CHECKS_Q0_HEAD",
+      "status": "NOT_GREEN_OR_INCOMPLETE"
     }
   ],
-  "refresh_policy": {
-    "producer": "future evidence aggregator",
-    "current_plan_must_not_be_rewritten_for_each_runner_event": true,
-    "each_entry_must_bind_subject_head_run_job_and_result": true,
-    "queued_or_steps_empty_is_not_pass_or_code_failure": true,
-    "newer_evidence_does_not_rewrite_older_entries": true
+  "historical_evidence_policy": {
+    "expired_artifact_is_promotion_evidence": false,
+    "pr_body_is_evidence": false,
+    "queued_or_empty_steps_is_pass": false,
+    "runner_id_zero_is_pass": false,
+    "source_gate_is_executable_qualification": false,
+    "superseded_head_is_current_evidence": false
   },
-  "authority": {
+  "index_id": "HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1",
+  "not_current_plan_authority": true,
+  "q0_current_evidence": {
+    "candidate": {
+      "head": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+      "parent": "aeb8ac0bfb30d570a16c4914b6e4b31ce035dd62",
+      "tree": "ca455a9ef797cd95164c880c7b8faba80b305589"
+    },
+    "full_repository_merge_green": false,
+    "q0_executable_qualified": true,
+    "qualified_candidate": true,
+    "run_id": 33252922404,
     "runtime_wired": false,
-    "learning_write_authority": false,
-    "production_authority": false,
-    "external_effects": false,
-    "operator_acceptance": false,
-    "promotion": false,
-    "callers_ratchet": false
-  }
+    "summary_file_sha256": "12284561285fd7cdf2df5d90a737ba0e18e0271e7e39f59ea95b93cdfc42925d",
+    "summary_path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json"
+  },
+  "repository": "ProfHepta/hepta-private-ci",
+  "schema": "hepta_intelligence_evidence_index_v1"
 }

@@ -1,0 +1,321 @@
+name: Hepta Intelligence controlled gap-closure specification
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-a0-authority-gap-closure-*"
+  pull_request:
+    paths:
+      - ".github/workflows/hepta-intelligence-a0-authority.yml"
+      - ".github/workflows/hepta-intelligence-execution-spec.yml"
+      - ".github/workflows/hepta-intelligence-master-plan.yml"
+      - "plans/hepta-intelligence/**"
+      - "scripts/hepta-intelligence-current-truth.py"
+      - "scripts/verify-hepta-intelligence-a0-authority.py"
+      - "scripts/verify-hepta-intelligence-document-authority.py"
+      - "scripts/verify-hepta-intelligence-master-plan.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-execution-spec-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+  EXPECTED_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  EXPECTED_PARENT: c768bcbeb4c1168088d2499828c24da521a2a73a
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  ARTIFACT_DIR: artifacts/hepta-intelligence-execution-spec
+
+jobs:
+  verify:
+    name: A0 controlled gap-closure specification source gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact source candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify exact identity and canonical source gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" = "$EXPECTED_BRANCH"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test -n "$(git rev-parse HEAD^{tree})"
+          python3 -m py_compile \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-document-authority.py
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          GITHUB_SHA="$EXPECTED_HEAD_SHA" \
+            python3 scripts/verify-hepta-intelligence-a0-authority.py \
+            > /dev/null
+
+      - name: Verify specification, gap ledger and negative authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          python3 - "$ARTIFACT_DIR/specification-source-receipt.json" <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          from pathlib import Path
+          import subprocess
+          import sys
+          from typing import Any, NoReturn
+
+          root = Path.cwd()
+          plan_dir = root / "plans" / "hepta-intelligence"
+          output = Path(sys.argv[1])
+          spec_rel = (
+              "plans/hepta-intelligence/"
+              "HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md"
+          )
+          workflow_rel = ".github/workflows/hepta-intelligence-execution-spec.yml"
+
+          def fail(message: str) -> NoReturn:
+              raise SystemExit(f"FAIL_HEPTA_INTELLIGENCE_EXECUTION_SPEC: {message}")
+
+          def require(condition: bool, message: str) -> None:
+              if not condition:
+                  fail(message)
+
+          def load(name: str) -> dict[str, Any]:
+              value = json.loads((plan_dir / name).read_text(encoding="utf-8"))
+              require(isinstance(value, dict), f"{name} must contain an object")
+              return value
+
+          def digest(path: Path) -> str:
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          def all_false(value: Any) -> bool:
+              return (
+                  isinstance(value, dict)
+                  and bool(value)
+                  and all(item is False for item in value.values())
+              )
+
+          current = load("HEPTA_INTELLIGENCE_CURRENT_PLAN.json")
+          document = load("HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json")
+          integration = load("HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json")
+          spec = root / spec_rel
+          workflow = root / workflow_rel
+          require(spec.is_file(), "execution specification is missing")
+          require(workflow.is_file(), "execution workflow is missing")
+          spec_sha = digest(spec)
+
+          operational = current.get("operational_execution", {})
+          require(operational.get("execution_spec") == spec_rel, "current spec pointer drift")
+          require(operational.get("execution_spec_sha256") == spec_sha, "current spec digest drift")
+          require(operational.get("no_ci_source_writeback") is True, "CI writeback enabled")
+          require(
+              operational.get("source_publisher_separate_from_evidence_workflow") is True,
+              "publisher/evidence separation disabled",
+          )
+          require(current.get("active_phase", {}).get("id") == "A0", "A0 is not active")
+          require(
+              current.get("active_phase", {}).get("current_work_unit")
+              == "A0.3_REPLACE_BOT_HEAD_AND_OBTAIN_EXACT_HEAD_EXECUTABLE_EVIDENCE",
+              "A0 current work unit drift",
+          )
+          for label, value in (
+              ("current", current.get("authority")),
+              ("document", document.get("authority")),
+              ("integration", integration.get("authority")),
+          ):
+              require(all_false(value), f"{label} authority must remain false")
+
+          for registered in (
+              integration.get("operational_documents"),
+              document.get("registered_operational_documents"),
+          ):
+              require(isinstance(registered, list) and len(registered) == 1, "spec registry drift")
+              require(registered[0].get("path") == spec_rel, "spec path drift")
+              require(registered[0].get("content_sha256") == spec_sha, "spec digest drift")
+          registered_doc = document["registered_operational_documents"][0]
+          require(registered_doc.get("current_plan_authority") is False, "spec gained plan authority")
+          require(registered_doc.get("promotion_authority") is False, "spec gained promotion authority")
+
+          allowed = integration.get("allowed_changed_paths")
+          require(isinstance(allowed, list), "changed-path allowlist is missing")
+          require(allowed == sorted(set(allowed)), "changed-path allowlist is not sorted and unique")
+          require(len(allowed) == 17, "changed-path allowlist must contain 17 paths")
+          require(integration.get("expected_changed_path_count") == 17, "changed-path count drift")
+          require(spec_rel in allowed and workflow_rel in allowed, "spec paths are not allowlisted")
+          require(
+              not any(
+                  path.startswith(("codex-rs/", "migrations/", "sdk/", "shell-tool-mcp/"))
+                  for path in allowed
+              ),
+              "runtime or product path entered the A0 allowlist",
+          )
+
+          provenance = integration.get("candidate_provenance_policy", {})
+          require(provenance.get("candidate_workflow_may_write_source") is False, "CI may write source")
+          require(
+              provenance.get("publisher_must_be_separate_from_candidate_workflow") is True,
+              "publisher/evidence separation disabled",
+          )
+          require(provenance.get("superseded_head_evidence_reusable") is False, "stale evidence reusable")
+          require(provenance.get("replacement_parent") == "c768bcbeb4c1168088d2499828c24da521a2a73a", "parent drift")
+
+          ledger = integration.get("gap_closure_ledger", {})
+          require(ledger.get("schema") == "hepta_intelligence_gap_closure_ledger_v1", "gap schema drift")
+          invariants = ledger.get("invariants", {})
+          for key in (
+              "external_evidence_may_be_synthesized",
+              "fixture_may_close_external_gap",
+              "positive_authority_allowed",
+          ):
+              require(invariants.get(key) is False, f"positive gap invariant: {key}")
+          require(invariants.get("source_closed_requires_exact_head_executable_evidence") is True, "exact-head closure disabled")
+          require(invariants.get("unknown_gap_fails_closed") is True, "unknown gaps do not fail closed")
+
+          entries = ledger.get("entries")
+          require(isinstance(entries, list) and len(entries) == 17, "gap ledger must contain 17 entries")
+          required_ids = {
+              "A0-DOC-001", "A0-TRIGGER-001", "A0-EVIDENCE-001",
+              "A0-REVIEW-001", "A0-MERGE-001", "B0-BOUNDARY-001",
+              "C0-LEDGER-001", "M0-COORDINATOR-001", "J0-LIFECYCLE-001",
+              "R1-RETRIEVAL-001", "R1-CORPUS-001", "N1-NEURON-001",
+              "I1-INTUITION-001", "L1-LEARNING-001", "C1-CLOSED-LOOP-001",
+              "EXT-HARDWARE-001", "EXT-OPERATOR-001",
+          }
+          ids = [entry.get("gap_id") for entry in entries if isinstance(entry, dict)]
+          require(len(ids) == 17 and set(ids) == required_ids, "required gap surface drift")
+          require(len(set(ids)) == 17, "duplicate gap ID")
+          allowed_classes = {
+              "CLOSED_SOURCE_CONTROLLED", "OPEN_SOURCE_CONTROLLED",
+              "BLOCKED_EXTERNAL_EVIDENCE", "BLOCKED_UPSTREAM", "STOP_CONDITION",
+          }
+          for entry in entries:
+              gap_id = entry["gap_id"]
+              require(entry.get("classification") in allowed_classes, f"{gap_id}: invalid class")
+              for field in (
+                  "title", "owner_class", "status", "closure_evidence",
+                  "next_action", "authority_effect",
+              ):
+                  require(field in entry, f"{gap_id}: missing {field}")
+              require(isinstance(entry["closure_evidence"], list) and entry["closure_evidence"], f"{gap_id}: no evidence contract")
+
+          spec_text = spec.read_text(encoding="utf-8")
+          for marker in (
+              "SUBORDINATE_EXECUTION_SPEC",
+              "Replacement-commit and CI-trigger protocol",
+              "A candidate workflow must never modify",
+              "Gap-loop state machine",
+              "B0 — Learning boundary extraction",
+              "C0 — Durable learning episode ledger",
+              "M0 — Transactional mutation coordinator",
+              "J0 — Journal lifecycle, recovery and capacity",
+              "R1 — Grounded hybrid retrieval",
+              "N1 — H5 adaptive signal unit",
+              "I1 — H6 calibrated fast policy",
+              "L1 — H7 causal evaluation and artifact pipeline",
+              "C1 — Low-risk closed loop",
+              "candidate LCB > baseline UCB",
+              "system = L0_STATIC_SHADOW_WITH_PARTIAL_L1_FOUNDATIONS",
+              "runtime_wired = false",
+              "production_authority = false",
+          ):
+              require(marker in spec_text, f"spec marker missing: {marker}")
+
+          workflow_text = workflow.read_text(encoding="utf-8")
+          require("permissions:\n  contents: read" in workflow_text, "workflow is not read-only")
+          require("runs-on: ubuntu-24.04" in workflow_text, "workflow runner drift")
+          forbidden = (
+              "contents" + ": write",
+              "git " + "push",
+              "git " + "commit",
+              "git " + "update-ref",
+              "create-" + "pull-request",
+          )
+          for marker in forbidden:
+              require(marker not in workflow_text, f"source-write capability found: {marker}")
+
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip()
+          parent = subprocess.check_output(["git", "rev-parse", "HEAD^"], text=True).strip()
+          changed = sorted(
+              line
+              for line in subprocess.check_output(
+                  ["git", "diff", "--name-only", "HEAD^", "HEAD"], text=True
+              ).splitlines()
+              if line
+          )
+          require(parent == provenance["replacement_parent"], "exact parent mismatch")
+          require(changed == allowed, f"changed-path surface mismatch: {changed}")
+          subprocess.run(["git", "diff", "--check", "HEAD^", "HEAD"], check=True)
+
+          receipt = {
+              "schema": "hepta_intelligence_execution_spec_source_receipt_v1",
+              "status": "PASS_HEPTA_INTELLIGENCE_EXECUTION_SPEC_SOURCE_ONLY",
+              "repository": current["repository"],
+              "candidate": {
+                  "branch": integration["branch"],
+                  "head": head,
+                  "tree": tree,
+                  "parent": parent,
+              },
+              "execution_spec": {
+                  "path": spec_rel,
+                  "sha256": spec_sha,
+                  "version": operational["execution_spec_version"],
+              },
+              "gap_count": len(entries),
+              "changed_files": changed,
+              "source_writeback": False,
+              "candidate_qualified": False,
+              "runtime_qualified": False,
+              "full_repository_merge_green": False,
+              "authority": current["authority"],
+          }
+          output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          print(json.dumps(receipt, indent=2, sort_keys=True))
+          PY
+
+      - name: Verify deterministic receipt and clean source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$ARTIFACT_DIR/specification-source-receipt.json" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              receipt = json.load(handle)
+          assert receipt["status"] == "PASS_HEPTA_INTELLIGENCE_EXECUTION_SPEC_SOURCE_ONLY"
+          assert receipt["gap_count"] == 17
+          assert receipt["source_writeback"] is False
+          assert receipt["candidate_qualified"] is False
+          assert receipt["runtime_qualified"] is False
+          assert receipt["full_repository_merge_green"] is False
+          assert receipt["authority"]
+          assert all(value is False for value in receipt["authority"].values())
+          PY
+          git diff --check HEAD^ HEAD
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Upload exact-head specification receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-execution-spec-${{ env.EXPECTED_HEAD_SHA }}
+          path: artifacts/hepta-intelligence-execution-spec/**
+          if-no-files-found: error
+          retention-days: 30
