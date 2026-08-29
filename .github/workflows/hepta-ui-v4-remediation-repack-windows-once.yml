@@ -1,0 +1,73 @@
+name: hepta-ui-v4-remediation-repack-windows-once
+
+on:
+  push:
+    branches:
+      - "ops/hepta-ui-v4-remediation-repack-windows-20260829"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: hepta-ui-v4-remediation-repack-windows-once
+  cancel-in-progress: true
+
+jobs:
+  repack:
+    name: Repack validated exact-head remediation on Windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_BRANCH: codex/ui-v4-executable-final-gap-closure-v3-20260829
+      EXPECTED_HEAD: a1fd10b683fa0c21695f092372326b5be74e9640
+      SOURCE_RUN_ID: "33239849551"
+      SOURCE_ARTIFACT: hepta-ui-v4-gap-remediation-export-33239849551
+    steps:
+      - name: Enable Windows long paths
+        shell: pwsh
+        run: git config --global core.longpaths true
+
+      - name: Checkout exact target branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download, apply, verify, and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          mkdir -p artifacts/source artifacts/output
+          gh run download "$SOURCE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$SOURCE_ARTIFACT" \
+            --dir artifacts/source
+          test "$(cat artifacts/source/before-commit.txt)" = "$EXPECTED_HEAD"
+          test "$(cat artifacts/source/before-tree.txt)" = "$(git rev-parse 'HEAD^{tree}')"
+          git apply --check artifacts/source/remediation.patch
+          git apply artifacts/source/remediation.patch
+          git diff --check
+          grep -q 'HEPTA_CANDIDATE_SHA' \
+            .github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml
+          grep -q 'canonical_replacement' scripts/hepta-ui-v4-window-ack-matrix-gate
+          tar -czf artifacts/output/hepta-ui-v4-remediation-bundle.tar.gz \
+            .github/workflows/hepta-ui-v4-final-gap-closure-v4.yml \
+            .github/workflows/hepta-ui-v4-rust-served-cross-browser-final.yml \
+            .github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml \
+            scripts/hepta-ui-v4-window-ack-matrix-gate
+          sha256sum artifacts/output/hepta-ui-v4-remediation-bundle.tar.gz \
+            > artifacts/output/hepta-ui-v4-remediation-bundle.tar.gz.sha256
+          printf '%s\n' "$EXPECTED_HEAD" > artifacts/output/before-commit.txt
+          git rev-parse 'HEAD^{tree}' > artifacts/output/before-tree.txt
+
+      - name: Upload non-hidden remediation bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-remediation-repack-windows-${{ github.run_id }}
+          path: artifacts/output
+          if-no-files-found: error
+          retention-days: 14
