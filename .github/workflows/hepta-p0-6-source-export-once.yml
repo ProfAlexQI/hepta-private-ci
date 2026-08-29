@@ -1,9 +1,10 @@
-name: Hepta P0.6 source export once
+name: Hepta V5 source export once
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - codex/hepta-gap-closure-p0-6-20260829
+      - codex/hepta-architecture-v5-b0-verified-use-kernel-20260830
     paths:
       - .github/workflows/hepta-p0-6-source-export-once.yml
 
@@ -32,16 +33,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          archive="$RUNNER_TEMP/hepta-p0-6-source-$GITHUB_SHA.tar.gz"
+          archive="$RUNNER_TEMP/hepta-v5-source-$GITHUB_SHA.tar.gz"
           tar --exclude=.git -czf "$archive" .
-          sha256sum "$archive" > "$RUNNER_TEMP/hepta-p0-6-source-$GITHUB_SHA.sha256"
+          sha256sum "$archive" > "$RUNNER_TEMP/hepta-v5-source-$GITHUB_SHA.sha256"
       - name: Upload source archive
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-p0-6-source-${{ github.sha }}
+          name: hepta-v5-source-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/hepta-p0-6-source-${{ github.sha }}.tar.gz
-            ${{ runner.temp }}/hepta-p0-6-source-${{ github.sha }}.sha256
+            ${{ runner.temp }}/hepta-v5-source-${{ github.sha }}.tar.gz
+            ${{ runner.temp }}/hepta-v5-source-${{ github.sha }}.sha256
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
