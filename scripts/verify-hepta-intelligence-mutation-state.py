@@ -18,11 +18,14 @@ FILES = {
     "status": ROOT
     / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
     "workflow": ROOT
-    / ".github/workflows/hepta-intelligence-mutation-state-machine.yml",
-    "p0_2_workflow": ROOT
-    / ".github/workflows/hepta-intelligence-grounding-ledger.yml",
-    "p0_3_workflow": ROOT
-    / ".github/workflows/hepta-intelligence-grounding-gate.yml",
+    / ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml",
+    "prepare": ROOT / "scripts/q0-qualification/00-prepare.sh",
+    "source_gates": ROOT / "scripts/q0-qualification/10-source-gates.sh",
+    "rust_matrix": ROOT / "scripts/q0-qualification/20-rust-matrix.sh",
+    "workflow_consolidation": ROOT
+    / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V1.json",
+    "workflow_consolidation_verifier": ROOT
+    / "scripts/verify-hepta-intelligence-q0-workflow-consolidation.py",
     "workspace_toolchain": ROOT / "codex-rs/rust-toolchain.toml",
 }
 
@@ -69,15 +72,24 @@ def main() -> int:
     model = FILES["model"].read_text(encoding="utf-8")
     plan = FILES["plan"].read_text(encoding="utf-8")
     workflow = FILES["workflow"].read_text(encoding="utf-8")
-    p0_2_workflow = FILES["p0_2_workflow"].read_text(encoding="utf-8")
-    p0_3_workflow = FILES["p0_3_workflow"].read_text(encoding="utf-8")
+    prepare = FILES["prepare"].read_text(encoding="utf-8")
+    source_gates = FILES["source_gates"].read_text(encoding="utf-8")
+    rust_matrix = FILES["rust_matrix"].read_text(encoding="utf-8")
+    consolidation_verifier = FILES["workflow_consolidation_verifier"].read_text(
+        encoding="utf-8"
+    )
     workspace_toolchain = FILES["workspace_toolchain"].read_text(encoding="utf-8")
     try:
         status = json.loads(FILES["status"].read_text(encoding="utf-8"))
+        consolidation = json.loads(
+            FILES["workflow_consolidation"].read_text(encoding="utf-8")
+        )
     except (OSError, UnicodeError, json.JSONDecodeError):
         checks["status.valid_json"] = False
+        checks["workflow_consolidation.valid_json"] = False
         return emit(checks)
     checks["status.valid_json"] = True
+    checks["workflow_consolidation.valid_json"] = True
 
     checks["module.registered_dormant"] = contains_all(
         framing,
@@ -216,23 +228,66 @@ def main() -> int:
             "ProjectionImpliesOneWrite",
         ],
     )
-    checks["workflow.toolchain"] = contains_all(
-        workflow,
-        [
-            "toolchain: 1.95.0",
-            "cargo fmt -p codex-hepta-memory -- --check",
-            "cargo test -p codex-hepta-memory intelligence_mutation_state",
-            "cargo clippy -p codex-hepta-memory --all-targets -- -D warnings",
-        ],
-    ) and "toolchain: 1.88.0" not in workflow
-    checks["workflow.inherited_toolchains"] = (
+    checks["workflow.canonical_paired"] = (
+        consolidation.get("schema")
+        == "hepta.intelligence.q0.workflow_consolidation.v1"
+        and consolidation.get("status") == "CANONICAL_PAIRED_WORKFLOW"
+        and consolidation.get("canonical_workflow")
+        == ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml"
+        and consolidation.get("e1_e2_same_run") is True
+        and consolidation.get("e1_e2_distinct_jobs") is True
+        and consolidation.get("e1_e2_distinct_architectures") is True
+        and contains_all(
+            workflow,
+            [
+                "prove-primary:",
+                "prove-independent:",
+                "pair-evidence:",
+                "needs:\n      - prove-primary\n      - prove-independent",
+                "runs-on: ubuntu-24.04\n",
+                "runs-on: ubuntu-24.04-arm\n",
+            ],
+        )
+        and contains_all(
+            consolidation_verifier,
+            [
+                "CANONICAL_PAIRED_WORKFLOW",
+                "assert all(not path.exists() for path in RETIRED)",
+            ],
+        )
+    )
+    checks["workflow.toolchain"] = (
         'channel = "1.95.0"' in workspace_toolchain
-        and "toolchain: 1.95.0" in p0_2_workflow
-        and "toolchain: 1.95.0" in p0_3_workflow
-        and "Verify installed toolchain matches repository pin" in p0_2_workflow
-        and "Verify installed toolchain matches repository pin" in p0_3_workflow
-        and "toolchain: 1.88.0" not in p0_2_workflow
-        and "toolchain: 1.88.0" not in p0_3_workflow
+        and workflow.count("toolchain: 1.95.0") == 2
+        and "toolchain: 1.88.0" not in workflow
+        and contains_all(
+            prepare,
+            [
+                "expected_toolchain",
+                "rustc --version",
+                "Q0_EXPECTED_RUST_HOST",
+                "rustfmt --edition 2024 --check",
+            ],
+        )
+        and contains_all(
+            rust_matrix,
+            [
+                "cargo test --locked -p codex-hepta-memory intelligence_mutation_state",
+                "cargo clippy --locked -p codex-hepta-memory --all-targets -- -D warnings",
+            ],
+        )
+        and "verify-hepta-intelligence-mutation-state.py" in source_gates
+    )
+    checks["workflow.retired_lanes_absent"] = all(
+        lane in consolidation.get("retired_workflows", [])
+        for lane in [
+            ".github/workflows/hepta-intelligence-mutation-state-machine.yml",
+            ".github/workflows/hepta-intelligence-grounding-ledger.yml",
+            ".github/workflows/hepta-intelligence-grounding-gate.yml",
+        ]
+    ) and all(
+        not (ROOT / lane).exists()
+        for lane in consolidation.get("retired_workflows", [])
     )
     checks["plan.boundary"] = contains_all(
         plan,

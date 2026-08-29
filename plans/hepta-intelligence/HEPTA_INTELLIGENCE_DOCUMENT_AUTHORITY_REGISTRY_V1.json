@@ -1,7 +1,7 @@
 {
   "schema": "hepta_intelligence_document_authority_registry_v1",
   "generated_at": "2026-08-28T13:15:00Z",
-  "repository": "ProfAlexQI/hepta-private-ci",
+  "repository": "ProfHepta/hepta-private-ci",
   "rules": {
     "single_current_machine_authority": true,
     "single_current_human_authority": true,
@@ -36,11 +36,8 @@
         "scripts/verify-hepta-intelligence-mutation-state.py",
         "scripts/verify-hepta-intelligence-mutation-journal.py",
         "scripts/verify-hepta-intelligence-shadow-host.py",
-        ".github/workflows/hepta-intelligence-grounding-ledger.yml",
-        ".github/workflows/hepta-intelligence-grounding-gate.yml",
-        ".github/workflows/hepta-intelligence-mutation-state-machine.yml",
-        ".github/workflows/hepta-intelligence-mutation-journal.yml",
-        ".github/workflows/hepta-intelligence-shadow-host.yml"
+        ".github/workflows/hepta-intelligence-p0-compatibility-matrix.yml",
+        ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml"
       ]
     },
     {
@@ -70,7 +67,9 @@
   "evidence_only": [
     "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PLAN_V3_REVIEW_RECEIPT_2026-08-28.json",
     "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN_V4_RECEIPT_2026-08-28.json",
-    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN_V4_HOSTED_SOURCE_RECEIPT_2026-08-28.json"
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN_V4_HOSTED_SOURCE_RECEIPT_2026-08-28.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V1.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V2.json"
   ],
   "migration_gate": {
     "required_before_replacing_a_compatibility_contract": [
@@ -89,5 +88,26 @@
     "operator_acceptance": false,
     "promotion": false,
     "callers_ratchet": false
-  }
+  },
+  "consumer_migration_receipts": [
+    {
+      "compatibility_contract": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
+      "receipt": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V2.json",
+      "retired_consumers": [
+        ".github/workflows/hepta-intelligence-grounding-ledger.yml",
+        ".github/workflows/hepta-intelligence-grounding-gate.yml",
+        ".github/workflows/hepta-intelligence-mutation-state-machine.yml",
+        ".github/workflows/hepta-intelligence-mutation-journal.yml",
+        ".github/workflows/hepta-intelligence-shadow-host.yml"
+      ],
+      "replacement_consumers": [
+        ".github/workflows/hepta-intelligence-p0-compatibility-matrix.yml",
+        ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml"
+      ],
+      "schema_preserved": true,
+      "compatibility_contract_replaced": false,
+      "authority_changed": false,
+      "rollback": "restore retired workflow implementations only from the receipt-bound Git history; never grant runtime or production authority"
+    }
+  ]
 }

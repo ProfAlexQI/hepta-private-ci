@@ -4,16 +4,6 @@ on:
   push:
     branches:
       - codex/hepta-intelligence-plan-v3-20260828
-    paths:
-      - .github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml
-      - .github/scripts/hepta-intelligence-q0-supplemental-repair-v1.py
-      - scripts/run-hepta-intelligence-q0-qualification.sh
-      - scripts/q0-qualification/**
-      - scripts/verify-hepta-intelligence-q0-evidence-pair.py
-      - scripts/verify-hepta-intelligence-repository-identity.py
-      - scripts/verify-hepta-intelligence-q0-workflow-consolidation.py
-      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_REPOSITORY_IDENTITY_V1.json
-      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V1.json
   workflow_dispatch:
 
 permissions:
@@ -25,7 +15,7 @@ concurrency:
 
 env:
   EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-  EXPECTED_PARENT: 8fcd7844c7cce6a9c99ce15b1e30afb788da8c28
+  EXPECTED_PARENT: 583215c2d97099a69cf3f749fd07729b066ee401
   Q0_WORKFLOW_PATH: .github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml
   Q0_WORKFLOW_REF: ${{ github.workflow_ref }}
   Q0_WORKFLOW_SHA: ${{ github.workflow_sha }}

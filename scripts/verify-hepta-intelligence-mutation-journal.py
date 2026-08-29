@@ -26,7 +26,13 @@ FILES = {
     "sqlite_selftest": ROOT
     / "scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py",
     "workflow": ROOT
-    / ".github/workflows/hepta-intelligence-mutation-journal.yml",
+    / ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml",
+    "prepare": ROOT / "scripts/q0-qualification/00-prepare.sh",
+    "source_gates": ROOT / "scripts/q0-qualification/10-source-gates.sh",
+    "rust_matrix": ROOT / "scripts/q0-qualification/20-rust-matrix.sh",
+    "workspace_toolchain": ROOT / "codex-rs/rust-toolchain.toml",
+    "workflow_consolidation": ROOT
+    / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V1.json",
     "status": ROOT
     / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
     "plan": ROOT
@@ -83,13 +89,22 @@ def main() -> int:
     framing = FILES["framing"].read_text(encoding="utf-8")
     build = FILES["build"].read_text(encoding="utf-8")
     workflow = FILES["workflow"].read_text(encoding="utf-8")
+    prepare = FILES["prepare"].read_text(encoding="utf-8")
+    source_gates = FILES["source_gates"].read_text(encoding="utf-8")
+    rust_matrix = FILES["rust_matrix"].read_text(encoding="utf-8")
+    workspace_toolchain = FILES["workspace_toolchain"].read_text(encoding="utf-8")
     plan = FILES["plan"].read_text(encoding="utf-8")
     try:
         status = json.loads(FILES["status"].read_text(encoding="utf-8"))
+        consolidation = json.loads(
+            FILES["workflow_consolidation"].read_text(encoding="utf-8")
+        )
     except (OSError, UnicodeError, json.JSONDecodeError):
         checks["status.valid_json"] = False
+        checks["workflow_consolidation.valid_json"] = False
         return emit(checks, None)
     checks["status.valid_json"] = True
+    checks["workflow_consolidation.valid_json"] = True
 
     checks["migration.tables"] = contains_all(
         migration,
@@ -226,24 +241,65 @@ def main() -> int:
     ) and "intelligence_mutation_journal_v2.rs" not in framing
     checks["build.component_data"] = "mutation-migrations/**" in build
 
-    checks["workflow.repository_toolchain"] = contains_all(
-        workflow,
-        [
-            "toolchain: 1.95.0",
-            "rust-toolchain.toml",
-            "cargo fmt -p codex-hepta-memory -- --check",
-            "cargo test -p codex-hepta-memory intelligence_mutation_journal",
-            "cargo clippy -p codex-hepta-memory --all-targets -- -D warnings",
-        ],
+    checks["workflow.canonical_paired"] = (
+        consolidation.get("status") == "CANONICAL_PAIRED_WORKFLOW"
+        and consolidation.get("canonical_workflow")
+        == ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml"
+        and consolidation.get("e1_e2_same_run") is True
+        and consolidation.get("e1_e2_distinct_jobs") is True
+        and consolidation.get("e1_e2_distinct_architectures") is True
+        and contains_all(
+            workflow,
+            [
+                "prove-primary:",
+                "prove-independent:",
+                "pair-evidence:",
+                "q0-e1-${{ github.sha }}",
+                "q0-e2-${{ github.sha }}",
+                "q0-pair-${{ github.sha }}",
+            ],
+        )
     )
-    checks["workflow.source_and_sqlite_artifacts"] = contains_all(
-        workflow,
-        [
-            "verify-hepta-intelligence-mutation-journal.py",
-            "hepta-intelligence-mutation-journal-sqlite-selftest.py",
-            "source-gate.json",
-            "sqlite-selftest.json",
-        ],
+    checks["workflow.repository_toolchain"] = (
+        'channel = "1.95.0"' in workspace_toolchain
+        and workflow.count("toolchain: 1.95.0") == 2
+        and "toolchain: 1.88.0" not in workflow
+        and contains_all(
+            prepare,
+            [
+                "expected_toolchain",
+                "rust-toolchain.toml",
+                "rustc --version",
+                "Q0_EXPECTED_RUST_HOST",
+            ],
+        )
+        and contains_all(
+            rust_matrix,
+            [
+                "cargo test --locked -p codex-hepta-memory intelligence_mutation_journal",
+                "cargo clippy --locked -p codex-hepta-memory --all-targets -- -D warnings",
+            ],
+        )
+    )
+    checks["workflow.source_and_sqlite_artifacts"] = (
+        contains_all(
+            source_gates,
+            [
+                "verify-hepta-intelligence-mutation-journal.py",
+                "hepta-intelligence-mutation-journal-sqlite-selftest.py",
+                "mutation-journal-sqlite",
+                "mutation-journal",
+            ],
+        )
+        and contains_all(
+            workflow,
+            [
+                "scripts/verify-hepta-intelligence-q0-evidence-pair.py",
+                "e1-qualification-receipt.json",
+                "e2-qualification-receipt.json",
+                "q0-evidence-pair-receipt.json",
+            ],
+        )
     )
 
     current = status.get("current_tranche", {})

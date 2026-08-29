@@ -54,11 +54,19 @@ master_plan_gate() {
   test "$actual" = "PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_SOURCE_ONLY"
 }
 
+document_authority_gate() {
+  local actual
+  actual=$(python3 scripts/verify-hepta-intelligence-document-authority.py)
+  printf '%s\n' "$actual"
+  test "$actual" = "PASS_HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_AND_COMPATIBILITY"
+}
+
 run_gate repository-identity \
   python3 scripts/verify-hepta-intelligence-repository-identity.py
 run_gate workflow-consolidation \
   python3 scripts/verify-hepta-intelligence-q0-workflow-consolidation.py
 run_gate master-plan master_plan_gate
+run_gate document-authority document_authority_gate
 for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
   run_gate "status-$tranche" \
     python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
