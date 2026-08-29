@@ -1,4 +1,4 @@
-name: hepta-ui-v4-gap-remediation-once
+name: hepta-ui-v4-gap-remediation-export-once
 
 on:
   push:
@@ -6,36 +6,32 @@ on:
       - "ops/hepta-actions-queue-recovery-20260829"
 
 permissions:
-  contents: write
-  actions: write
-  pull-requests: write
+  contents: read
 
 concurrency:
-  group: hepta-ui-v4-gap-remediation-once
+  group: hepta-ui-v4-gap-remediation-export-once
   cancel-in-progress: true
 
 jobs:
-  remediate:
-    name: Patch exact-head UI qualification and cancel stale runs
+  export:
+    name: Validate and export exact-head UI remediation
     runs-on: macos-latest
     timeout-minutes: 30
     env:
-      GH_TOKEN: ${{ github.token }}
       TARGET_BRANCH: codex/ui-v4-executable-final-gap-closure-v3-20260829
     steps:
       - name: Checkout exact target branch
         uses: actions/checkout@v4
         with:
           ref: ${{ env.TARGET_BRANCH }}
-          fetch-depth: 0
-          persist-credentials: true
+          fetch-depth: 1
+          persist-credentials: false
 
-      - name: Patch and validate repository-controlled blockers
+      - name: Patch, validate, and export repository-controlled blockers
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p artifacts/remediation
-          printf '%s\n' "started" > artifacts/remediation/start.txt
+          mkdir -p artifacts/remediation/files
           before_sha="$(git rev-parse HEAD)"
           before_tree="$(git rev-parse 'HEAD^{tree}')"
           python3 - <<'PY'
@@ -187,87 +183,30 @@ jobs:
             .github/workflows/hepta-ui-v4-rust-served-cross-browser-final.yml \
             .github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml
           git diff --check
-          git config user.name "Hepta qualification bot"
-          git config user.email "102159240+ProfHepta@users.noreply.github.com"
-          git add \
-            .github/workflows/hepta-ui-v4-final-gap-closure-v4.yml \
-            .github/workflows/hepta-ui-v4-rust-served-cross-browser-final.yml \
-            .github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml \
-            scripts/hepta-ui-v4-window-ack-matrix-gate
-          if git diff --cached --quiet; then
-            echo "No repository-controlled remediation changes remained"
-          else
-            git commit -m "ci(ui): close exact-head DWM and duplicate-trigger gaps"
-            git push origin "HEAD:$TARGET_BRANCH"
-          fi
-          latest_sha="$(git rev-parse HEAD)"
-          latest_tree="$(git rev-parse 'HEAD^{tree}')"
+          mkdir -p \
+            artifacts/remediation/files/.github/workflows \
+            artifacts/remediation/files/scripts
+          cp .github/workflows/hepta-ui-v4-final-gap-closure-v4.yml \
+            artifacts/remediation/files/.github/workflows/
+          cp .github/workflows/hepta-ui-v4-rust-served-cross-browser-final.yml \
+            artifacts/remediation/files/.github/workflows/
+          cp .github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml \
+            artifacts/remediation/files/.github/workflows/
+          cp scripts/hepta-ui-v4-window-ack-matrix-gate \
+            artifacts/remediation/files/scripts/
+          git diff --binary > artifacts/remediation/remediation.patch
           printf '%s\n' "$before_sha" > artifacts/remediation/before-commit.txt
           printf '%s\n' "$before_tree" > artifacts/remediation/before-tree.txt
-          printf '%s\n' "$latest_sha" > artifacts/remediation/after-commit.txt
-          printf '%s\n' "$latest_tree" > artifacts/remediation/after-tree.txt
-          echo "LATEST_TARGET_SHA=$latest_sha" >> "$GITHUB_ENV"
+          find artifacts/remediation/files -type f -print0 \
+            | sort -z \
+            | xargs -0 shasum -a 256 \
+            > artifacts/remediation/files.sha256
 
-      - name: Cancel stale target-branch runs
-        shell: bash
-        run: |
-          set -euo pipefail
-          sleep 20
-          curl --fail --silent --show-error --get \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            --data-urlencode "branch=$TARGET_BRANCH" \
-            --data-urlencode "per_page=100" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs" \
-            > artifacts/remediation/branch-runs.json
-          export LATEST_TARGET_SHA
-          ruby -rjson -rdigest -e '
-            payload=JSON.parse(File.read("artifacts/remediation/branch-runs.json"))
-            active=%w[queued in_progress pending waiting requested_action]
-            latest=ENV.fetch("LATEST_TARGET_SHA")
-            candidates=payload.fetch("workflow_runs").select do |run|
-              active.include?(run["status"]) && run["head_sha"] != latest
-            end
-            result={
-              "schema"=>"hepta.ui.v4.exact-head-queue-remediation.v1",
-              "targetBranch"=>ENV.fetch("TARGET_BRANCH"),
-              "targetHead"=>latest,
-              "cancelRunIds"=>candidates.map{|run|run.fetch("id")}.sort,
-              "cancelled"=>[],
-              "failures"=>[]
-            }
-            result["planSha256"]=Digest::SHA256.hexdigest(JSON.generate(result.reject{|key,_|%w[cancelled failures].include?(key)}))
-            File.write("artifacts/remediation/queue-plan.json",JSON.pretty_generate(result)+"\n")
-            File.write("artifacts/remediation/run-ids.txt",result.fetch("cancelRunIds").join("\n")+(result.fetch("cancelRunIds").empty? ? "" : "\n"))
-          '
-          while IFS= read -r run_id; do
-            [[ -n "$run_id" ]] || continue
-            code="$(curl --silent --show-error \
-              --output "artifacts/remediation/cancel-$run_id.json" \
-              --write-out '%{http_code}' \
-              -X POST \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/cancel")"
-            if [[ "$code" == 202 || "$code" == 409 ]]; then
-              echo "$run_id" >> artifacts/remediation/cancelled.txt
-            else
-              printf '%s %s\n' "$run_id" "$code" >> artifacts/remediation/failures.txt
-            fi
-          done < artifacts/remediation/run-ids.txt
-          ruby -rjson -e '
-            result=JSON.parse(File.read("artifacts/remediation/queue-plan.json"))
-            result["cancelled"]=File.exist?("artifacts/remediation/cancelled.txt") ? File.readlines("artifacts/remediation/cancelled.txt",chomp:true).reject(&:empty?).map(&:to_i) : []
-            result["failures"]=File.exist?("artifacts/remediation/failures.txt") ? File.readlines("artifacts/remediation/failures.txt",chomp:true).reject(&:empty?) : []
-            File.write("artifacts/remediation/queue-result.json",JSON.pretty_generate(result)+"\n")
-            abort "stale target-run cancellation failed" unless result.fetch("failures").empty?
-          '
-
-      - name: Upload remediation evidence
+      - name: Upload validated remediation bundle
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-ui-v4-gap-remediation-${{ github.run_id }}
+          name: hepta-ui-v4-gap-remediation-export-${{ github.run_id }}
           path: artifacts/remediation
           if-no-files-found: error
           retention-days: 14
