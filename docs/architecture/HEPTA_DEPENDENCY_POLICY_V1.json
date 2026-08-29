@@ -1,0 +1,215 @@
+{
+  "schema": "hepta.dependency-policy.v1",
+  "schemaVersion": 1,
+  "status": "normative_source_policy",
+  "repository": "ProfHepta/hepta-private-ci",
+  "cargoWorkspace": "codex-rs/Cargo.toml",
+  "packageClasses": {
+    "genericCodexOwners": [
+      "codex-app-server",
+      "codex-core",
+      "codex-cli"
+    ],
+    "wirePackages": [
+      "codex-hepta-agent-protocol",
+      "codex-hepta-matrix-protocol"
+    ],
+    "binaryCompositionPackages": [
+      "codex-cli",
+      "codex-hepta-agentd",
+      "codex-hepta-matrixd",
+      "codex-hepta-supervisor"
+    ],
+    "shadowPackages": [
+      "codex-hepta-shadow-qualification"
+    ],
+    "productionWriterPackages": [
+      "codex-hepta-memory"
+    ]
+  },
+  "rules": [
+    {
+      "id": "DEP-CODEX-HEPTA-01",
+      "description": "Generic Codex owners must not depend on concrete Hepta implementations.",
+      "from": [
+        "codex-app-server",
+        "codex-core",
+        "codex-cli"
+      ],
+      "forbiddenDependencyPrefixes": [
+        "codex-hepta-"
+      ],
+      "zeroDebtRequiredByPackage": "P0.7e.E1"
+    },
+    {
+      "id": "DEP-WIRE-01",
+      "description": "Stable wire packages may depend only on pure contracts/value/wire crates.",
+      "from": [
+        "codex-hepta-agent-protocol",
+        "codex-hepta-matrix-protocol"
+      ],
+      "forbiddenDependencies": [
+        "codex-hepta-automation",
+        "codex-hepta-fleet",
+        "codex-state",
+        "sqlx",
+        "codex-hepta-agentd",
+        "codex-hepta-matrixd",
+        "codex-hepta-supervisor"
+      ],
+      "zeroDebtRequiredByPackage": "P0.7e.E2"
+    },
+    {
+      "id": "DEP-BINARY-01",
+      "description": "A binary composition package must not depend on another binary implementation package.",
+      "from": [
+        "codex-cli",
+        "codex-hepta-agentd",
+        "codex-hepta-matrixd",
+        "codex-hepta-supervisor"
+      ],
+      "forbiddenDependencies": [
+        "codex-cli",
+        "codex-hepta-agentd",
+        "codex-hepta-matrixd",
+        "codex-hepta-supervisor"
+      ],
+      "zeroDebtRequiredByPackage": "P0.7e.E3"
+    },
+    {
+      "id": "DEP-PRODUCT-ROOT-01",
+      "description": "Codex and Hepta require distinct main composition roots.",
+      "forbiddenSourcePatterns": [
+        {
+          "path": "codex-rs/cli/src/hepta.rs",
+          "regex": "include!\\(\\s*\"main\\.rs\"\\s*\\)"
+        }
+      ],
+      "zeroDebtRequiredByPackage": "P0.7e.E3"
+    },
+    {
+      "id": "DEP-PRODUCTION-SHADOW-01",
+      "description": "Production writer packages must not depend on shadow qualification or test signer packages.",
+      "from": [
+        "codex-hepta-memory"
+      ],
+      "forbiddenDependencies": [
+        "codex-hepta-shadow-qualification"
+      ],
+      "zeroDebtRequiredByPackage": "P0.7c.C8"
+    }
+  ],
+  "baselineDebts": [
+    {
+      "id": "DEBT-APP-SERVER-HEPTA-EVIDENCE",
+      "rule": "DEP-CODEX-HEPTA-01",
+      "edge": [
+        "codex-app-server",
+        "codex-hepta-evidence"
+      ],
+      "owner": "P0.7e.E1",
+      "replacement": "generic EvidenceReadPort plus Hepta adapter",
+      "state": "open"
+    },
+    {
+      "id": "DEBT-APP-SERVER-HEPTA-GOVERNANCE",
+      "rule": "DEP-CODEX-HEPTA-01",
+      "edge": [
+        "codex-app-server",
+        "codex-hepta-governance"
+      ],
+      "owner": "P0.7e.E1",
+      "replacement": "generic GovernanceDecisionPort plus Hepta adapter",
+      "state": "open"
+    },
+    {
+      "id": "DEBT-APP-SERVER-HEPTA-MEMORY",
+      "rule": "DEP-CODEX-HEPTA-01",
+      "edge": [
+        "codex-app-server",
+        "codex-hepta-memory"
+      ],
+      "owner": "P0.7e.E1",
+      "replacement": "generic MemoryContextPort plus Hepta adapter",
+      "state": "open"
+    },
+    {
+      "id": "DEBT-APP-SERVER-HEPTA-MEMORY-EXTENSION",
+      "rule": "DEP-CODEX-HEPTA-01",
+      "edge": [
+        "codex-app-server",
+        "codex-hepta-memory-extension"
+      ],
+      "owner": "P0.7e.E1",
+      "replacement": "generic LifecycleHookPort plus Hepta adapter",
+      "state": "open"
+    },
+    {
+      "id": "DEBT-AGENT-WIRE-AUTOMATION",
+      "rule": "DEP-WIRE-01",
+      "edge": [
+        "codex-hepta-agent-protocol",
+        "codex-hepta-automation"
+      ],
+      "owner": "P0.7e.E2",
+      "replacement": "wire-local Automation DTOs and mapping adapter",
+      "state": "open"
+    },
+    {
+      "id": "DEBT-AGENT-WIRE-FLEET",
+      "rule": "DEP-WIRE-01",
+      "edge": [
+        "codex-hepta-agent-protocol",
+        "codex-hepta-fleet"
+      ],
+      "owner": "P0.7e.E2",
+      "replacement": "wire-local lifecycle DTO and mapping adapter",
+      "state": "open"
+    },
+    {
+      "id": "DEBT-MATRIXD-AGENTD",
+      "rule": "DEP-BINARY-01",
+      "edge": [
+        "codex-hepta-matrixd",
+        "codex-hepta-agentd"
+      ],
+      "owner": "P0.7e.E3",
+      "replacement": "AgentIngressPort client crate",
+      "state": "open"
+    },
+    {
+      "id": "DEBT-HEPTA-INCLUDES-CODEX-MAIN",
+      "rule": "DEP-PRODUCT-ROOT-01",
+      "path": "codex-rs/cli/src/hepta.rs",
+      "owner": "P0.7e.E3",
+      "replacement": "dedicated hepta composition root",
+      "state": "open"
+    },
+    {
+      "id": "DEBT-CODEX-CLI-HEPTA-GATEWAY",
+      "rule": "DEP-CODEX-HEPTA-01",
+      "edge": [
+        "codex-cli",
+        "codex-hepta-native-gateway"
+      ],
+      "owner": "P0.7e.E3",
+      "replacement": "dedicated Hepta composition root; generic Codex CLI no longer links Hepta gateway",
+      "state": "open"
+    }
+  ],
+  "enforcement": {
+    "unknownDependencyDebtFails": true,
+    "changedDebtFails": true,
+    "closedDebtMustDisappear": true,
+    "zeroDebtRequiredForSourceCompletion": true
+  },
+  "authority": {
+    "runtime": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "externalEffect": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

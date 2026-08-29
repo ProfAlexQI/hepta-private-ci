@@ -1,0 +1,192 @@
+{
+  "schema": "hepta.qualification-status.v4",
+  "schemaVersion": 4,
+  "claimLevel": "source_execution_in_progress_unqualified",
+  "subject": {
+    "repository": "ProfHepta/hepta-private-ci",
+    "parentPullRequest": 79,
+    "parentBranch": "codex/hepta-architecture-v4-p0-7a-closure-20260830",
+    "parentCommit": "b1bdd44ee6cbedbcc249150968448e25f5ce859c",
+    "parentTree": "14f6db9aeb747aa0c3c468799d945a83a661e1d1",
+    "sourceBranch": "codex/architecture-v2-blocker-closure-20260830",
+    "sourceCommit": "resolved_by_exact_head_workflow",
+    "sourceTree": "resolved_by_exact_head_workflow",
+    "mergeCandidate": "resolved_by_pull_request_workflow"
+  },
+  "sourceClosure": {
+    "state": "source_in_progress",
+    "completedTranches": [
+      "p0.5",
+      "p0.6"
+    ],
+    "currentTranches": [
+      "v5_document_authority",
+      "p0.7a_normalization"
+    ],
+    "sourceImplementedPendingExecution": [
+      "A-LOCK-01",
+      "A-TRANSPORT-01",
+      "A-RECOVERY-01"
+    ],
+    "sourceOpen": [
+      "A-SCOPE-01",
+      "P0.7b",
+      "P0.7c",
+      "P0.7d",
+      "P0.7e",
+      "P0.8a",
+      "P0.8b",
+      "P0.8c",
+      "P0.8d"
+    ],
+    "blockedExternal": [
+      "A-CI-01"
+    ]
+  },
+  "qualification": {
+    "v5SourceVerifier": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "dependencyPolicyVerifier": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "lockedMetadata": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "bazelLock": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "format": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "packageTests": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "cargoCheck": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "strictClippy": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "physicalFaultRows": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "exactSourceHead": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "mergeCandidate": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    }
+  },
+  "observedParentExecution": {
+    "state": "not_run",
+    "parentHead": "b1bdd44ee6cbedbcc249150968448e25f5ce859c",
+    "runs": [
+      {
+        "name": "Hepta V4 architecture plan",
+        "runId": 33268712970,
+        "rawState": "queued"
+      },
+      {
+        "name": "Hepta P0.7a runtime bootstrap",
+        "runId": 33268712986,
+        "rawState": "queued",
+        "jobs": [
+          {
+            "jobId": 99143487170,
+            "name": "P0.7a committed lock coherence",
+            "runnerId": 0,
+            "steps": []
+          },
+          {
+            "jobId": 99143487291,
+            "name": "P0.7a source qualification",
+            "runnerId": 0,
+            "steps": []
+          }
+        ]
+      }
+    ],
+    "qualificationClaim": "not_run"
+  },
+  "externalDecisions": {
+    "liveRepositoryRuleset": {
+      "state": "not_issued",
+      "receipt": null
+    },
+    "independentCodeOwnerReview": {
+      "state": "not_issued",
+      "receipt": null
+    },
+    "operatorAcceptance": {
+      "state": "not_issued",
+      "receipt": null
+    },
+    "promotion": {
+      "state": "not_issued",
+      "receipt": null
+    },
+    "release": {
+      "state": "not_issued",
+      "receipt": null
+    }
+  },
+  "authorityBoundary": {
+    "runtime": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
