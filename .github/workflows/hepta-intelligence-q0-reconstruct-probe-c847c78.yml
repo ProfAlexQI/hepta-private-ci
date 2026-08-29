@@ -1,0 +1,67 @@
+name: Hepta Intelligence Q0 reconstruction probe c847c78
+
+on:
+  push:
+    branches:
+      - qualification/hepta-intelligence-q0-reconstruct-probe-c847c78-20260829
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-q0-reconstruct-probe-c847c78
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: Prove deterministic reconstruction on exact source
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout probe wrapper
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify wrapper-only commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "c847c7883f5941052f7f3161683551a3db8b9113"
+          test "$(git diff --name-only HEAD^..HEAD)" = ".github/workflows/hepta-intelligence-q0-reconstruct-probe-c847c78.yml"
+
+      - name: Materialize exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout --detach c847c7883f5941052f7f3161683551a3db8b9113
+          python3 -m py_compile \
+            .github/scripts/hepta-intelligence-q0-reconstruct-v7.py \
+            .github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py
+          python3 .github/scripts/hepta-intelligence-q0-reconstruct-v7.py
+          git diff --check
+          git diff --name-only | sort | tee /tmp/reconstruction-paths.txt
+          test -s /tmp/reconstruction-paths.txt
+
+      - name: Prove reconstruction is idempotent
+        shell: bash
+        run: |
+          set -euo pipefail
+          first_digest="$(git diff --binary | sha256sum | awk '{print $1}')"
+          python3 .github/scripts/hepta-intelligence-q0-reconstruct-v7.py
+          second_digest="$(git diff --binary | sha256sum | awk '{print $1}')"
+          test "$first_digest" = "$second_digest"
+          printf '%s\n' "$first_digest" | tee /tmp/reconstruction-digest.txt
+
+      - name: Upload probe evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: q0-reconstruction-probe-c847c78
+          path: |
+            /tmp/reconstruction-paths.txt
+            /tmp/reconstruction-digest.txt
+          if-no-files-found: warn
+          retention-days: 7
