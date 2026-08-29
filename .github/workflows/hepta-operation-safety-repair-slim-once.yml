@@ -61,12 +61,12 @@ jobs:
       - run: test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
         with:
-          toolchain: 1.95.0
           components: rustfmt, clippy
       - run: python3 scripts/hepta-operation-safety-repair.py
       - working-directory: codex-rs
         run: |
           set -euo pipefail
+          cargo fmt -p codex-hepta-contracts
           cargo fmt -p codex-hepta-contracts -- --check
           cargo test --locked -p codex-hepta-contracts provider_operation::tests -- --nocapture
           cargo test --locked -p codex-hepta-contracts --test cross_owner_fault_matrix -- --nocapture
@@ -85,12 +85,12 @@ jobs:
       - run: test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
         with:
-          toolchain: 1.95.0
           components: rustfmt, clippy
       - run: python3 scripts/hepta-operation-safety-repair.py
       - working-directory: codex-rs
         run: |
           set -euo pipefail
+          cargo fmt -p codex-hepta-matrix-store
           cargo fmt -p codex-hepta-matrix-store -- --check
           cargo test --locked -p codex-hepta-matrix-store operation::tests -- --nocapture
           cargo test --locked -p codex-hepta-matrix-store --test sqlite_full -- --nocapture
@@ -109,12 +109,12 @@ jobs:
       - run: test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
         with:
-          toolchain: 1.95.0
           components: rustfmt, clippy
       - run: python3 scripts/hepta-operation-safety-repair.py
       - working-directory: codex-rs
         run: |
           set -euo pipefail
+          cargo fmt -p codex-hepta-automation
           cargo fmt -p codex-hepta-automation -- --check
           cargo test --locked -p codex-hepta-automation --lib -- --nocapture
           cargo clippy --locked -p codex-hepta-automation --all-targets -- -D warnings
@@ -132,12 +132,12 @@ jobs:
       - run: test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
         with:
-          toolchain: 1.95.0
           components: rustfmt, clippy
       - run: python3 scripts/hepta-operation-safety-repair.py
       - working-directory: codex-rs
         run: |
           set -euo pipefail
+          cargo fmt -p codex-hepta-agentd -p codex-hepta-matrixd
           cargo fmt -p codex-hepta-agentd -p codex-hepta-matrixd -- --check
           cargo check --locked -p codex-hepta-agentd -p codex-hepta-matrixd
           cargo clippy --locked -p codex-hepta-agentd -p codex-hepta-matrixd --all-targets -- -D warnings
@@ -171,7 +171,6 @@ jobs:
           git diff --cached --exit-code
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
         with:
-          toolchain: 1.95.0
           components: rustfmt
       - run: python3 scripts/hepta-operation-safety-repair.py
       - working-directory: codex-rs
