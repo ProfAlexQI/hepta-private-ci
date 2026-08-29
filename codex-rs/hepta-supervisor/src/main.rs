@@ -64,9 +64,7 @@ fn parse_options() -> anyhow::Result<Options> {
             Some("--runtime-bootstrap-key-fd") if runtime_bootstrap_key_fd.is_none() => {
                 runtime_bootstrap_key_fd = Some(value)
             }
-            Some("--runtime-bootstrap-signer-id")
-                if runtime_bootstrap_signer_id.is_none() =>
-            {
+            Some("--runtime-bootstrap-signer-id") if runtime_bootstrap_signer_id.is_none() => {
                 runtime_bootstrap_signer_id = Some(value)
             }
             Some("--runtime-bootstrap-signer-epoch")

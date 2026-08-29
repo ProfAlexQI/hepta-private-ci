@@ -57,12 +57,7 @@ fn fixture(install_provenance: bool, install_trust: bool) -> Fixture {
         .expect("allow release");
     if install_provenance {
         registry
-            .install_runtime_release_provenance(
-                &agent_id,
-                &release_id,
-                SOURCE_COMMIT,
-                SOURCE_TREE,
-            )
+            .install_runtime_release_provenance(&agent_id, &release_id, SOURCE_COMMIT, SOURCE_TREE)
             .expect("install provenance");
     }
     let starting = registry
@@ -124,33 +119,40 @@ fn issuer_publishes_reservation_then_signed_handoff_for_exact_generation() {
     assert!(!claim_path.exists());
     assert_owner_bound_single_link_read_only(&fixture.spec.run_root, &reservation_path);
     assert_owner_bound_single_link_read_only(&fixture.spec.run_root, &document_path);
-    let on_disk = RuntimeBootstrapDocument::decode(
-        &std::fs::read(document_path).expect("read handoff"),
-    )
-    .expect("decode handoff");
+    let on_disk =
+        RuntimeBootstrapDocument::decode(&std::fs::read(document_path).expect("read handoff"))
+            .expect("decode handoff");
     assert_eq!(on_disk, document);
     assert_eq!(document.envelope.release_id(), "release-v1");
     assert_eq!(document.envelope.source_commit(), SOURCE_COMMIT);
     assert_eq!(document.envelope.source_tree(), SOURCE_TREE);
     assert_eq!(document.envelope.generation(), generation);
-    assert!(fixture
-        .issuer
-        .prepare_spawn(&fixture.registry, &fixture.spec, 101)
-        .is_err());
+    assert!(
+        fixture
+            .issuer
+            .prepare_spawn(&fixture.registry, &fixture.spec, 101)
+            .is_err()
+    );
 }
 
 #[test]
 fn missing_provenance_or_trust_root_fails_before_handoff_publication() {
     for fixture in [fixture(false, true), fixture(true, false)] {
-        assert!(fixture
-            .issuer
-            .prepare_spawn(&fixture.registry, &fixture.spec, 100)
-            .is_err());
-        assert!(!fixture
-            .spec
-            .run_root
-            .join(runtime_bootstrap_document_file_name(fixture.spec.generation))
-            .exists());
+        assert!(
+            fixture
+                .issuer
+                .prepare_spawn(&fixture.registry, &fixture.spec, 100)
+                .is_err()
+        );
+        assert!(
+            !fixture
+                .spec
+                .run_root
+                .join(runtime_bootstrap_document_file_name(
+                    fixture.spec.generation
+                ))
+                .exists()
+        );
     }
 }
 
@@ -160,21 +162,29 @@ fn partial_reservation_is_retained_and_blocks_reinterpretation() {
     let reservation_path = fixture
         .spec
         .run_root
-        .join(runtime_bootstrap_reservation_file_name(fixture.spec.generation));
+        .join(runtime_bootstrap_reservation_file_name(
+            fixture.spec.generation,
+        ));
     std::fs::write(&reservation_path, b"partial\n").expect("write partial reservation");
-    assert!(fixture
-        .issuer
-        .prepare_spawn(&fixture.registry, &fixture.spec, 100)
-        .is_err());
+    assert!(
+        fixture
+            .issuer
+            .prepare_spawn(&fixture.registry, &fixture.spec, 100)
+            .is_err()
+    );
     assert_eq!(
         std::fs::read(&reservation_path).expect("read retained reservation"),
         b"partial\n"
     );
-    assert!(!fixture
-        .spec
-        .run_root
-        .join(runtime_bootstrap_document_file_name(fixture.spec.generation))
-        .exists());
+    assert!(
+        !fixture
+            .spec
+            .run_root
+            .join(runtime_bootstrap_document_file_name(
+                fixture.spec.generation
+            ))
+            .exists()
+    );
 }
 
 #[cfg(unix)]
@@ -186,25 +196,35 @@ fn broken_symlink_state_blocks_reservation_and_document_publication() {
     let document_path = fixture
         .spec
         .run_root
-        .join(runtime_bootstrap_document_file_name(fixture.spec.generation));
+        .join(runtime_bootstrap_document_file_name(
+            fixture.spec.generation,
+        ));
     symlink(
         fixture.spec.run_root.join("missing-bootstrap-target"),
         &document_path,
     )
     .expect("install broken symlink");
-    assert!(fixture
-        .issuer
-        .prepare_spawn(&fixture.registry, &fixture.spec, 100)
-        .is_err());
-    assert!(std::fs::symlink_metadata(&document_path)
-        .expect("symlink retained")
-        .file_type()
-        .is_symlink());
-    assert!(!fixture
-        .spec
-        .run_root
-        .join(runtime_bootstrap_reservation_file_name(fixture.spec.generation))
-        .exists());
+    assert!(
+        fixture
+            .issuer
+            .prepare_spawn(&fixture.registry, &fixture.spec, 100)
+            .is_err()
+    );
+    assert!(
+        std::fs::symlink_metadata(&document_path)
+            .expect("symlink retained")
+            .file_type()
+            .is_symlink()
+    );
+    assert!(
+        !fixture
+            .spec
+            .run_root
+            .join(runtime_bootstrap_reservation_file_name(
+                fixture.spec.generation
+            ))
+            .exists()
+    );
 }
 
 #[cfg(unix)]
@@ -223,8 +243,10 @@ fn assert_owner_bound_single_link_read_only(parent: &std::path::Path, path: &std
 
 #[cfg(not(unix))]
 fn assert_owner_bound_single_link_read_only(_parent: &std::path::Path, path: &std::path::Path) {
-    assert!(std::fs::metadata(path)
-        .expect("object metadata")
-        .permissions()
-        .readonly());
+    assert!(
+        std::fs::metadata(path)
+            .expect("object metadata")
+            .permissions()
+            .readonly()
+    );
 }

@@ -118,8 +118,10 @@ where
         &mut self,
         intent: ProviderEffectIntent,
         observed_at_unix_seconds: u64,
-    ) -> Result<provider_operation::ProviderOperationDispatchReceipt, provider_operation::ProviderOperationError>
-    {
+    ) -> Result<
+        provider_operation::ProviderOperationDispatchReceipt,
+        provider_operation::ProviderOperationError,
+    > {
         self.verify_now(observed_at_unix_seconds)?;
         self.inner
             .dispatch_once(intent, observed_at_unix_seconds)
@@ -131,8 +133,10 @@ where
         intent: ProviderEffectIntent,
         wire_payload: &[u8],
         observed_at_unix_seconds: u64,
-    ) -> Result<provider_operation::ProviderOperationDispatchReceipt, provider_operation::ProviderOperationError>
-    {
+    ) -> Result<
+        provider_operation::ProviderOperationDispatchReceipt,
+        provider_operation::ProviderOperationError,
+    > {
         self.verify_now(observed_at_unix_seconds)?;
         self.inner
             .dispatch_once_with_payload(intent, wire_payload, observed_at_unix_seconds)

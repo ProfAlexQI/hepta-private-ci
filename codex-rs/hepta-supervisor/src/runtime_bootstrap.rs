@@ -124,12 +124,9 @@ impl RuntimeBootstrapIssuer {
             .map_err(|error| ProcessDriverError::new(error.to_string()))?;
         let graph = ProductGraph::agent_local(&authority)
             .map_err(|error| ProcessDriverError::new(error.to_string()))?;
-        let launch = RuntimeLaunchBinding::for_starting(
-            &record,
-            release.release_id.clone(),
-            &authority,
-        )
-        .map_err(|error| ProcessDriverError::new(error.to_string()))?;
+        let launch =
+            RuntimeLaunchBinding::for_starting(&record, release.release_id.clone(), &authority)
+                .map_err(|error| ProcessDriverError::new(error.to_string()))?;
         let expires_at_unix_seconds = issued_at_unix_seconds
             .checked_add(self.lifetime_seconds)
             .ok_or_else(|| ProcessDriverError::new("runtime bootstrap expiry overflow"))?;
@@ -153,10 +150,7 @@ impl RuntimeBootstrapIssuer {
             authority_epoch: launch.runtime_authority().authority_epoch(),
             owner_epoch: launch.runtime_authority().owner_epoch(),
             generation: launch.runtime_authority().generation(),
-            fencing_token_sha256: launch
-                .runtime_authority()
-                .fencing_token_sha256()
-                .clone(),
+            fencing_token_sha256: launch.runtime_authority().fencing_token_sha256().clone(),
             signer_key_id: self.trust_root.signer_key_id().to_string(),
             signer_epoch: self.trust_root.signer_epoch(),
             issued_at_unix_seconds,
@@ -211,12 +205,9 @@ pub fn prepare_runtime_bootstrap_for_spawn(
         return issuer.prepare_spawn(registry, spec, now).map(Some);
     }
 
-    let allowed = allowed_runtime_release_for_program(
-        registry,
-        &spec.agent_id,
-        &spec.command.program,
-    )
-    .map_err(|error| ProcessDriverError::new(error.to_string()))?;
+    let allowed =
+        allowed_runtime_release_for_program(registry, &spec.agent_id, &spec.command.program)
+            .map_err(|error| ProcessDriverError::new(error.to_string()))?;
     let Some(allowed) = allowed else {
         return Ok(None);
     };

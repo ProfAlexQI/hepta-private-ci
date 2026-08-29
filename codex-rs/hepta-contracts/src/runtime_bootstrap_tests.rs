@@ -178,11 +178,7 @@ fn invalid_signature_and_time_windows_fail_closed() {
 fn strict_decode_rejects_unknown_and_duplicate_fields() {
     let bytes = document().encode().expect("encode");
     let source = String::from_utf8(bytes).expect("utf8");
-    let unknown = source.replacen(
-        "\"envelope\":{",
-        "\"envelope\":{\"unexpected\":true,",
-        1,
-    );
+    let unknown = source.replacen("\"envelope\":{", "\"envelope\":{\"unexpected\":true,", 1);
     assert!(RuntimeBootstrapDocument::decode(unknown.as_bytes()).is_err());
 
     let duplicate = source.replacen(
@@ -196,13 +192,15 @@ fn strict_decode_rejects_unknown_and_duplicate_fields() {
 #[test]
 fn noncanonical_signature_and_git_identity_are_rejected() {
     let envelope = envelope();
-    assert!(RuntimeBootstrapSignature::new(
-        envelope.signer_key_id(),
-        envelope.signer_epoch(),
-        envelope.digest(),
-        "not-base64"
-    )
-    .is_err());
+    assert!(
+        RuntimeBootstrapSignature::new(
+            envelope.signer_key_id(),
+            envelope.signer_epoch(),
+            envelope.digest(),
+            "not-base64"
+        )
+        .is_err()
+    );
 
     let mut fields = RuntimeBootstrapEnvelopeFields {
         subject_agent_id: AgentId::parse(AGENT_ID).expect("agent id"),

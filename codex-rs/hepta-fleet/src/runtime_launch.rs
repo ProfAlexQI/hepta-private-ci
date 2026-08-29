@@ -44,7 +44,9 @@ impl fmt::Display for RuntimeLaunchBindingError {
             Self::ReleaseEpochOverflow => {
                 formatter.write_str("runtime launch release authority epoch overflowed")
             }
-            Self::Authority(reason) => write!(formatter, "runtime launch authority failed: {reason}"),
+            Self::Authority(reason) => {
+                write!(formatter, "runtime launch authority failed: {reason}")
+            }
         }
     }
 }
@@ -65,7 +67,8 @@ impl RuntimeLaunchBinding {
         {
             return Err(RuntimeLaunchBindingError::AgentMismatch);
         }
-        if authority.generation() != record.lifecycle.generation || record.lifecycle.generation == 0 {
+        if authority.generation() != record.lifecycle.generation || record.lifecycle.generation == 0
+        {
             return Err(RuntimeLaunchBindingError::GenerationMismatch);
         }
         authority
@@ -139,7 +142,10 @@ fn runtime_fencing_token(
     frame(&mut bytes, release_id.as_str().as_bytes());
     frame(&mut bytes, &record.lifecycle.schema_version.to_be_bytes());
     frame(&mut bytes, &record.lifecycle.generation.to_be_bytes());
-    frame(&mut bytes, lifecycle_name(record.lifecycle.lifecycle).as_bytes());
+    frame(
+        &mut bytes,
+        lifecycle_name(record.lifecycle.lifecycle).as_bytes(),
+    );
     frame(
         &mut bytes,
         &record.release_state.schema_version.to_be_bytes(),

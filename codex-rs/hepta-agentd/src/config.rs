@@ -122,12 +122,8 @@ impl AgentdConfig {
             .duration_since(UNIX_EPOCH)
             .map_err(|_| AgentdError::Invalid("system clock is before the Unix epoch".to_string()))?
             .as_secs();
-        let runtime_bootstrap = consume_runtime_bootstrap(
-            &registry,
-            &record,
-            &executable,
-            observed_at_unix_seconds,
-        )?;
+        let runtime_bootstrap =
+            consume_runtime_bootstrap(&registry, &record, &executable, observed_at_unix_seconds)?;
 
         let writer_lock = OpenOptions::new()
             .create(true)

@@ -480,12 +480,7 @@ pub(super) async fn shutdown_session_runtime_excluding(
     sess: &Arc<Session>,
     excluded_terminalization: Option<&std::sync::Arc<()>>,
 ) {
-    shutdown_session_runtime_excluding_with_suspension(
-        sess,
-        excluded_terminalization,
-        None,
-    )
-    .await;
+    shutdown_session_runtime_excluding_with_suspension(sess, excluded_terminalization, None).await;
 }
 
 pub(super) async fn shutdown_session_runtime_excluding_with_suspension(
@@ -505,8 +500,7 @@ pub(super) async fn shutdown_session_runtime_excluding_with_suspension(
         excluded_suspension,
     )
     .await;
-    sess
-        .drain_task_terminalizations_for_shutdown_except(excluded_terminalization)
+    sess.drain_task_terminalizations_for_shutdown_except(excluded_terminalization)
         .await;
     sess.hooks().shutdown().await;
     sess.async_hook_results.close();

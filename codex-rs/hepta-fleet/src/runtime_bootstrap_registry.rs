@@ -96,8 +96,7 @@ impl FleetRegistry {
         trust_root
             .validate()
             .map_err(|error| FleetRegistryError::Corrupt(error.to_string()))?;
-        if trust_root.signer_key_id() != signer_key_id
-            || trust_root.signer_epoch() != signer_epoch
+        if trust_root.signer_key_id() != signer_key_id || trust_root.signer_epoch() != signer_epoch
         {
             return Err(FleetRegistryError::Corrupt(
                 "runtime bootstrap trust-root selector mismatch".to_string(),
@@ -246,10 +245,7 @@ fn validate_git_oid(value: &str, label: &str) -> Result<(), FleetRegistryError> 
     Ok(())
 }
 
-fn publish_immutable_json<T: Serialize>(
-    path: &Path,
-    value: &T,
-) -> Result<(), FleetRegistryError> {
+fn publish_immutable_json<T: Serialize>(path: &Path, value: &T) -> Result<(), FleetRegistryError> {
     let parent = path.parent().ok_or_else(|| {
         FleetRegistryError::Invalid("runtime bootstrap registry path has no parent".to_string())
     })?;

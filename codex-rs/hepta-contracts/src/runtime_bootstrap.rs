@@ -35,9 +35,14 @@ impl fmt::Display for RuntimeBootstrapError {
         match self {
             Self::Invalid(reason) => write!(formatter, "invalid runtime bootstrap: {reason}"),
             Self::InvalidOwned(reason) => write!(formatter, "invalid runtime bootstrap: {reason}"),
-            Self::Binding(field) => write!(formatter, "runtime bootstrap binding mismatch: {field}"),
+            Self::Binding(field) => {
+                write!(formatter, "runtime bootstrap binding mismatch: {field}")
+            }
             Self::NotYetValid { not_before } => {
-                write!(formatter, "runtime bootstrap is not valid before {not_before}")
+                write!(
+                    formatter,
+                    "runtime bootstrap is not valid before {not_before}"
+                )
             }
             Self::Expired { expires_at } => {
                 write!(formatter, "runtime bootstrap expired at {expires_at}")
@@ -160,7 +165,9 @@ impl RuntimeBootstrapEnvelope {
         )?;
         let expected_id = format!("runtime-bootstrap:v1:{}", self.nonce_sha256.as_str());
         if self.bootstrap_id != expected_id {
-            return Err(RuntimeBootstrapError::Invalid("bootstrap id drifted from nonce"));
+            return Err(RuntimeBootstrapError::Invalid(
+                "bootstrap id drifted from nonce",
+            ));
         }
         Ok(())
     }
@@ -295,7 +302,9 @@ impl RuntimeBootstrapSignature {
 
     fn validate(&self) -> Result<(), RuntimeBootstrapError> {
         if self.algorithm != RUNTIME_BOOTSTRAP_SIGNATURE_ALGORITHM || self.signer_epoch == 0 {
-            return Err(RuntimeBootstrapError::Invalid("signature metadata is invalid"));
+            return Err(RuntimeBootstrapError::Invalid(
+                "signature metadata is invalid",
+            ));
         }
         validate_identifier(&self.signer_key_id, "signature signer key id", 128)?;
         canonical_base64(&self.signature_base64, 64, "signature")?;
@@ -319,14 +328,19 @@ impl RuntimeBootstrapDocument {
         envelope: RuntimeBootstrapEnvelope,
         signature: RuntimeBootstrapSignature,
     ) -> Result<Self, RuntimeBootstrapError> {
-        let document = Self { envelope, signature };
+        let document = Self {
+            envelope,
+            signature,
+        };
         document.validate_shape()?;
         Ok(document)
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self, RuntimeBootstrapError> {
         if bytes.is_empty() || bytes.len() as u64 > RUNTIME_BOOTSTRAP_MAX_DOCUMENT_BYTES {
-            return Err(RuntimeBootstrapError::Invalid("document size is out of bounds"));
+            return Err(RuntimeBootstrapError::Invalid(
+                "document size is out of bounds",
+            ));
         }
         let document: Self = serde_json::from_slice(bytes)
             .map_err(|error| RuntimeBootstrapError::Decode(error.to_string()))?;
@@ -340,7 +354,9 @@ impl RuntimeBootstrapDocument {
             .map_err(|error| RuntimeBootstrapError::Decode(error.to_string()))?;
         bytes.push(b'\n');
         if bytes.len() as u64 > RUNTIME_BOOTSTRAP_MAX_DOCUMENT_BYTES {
-            return Err(RuntimeBootstrapError::Invalid("encoded document exceeds bound"));
+            return Err(RuntimeBootstrapError::Invalid(
+                "encoded document exceeds bound",
+            ));
         }
         Ok(bytes)
     }
@@ -481,7 +497,9 @@ impl RuntimeBootstrapTrustRoot {
             || self.algorithm != RUNTIME_BOOTSTRAP_SIGNATURE_ALGORITHM
             || self.signer_epoch == 0
         {
-            return Err(RuntimeBootstrapError::Invalid("trust root metadata is invalid"));
+            return Err(RuntimeBootstrapError::Invalid(
+                "trust root metadata is invalid",
+            ));
         }
         validate_identifier(&self.signer_key_id, "trust signer key id", 128)?;
         let bytes = canonical_base64(&self.public_key_base64, 32, "public key")?;
@@ -539,12 +557,16 @@ impl Ed25519RuntimeBootstrapVerifier {
         let signer_key_id = signer_key_id.into();
         validate_identifier(&signer_key_id, "verifier signer key id", 128)?;
         if signer_epoch == 0 {
-            return Err(RuntimeBootstrapError::Invalid("verifier epoch must be non-zero"));
+            return Err(RuntimeBootstrapError::Invalid(
+                "verifier epoch must be non-zero",
+            ));
         }
         let verifying_key = VerifyingKey::from_bytes(&public_key)
             .map_err(|_| RuntimeBootstrapError::Invalid("verifier public key is malformed"))?;
         if verifying_key.is_weak() {
-            return Err(RuntimeBootstrapError::Invalid("verifier public key is weak"));
+            return Err(RuntimeBootstrapError::Invalid(
+                "verifier public key is weak",
+            ));
         }
         Ok(Self {
             signer_key_id,
@@ -588,9 +610,7 @@ pub struct RuntimeBootstrapReservation {
 }
 
 impl RuntimeBootstrapReservation {
-    pub fn new(
-        document: &RuntimeBootstrapDocument,
-    ) -> Result<Self, RuntimeBootstrapError> {
+    pub fn new(document: &RuntimeBootstrapDocument) -> Result<Self, RuntimeBootstrapError> {
         document.validate_shape()?;
         Ok(Self {
             schema_version: RUNTIME_BOOTSTRAP_RESERVATION_SCHEMA_VERSION,
@@ -605,7 +625,9 @@ impl RuntimeBootstrapReservation {
         if self.schema_version != RUNTIME_BOOTSTRAP_RESERVATION_SCHEMA_VERSION
             || self.generation == 0
         {
-            return Err(RuntimeBootstrapError::Invalid("reservation metadata is invalid"));
+            return Err(RuntimeBootstrapError::Invalid(
+                "reservation metadata is invalid",
+            ));
         }
         Ok(())
     }
@@ -652,12 +674,20 @@ fn compare_expectation(
     Ok(())
 }
 
-fn validate_window(issued_at: u64, not_before: u64, expires_at: u64) -> Result<(), RuntimeBootstrapError> {
+fn validate_window(
+    issued_at: u64,
+    not_before: u64,
+    expires_at: u64,
+) -> Result<(), RuntimeBootstrapError> {
     if issued_at > not_before || not_before >= expires_at {
-        return Err(RuntimeBootstrapError::Invalid("validity window ordering is invalid"));
+        return Err(RuntimeBootstrapError::Invalid(
+            "validity window ordering is invalid",
+        ));
     }
     if expires_at - not_before > RUNTIME_BOOTSTRAP_MAX_LIFETIME_SECONDS {
-        return Err(RuntimeBootstrapError::Invalid("validity window exceeds maximum"));
+        return Err(RuntimeBootstrapError::Invalid(
+            "validity window exceeds maximum",
+        ));
     }
     Ok(())
 }
