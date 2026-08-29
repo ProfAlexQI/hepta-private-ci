@@ -43,10 +43,12 @@ jobs:
           expected_source=$'.github/workflows/hepta-p0-7a-direct-arm.yml\n.github/workflows/hepta-runtime-bootstrap-p0-7a.yml\ncodex-rs/hepta-contracts/src/runtime_bootstrap_tests.rs'
           test "$(git diff --name-only "$BASE" "$SOURCE")" = "$expected_source"
           git checkout --detach "$BASE"
-          git checkout "$SOURCE" -- \
+          git checkout "$SOURCE" -- codex-rs/hepta-contracts/src/runtime_bootstrap_tests.rs
+          git checkout "$TARGET_HEAD" -- \
             .github/workflows/hepta-p0-7a-direct-arm.yml \
-            .github/workflows/hepta-runtime-bootstrap-p0-7a.yml \
-            codex-rs/hepta-contracts/src/runtime_bootstrap_tests.rs
+            .github/workflows/hepta-runtime-bootstrap-p0-7a.yml
+          test "$(git hash-object .github/workflows/hepta-p0-7a-direct-arm.yml)" = d2f3539c17e477abb31e736ff05ebea7adb8984a
+          test "$(git hash-object .github/workflows/hepta-runtime-bootstrap-p0-7a.yml)" = 3d3e935bd332d84e4edb7a9858e0daaca9cc9a03
           test "$(git hash-object codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs)" = 74abd3aa3ece1fc63f36a09acfe719b5a6f9528f
           test "$(git hash-object scripts/verify-hepta-p0-7a-format.py)" = 60ea9815f20194818fb1e3e7409104287f37d580
           cp "$RUNNER_TEMP/agentd-lib.rs" codex-rs/hepta-agentd/src/lib.rs
@@ -83,7 +85,7 @@ jobs:
 
       - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
         with:
-          tool: cargo-nextest@0.9.143
+          tool: nextest@0.9.143
 
       - name: Qualify and atomically update PR 83
         shell: bash
@@ -108,7 +110,13 @@ jobs:
           test -z "$(git ls-files --others --exclude-standard)"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ${expected//$'\n'/ }
+          git add -- \
+            .github/workflows/hepta-p0-7a-direct-arm.yml \
+            .github/workflows/hepta-runtime-bootstrap-p0-7a.yml \
+            codex-rs/hepta-agentd/src/lib.rs \
+            codex-rs/hepta-contracts/src/runtime_bootstrap_tests.rs \
+            codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs \
+            scripts/verify-hepta-p0-7a-format.py
           git commit -m "fix(hepta): close P0.7a executable source blockers"
           test "$(git rev-parse HEAD^)" = "$BASE"
           test -z "$(git status --porcelain=v1 --untracked-files=normal)"
