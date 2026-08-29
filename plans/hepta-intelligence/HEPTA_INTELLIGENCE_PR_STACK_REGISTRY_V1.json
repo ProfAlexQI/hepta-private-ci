@@ -1,0 +1,274 @@
+{
+  "as_of_utc": "2026-08-29T14:20:00Z",
+  "authority": {
+    "callers_ratchet": false,
+    "default_open_wired": false,
+    "external_effects": false,
+    "learning_write_authority": false,
+    "memory_write_authority": false,
+    "model_runtime_authority": false,
+    "operator_acceptance": false,
+    "outbox_dispatch_authority": false,
+    "product_module_registered": false,
+    "production_authority": false,
+    "projection_write_authority": false,
+    "promotion": false,
+    "provider_dispatch_authority": false,
+    "release_authority": false,
+    "runtime_wired": false,
+    "tool_registered": false
+  },
+  "canonical_stack": {
+    "candidate_head": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+    "candidate_qualified": true,
+    "candidate_tree": "ca455a9ef797cd95164c880c7b8faba80b305589",
+    "entries": [
+      {
+        "base_branch": "integration/vnext-main-20260811",
+        "base_sha": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+        "canonical_inclusion": true,
+        "draft": true,
+        "head_branch": "codex/hepta-intelligence-grounding-v2-20260828",
+        "head_sha": "10f89cd913b12dcb347a3bae5f290a455f985eb4",
+        "individual_runtime_authority": false,
+        "merged": false,
+        "pr_number": 7,
+        "qualification": {
+          "candidate_head": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+          "run_id": 33252922404,
+          "status": "INCLUDED_IN_QUALIFIED_Q0_OVERLAY_NOT_INDEPENDENTLY_PROMOTED"
+        },
+        "state": "open",
+        "tranche": "P0.1"
+      },
+      {
+        "base_branch": "codex/hepta-intelligence-grounding-v2-20260828",
+        "base_sha": "10f89cd913b12dcb347a3bae5f290a455f985eb4",
+        "canonical_inclusion": true,
+        "draft": true,
+        "head_branch": "codex/hepta-intelligence-grounding-ledger-v2-20260828",
+        "head_sha": "ad0cf81cd820bbb4b8154633c61ea68fb35bf872",
+        "individual_runtime_authority": false,
+        "merged": false,
+        "pr_number": 13,
+        "qualification": {
+          "candidate_head": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+          "run_id": 33252922404,
+          "status": "INCLUDED_IN_QUALIFIED_Q0_OVERLAY_NOT_INDEPENDENTLY_PROMOTED"
+        },
+        "state": "open",
+        "tranche": "P0.2"
+      },
+      {
+        "base_branch": "codex/hepta-intelligence-grounding-ledger-v2-20260828",
+        "base_sha": "ad0cf81cd820bbb4b8154633c61ea68fb35bf872",
+        "canonical_inclusion": true,
+        "draft": true,
+        "head_branch": "codex/hepta-intelligence-grounding-gate-v3-20260828",
+        "head_sha": "256a47d882413ac1f80892a80177419bb5d12c70",
+        "individual_runtime_authority": false,
+        "merged": false,
+        "pr_number": 14,
+        "qualification": {
+          "candidate_head": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+          "run_id": 33252922404,
+          "status": "INCLUDED_IN_QUALIFIED_Q0_OVERLAY_NOT_INDEPENDENTLY_PROMOTED"
+        },
+        "state": "open",
+        "tranche": "P0.3"
+      },
+      {
+        "base_branch": "codex/hepta-intelligence-grounding-gate-v3-20260828",
+        "base_sha": "256a47d882413ac1f80892a80177419bb5d12c70",
+        "canonical_inclusion": true,
+        "draft": true,
+        "head_branch": "codex/hepta-intelligence-mutation-state-machine-v4-20260828",
+        "head_sha": "39c30cc1f07c90c4d5176da05e9bd97e1792bd2a",
+        "individual_runtime_authority": false,
+        "merged": false,
+        "pr_number": 16,
+        "qualification": {
+          "candidate_head": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+          "run_id": 33252922404,
+          "status": "INCLUDED_IN_QUALIFIED_Q0_OVERLAY_NOT_INDEPENDENTLY_PROMOTED"
+        },
+        "state": "open",
+        "tranche": "P0.4a"
+      },
+      {
+        "base_branch": "codex/hepta-intelligence-mutation-state-machine-v4-20260828",
+        "base_sha": "39c30cc1f07c90c4d5176da05e9bd97e1792bd2a",
+        "canonical_inclusion": true,
+        "draft": true,
+        "head_branch": "codex/hepta-intelligence-mutation-journal-v4b-r2-20260828",
+        "head_sha": "a5de899e9f6a97fa0803cc1e73d664be8b7d68bc",
+        "individual_runtime_authority": false,
+        "merged": false,
+        "pr_number": 21,
+        "qualification": {
+          "candidate_head": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+          "run_id": 33252922404,
+          "status": "INCLUDED_IN_QUALIFIED_Q0_OVERLAY_NOT_INDEPENDENTLY_PROMOTED"
+        },
+        "state": "open",
+        "tranche": "P0.4b"
+      },
+      {
+        "base_branch": "codex/hepta-intelligence-mutation-journal-v4b-r2-20260828",
+        "base_sha": "a5de899e9f6a97fa0803cc1e73d664be8b7d68bc",
+        "canonical_inclusion": true,
+        "draft": true,
+        "head_branch": "codex/hepta-intelligence-shadow-host-adapter-v4c-20260828",
+        "head_sha": "7691978b786dd00c69477d1a3355be13db2c4d67",
+        "individual_runtime_authority": false,
+        "merged": false,
+        "pr_number": 23,
+        "qualification": {
+          "candidate_head": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+          "run_id": 33252922404,
+          "status": "INCLUDED_IN_QUALIFIED_Q0_OVERLAY_NOT_INDEPENDENTLY_PROMOTED"
+        },
+        "state": "open",
+        "tranche": "P0.4c"
+      },
+      {
+        "base_branch": "codex/hepta-intelligence-shadow-host-adapter-v4c-20260828",
+        "base_sha": "7691978b786dd00c69477d1a3355be13db2c4d67",
+        "canonical_inclusion": true,
+        "draft": true,
+        "head_branch": "codex/hepta-intelligence-plan-v3-20260828",
+        "head_sha": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+        "individual_runtime_authority": false,
+        "merged": false,
+        "pr_number": 29,
+        "qualification": {
+          "candidate_head": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+          "run_id": 33252922404,
+          "status": "QUALIFIED_AS_EXACT_CONSOLIDATED_Q0_CANDIDATE"
+        },
+        "state": "open",
+        "tranche": "Q0 consolidation"
+      }
+    ],
+    "stack_id": "CANONICAL_Q0_STACK"
+  },
+  "classification": "CANONICAL_REGISTERED_INPUT_NO_MERGE_AUTHORITY",
+  "current_plan_authority": false,
+  "external_unmerged_dependencies": [
+    {
+      "authority": false,
+      "base_branch": "integration/vnext-main-20260811",
+      "base_sha": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+      "canonical": false,
+      "draft": true,
+      "head_branch": "codex/hepta-architecture-convergence-p0-2-20260828",
+      "head_sha": "15f2c212068b29b84124d42c43df1e54cc94d313",
+      "inclusion_policy": "DO_NOT_COPY_OR_ASSUME; SELECT_AND_REQUALIFY_AS_EXPLICIT_UPSTREAM_ONLY",
+      "merged": false,
+      "pr_number": 53,
+      "state": "open",
+      "title": "refactor(hepta): converge authority, ownership, and product graph P0.2"
+    }
+  ],
+  "registry_id": "HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1",
+  "repository": "ProfHepta/hepta-private-ci",
+  "rules": {
+    "candidate_qualification_grants_merge": false,
+    "exact_head_required": true,
+    "open_draft_is_merged": false,
+    "pr_body_is_current_truth": false,
+    "self_merge_allowed": false,
+    "side_stack_auto_promotes": false,
+    "source_head_and_merge_candidate_are_distinct": true
+  },
+  "schema": "hepta_intelligence_pr_stack_registry_v1",
+  "side_stacks": [
+    {
+      "canonical": false,
+      "classification": "QUALIFIED_SIDE_STACK_WITH_UNQUALIFIED_SUCCESSOR",
+      "entries": [
+        {
+          "artifact_id": 9693847531,
+          "base_sha": "256a47d882413ac1f80892a80177419bb5d12c70",
+          "candidate_qualified": true,
+          "head_sha": "fa59bb090043ba8d6fbf0991b167779d2385888c",
+          "pr_number": 40,
+          "run_id": 33190943793,
+          "tranche": "P0.3.2 shared projection planner",
+          "wired": false
+        },
+        {
+          "artifact_id": 9707307831,
+          "base_sha": "fa59bb090043ba8d6fbf0991b167779d2385888c",
+          "candidate_qualified": true,
+          "head_sha": "eddcb59ca43a76ac83b64507983bd908f406ff48",
+          "pr_number": 30,
+          "run_id": 33226392404,
+          "tranche": "P0.3.3 host-owned evidence resolver",
+          "wired": false
+        },
+        {
+          "base_sha": "eddcb59ca43a76ac83b64507983bd908f406ff48",
+          "candidate_qualified": false,
+          "head_sha": "35de548b07d3957679800f694ecf1a6f3e001c36",
+          "pr_number": 64,
+          "status": "DRAFT_STAGING_ONLY",
+          "tranche": "P0.3.4 legacy grounding governance",
+          "wired": false
+        }
+      ],
+      "selection_policy": "RESTACK_AND_REQUALIFY_BEFORE_CANONICAL_INCLUSION",
+      "stack_id": "KG_RESOLUTION_SUCCESSOR"
+    },
+    {
+      "canonical": false,
+      "classification": "FROZEN_UNQUALIFIED_SIDE_STACK",
+      "entries": [
+        {
+          "base_sha": "7691978b786dd00c69477d1a3355be13db2c4d67",
+          "candidate_qualified": false,
+          "head_sha": "906aad979ba9e606c2e41d804e7a0c226efae5cb",
+          "pr_number": 28,
+          "tranche": "P1.1a shadow hybrid retrieval"
+        },
+        {
+          "base_sha": "906aad979ba9e606c2e41d804e7a0c226efae5cb",
+          "candidate_qualified": false,
+          "head_sha": "98de1c4c3d11c6644ff46f50e80071f6f15e1652",
+          "pr_number": 34,
+          "tranche": "P1.1b local tokenizer/embedding/ANN"
+        },
+        {
+          "base_sha": "e6cded3099ec53c1b6de36bf7b389ff30a8d3718",
+          "candidate_qualified": false,
+          "head_sha": "fe33565ce74c013e574c307e4fab101820c0ea88",
+          "pr_number": 45,
+          "tranche": "P1.1c synthetic multilingual efficacy"
+        },
+        {
+          "base_sha": "fe33565ce74c013e574c307e4fab101820c0ea88",
+          "candidate_qualified": false,
+          "head_sha": "f961a056ac0a35c1967a934de7cf5bf7ffb92a05",
+          "pr_number": 49,
+          "tranche": "P1.1c.1 reviewed corpus fixture acceptance"
+        },
+        {
+          "base_sha": "f961a056ac0a35c1967a934de7cf5bf7ffb92a05",
+          "candidate_qualified": false,
+          "head_sha": "c3c42f60e5ca11fd49fe5d4d2013c5b21e183619",
+          "pr_number": 54,
+          "tranche": "P1.1c.2 reviewed efficacy rerun"
+        },
+        {
+          "base_sha": "c3c42f60e5ca11fd49fe5d4d2013c5b21e183619",
+          "candidate_qualified": false,
+          "head_sha": "df95a8c9e3b0555f73aa8f943fe1c72133ccdf3c",
+          "pr_number": 58,
+          "tranche": "P1.1c.3 trusted intake fixture"
+        }
+      ],
+      "selection_policy": "SOURCE_STACK_FREEZE_UNTIL_A0_AND_CANONICAL_SELECTION",
+      "stack_id": "RETRIEVAL_EFFICACY_TRUST"
+    }
+  ]
+}
