@@ -16,7 +16,7 @@ concurrency:
 
 env:
   EXPECTED_BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
-  EXPECTED_PARENT: e000d7d70b80ad2335a00c2b74f75e5902a46ccd
+  EXPECTED_PARENT: a1f416837e76a907b2fedf849121cd592f100b4c
   WORKFLOW_PATH: .github/workflows/workspace-lock-reconcile.yml
 
 jobs:
@@ -44,8 +44,6 @@ jobs:
 
       - name: Install repository Rust toolchain
         uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-        with:
-          toolchain: 1.95.0
 
       - name: Reconcile Cargo.lock through Cargo
         shell: bash
@@ -54,7 +52,6 @@ jobs:
           cargo metadata \
             --manifest-path codex-rs/Cargo.toml \
             --format-version 1 \
-            --no-deps \
             >/dev/null
           mapfile -t changed < <(git diff --name-only)
           test "${#changed[@]}" -eq 1
