@@ -4,6 +4,7 @@
 //! production listener authority, Memory/KG writer, or remote inference path.
 
 mod adapter;
+mod capability;
 mod controller;
 mod hashing;
 mod identity;
@@ -24,6 +25,13 @@ pub use adapter::ExactAdapterTuple;
 pub use adapter::FallbackPolicy;
 pub use adapter::PolicyProfile;
 pub use adapter::QualifiedController;
+pub use capability::CAPABILITY_KEY_BYTES;
+pub use capability::CapabilityKey;
+pub use capability::PRIVATE_AUTH_TAG_BYTES;
+pub use capability::RequestGrant;
+pub use capability::RequestGrantFence;
+pub use capability::WorkerAuthenticationTag;
+pub use capability::WorkerHandshakeFence;
 pub use controller::AcceptedEvent;
 pub use controller::Controller;
 pub use controller::ControllerConfig;
@@ -83,6 +91,8 @@ pub enum InferError {
     AdapterStrictSseUnsupported,
     AdapterToolCallUnsupported,
     AuthorityEscalation,
+    InvalidCapability,
+    InvalidCapabilityKey,
     DeadlineExpired,
     DuplicateRequest,
     EmptyOutputLimit,
@@ -137,6 +147,8 @@ impl InferError {
             Self::AdapterStrictSseUnsupported => "INF_ADAPTER_STRICT_SSE_UNSUPPORTED",
             Self::AdapterToolCallUnsupported => "INF_ADAPTER_TOOL_CALL_UNSUPPORTED",
             Self::AuthorityEscalation => "INF_AUTHORITY_ESCALATION",
+            Self::InvalidCapability => "INF_INVALID_CAPABILITY",
+            Self::InvalidCapabilityKey => "INF_INVALID_CAPABILITY_KEY",
             Self::DeadlineExpired => "INF_DEADLINE_EXPIRED",
             Self::DuplicateRequest => "INF_DUPLICATE_REQUEST",
             Self::EmptyOutputLimit => "INF_EMPTY_OUTPUT_LIMIT",

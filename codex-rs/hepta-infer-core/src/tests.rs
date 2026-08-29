@@ -233,15 +233,15 @@ fn running_cancel_requires_worker_acknowledgement_path() {
 fn queued_cancel_releases_accounting_and_terminal_can_be_forgotten() {
     let tuple = digest('a');
     let mut controller = controller(tuple.clone(), 1, 1);
-    let request = request(
+    let queued_request = request(
         tuple.clone(),
         "request-queued-cancel",
         "tenant-a",
         4,
         u64::MAX,
     );
-    let request_id = request.identity.request_id.clone();
-    must(controller.admit(request, 1));
+    let request_id = queued_request.identity.request_id.clone();
+    must(controller.admit(queued_request, 1));
     let receipt = must(controller.cancel(&request_id, 1, 1, 7));
     assert_eq!(receipt.terminal_state, LifecycleState::Cancelled);
     assert_eq!(controller.inflight_requests(), 0);
@@ -259,9 +259,9 @@ fn queued_cancel_releases_accounting_and_terminal_can_be_forgotten() {
 fn active_deadline_expiry_is_terminal_and_releases_capacity() {
     let tuple = digest('a');
     let mut controller = controller(tuple.clone(), 1, 1);
-    let request = request(tuple.clone(), "request-expired", "tenant-a", 4, 10);
-    let request_id = request.identity.request_id.clone();
-    must(controller.admit(request, 1));
+    let expired_request = request(tuple.clone(), "request-expired", "tenant-a", 4, 10);
+    let request_id = expired_request.identity.request_id.clone();
+    must(controller.admit(expired_request, 1));
     let receipts = must(controller.expire_deadlines(10));
     assert_eq!(receipts.len(), 1);
     assert_eq!(receipts[0].terminal_state, LifecycleState::FailedClosed);
