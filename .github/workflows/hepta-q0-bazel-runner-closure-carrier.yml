@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SOURCE_SHA: 045d1e08a37e64462aeb706d5efbbc34b83167ce
+  SOURCE_SHA: 3fdbae384e15d53d4a4c8ab42c56b3d75b6ac1a2
   TARGET_BRANCH: codex/hepta-intelligence-plan-v3-20260828
   CARRIER_PATH: .github/workflows/hepta-q0-bazel-runner-closure-carrier.yml
   BAZEL_WORKFLOW: .github/workflows/bazel.yml
@@ -84,11 +84,10 @@ jobs:
           test "$(grep -c 'git config --system core.longpaths true' "$BAZEL_WORKFLOW")" = "5"
           git diff --check
 
-          mkdir -p "$ARTIFACT_DIR/.github/workflows"
-          cp "$BAZEL_WORKFLOW" "$ARTIFACT_DIR/$BAZEL_WORKFLOW"
+          mkdir -p "$ARTIFACT_DIR"
+          cp "$BAZEL_WORKFLOW" "$ARTIFACT_DIR/bazel.yml"
           git diff --binary -- "$BAZEL_WORKFLOW" > "$ARTIFACT_DIR/bazel-closure.patch"
-          sha256sum "$ARTIFACT_DIR/$BAZEL_WORKFLOW" \
-            > "$ARTIFACT_DIR/bazel.yml.sha256"
+          sha256sum "$ARTIFACT_DIR/bazel.yml" > "$ARTIFACT_DIR/bazel.yml.sha256"
 
       - name: Upload exact Bazel closure artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
