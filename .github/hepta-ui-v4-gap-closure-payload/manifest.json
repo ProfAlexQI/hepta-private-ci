@@ -1,0 +1,12 @@
+{
+  "schema": "hepta.ui.v4.gap-closure-bootstrap-payload.v1",
+  "chunkCount": 12,
+  "chunkChars": 1024,
+  "base64Chars": 11808,
+  "base64Sha256": "eccd153d4cc316453f88dfa062c79c0a93cba92b1dea128c4a12a57aecbda3ec",
+  "gzipBytes": 8856,
+  "gzipSha256": "91ea0340d04f0c8a63739e9e29fbcd941c3f4bc01fadb19fd9b6de0429d67782",
+  "sourceBytes": 35634,
+  "sourceSha256": "25e57da7183f51fc2943969e06b2615f1449145b9056be73f726ea241eac9af7",
+  "targetBase": "f9f362c8c0eb2fa6e28ded8cb141e4d4e8a02a2d"
+}
