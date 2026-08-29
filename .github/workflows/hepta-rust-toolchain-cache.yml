@@ -1,0 +1,70 @@
+name: Hepta pinned Linux Rust toolchain cache
+
+on:
+  push:
+    branches:
+      - codex/hepta-rust-toolchain-cache-20260829
+
+permissions:
+  contents: read
+
+env:
+  TARGET_SOURCE: abb435c263c2967c6ba613c5b8554b4cb45e6153
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  export:
+    name: Export Rust 1.95 toolchain and locked dependency cache
+    runs-on: ubuntu-slim
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: nextest
+          version: 0.9.103
+      - name: Fetch exact locked workspace dependencies
+        working-directory: codex-rs
+        run: cargo fetch --locked
+      - name: Package portable Linux cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          toolchain="$(rustc --print sysroot)"
+          cache="$RUNNER_TEMP/hepta-rust-cache"
+          mkdir -p "$cache/toolchain" "$cache/cargo"
+          tar -C "$toolchain" -czf "$cache/toolchain/rust-1.95.0-x86_64-unknown-linux-gnu.tar.gz" .
+          for name in just cargo-nextest; do
+            command -v "$name" >/dev/null
+            cp "$(command -v "$name")" "$cache/cargo/$name"
+          done
+          tar -C "$HOME/.cargo" -czf "$cache/cargo/cargo-registry-git.tar.gz" \
+            --ignore-failed-read registry git
+          {
+            echo "schema=hepta.rust-toolchain-cache.v1"
+            echo "source_head=$TARGET_SOURCE"
+            echo "rustc=$(rustc --version)"
+            echo "cargo=$(cargo --version)"
+            echo "nextest=$(cargo nextest --version)"
+            echo "just=$(just --version)"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "source_mutation=false"
+          } > "$cache/identity.txt"
+          sha256sum "$cache"/toolchain/*.tar.gz "$cache"/cargo/* > "$cache/SHA256SUMS"
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-rust-cache-${{ env.TARGET_SOURCE }}
+          path: ${{ runner.temp }}/hepta-rust-cache
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
