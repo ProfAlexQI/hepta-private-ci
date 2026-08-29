@@ -17,10 +17,10 @@ concurrency:
 jobs:
   remediate:
     if: "${{ github.event.head_commit.message == 'ci: harden Hepta strict-clippy cleanup' }}"
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      EXPECTED_PARENT: 41576972e063962db0d6cc6faffe81c1a4b6657c
+      EXPECTED_PARENT: 4f3df009f029e98e6e3c0b62db81efbf295a249d
       BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
       WORKFLOW_PATH: .github/workflows/hepta-strict-clippy-remediation-once.yml
     steps:
@@ -227,13 +227,13 @@ jobs:
         shell: bash
         run: |
           {
-            echo "schema=hepta_strict_clippy_remediation_once_v8"
+            echo "schema=hepta_strict_clippy_remediation_once_v9"
             echo "bootstrap_head=$GITHUB_SHA"
             echo "expected_parent=$EXPECTED_PARENT"
             echo "job_status=${{ job.status }}"
             echo "changed_paths=hepta-agentd/app_runtime.rs,hepta-memory/local_lease_outbox.rs"
             echo "bootstrap_retired=${{ job.status == 'success' }}"
-            echo "bootstrap_runner=ubuntu-22.04"
+            echo "bootstrap_runner=ubuntu-24.04"
             echo "bootstrap_python=3.12"
             echo "canonical_qualification_runner=ubuntu-24.04"
             echo "production_authority=false"
