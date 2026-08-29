@@ -1,4 +1,4 @@
-name: p034-payload-inspect-slim-v2
+name: p034-payload-inspect-arm-v3
 
 on:
   push:
@@ -10,52 +10,114 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: p034-payload-inspect-arm-v3-${{ github.sha }}
+  cancel-in-progress: false
+
 jobs:
   inspect:
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     env:
-      PAYLOAD_SHA256: bd21ef335c14fa2c78f6a2bb87b4c39d1a8937361c62ca80a92b5907a43617cd
+      PAYLOAD_SHA256: 0a3c110310edaf463bd7fd4a31148e3cb8dcbdbebc9f38700d94bfcdd5059373
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
-      - name: Decode and safely extract exact payload
+
+      - name: Decode, verify, and safely extract exact payload
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import base64, hashlib, json, os, tarfile
+          import base64
+          import hashlib
+          import json
+          import os
+          import tarfile
           from pathlib import Path, PurePosixPath
+
           root = Path.cwd()
           out = root / "artifacts/p034-payload"
           tree = out / "tree"
           tree.mkdir(parents=True, exist_ok=True)
-          encoded = (root / "ci/p034-payload/part-00.b64").read_text(encoding="ascii")
+          encoded = (root / "ci/p034-payload/part-00.b64").read_text(
+              encoding="ascii"
+          )
           payload = base64.b64decode("".join(encoded.split()), validate=True)
           actual = hashlib.sha256(payload).hexdigest()
-          if actual != os.environ["PAYLOAD_SHA256"]:
-              raise SystemExit(f"payload digest mismatch: {actual}")
+          expected = os.environ["PAYLOAD_SHA256"]
+          if actual != expected:
+              raise SystemExit(
+                  f"payload digest mismatch: expected={expected} actual={actual}"
+              )
           archive = out / "payload.tar.gz"
           archive.write_bytes(payload)
+          members = []
           with tarfile.open(archive, "r:gz") as tar:
               for member in tar.getmembers():
                   path = PurePosixPath(member.name)
-                  if path.is_absolute() or ".." in path.parts or member.issym() or member.islnk() or member.isdev():
+                  if (
+                      path.is_absolute()
+                      or ".." in path.parts
+                      or member.issym()
+                      or member.islnk()
+                      or member.isdev()
+                  ):
                       raise SystemExit(f"unsafe payload member: {member.name}")
+                  members.append(
+                      {
+                          "name": member.name,
+                          "bytes": member.size,
+                          "type": member.type.decode("latin1")
+                          if isinstance(member.type, bytes)
+                          else str(member.type),
+                      }
+                  )
               tar.extractall(tree)
           files = []
           for path in sorted(tree.rglob("*")):
               if path.is_file():
                   data = path.read_bytes()
-                  files.append({"path": path.relative_to(tree).as_posix(), "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
-          receipt = {"schema": "hepta_intelligence_p0_3_4_payload_inspection_v2", "payload_sha256": actual, "file_count": len(files), "files": files, "target_branch_written": False, "wired": False, "production_projection_gate": False, "production_authority": False}
-          (out / "inspection-receipt.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          (out / "file-list.txt").write_text("\n".join(item["path"] for item in files) + "\n", encoding="utf-8")
+                  files.append(
+                      {
+                          "path": path.relative_to(tree).as_posix(),
+                          "bytes": len(data),
+                          "sha256": hashlib.sha256(data).hexdigest(),
+                      }
+                  )
+          receipt = {
+              "schema": "hepta_intelligence_p0_3_4_payload_inspection_v3",
+              "payload_sha256": actual,
+              "member_count": len(members),
+              "file_count": len(files),
+              "members": members,
+              "files": files,
+              "target_branch_written": False,
+              "wired": False,
+              "default_projection_pointer_changed": False,
+              "default_recall_query_changed": False,
+              "production_projection_gate": False,
+              "production_authority": False,
+              "external_effects": False,
+              "operator_accepted": False,
+              "promoted": False,
+              "callers_ratchet": False,
+          }
+          (out / "inspection-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          (out / "file-list.txt").write_text(
+              "\n".join(item["path"] for item in files) + "\n",
+              encoding="utf-8",
+          )
           PY
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload exact P0.3.4 payload evidence
+        uses: actions/upload-artifact@v4
         with:
-          name: hepta-p0-3-4-payload-${{ github.sha }}-slim
+          name: hepta-p0-3-4-payload-${{ github.sha }}-arm
           path: artifacts/p034-payload
           if-no-files-found: error
           retention-days: 7
