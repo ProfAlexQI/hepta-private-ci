@@ -26,9 +26,11 @@ issuer_id + purpose + key_id + key_epoch
 ```
 
 Registration is exact-replay idempotent. Changed bytes at the same identity are
-a conflict. Epochs are monotonic per issuer and purpose. Revocation is durable,
-revisioned and survives reopen. A revoked or stale-purpose key cannot authorize
-a new nonce, provider observation or manual observation.
+a conflict. The SQLite primary key, key-head foreign key, Rust lookup/revocation
+API and durable receipt subject all carry `purpose`; no layer may collapse the
+identity back to issuer/key/epoch. Epochs are monotonic per issuer and purpose.
+Revocation is durable, revisioned and survives reopen. A revoked or stale-purpose
+key cannot authorize a new nonce, provider observation or manual observation.
 
 ### 2.2 Nonce replay ledger
 
@@ -109,7 +111,8 @@ lockfile:
 1. source, schema and negative-authority verifier;
 2. package-scoped rustfmt;
 3. default-feature-off unit test;
-4. key replay, changed-registration conflict, rotation, revocation and reopen;
+4. key replay, changed-registration conflict, purpose-namespaced coexistence for
+   identical issuer/key/epoch tuples, rotation, revocation and reopen;
 5. nonce replay after reopen, bounded capacity and expiry GC;
 6. provider evidence exact replay, conflict, monotonicity, terminal tombstone
    and post-reopen terminal immutability;
@@ -123,7 +126,9 @@ lockfile:
 14. strict all-target Clippy with `-D warnings`.
 
 Queued jobs, `runner_id=0`, empty steps, source-only receipts and a generated but
-uncommitted lockfile are not qualification evidence.
+uncommitted lockfile are not qualification evidence. Heavy Rust jobs must run on
+a hosted class whose platform limit can accommodate cold-cache test, all-target
+check and strict Clippy; a YAML timeout cannot override a runner-class hard cap.
 
 ## 5. Promotion boundary
 

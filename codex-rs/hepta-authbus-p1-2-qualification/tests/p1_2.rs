@@ -374,13 +374,25 @@ async fn key_rotation_revocation_and_reopen_are_durable_and_monotonic() {
     );
     assert_eq!(
         store
-            .revoke_key("identity-issuer", "identity-key-2", 2, NOW + 2)
+            .revoke_key(
+                "identity-issuer",
+                P11KeyPurpose::IdentityIssuer,
+                "identity-key-2",
+                2,
+                NOW + 2,
+            )
             .await,
         Ok(P12WriteDisposition::Applied)
     );
     assert_eq!(
         store
-            .revoke_key("identity-issuer", "identity-key-2", 2, NOW + 2)
+            .revoke_key(
+                "identity-issuer",
+                P11KeyPurpose::IdentityIssuer,
+                "identity-key-2",
+                2,
+                NOW + 2,
+            )
             .await,
         Ok(P12WriteDisposition::AlreadyPresent)
     );
@@ -388,11 +400,130 @@ async fn key_rotation_revocation_and_reopen_are_durable_and_monotonic() {
 
     let reopened = open_store(&root, writer("boot-a", 1), P12Policy::default()).await;
     let durable = reopened
-        .key_record("identity-issuer", "identity-key-2", 2)
+        .key_record(
+            "identity-issuer",
+            P11KeyPurpose::IdentityIssuer,
+            "identity-key-2",
+            2,
+        )
         .await
         .expect("durable key");
     assert_eq!(durable.revoked_at_unix_seconds, Some(NOW + 2));
     assert_eq!(reopened.key_count().await, Ok(2));
+    reopened.verify_integrity().await.expect("integrity");
+}
+
+#[tokio::test]
+async fn key_identity_is_namespaced_by_purpose_across_reopen_and_revocation() {
+    let root = TempDir::new().expect("tempdir");
+    let identity_signing = signing_key(21);
+    let status_signing = signing_key(22);
+    let identity_record = key_record(
+        "shared-issuer",
+        "shared-key",
+        1,
+        P11KeyPurpose::IdentityIssuer,
+        &identity_signing,
+    );
+    let status_record = key_record(
+        "shared-issuer",
+        "shared-key",
+        1,
+        P11KeyPurpose::ProviderStatusIssuer,
+        &status_signing,
+    );
+
+    let store = open_store(&root, writer("boot-a", 1), P12Policy::default()).await;
+    assert_eq!(
+        store.register_key(identity_record.clone(), NOW).await,
+        Ok(P12WriteDisposition::Applied)
+    );
+    assert_eq!(
+        store.register_key(status_record.clone(), NOW + 1).await,
+        Ok(P12WriteDisposition::Applied)
+    );
+    assert_eq!(store.key_count().await, Ok(2));
+    assert_eq!(
+        store
+            .key_record(
+                "shared-issuer",
+                P11KeyPurpose::OperatorEvidenceIssuer,
+                "shared-key",
+                1,
+            )
+            .await,
+        Err(P12Error::UnknownKey)
+    );
+    assert_eq!(
+        store
+            .revoke_key(
+                "shared-issuer",
+                P11KeyPurpose::IdentityIssuer,
+                "shared-key",
+                1,
+                NOW + 2,
+            )
+            .await,
+        Ok(P12WriteDisposition::Applied)
+    );
+    store.close().await;
+
+    let reopened = open_store(&root, writer("boot-a", 1), P12Policy::default()).await;
+    let durable_identity = reopened
+        .key_record(
+            "shared-issuer",
+            P11KeyPurpose::IdentityIssuer,
+            "shared-key",
+            1,
+        )
+        .await
+        .expect("durable identity key");
+    let durable_status = reopened
+        .key_record(
+            "shared-issuer",
+            P11KeyPurpose::ProviderStatusIssuer,
+            "shared-key",
+            1,
+        )
+        .await
+        .expect("durable status key");
+    assert_eq!(durable_identity.revoked_at_unix_seconds, Some(NOW + 2));
+    assert_eq!(durable_status.revoked_at_unix_seconds, None);
+    assert_ne!(durable_identity.public_key, durable_status.public_key);
+
+    let database_url = format!("sqlite://{}", reopened.database_path().display());
+    let inspection = sqlx::SqlitePool::connect(&database_url)
+        .await
+        .expect("inspection pool");
+    let mut connection = inspection.acquire().await.expect("inspection connection");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&mut *connection)
+        .await
+        .expect("foreign keys on");
+    let receipt_subjects: Vec<String> = sqlx::query_scalar(
+        "SELECT subject_id FROM p12_durable_receipts \
+         WHERE event_kind IN ('KEY_REGISTERED', 'KEY_REVOKED') ORDER BY sequence",
+    )
+    .fetch_all(&mut *connection)
+    .await
+    .expect("key receipt subjects");
+    assert_eq!(
+        receipt_subjects,
+        vec![
+            "shared-issuer:IDENTITY_ISSUER:shared-key:1".to_owned(),
+            "shared-issuer:PROVIDER_STATUS_ISSUER:shared-key:1".to_owned(),
+            "shared-issuer:IDENTITY_ISSUER:shared-key:1".to_owned(),
+        ]
+    );
+    let wrong_purpose_head = sqlx::query(
+        "UPDATE p12_key_heads SET purpose = 'OPERATOR_EVIDENCE_ISSUER' \
+         WHERE issuer_id = 'shared-issuer' AND purpose = 'PROVIDER_STATUS_ISSUER'",
+    )
+    .execute(&mut *connection)
+    .await;
+    assert!(wrong_purpose_head.is_err());
+    drop(connection);
+    inspection.close().await;
     reopened.verify_integrity().await.expect("integrity");
 }
 
@@ -826,7 +957,12 @@ async fn every_precommit_failpoint_rolls_back_without_partial_replay_state() {
     store.clear_failpoints();
     assert_eq!(
         store
-            .key_record("identity-issuer", "identity-key-1", 1)
+            .key_record(
+                "identity-issuer",
+                P11KeyPurpose::IdentityIssuer,
+                "identity-key-1",
+                1,
+            )
             .await,
         Err(P12Error::UnknownKey)
     );
@@ -1049,7 +1185,13 @@ async fn bounded_gc_preserves_live_heads_and_terminal_tombstones_until_deadline(
         .await
         .expect("current key");
     store
-        .revoke_key("identity-issuer", "identity-key-1", 1, NOW)
+        .revoke_key(
+            "identity-issuer",
+            P11KeyPurpose::IdentityIssuer,
+            "identity-key-1",
+            1,
+            NOW,
+        )
         .await
         .expect("revoke old key");
 

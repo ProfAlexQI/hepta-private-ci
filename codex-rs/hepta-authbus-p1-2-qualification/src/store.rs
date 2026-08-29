@@ -219,6 +219,7 @@ impl P12Store {
         if let Some(existing) = load_key_optional(
             &mut transaction,
             &record.issuer_id,
+            record.purpose,
             &record.key_id,
             record.key_epoch,
         )
@@ -264,8 +265,8 @@ impl P12Store {
             &mut transaction,
             "KEY_REGISTERED",
             &format!(
-                "{}:{}:{}",
-                record.issuer_id, record.key_id, record.key_epoch
+                "{}:{}:{}:{}",
+                record.issuer_id, purpose, record.key_id, record.key_epoch
             ),
             record.key_epoch,
             &row.record_sha256_digest()?,
@@ -281,6 +282,7 @@ impl P12Store {
     pub async fn revoke_key(
         &self,
         issuer_id: &str,
+        purpose: P11KeyPurpose,
         key_id: &str,
         key_epoch: u64,
         revoked_at_unix_seconds: u64,
@@ -289,9 +291,10 @@ impl P12Store {
         validate_text(key_id)?;
         validate_positive_i64(key_epoch)?;
         validate_positive_i64(revoked_at_unix_seconds)?;
+        let purpose_name = key_purpose_name(purpose);
         let mut transaction = self.pool.begin().await.map_err(map_sqlx)?;
         self.ensure_current_writer(&mut transaction).await?;
-        let current = load_key_optional(&mut transaction, issuer_id, key_id, key_epoch)
+        let current = load_key_optional(&mut transaction, issuer_id, purpose, key_id, key_epoch)
             .await?
             .ok_or(P12Error::UnknownKey)?;
         current.verify()?;
@@ -312,7 +315,7 @@ impl P12Store {
         append_receipt(
             &mut transaction,
             "KEY_REVOKED",
-            &format!("{issuer_id}:{key_id}:{key_epoch}"),
+            &format!("{issuer_id}:{purpose_name}:{key_id}:{key_epoch}"),
             key_epoch,
             &next.record_sha256_digest()?,
             &self.writer,
@@ -327,6 +330,7 @@ impl P12Store {
     pub async fn key_record(
         &self,
         issuer_id: &str,
+        purpose: P11KeyPurpose,
         key_id: &str,
         key_epoch: u64,
     ) -> P12Result<P11VerificationKeyRecord> {
@@ -335,9 +339,10 @@ impl P12Store {
         validate_positive_i64(key_epoch)?;
         let row = sqlx::query(
             "SELECT * FROM p12_key_registrations \
-             WHERE issuer_id = ? AND key_id = ? AND key_epoch = ?",
+             WHERE issuer_id = ? AND purpose = ? AND key_id = ? AND key_epoch = ?",
         )
         .bind(issuer_id)
+        .bind(key_purpose_name(purpose))
         .bind(key_id)
         .bind(to_i64(key_epoch)?)
         .fetch_optional(&self.pool)
@@ -774,15 +779,17 @@ impl P12Store {
         .rows_affected();
 
         let key_rows_deleted = sqlx::query(
-            "DELETE FROM p12_key_registrations WHERE (issuer_id, key_id, key_epoch) IN (\
-                 SELECT k.issuer_id, k.key_id, k.key_epoch \
+            "DELETE FROM p12_key_registrations \
+             WHERE (issuer_id, purpose, key_id, key_epoch) IN (\
+                 SELECT k.issuer_id, k.purpose, k.key_id, k.key_epoch \
                  FROM p12_key_registrations k \
                  LEFT JOIN p12_key_heads h \
-                   ON h.issuer_id = k.issuer_id AND h.current_key_id = k.key_id \
-                  AND h.current_key_epoch = k.key_epoch \
+                   ON h.issuer_id = k.issuer_id AND h.purpose = k.purpose \
+                  AND h.current_key_id = k.key_id AND h.current_key_epoch = k.key_epoch \
                  WHERE k.revoked_at_unix_seconds IS NOT NULL \
                    AND k.revoked_at_unix_seconds <= ? AND h.issuer_id IS NULL \
-                 ORDER BY k.revoked_at_unix_seconds, k.issuer_id, k.key_epoch LIMIT ?\
+                 ORDER BY k.revoked_at_unix_seconds, k.issuer_id, k.purpose, \
+                          k.key_epoch, k.key_id LIMIT ?\
              )",
         )
         .bind(to_i64(key_cutoff)?)
@@ -2172,7 +2179,7 @@ async fn require_durable_key(
     purpose: P11KeyPurpose,
     observed_at_unix_seconds: u64,
 ) -> P12Result<KeyRow> {
-    let row = load_key_optional(transaction, issuer_id, key_id, key_epoch)
+    let row = load_key_optional(transaction, issuer_id, purpose, key_id, key_epoch)
         .await?
         .ok_or(P12Error::UnknownKey)?;
     row.verify()?;
@@ -2194,14 +2201,16 @@ async fn require_durable_key(
 async fn load_key_optional(
     transaction: &mut Transaction<'_, Sqlite>,
     issuer_id: &str,
+    purpose: P11KeyPurpose,
     key_id: &str,
     key_epoch: u64,
 ) -> P12Result<Option<KeyRow>> {
     sqlx::query(
         "SELECT * FROM p12_key_registrations \
-         WHERE issuer_id = ? AND key_id = ? AND key_epoch = ?",
+         WHERE issuer_id = ? AND purpose = ? AND key_id = ? AND key_epoch = ?",
     )
     .bind(issuer_id)
+    .bind(key_purpose_name(purpose))
     .bind(key_id)
     .bind(to_i64(key_epoch)?)
     .fetch_optional(&mut **transaction)
@@ -2239,7 +2248,7 @@ async fn update_key(transaction: &mut Transaction<'_, Sqlite>, row: &KeyRow) -> 
     let result = sqlx::query(
         "UPDATE p12_key_registrations SET record_json = ?, record_sha256 = ?, \
          revoked_at_unix_seconds = ?, updated_at_unix_seconds = ?, row_sha256 = ? \
-         WHERE issuer_id = ? AND key_id = ? AND key_epoch = ?",
+         WHERE issuer_id = ? AND purpose = ? AND key_id = ? AND key_epoch = ?",
     )
     .bind(&row.record_json)
     .bind(&row.record_sha256)
@@ -2247,6 +2256,7 @@ async fn update_key(transaction: &mut Transaction<'_, Sqlite>, row: &KeyRow) -> 
     .bind(to_i64(row.updated_at_unix_seconds)?)
     .bind(&row.row_sha256)
     .bind(&row.issuer_id)
+    .bind(key_purpose_name(row.purpose))
     .bind(&row.key_id)
     .bind(to_i64(row.key_epoch)?)
     .execute(&mut **transaction)
@@ -2683,11 +2693,13 @@ async fn update_gc_cursor(
 }
 
 async fn verify_all_keys(pool: &SqlitePool) -> P12Result<u64> {
-    let rows =
-        sqlx::query("SELECT * FROM p12_key_registrations ORDER BY issuer_id, key_epoch, key_id")
-            .fetch_all(pool)
-            .await
-            .map_err(map_sqlx)?;
+    let rows = sqlx::query(
+        "SELECT * FROM p12_key_registrations \
+         ORDER BY issuer_id, purpose, key_epoch, key_id",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(map_sqlx)?;
     for row in &rows {
         KeyRow::from_sqlite(row)?.verify()?;
     }
@@ -2704,9 +2716,10 @@ async fn verify_all_key_heads(pool: &SqlitePool) -> P12Result<()> {
         head.verify()?;
         let key = sqlx::query(
             "SELECT * FROM p12_key_registrations \
-             WHERE issuer_id = ? AND key_id = ? AND key_epoch = ?",
+             WHERE issuer_id = ? AND purpose = ? AND key_id = ? AND key_epoch = ?",
         )
         .bind(&head.issuer_id)
+        .bind(key_purpose_name(head.purpose))
         .bind(&head.current_key_id)
         .bind(to_i64(head.current_key_epoch)?)
         .fetch_optional(pool)

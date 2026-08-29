@@ -239,7 +239,8 @@ jobs:
   inherited-p1-1:
     name: Inherited P1.1 signed identity and evidence matrix
     needs: source
-    runs-on: ubuntu-slim
+    # Heavy Rust jobs must not use ubuntu-slim, whose platform limit is 15 minutes.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: Checkout exact candidate
@@ -303,7 +304,8 @@ jobs:
     needs:
       - source
       - inherited-p1-1
-    runs-on: ubuntu-slim
+    # Cold-cache all-target check and Clippy exceed the ubuntu-slim hard cap.
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - name: Checkout exact candidate

@@ -85,6 +85,7 @@ TABLES = [
 TESTS = [
     "default_off_authority_and_private_file_posture_are_enforced",
     "key_rotation_revocation_and_reopen_are_durable_and_monotonic",
+    "key_identity_is_namespaced_by_purpose_across_reopen_and_revocation",
     "nonce_replay_survives_reopen_and_capacity_fails_closed",
     "provider_status_replay_conflict_and_terminal_tombstone_survive_reopen",
     "manual_evidence_uses_an_independent_revision_ledger_and_lookup_only_resume",
@@ -148,6 +149,14 @@ def main() -> int:
     require(forbidden_column.search(migration) is None, "durable schema can represent forbidden secret/signature bytes")
     require("CHECK (authority = 0)" in migration, "schema authority check missing")
     require("CHECK (effect_authority = 0)" in migration, "schema effect-authority check missing")
+    require(
+        "PRIMARY KEY (issuer_id, purpose, key_id, key_epoch)" in migration,
+        "verification-key identity must include purpose in the durable primary key",
+    )
+    require(
+        "FOREIGN KEY (issuer_id, purpose, current_key_id, current_key_epoch)" in migration,
+        "key head must reference a key in the same purpose namespace",
+    )
 
     store = text(CRATE / "src/store.rs")
     for marker in [
@@ -162,6 +171,11 @@ def main() -> int:
         "verify_integrity",
         "PRAGMA quick_check",
         "StorageUnavailableBeforeCommit",
+        "WHERE issuer_id = ? AND purpose = ? AND key_id = ? AND key_epoch = ?",
+        "(issuer_id, purpose, key_id, key_epoch) IN",
+        "h.purpose = k.purpose",
+        "record.issuer_id, purpose, record.key_id, record.key_epoch",
+        "{issuer_id}:{purpose_name}:{key_id}:{key_epoch}",
     ]:
         require(marker in store, f"missing durable store invariant: {marker}")
     for forbidden in [
@@ -174,6 +188,16 @@ def main() -> int:
         require(forbidden not in store, f"direct SQLite construction survived: {forbidden}")
     require("require_durable_key" in store, "durable key-purpose/epoch enforcement missing")
     require("expected_revision" in store, "GC CAS binding missing")
+
+    workflow = text(ROOT / ".github/workflows/authbus-p1-2-qualification.yml")
+    require(
+        workflow.count("runs-on: ubuntu-slim") == 1,
+        "only the lightweight source-contract job may use ubuntu-slim",
+    )
+    require(
+        workflow.count("runs-on: ubuntu-24.04") == 2,
+        "both heavy Rust jobs must use the standard ubuntu-24.04 runner",
+    )
 
     model = text(CRATE / "src/model.rs")
     for marker in [
@@ -208,6 +232,9 @@ def main() -> int:
     require(status.get("parent_commit") == "0be01b7b5063066794731e545cf304e4c07c1fc5", "status parent binding drift")
     require(status.get("implemented") is True and status.get("wired") is False, "status implementation/wiring boundary drift")
     require(status.get("qualified") is False, "source status cannot claim executable qualification")
+    require(status.get("key_identity_includes_purpose") is True, "purpose key identity status missing")
+    require(status.get("cross_purpose_key_isolation") is True, "cross-purpose isolation status missing")
+    require(status.get("hosted_runner_class_fit") is True, "hosted runner fit status missing")
     for field in FALSE_AUTHORITY_FIELDS:
         require(status.get(field) is False, f"status authority field escaped: {field}")
 
@@ -227,6 +254,9 @@ def main() -> int:
         "listener_enabled": False,
         "provider_call_enabled": False,
         "openbao_enabled": False,
+        "key_identity_includes_purpose": True,
+        "cross_purpose_key_isolation": True,
+        "hosted_runner_class_fit": True,
     }
     print(json.dumps(output, sort_keys=True, separators=(",", ":")))
     return 0

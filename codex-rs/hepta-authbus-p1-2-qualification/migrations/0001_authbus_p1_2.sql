@@ -42,7 +42,7 @@ CREATE TABLE p12_key_registrations (
     created_at_unix_seconds INTEGER NOT NULL CHECK (created_at_unix_seconds > 0),
     updated_at_unix_seconds INTEGER NOT NULL CHECK (updated_at_unix_seconds > 0),
     row_sha256 TEXT NOT NULL,
-    PRIMARY KEY (issuer_id, key_id, key_epoch)
+    PRIMARY KEY (issuer_id, purpose, key_id, key_epoch)
 ) STRICT;
 
 CREATE INDEX p12_key_registrations_purpose_idx
@@ -60,8 +60,8 @@ CREATE TABLE p12_key_heads (
     updated_at_unix_seconds INTEGER NOT NULL CHECK (updated_at_unix_seconds > 0),
     row_sha256 TEXT NOT NULL,
     PRIMARY KEY (issuer_id, purpose),
-    FOREIGN KEY (issuer_id, current_key_id, current_key_epoch)
-        REFERENCES p12_key_registrations(issuer_id, key_id, key_epoch)
+    FOREIGN KEY (issuer_id, purpose, current_key_id, current_key_epoch)
+        REFERENCES p12_key_registrations(issuer_id, purpose, key_id, key_epoch)
         ON DELETE RESTRICT
 ) STRICT;
 

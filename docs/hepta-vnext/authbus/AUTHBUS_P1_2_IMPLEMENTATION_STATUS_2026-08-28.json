@@ -5,7 +5,7 @@
   "parent_commit": "0be01b7b5063066794731e545cf304e4c07c1fc5",
   "branch": "integration/vnext-main-full-ci-authbus-p1-2-20260828",
   "stage": "P1.2",
-  "status": "IMPLEMENTED_SOURCE_EXECUTABLE_QUALIFICATION_PENDING",
+  "status": "IMPLEMENTED_SOURCE_EXECUTABLE_REQUALIFICATION_PENDING",
   "implemented": true,
   "wired": false,
   "qualified": false,
@@ -33,5 +33,10 @@
   "operator_acceptance": false,
   "promotion": false,
   "g5_allowed": false,
-  "execute_allowed": false
+  "execute_allowed": false,
+  "last_remediated": "2026-08-29",
+  "key_identity_includes_purpose": true,
+  "cross_purpose_key_isolation": true,
+  "hosted_runner_class_fit": true,
+  "regressions": 10
 }

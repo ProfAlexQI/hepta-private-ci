@@ -11,8 +11,9 @@ authority grant.
 
 ## Implemented durable ledgers
 
-- purpose-separated verification-key registration, epoch rotation and
-  revocation;
+- purpose-inclusive verification-key identity across SQLite primary/foreign
+  keys, Rust lookup/revocation APIs, durable receipts, epoch rotation and revocation;
+- cross-purpose reuse of the same issuer/key/epoch without namespace collision;
 - launch-nonce replay claims that survive process reopen;
 - immutable operation bindings and provider-status revision history;
 - independent operator/manual evidence revision history;
@@ -30,6 +31,10 @@ cargo test --manifest-path Cargo.toml --locked --features p1-2-qualification --t
 cargo check --manifest-path Cargo.toml --locked --features p1-2-qualification --all-targets
 cargo clippy --manifest-path Cargo.toml --locked --features p1-2-qualification --all-targets -- -D warnings
 ```
+
+The lightweight source-contract job may use `ubuntu-slim`; inherited P1.1 and
+P1.2 Rust builds use `ubuntu-24.04` because cold-cache all-target check and
+Clippy are not valid within the slim runner's hard execution cap.
 
 The crate is not a member of the product workspace and must not be wired into a
 listener, provider call, OpenBao path, product writer, or production caller on
