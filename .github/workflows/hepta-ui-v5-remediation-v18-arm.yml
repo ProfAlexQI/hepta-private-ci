@@ -1,0 +1,120 @@
+name: Hepta UI v5 remediation v18 ARM
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-remediation-v18-arm-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-remediation-v18-arm.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-remediation-v18-arm
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 75
+    env:
+      BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_PARENT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
+      BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-remediation-v18-arm.yml
+      UPSTREAM_URL: https://github.com/openai/codex.git
+      UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
+      UPSTREAM_ROLE: current_r12
+      UPSTREAM_FROZEN_REF: refs/remotes/upstream/hepta-intake-20260830-r12
+      UPSTREAM_INTAKE_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R12.json
+      UPSTREAM_RECORD_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+      V12_DRIVER_COMMIT: 554d710f6a561166553f3c01fafc5b27cd8c28b9
+      V14_DRIVER_COMMIT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
+    steps:
+      - name: Check out exact v18 driver commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install deterministic remediation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes jq ripgrep ruby patch
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+
+      - name: Execute v14 remediation with truthful scripts-budget semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source_workflow="$RUNNER_TEMP/hepta-ui-v5-remediation-v14.yml"
+          generated_v14_driver="$RUNNER_TEMP/hepta-ui-v5-remediation-v18-driver.sh"
+          git cat-file -e "$V14_DRIVER_COMMIT^{commit}"
+          git show "$V14_DRIVER_COMMIT:.github/workflows/hepta-ui-v5-remediation-v14.yml" > "$source_workflow"
+          awk '
+            /      - name: Execute v12 remediation with canonical route regeneration/ { found=1; next }
+            found && /        shell: bash/ { next }
+            found && /        run: \|/ { in_run=1; next }
+            in_run { sub(/^          /, ""); print }
+          ' "$source_workflow" > "$generated_v14_driver"
+          test -s "$generated_v14_driver"
+
+          export GENERATED_V14_DRIVER="$generated_v14_driver"
+          python3 <<'PY'
+          from __future__ import annotations
+
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["GENERATED_V14_DRIVER"])
+          text = path.read_text(encoding="utf-8")
+          anchor = 'bash -n "$generated_driver"\nbash -x "$generated_driver"\n'
+          if text.count(anchor) != 1:
+              raise SystemExit(
+                  f"v18 v14-driver execution anchor: expected 1 match, found {text.count(anchor)}"
+              )
+
+          payload = "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"
+          replacement = (
+              'bash -n "$generated_driver"\n'
+              'export V18_GENERATED_DRIVER="$generated_driver"\n'
+              "python3 <<'PATCH_DRIVER'\n"
+              "from __future__ import annotations\n"
+              "\n"
+              "import os\n"
+              "from pathlib import Path\n"
+              "\n"
+              'driver_path = Path(os.environ["V18_GENERATED_DRIVER"])\n'
+              'driver_text = driver_path.read_text(encoding="utf-8")\n'
+              'inner_anchor = \'bash -n "$generated_script"\\nbash -x "$generated_script"\\n\'\n'
+              "if driver_text.count(inner_anchor) != 1:\n"
+              "    raise SystemExit(\n"
+              '        f"v18 final-script execution anchor: expected 1 match, found {driver_text.count(inner_anchor)}"\n'
+              "    )\n"
+              f'payload = "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"\n'
+              "inner_replacement = (\n"
+              '    \'bash -n "$generated_script"\\n\'\n'
+              '    \'python3 - "$generated_script" <<\\\'V18_PATCH\\\'\\n\'\n'
+              '    \'import base64, sys, zlib\\n\'\n'
+              '    f\'exec(compile(zlib.decompress(base64.b64decode("{payload}")).decode("utf-8"), "<hepta-ui-v18-patcher>", "exec"))\\n\'\n'
+              '    \'V18_PATCH\\n\'\n'
+              '    \'bash -n "$generated_script"\\n\'\n'
+              '    \'bash -x "$generated_script"\\n\'\n'
+              ")\n"
+              "driver_text = driver_text.replace(inner_anchor, inner_replacement, 1)\n"
+              'driver_path.write_text(driver_text, encoding="utf-8")\n'
+              "PATCH_DRIVER\n"
+              'bash -n "$generated_driver"\n'
+              'bash -x "$generated_driver"\n'
+          )
+          text = text.replace(anchor, replacement, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          bash -n "$generated_v14_driver"
+          bash -x "$generated_v14_driver"
