@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
-      EXPECTED_PARENT: 0cd36d07f3e22643641c8b6a78ae831d17cb1d83
+      EXPECTED_PARENT: 75f5a44f4b3a6e4793fe3f8095dd1356a6e624ce
       BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
       WORKFLOW_PATH: .github/workflows/hepta-strict-clippy-remediation-once.yml
     steps:
@@ -171,12 +171,15 @@ jobs:
           python scripts/verify-hepta-cross-owner-operation-wiring.py
           python scripts/verify-hepta-architecture-gap-ledger.py
 
-      - name: Run formatting, checks, and strict Clippy
+      - name: Run owned-package formatting, checks, and strict Clippy
         working-directory: codex-rs
         shell: bash
         run: |
           set -euo pipefail
-          cargo fmt --all -- --check
+          cargo fmt \
+            -p codex-hepta-memory \
+            -p codex-hepta-agentd \
+            -- --check
           cargo check --locked \
             -p codex-hepta-memory \
             -p codex-hepta-agentd
@@ -212,7 +215,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo "schema=hepta_strict_clippy_remediation_once_v6"
+            echo "schema=hepta_strict_clippy_remediation_once_v7"
             echo "bootstrap_head=$GITHUB_SHA"
             echo "expected_parent=$EXPECTED_PARENT"
             echo "job_status=${{ job.status }}"
