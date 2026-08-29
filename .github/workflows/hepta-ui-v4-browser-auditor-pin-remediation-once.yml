@@ -1,0 +1,71 @@
+name: hepta-ui-v4-browser-auditor-pin-remediation-once
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-ui-v4-browser-runtime-final-20260829"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v4-browser-auditor-pin-remediation-once
+  cancel-in-progress: false
+
+jobs:
+  update-pin:
+    name: Pin CSP-compatible browser auditor
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact qualification head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Apply exact auditor pin replacement
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/hepta-ui-v4-rust-served-cross-browser-final.yml')
+          text = path.read_text()
+          replacements = {
+              'HEPTA_BROWSER_AUDITOR_SHA: 05da4bd3d8e182ecf457817840ad3f57a9bcaa97':
+                  'HEPTA_BROWSER_AUDITOR_SHA: 8419246036521f7e0d87373ec5dad8eb093882d5',
+              'HEPTA_BROWSER_SERVER_BLOB: aeb13ff1ead90b1d17092ba9b204e4503897696c':
+                  'HEPTA_BROWSER_SERVER_BLOB: f7f4bff4f8d99615ae1b2bcfb383e82f224984b6',
+          }
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'exact pin {old!r}: expected one match, got {count}')
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+          rm .github/workflows/hepta-ui-v4-browser-auditor-pin-remediation-once.yml
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-rust-served-cross-browser-final.yml")'
+          grep -q '8419246036521f7e0d87373ec5dad8eb093882d5' .github/workflows/hepta-ui-v4-rust-served-cross-browser-final.yml
+          grep -q 'f7f4bff4f8d99615ae1b2bcfb383e82f224984b6' .github/workflows/hepta-ui-v4-rust-served-cross-browser-final.yml
+          git diff --check
+          ruby -e '
+            paths=`git diff --name-only`.lines(chomp:true).sort
+            expected=[
+              ".github/workflows/hepta-ui-v4-browser-auditor-pin-remediation-once.yml",
+              ".github/workflows/hepta-ui-v4-rust-served-cross-browser-final.yml"
+            ].sort
+            abort "unexpected paths: #{paths.inspect}" unless paths == expected
+          '
+      - name: Commit exact pin update
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "hepta-ui-browser-audit-bot"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git add -A .github/workflows
+          git commit -m "test(ui): use CSP-compatible WebKit auditor"
+          git push origin HEAD:qualification/hepta-ui-v4-browser-runtime-final-20260829
