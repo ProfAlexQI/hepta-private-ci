@@ -1,0 +1,62 @@
+name: A0 V4.3 review-fix factory slim
+
+on:
+  push:
+    branches:
+      - codex/hepta-intelligence-a0-v43-review-fix-factory-20260830
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a0-v43-review-fix-factory-slim
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build reviewed replacement files on slim pool
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - name: Checkout support branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify support factory identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "ProfHepta/hepta-private-ci"
+          test "$GITHUB_REF_NAME" = "codex/hepta-intelligence-a0-v43-review-fix-factory-20260830"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -f scripts/a0-v43-review-fix-factory.py
+          test -f scripts/a0-v43-review-fix-factory-runner.py
+      - name: Build and verify reviewed replacement files
+        run: python3 scripts/a0-v43-review-fix-factory-runner.py
+      - name: Enforce factory boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          v=json.loads(Path("artifacts/a0-v43-reviewed-repair/factory-receipt.json").read_text())
+          assert v["status"] == "PASS_A0_RV_002_THROUGH_009_REPAIR_FACTORY"
+          assert v["a0_candidate_qualified"] is False
+          assert v["selected"] is False
+          assert v["source_writeback"] is False
+          assert len(v["files"]) == 17
+          assert v["authority"] and all(x is False for x in v["authority"].values())
+          PY
+          git diff --check
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Upload reviewed replacement file set
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: a0-v43-reviewed-repair-slim-${{ github.sha }}
+          path: artifacts/a0-v43-reviewed-repair/**
+          if-no-files-found: error
+          retention-days: 30
