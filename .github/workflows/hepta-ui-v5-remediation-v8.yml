@@ -1,0 +1,62 @@
+name: Hepta UI v5 remediation v8
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-remediation-v8-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-remediation-v8.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-remediation-v8
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_PARENT: cd5d354869ba7c39f9153667d62f064fd3d708c5
+      BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-remediation-v8.yml
+      UPSTREAM_URL: https://github.com/openai/codex.git
+      UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
+      UPSTREAM_ROLE: current_r12
+      UPSTREAM_FROZEN_REF: refs/remotes/upstream/hepta-intake-20260830-r12
+      UPSTREAM_INTAKE_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R12.json
+      UPSTREAM_RECORD_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+    steps:
+      - name: Check out exact v8 driver commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install deterministic remediation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes jq ripgrep ruby patch
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+
+      - name: Execute the v7 remediation on the standard Linux lane
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_driver=.github/workflows/hepta-ui-v5-remediation-v7.yml
+          generated_driver="$RUNNER_TEMP/hepta-ui-v5-remediate-v8-driver.sh"
+          test -f "$source_driver"
+          awk '
+            /      - name: Extend, verify, and publish the exact remediation/ { found=1; next }
+            found && /        shell: bash/ { next }
+            found && /        run: \|/ { in_run=1; next }
+            in_run { sub(/^          /, ""); print }
+          ' "$source_driver" > "$generated_driver"
+          bash -n "$generated_driver"
+          bash -x "$generated_driver"
