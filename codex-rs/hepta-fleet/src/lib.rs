@@ -10,6 +10,7 @@ mod registry;
 mod release;
 mod runtime_bootstrap_registry;
 mod runtime_launch;
+mod runtime_release_lookup;
 
 pub use error::FleetRegistryError;
 pub use model::AGENT_MANIFEST_SCHEMA_VERSION;
@@ -37,3 +38,5 @@ pub use runtime_bootstrap_registry::RuntimeReleaseProvenance;
 pub use runtime_launch::RUNTIME_LAUNCH_BINDING_SCHEMA_VERSION;
 pub use runtime_launch::RuntimeLaunchBinding;
 pub use runtime_launch::RuntimeLaunchBindingError;
+pub use runtime_release_lookup::AllowedRuntimeRelease;
+pub use runtime_release_lookup::allowed_runtime_release_for_program;
