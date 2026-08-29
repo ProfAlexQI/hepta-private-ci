@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: hepta-p0-7a-inode-publication-repair-once
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   repair:
@@ -46,51 +46,33 @@ jobs:
 
           path = Path("codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs")
           text = path.read_text()
-          old = '''    let linked = std::fs::symlink_metadata(path)?;
-              validate_registry_metadata(path, &linked, &parent_metadata, 2)?;
-              if metadata_identity(&held) != metadata_identity(&linked) {
-                  return Err(FleetRegistryError::Corrupt(
-                      "runtime bootstrap registry publication did not bind the fsynced inode".to_string(),
-                  ));
-              }
-
-              std::fs::remove_file(&temp)?;
-              sync_directory(parent)?;
-
-              let published = std::fs::symlink_metadata(path)?;
-              validate_registry_metadata(path, &published, &parent_metadata, 1)?;
-              if metadata_identity(&held) != metadata_identity(&published) {
-                  return Err(FleetRegistryError::Corrupt(
-                      "runtime bootstrap registry inode drifted after publication".to_string(),
-                  ));
-              }
-          '''
-          new = '''    let held_linked = file.metadata()?;
-              validate_registry_metadata(&temp, &held_linked, &parent_metadata, 2)?;
-              let linked = std::fs::symlink_metadata(path)?;
-              validate_registry_metadata(path, &linked, &parent_metadata, 2)?;
-              if metadata_identity(&held_linked) != metadata_identity(&linked) {
-                  return Err(FleetRegistryError::Corrupt(
-                      "runtime bootstrap registry publication did not bind the fsynced inode".to_string(),
-                  ));
-              }
-
-              std::fs::remove_file(&temp)?;
-              sync_directory(parent)?;
-
-              let held_published = file.metadata()?;
-              validate_registry_metadata(path, &held_published, &parent_metadata, 1)?;
-              let published = std::fs::symlink_metadata(path)?;
-              validate_registry_metadata(path, &published, &parent_metadata, 1)?;
-              if metadata_identity(&held_published) != metadata_identity(&published) {
-                  return Err(FleetRegistryError::Corrupt(
-                      "runtime bootstrap registry inode drifted after publication".to_string(),
-                  ));
-              }
-          '''
-          if text.count(old) != 1:
-              raise SystemExit("expected publication block not found exactly once")
-          path.write_text(text.replace(old, new, 1))
+          replacements = (
+              (
+                  "    let linked = std::fs::symlink_metadata(path)?;\n",
+                  "    let held_linked = file.metadata()?;\n"
+                  "    validate_registry_metadata(&temp, &held_linked, &parent_metadata, 2)?;\n"
+                  "    let linked = std::fs::symlink_metadata(path)?;\n",
+              ),
+              (
+                  "    if metadata_identity(&held) != metadata_identity(&linked) {\n",
+                  "    if metadata_identity(&held_linked) != metadata_identity(&linked) {\n",
+              ),
+              (
+                  "    let published = std::fs::symlink_metadata(path)?;\n",
+                  "    let held_published = file.metadata()?;\n"
+                  "    validate_registry_metadata(path, &held_published, &parent_metadata, 1)?;\n"
+                  "    let published = std::fs::symlink_metadata(path)?;\n",
+              ),
+              (
+                  "    if metadata_identity(&held) != metadata_identity(&published) {\n",
+                  "    if metadata_identity(&held_published) != metadata_identity(&published) {\n",
+              ),
+          )
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected repair anchor exactly once: {old!r}")
+              text = text.replace(old, new, 1)
+          path.write_text(text)
           PY
 
       - name: Set up repository CI tools
