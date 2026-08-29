@@ -26,7 +26,6 @@ import socket
 import sys
 import threading
 import time
-from dataclasses import asdict
 from types import ModuleType
 from typing import Any, Callable
 
@@ -53,6 +52,8 @@ PROTOCOL = load_module(
     "hepta-inference-inf0c-protocol-evidence.py",
 )
 QualificationError = BASE.QualificationError
+ProtocolQualificationError = PROTOCOL.QualificationError
+QUALIFICATION_ERRORS = (QualificationError, ProtocolQualificationError)
 
 
 def require(condition: bool, message: str) -> None:
@@ -84,8 +85,6 @@ def digest_text(value: str) -> dict[str, Any]:
 
 
 def error_receipt(error: BaseException) -> dict[str, Any]:
-    # The message can contain endpoint details or provider diagnostics. Persist
-    # only its digest and the exception class.
     return {
         "class": type(error).__name__,
         "message": digest_text(str(error)),
@@ -174,7 +173,7 @@ def qualify_tool_capability(
             "tool_call": tool_call,
             "response": BASE.body_receipt(response),
         }
-    except QualificationError as error:
+    except QUALIFICATION_ERRORS as error:
         captured = error
         status = classify_contract_error(error)
 
@@ -221,7 +220,7 @@ def qualify_sse_capability(
                 "terminal_completion_verified": True,
             },
         )
-    except QualificationError as error:
+    except QUALIFICATION_ERRORS as error:
         return capability_result(classify_contract_error(error), error=error)
 
 
@@ -281,7 +280,7 @@ class FixtureHandler(http.server.BaseHTTPRequestHandler):
 def expect_failure(operation: Callable[[], Any], label: str) -> None:
     try:
         operation()
-    except QualificationError:
+    except QUALIFICATION_ERRORS:
         return
     raise QualificationError(f"fixture unexpectedly passed: {label}")
 
@@ -329,8 +328,14 @@ def run_sse_fixture_suite() -> dict[str, bool]:
 def run_self_test() -> None:
     fixtures = run_sse_fixture_suite()
     require(all(fixtures.values()), "SSE fixture suite was incomplete")
-    require(classify_contract_error(QualificationError("SSE HTTP status 400")) == UNSUPPORTED, "HTTP contract rejection classification failed")
-    require(classify_contract_error(QualificationError("request failed for /responses: refused")) == FAILED, "transport failure classification failed")
+    require(
+        classify_contract_error(QualificationError("SSE HTTP status 400")) == UNSUPPORTED,
+        "HTTP contract rejection classification failed",
+    )
+    require(
+        classify_contract_error(QualificationError("request failed for /responses: refused")) == FAILED,
+        "transport failure classification failed",
+    )
     print("PASS_HEPTA_INFERENCE_INF0C_CAPABILITY_CLASSIFIER_SELF_TEST")
 
 
@@ -392,7 +397,7 @@ def main() -> int:
     ]
     matrix_complete = all(status in {QUALIFIED, UNSUPPORTED} for status in statuses)
     receipt = {
-        "schema": "hepta.inference.inf0c.capability_classification.v2",
+        "schema": "hepta.inference.inf0c.capability_classification.v3",
         "source": {
             "commit": BASE.git_value("rev-parse", "HEAD"),
             "tree": BASE.git_value("rev-parse", "HEAD^{tree}"),
@@ -434,7 +439,7 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except QualificationError as error:
+    except QUALIFICATION_ERRORS as error:
         print(
             "FAIL_HEPTA_INFERENCE_INF0C_CAPABILITY_CLASSIFICATION: "
             f"{type(error).__name__}",
