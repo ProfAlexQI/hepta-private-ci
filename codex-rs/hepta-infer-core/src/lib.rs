@@ -8,6 +8,7 @@ mod controller;
 mod identity;
 mod model;
 mod protocol;
+mod worker;
 
 use std::fmt;
 
@@ -44,6 +45,28 @@ pub use protocol::MAX_FRAME_BYTES;
 pub use protocol::PROTOCOL_VERSION;
 pub use protocol::ServerMessage;
 pub use protocol::token_fence;
+pub use worker::AbiByteSlice;
+pub use worker::AbiOwnedBuffer;
+pub use worker::BackendAbiContract;
+pub use worker::BackendOperation;
+pub use worker::GgufModelManifest;
+pub use worker::HEPTA_BACKEND_ABI_NAME;
+pub use worker::HEPTA_BACKEND_ABI_VERSION;
+pub use worker::LLAMA_CPP_PINNED_COMMIT;
+pub use worker::MAX_NATIVE_WORKER_ACTIVE;
+pub use worker::MAX_SHARED_REGION_BYTES;
+pub use worker::NativeWorkerRegistry;
+pub use worker::NativeWorkerRequest;
+pub use worker::REQUIRED_BACKEND_OPERATIONS;
+pub use worker::SharedRegionDescriptor;
+pub use worker::WorkerError;
+pub use worker::WorkerFault;
+pub use worker::WorkerFaultReceipt;
+pub use worker::WorkerHealth;
+pub use worker::WorkerQualificationDisposition;
+pub use worker::WorkerSnapshot;
+pub use worker::WorkerSupervisor;
+pub use worker::WorkerTransport;
 
 pub type Result<T> = std::result::Result<T, InferError>;
 
