@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the canonical P0.3.4 payload with a legacy recovery fallback."""
+"""Validate the canonical committed P0.3.4 payload with a forensic fallback."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import tarfile
 import tempfile
 from pathlib import Path, PurePosixPath
 
-EXPECTED_SHA256 = "bd21ef335c14fa2c78f6a2bb87b4c39d1a8937361c62ca80a92b5907a43617cd"
+EXPECTED_SHA256 = "0a3c110310edaf463bd7fd4a31148e3cb8dcbdbebc9f38700d94bfcdd5059373"
 START_MARKERS = (
     "cat > /tmp/p034-payload-full.tgz.b64 <<'EOF'\n",
     "cat > /tmp/p034-payload.b64 <<'EOF'\n",
@@ -75,6 +75,9 @@ def validate_payload(encoded_text: str, *, source: Path) -> tuple[str, bytes, st
                     raise RuntimeError(
                         f"unsafe complete P0.3.4 payload entry: {member.name}"
                     )
+            print("payload members:")
+            for name in sorted(names):
+                print(f"- {name}")
     return encoded, payload, actual
 
 
