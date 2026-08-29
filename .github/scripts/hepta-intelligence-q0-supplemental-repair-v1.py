@@ -33,20 +33,63 @@ def replace_exact(path: str, old: str, new: str, *, expected: int = 1) -> None:
     save(file_path, text.replace(old, new, expected))
 
 
-def replace_exact_or_already(path: str, old: str, new: str) -> None:
-    """Apply one exact repair or accept its one exact post-repair form."""
+def normalize_fail_closed_admission_assertion(path: str) -> None:
+    """Canonicalize one semantically exact replay-mismatch assertion.
+
+    Earlier bounded repair stages may alter whitespace or rewrite
+    ``!result.is_ok()`` to ``result.is_err()``.  Match only those two equivalent
+    shapes, bind the complete admission call and unique failure message, then
+    emit one canonical direct-error assertion.  Any missing, duplicated, or
+    semantically different shape remains a hard failure.
+    """
     file_path, text = load(path)
-    old_count = text.count(old)
-    new_count = text.count(new)
-    if old_count == 1 and new_count == 0:
-        save(file_path, text.replace(old, new, 1))
-        return
-    if old_count == 0 and new_count == 1:
-        return
-    raise AssertionError(
-        f"{path}: expected exactly one source or target form, "
-        f"found old={old_count} new={new_count}: {old[:120]!r}"
+    message = '"replaying with a different payload must fail closed"'
+    call = (
+        r"writer_input\s*"
+        r"\.\s*lease\s*"
+        r"\.\s*admit\s*\(\s*"
+        r"OCCURRENCE\s*,\s*"
+        r"TURN_START_TOPIC\s*,\s*"
+        r'r#"\{\"candidate_id\":\"different\"\}"#\s*,?\s*'
+        r"\)\s*"
+        r"\.\s*await\s*"
     )
+    old_pattern = re.compile(
+        rf"(?m)^(?P<indent>[ \t]*)assert!\(\s*!\s*(?:\(\s*)?{call}"
+        r"\.\s*is_ok\s*\(\s*\)\s*(?:\)\s*)?,\s*"
+        + re.escape(message)
+        + r"\s*\);"
+    )
+    new_pattern = re.compile(
+        rf"(?m)^(?P<indent>[ \t]*)assert!\(\s*(?:\(\s*)?{call}"
+        r"\.\s*is_err\s*\(\s*\)\s*(?:\)\s*)?,\s*"
+        + re.escape(message)
+        + r"\s*\);"
+    )
+    old_matches = list(old_pattern.finditer(text))
+    new_matches = list(new_pattern.finditer(text))
+    if len(old_matches) + len(new_matches) != 1:
+        raise AssertionError(
+            f"{path}: expected one replay-mismatch assertion, "
+            f"found old={len(old_matches)} new={len(new_matches)}"
+        )
+    match = old_matches[0] if old_matches else new_matches[0]
+    indent = match.group("indent")
+    canonical = (
+        f"{indent}assert!(\n"
+        f"{indent}    writer_input\n"
+        f"{indent}        .lease\n"
+        f"{indent}        .admit(\n"
+        f"{indent}            OCCURRENCE,\n"
+        f"{indent}            TURN_START_TOPIC,\n"
+        f'{indent}            r#"{{"candidate_id":"different"}}"#,\n'
+        f"{indent}        )\n"
+        f"{indent}        .await\n"
+        f"{indent}        .is_err(),\n"
+        f"{indent}    {message}\n"
+        f"{indent});"
+    )
+    save(file_path, text[: match.start()] + canonical + text[match.end() :])
 
 
 def insert_expect_before_function(path: str, name: str, lint: str, reason: str) -> None:
@@ -240,26 +283,8 @@ replace_exact(
     "        let mut replay_tampered = replay.clone();",
     "        let mut replay_tampered = replay;",
 )
-replace_exact_or_already(
-    "codex-rs/ext/hepta-memory/src/local_turn_writer.rs",
-    "            !writer_input\n"
-    "                .lease\n"
-    "                .admit(\n"
-    "                    OCCURRENCE,\n"
-    "                    TURN_START_TOPIC,\n"
-    "                    r#\"{\\\"candidate_id\\\":\\\"different\\\"}\"#,\n"
-    "                )\n"
-    "                .await\n"
-    "                .is_ok(),",
-    "            writer_input\n"
-    "                .lease\n"
-    "                .admit(\n"
-    "                    OCCURRENCE,\n"
-    "                    TURN_START_TOPIC,\n"
-    "                    r#\"{\\\"candidate_id\\\":\\\"different\\\"}\"#,\n"
-    "                )\n"
-    "                .await\n"
-    "                .is_err(),",
+normalize_fail_closed_admission_assertion(
+    "codex-rs/ext/hepta-memory/src/local_turn_writer.rs"
 )
 replace_exact(
     "codex-rs/ext/hepta-memory/src/local_turn_writer.rs",
