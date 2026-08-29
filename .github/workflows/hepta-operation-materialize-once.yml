@@ -129,7 +129,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -f scripts/hepta-automation-operation-repair-once.py
-          git rm --ignore-unmatch \
+          git rm -f --ignore-unmatch \
             .github/workflows/hepta-automation-operation-repair-once.yml \
             .github/workflows/hepta-operation-materialize-once.yml \
             .github/workflows/hepta-operation-safety-repair-slim-once.yml \
