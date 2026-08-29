@@ -11,12 +11,15 @@ on:
       - "codex-rs/Cargo.lock"
       - "MODULE.bazel.lock"
       - "docs/architecture/**"
+      - "scripts/verify-hepta-selected-architecture-plan.py"
       - "scripts/verify-hepta-architecture-plan-v4.py"
+      - "scripts/verify-hepta-architecture-plan-v5.py"
       - "scripts/verify-hepta-p0-7a-format.py"
       - ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml"
   push:
     branches:
       - "codex/hepta-architecture-v4-p0-7a-*"
+      - "codex/hepta-architecture-v5-*"
     paths:
       - "codex-rs/hepta-contracts/**"
       - "codex-rs/hepta-fleet/**"
@@ -25,7 +28,9 @@ on:
       - "codex-rs/Cargo.lock"
       - "MODULE.bazel.lock"
       - "docs/architecture/**"
+      - "scripts/verify-hepta-selected-architecture-plan.py"
       - "scripts/verify-hepta-architecture-plan-v4.py"
+      - "scripts/verify-hepta-architecture-plan-v5.py"
       - "scripts/verify-hepta-p0-7a-format.py"
       - ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml"
 
@@ -104,9 +109,9 @@ jobs:
         working-directory: .
         run: just bazel-lock-check
 
-      - name: V4 architecture source verifier
+      - name: Verify selected architecture source truth
         working-directory: .
-        run: python3 scripts/verify-hepta-architecture-plan-v4.py
+        run: python3 scripts/verify-hepta-selected-architecture-plan.py
 
       - name: Clean worktree
         if: always() && !cancelled()
