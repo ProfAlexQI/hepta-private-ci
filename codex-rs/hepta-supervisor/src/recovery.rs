@@ -20,6 +20,7 @@ use crate::lease::read_lease;
 use crate::lease::remove_lease;
 use crate::lease::validate_lease;
 use crate::lease::write_lease;
+use crate::prepare_runtime_bootstrap_for_spawn;
 use crate::runtime::AgentRuntime;
 use crate::runtime::AgentSlot;
 use crate::runtime::RuntimePhase;
@@ -112,6 +113,15 @@ impl<D: ProcessDriver> Supervisor<D> {
             logs_root: record.layout.logs_root().to_path_buf(),
             command: release.command().clone(),
         };
+        if let Err(error) = prepare_runtime_bootstrap_for_spawn(&self.registry, &spec) {
+            self.transition_without_runtime(
+                agent_id,
+                slot,
+                starting.generation,
+                AgentLifecycle::Failed,
+            )?;
+            return Err(driver_error(agent_id, error));
+        }
         let mut spawned = match self.driver.spawn(&spec) {
             Ok(spawned) => spawned,
             Err(error) => {
