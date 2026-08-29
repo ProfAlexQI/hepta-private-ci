@@ -1,4 +1,4 @@
-name: Hepta P0.7a Clippy diagnostic ARM (temporary)
+name: Hepta P0.7a Rust diagnostics ARM (temporary)
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: hepta-p0-7a-clippy-diagnostic-arm-${{ github.ref }}
+  group: hepta-p0-7a-rust-diagnostics-arm-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -34,42 +34,66 @@ jobs:
         with:
           components: clippy
 
-      - name: Capture complete strict Clippy output
-        id: clippy
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: cargo-nextest@0.9.143
+
+      - name: Capture independent test, check and Clippy diagnostics
+        id: diagnostics
         working-directory: codex-rs
         shell: bash
         run: |
           set -uo pipefail
-          log="$RUNNER_TEMP/hepta-p0-7a-clippy.log"
-          set +e
-          cargo clippy --locked --all-targets \
+          overall=0
+          run_capture() {
+            local name="$1"
+            shift
+            set +e
+            "$@" 2>&1 | tee "$RUNNER_TEMP/${name}.log"
+            local rc=${PIPESTATUS[0]}
+            printf '%s\n' "$rc" > "$RUNNER_TEMP/${name}.exit"
+            if (( rc != 0 )); then
+              overall=1
+            fi
+          }
+
+          run_capture contracts-tests just test -p codex-hepta-contracts
+          run_capture fleet-tests just test -p codex-hepta-fleet
+          run_capture supervisor-tests just test -p codex-hepta-supervisor
+          run_capture agentd-tests just test -p codex-hepta-agentd
+          run_capture all-target-check cargo check --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd
+          run_capture strict-clippy cargo clippy --locked --all-targets \
             -p codex-hepta-contracts \
             -p codex-hepta-fleet \
             -p codex-hepta-supervisor \
             -p codex-hepta-agentd \
-            -- -D warnings 2>&1 | tee "$log"
-          rc=${PIPESTATUS[0]}
-          printf '%s\n' "$rc" > "$RUNNER_TEMP/hepta-p0-7a-clippy.exit"
-          printf 'exit_code=%s\n' "$rc" >> "$GITHUB_OUTPUT"
+            -- -D warnings
+
+          printf 'aggregate_exit=%s\n' "$overall" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Upload complete diagnostic
+      - name: Upload complete diagnostics
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-p0-7a-clippy-diagnostic-${{ github.sha }}
+          name: hepta-p0-7a-rust-diagnostics-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/hepta-p0-7a-clippy.log
-            ${{ runner.temp }}/hepta-p0-7a-clippy.exit
+            ${{ runner.temp }}/*.log
+            ${{ runner.temp }}/*.exit
           if-no-files-found: error
           retention-days: 3
 
-      - name: Preserve strict failure status
+      - name: Preserve aggregate failure status
         if: always()
         shell: bash
         env:
-          CLIPPY_EXIT: ${{ steps.clippy.outputs.exit_code }}
+          AGGREGATE_EXIT: ${{ steps.diagnostics.outputs.aggregate_exit }}
         run: |
           set -euo pipefail
-          test -n "$CLIPPY_EXIT"
-          exit "$CLIPPY_EXIT"
+          test -n "$AGGREGATE_EXIT"
+          exit "$AGGREGATE_EXIT"
