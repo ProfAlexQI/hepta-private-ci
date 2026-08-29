@@ -1,0 +1,76 @@
+{
+  "schema": "hepta.inference.implementation_status.v4",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V5",
+  "plan_version": "5.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "development_pr": 73,
+  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "integration_branch": "codex/hepta-inference-v5-runtime-integration-20260830",
+  "source_binding": {
+    "mode": "tracked implementation status binds observed parent; exact source qualification is CI-generated",
+    "observed_parent_commit": "a34a7d29c48103047f21fa33502dbad0dd405ca8"
+  },
+  "components": {
+    "public_digest_only_protocol": "SOURCE_PRESENT",
+    "public_role_denial": "SOURCE_PRESENT_NOT_CURRENTLY_QUALIFIED",
+    "controller_queue_inflight_running_bounds": "SOURCE_PRESENT_NOT_CURRENTLY_QUALIFIED",
+    "controller_token_chain": "SOURCE_PRESENT_NOT_CURRENTLY_QUALIFIED",
+    "deadline_sweep": "SOURCE_PRESENT_NOT_CURRENTLY_QUALIFIED",
+    "connection_semaphore_and_io_timeouts": "SOURCE_PRESENT_NOT_CURRENTLY_QUALIFIED",
+    "atomic_terminal_receipt_store": "SOURCE_PRESENT_NOT_CURRENTLY_QUALIFIED",
+    "receipt_startup_recovery": "SOURCE_PRESENT_NOT_CURRENTLY_QUALIFIED",
+    "capability_primitives": "SOURCE_COMPONENT_PRESENT",
+    "canonical_private_protocol": "SOURCE_COMPONENT_PRESENT",
+    "private_control_state": "SOURCE_COMPONENT_PRESENT",
+    "runtime_coordinator": "ABSENT",
+    "prompt_input_lease": "ABSENT",
+    "bounded_cancel_supervisor": "SOURCE_COMPONENT_INCOMPLETE",
+    "receipt_retention_tombstone": "SOURCE_COMPONENT_INCOMPLETE",
+    "durable_scheduler_journal": "ABSENT",
+    "scheduler_contract": "SOURCE_COMPONENT_PRESENT",
+    "provider_host": "SOURCE_COMPONENT_INCOMPLETE",
+    "provider_daemon_route": "ABSENT",
+    "worker_host_process": "SOURCE_COMPONENT_FIXTURE_ONLY",
+    "native_lifecycle_abi": "ABSENT",
+    "verified_handle_native_load": "ABSENT",
+    "worker_daemon_private_protocol_integration": "ABSENT",
+    "typed_shadow_bridge": "SOURCE_COMPONENT_PRESENT",
+    "agentd_shadow_owner_integration": "ABSENT",
+    "real_provider_model_execution": "NOT_EXECUTED",
+    "real_native_model_execution": "NOT_EXECUTED",
+    "exact_device_performance": "NOT_EXECUTED",
+    "privacy_acceptance": "NOT_ACCEPTED",
+    "operator_acceptance": "NOT_ACCEPTED",
+    "promotion": "NOT_PROMOTED",
+    "release": "NOT_RELEASED"
+  },
+  "crate_strategy": {
+    "existing": [
+      "codex-hepta-infer-core",
+      "codex-hepta-infer-client",
+      "codex-hepta-inferd"
+    ],
+    "candidate_new": [
+      "codex-hepta-infer-worker-host"
+    ],
+    "forbidden_empty_crates": true,
+    "product_owner": "codex-hepta-agentd qualification-only shadow seam"
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
