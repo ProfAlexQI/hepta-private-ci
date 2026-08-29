@@ -1,0 +1,162 @@
+name: Hepta V5 B1 boundary hardening bootstrap
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/hepta-architecture-v5-b1-model-provider-boundaries-20260830
+    paths:
+      - scripts/apply-hepta-v5-b1-boundary-hardening.py
+      - .github/workflows/hepta-v5-b1-boundary-hardening-bootstrap.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-v5-b1-boundary-hardening-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  harden-and-qualify:
+    name: Apply and qualify exact B1 boundary hardening
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: nextest@0.9.143
+
+      - name: Verify immutable bootstrap input
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/codex/hepta-architecture-v5-b1-model-provider-boundaries-20260830" ]]
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code
+          git diff --cached --exit-code
+          python3 -m py_compile scripts/apply-hepta-v5-b1-boundary-hardening.py
+
+      - name: Apply exact reviewed hardening payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/apply-hepta-v5-b1-boundary-hardening.py
+          python3 scripts/verify-hepta-v5-b1-format.py
+          git diff --check
+
+      - name: Verify B1 no-bypass source invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lib = Path("codex-rs/hepta-contracts/src/lib.rs").read_text()
+          checked = Path("codex-rs/hepta-contracts/src/checked_provider_operation.rs").read_text()
+          tests = Path("codex-rs/hepta-contracts/tests/provider_verified_use_boundary.rs").read_text()
+
+          required = {
+              "crate-private raw coordinator": "pub(crate) use provider_effect::ProviderEffectCoordinator;" in lib,
+              "public atomic witness pair": "pub use checked_provider_operation::ProviderVerifiedUseWitnesses;" in lib,
+              "atomic sink": "FnOnce(&ProviderVerifiedUseWitnesses)" in checked,
+              "restored-journal gate": "pub fn with_journal(" in checked,
+              "pre-send phase gate": "OperationPhase::OutboxPending" in checked,
+              "provider journal replay gate": ".journal().state(&intent.key).is_some()" in checked,
+              "payload binding": "Sha256Digest::for_bytes(wire_payload)" in checked,
+              "provider token": "PhysicalCapabilityKind::ProviderDispatch" in checked,
+              "effect token": "PhysicalCapabilityKind::ExternalEffect" in checked,
+              "atomic persistence negative test": "witness_sink_failure_prevents_the_physical_send" in tests,
+              "payload drift negative test": "final_payload_drift_fails_before_witness_persistence_or_send" in tests,
+              "restored journal negative test": "restored_pending_journal_is_lookup_only_and_cannot_reissue_witnesses" in tests,
+          }
+          failed = [name for name, passed in required.items() if not passed]
+          forbidden = {
+              "public raw coordinator": "pub use provider_effect::ProviderEffectCoordinator;" in lib,
+              "raw checked constructor": "pub fn with_provider(" in checked,
+              "raw provider accessor": "pub fn provider(&self)" in checked,
+              "raw coordinator extraction": "pub fn into_parts(" in checked,
+              "per-witness mutable sink": "FnMut(&VerifiedUseWitness)" in checked,
+          }
+          failed.extend(name for name, present in forbidden.items() if present)
+          if failed:
+              raise SystemExit("B1 no-bypass invariant failure: " + ", ".join(failed))
+          print("PASS_HEPTA_V5_B1_NO_BYPASS_SOURCE_INVARIANTS")
+          PY
+
+      - name: Verify locked metadata
+        working-directory: codex-rs
+        shell: bash
+        run: cargo metadata --locked --no-deps --format-version 1 >/dev/null
+
+      - name: Run focused B1 tests
+        working-directory: codex-rs
+        shell: bash
+        run: cargo nextest run --locked -p codex-hepta-contracts --test provider_verified_use_boundary
+
+      - name: Run complete contracts tests
+        working-directory: codex-rs
+        shell: bash
+        run: cargo nextest run --locked -p codex-hepta-contracts
+
+      - name: Check all contracts targets
+        working-directory: codex-rs
+        shell: bash
+        run: cargo check --locked --all-targets -p codex-hepta-contracts
+
+      - name: Run strict contracts Clippy
+        working-directory: codex-rs
+        shell: bash
+        run: cargo clippy --locked --all-targets -p codex-hepta-contracts -- -D warnings
+
+      - name: Verify committed Bazel lock
+        shell: bash
+        run: just bazel-lock-check
+
+      - name: Remove one-shot bootstrap and verify exact change set
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm scripts/apply-hepta-v5-b1-boundary-hardening.py
+          rm .github/workflows/hepta-v5-b1-boundary-hardening-bootstrap.yml
+          git diff --check
+          mapfile -t actual < <(git diff --name-only | LC_ALL=C sort)
+          expected=(
+            .github/workflows/hepta-v5-b1-boundary-hardening-bootstrap.yml
+            codex-rs/hepta-contracts/src/checked_provider_operation.rs
+            codex-rs/hepta-contracts/src/lib.rs
+            codex-rs/hepta-contracts/tests/provider_verified_use_boundary.rs
+            scripts/apply-hepta-v5-b1-boundary-hardening.py
+            scripts/verify-hepta-v5-b1-format.py
+          )
+          mapfile -t expected < <(printf '%s\n' "${expected[@]}" | LC_ALL=C sort)
+          diff -u <(printf '%s\n' "${expected[@]}") <(printf '%s\n' "${actual[@]}")
+
+      - name: Commit qualified hardening without force
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- \
+            .github/workflows/hepta-v5-b1-boundary-hardening-bootstrap.yml \
+            codex-rs/hepta-contracts/src/checked_provider_operation.rs \
+            codex-rs/hepta-contracts/src/lib.rs \
+            codex-rs/hepta-contracts/tests/provider_verified_use_boundary.rs \
+            scripts/apply-hepta-v5-b1-boundary-hardening.py \
+            scripts/verify-hepta-v5-b1-format.py
+          git commit -m "fix(hepta): close B1 provider boundary bypasses"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
