@@ -1,6 +1,11 @@
 use super::*;
+use super::support::durable_receipt_digest;
+use super::support::limit_plus_one;
+use super::support::parse_fact_kind;
+use super::support::stored_fact_supports;
+use super::support::validate_span_range_corrupt;
 
-pub(super) async fn verify_receipts(
+pub(in super::super::super) async fn verify_receipts(
     pool: &SqlitePool,
     owner_agent_id: &str,
 ) -> Result<(), CognitiveStoreError> {

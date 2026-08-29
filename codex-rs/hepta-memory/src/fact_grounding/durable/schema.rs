@@ -1,5 +1,4 @@
 use super::*;
-use sqlx::Executor;
 
 const REQUIRED_GROUNDING_SCHEMA_OBJECTS: &[(&str, &str)] = &[
     ("cognitive_fact_grounding_migrations", "table"),

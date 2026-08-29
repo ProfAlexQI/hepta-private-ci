@@ -409,6 +409,7 @@ fn identity_digest(domain: &[u8], kind: &[u8], value: &str) -> Sha256Digest {
     Sha256Digest::for_bytes(&hasher.finalize())
 }
 
+#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
 fn replay_binding_digest(
     turn_id: &Sha256Digest,
     lease_id: &Sha256Digest,
@@ -709,7 +710,7 @@ mod tests {
             before_witness
         );
         assert!(turn_store.get::<LocalRehydrationReplayPlan>().is_none());
-        assert!(!LOCAL_REHYDRATION_REPLAY_LIFECYCLE_REGISTERED);
+        const { assert!(!LOCAL_REHYDRATION_REPLAY_LIFECYCLE_REGISTERED); }
     }
 
     #[tokio::test]

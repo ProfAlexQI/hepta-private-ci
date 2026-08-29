@@ -9,5 +9,5 @@ mod support;
 #[path = "ledger/verify.rs"]
 mod verify;
 
-pub(super) use insert::insert_tx;
-pub(super) use verify::verify_receipts;
+pub(in super::super) use insert::insert_tx;
+pub(in super::super) use verify::verify_receipts;

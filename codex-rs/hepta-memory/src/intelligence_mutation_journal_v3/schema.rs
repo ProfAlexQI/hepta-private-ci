@@ -171,6 +171,7 @@ fn verify_migration_rows(
     Ok(())
 }
 
+#[allow(clippy::disallowed_methods, reason = "the isolated in-memory schema oracle does not create a runtime state database")]
 async fn verify_schema_oracle(pool: &SqlitePool) -> Result<(), CognitiveStoreError> {
     let expected_names = REQUIRED_MUTATION_JOURNAL_SCHEMA_OBJECTS
         .iter()

@@ -273,7 +273,7 @@ def main() -> int:
             rust_matrix,
             [
                 "cargo test --locked -p codex-hepta-memory intelligence_mutation_state",
-                "cargo clippy --locked -p codex-hepta-memory --all-targets -- -D warnings",
+                "cargo clippy --locked -p codex-hepta-memory --all-targets --no-deps -- -D warnings",
             ],
         )
         and "verify-hepta-intelligence-mutation-state.py" in source_gates

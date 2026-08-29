@@ -277,7 +277,7 @@ def main() -> int:
             rust_matrix,
             [
                 "cargo test --locked -p codex-hepta-memory intelligence_mutation_journal",
-                "cargo clippy --locked -p codex-hepta-memory --all-targets -- -D warnings",
+                "cargo clippy --locked -p codex-hepta-memory --all-targets --no-deps -- -D warnings",
             ],
         )
     )

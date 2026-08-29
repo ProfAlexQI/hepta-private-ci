@@ -64,7 +64,7 @@ fn app_server_config_overrides() -> CliConfigOverrides {
     }
 }
 
-#[expect(
+#[allow(
     dead_code,
     reason = "the read-only constructor remains a qualification and regression seam"
 )]

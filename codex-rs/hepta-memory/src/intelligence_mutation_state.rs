@@ -953,7 +953,7 @@ mod tests {
         let mut state = IntelligenceMutationState::new(binding()).expect("state");
         let mut drifted = state.binding().clone();
         drifted.lease_epoch += 1;
-        let request = IntelligenceMutationTransitionRequest {
+        let drifted_request = IntelligenceMutationTransitionRequest {
             binding: drifted,
             sequence: 0,
             causal_parent_sha256: None,
@@ -962,7 +962,7 @@ mod tests {
             },
         };
         assert_eq!(
-            state.apply(request),
+            state.apply(drifted_request),
             Err(IntelligenceMutationStateError::BindingDrift)
         );
 

@@ -27,7 +27,6 @@ use super::intelligence_mutation_journal::IntelligenceMutationJournalError;
 use super::intelligence_mutation_journal::IntelligenceMutationJournalFault;
 use super::intelligence_mutation_state::IntelligenceMutationAction;
 use super::intelligence_mutation_state::IntelligenceMutationBinding;
-use super::intelligence_mutation_state::IntelligenceMutationState;
 use super::intelligence_mutation_state::IntelligenceMutationTransitionRequest;
 
 pub(crate) const SHADOW_INTELLIGENCE_MUTATION_HOST_SCHEMA_VERSION: u32 = 1;

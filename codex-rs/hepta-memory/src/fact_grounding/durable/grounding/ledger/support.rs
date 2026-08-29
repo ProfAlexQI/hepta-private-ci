@@ -1,6 +1,7 @@
 use super::*;
+use crate::framing::frame_part;
 
-async fn stored_fact_supports(
+pub(super) async fn stored_fact_supports(
     pool: &SqlitePool,
     memory_id: &str,
     memory_revision: i64,
@@ -80,7 +81,7 @@ async fn stored_fact_supports(
     Ok(supports)
 }
 
-fn durable_receipt_digest(parts: DurableReceiptDigestParts<'_>) -> Sha256Digest {
+pub(super) fn durable_receipt_digest(parts: DurableReceiptDigestParts<'_>) -> Sha256Digest {
     let DurableReceiptDigestParts {
         memory_id,
         memory_revision,
@@ -92,34 +93,34 @@ fn durable_receipt_digest(parts: DurableReceiptDigestParts<'_>) -> Sha256Digest 
         spans,
     } = parts;
     let mut hasher = Sha256::new();
-    super::super::frame_part(
+    frame_part(
         &mut hasher,
         b"hepta:cognitive:durable-fact-grounding-receipt:v1",
     );
-    super::super::frame_part(&mut hasher, memory_id.as_bytes());
-    super::super::frame_part(&mut hasher, &memory_revision.to_be_bytes());
-    super::super::frame_part(&mut hasher, source_id.as_bytes());
-    super::super::frame_part(&mut hasher, &source_revision.to_be_bytes());
-    super::super::frame_part(&mut hasher, GROUNDING_CONTRACT.as_bytes());
-    super::super::frame_part(&mut hasher, source_content_sha256.as_bytes());
-    super::super::frame_part(&mut hasher, fact_set_sha256.as_bytes());
-    super::super::frame_part(&mut hasher, fact_identity_sha256.as_bytes());
-    super::super::frame_part(
+    frame_part(&mut hasher, memory_id.as_bytes());
+    frame_part(&mut hasher, &memory_revision.to_be_bytes());
+    frame_part(&mut hasher, source_id.as_bytes());
+    frame_part(&mut hasher, &source_revision.to_be_bytes());
+    frame_part(&mut hasher, GROUNDING_CONTRACT.as_bytes());
+    frame_part(&mut hasher, source_content_sha256.as_bytes());
+    frame_part(&mut hasher, fact_set_sha256.as_bytes());
+    frame_part(&mut hasher, fact_identity_sha256.as_bytes());
+    frame_part(
         &mut hasher,
         &u64::try_from(spans.len()).unwrap_or(u64::MAX).to_be_bytes(),
     );
     for span in spans {
-        super::super::frame_part(&mut hasher, span.identity.kind.as_str().as_bytes());
-        super::super::frame_part(&mut hasher, span.identity.key.as_bytes());
-        super::super::frame_part(&mut hasher, &span.ordinal.to_be_bytes());
-        super::super::frame_part(&mut hasher, &span.start_byte.to_be_bytes());
-        super::super::frame_part(&mut hasher, &span.end_byte.to_be_bytes());
-        super::super::frame_part(&mut hasher, span.evidence_sha256.as_str().as_bytes());
+        frame_part(&mut hasher, span.identity.kind.as_str().as_bytes());
+        frame_part(&mut hasher, span.identity.key.as_bytes());
+        frame_part(&mut hasher, &span.ordinal.to_be_bytes());
+        frame_part(&mut hasher, &span.start_byte.to_be_bytes());
+        frame_part(&mut hasher, &span.end_byte.to_be_bytes());
+        frame_part(&mut hasher, span.evidence_sha256.as_str().as_bytes());
     }
     Sha256Digest::from_sha256_output(hasher.finalize())
 }
 
-fn parse_fact_kind(value: &str) -> Result<GroundedFactKind, CognitiveStoreError> {
+pub(super) fn parse_fact_kind(value: &str) -> Result<GroundedFactKind, CognitiveStoreError> {
     match value {
         "entity" => Ok(GroundedFactKind::Entity),
         "relation" => Ok(GroundedFactKind::Relation),
@@ -129,7 +130,7 @@ fn parse_fact_kind(value: &str) -> Result<GroundedFactKind, CognitiveStoreError>
     }
 }
 
-fn validate_span_range_corrupt(
+pub(super) fn validate_span_range_corrupt(
     source_text: &str,
     start: usize,
     end: usize,
@@ -147,11 +148,11 @@ fn validate_span_range_corrupt(
     Ok(())
 }
 
-fn to_i64_len(value: usize, label: &str) -> Result<i64, CognitiveStoreError> {
+pub(super) fn to_i64_len(value: usize, label: &str) -> Result<i64, CognitiveStoreError> {
     i64::try_from(value).map_err(|_| CognitiveStoreError::Invalid(format!("{label} exceeds i64")))
 }
 
-fn limit_plus_one(value: usize) -> Result<i64, CognitiveStoreError> {
+pub(super) fn limit_plus_one(value: usize) -> Result<i64, CognitiveStoreError> {
     value
         .checked_add(1)
         .and_then(|next| i64::try_from(next).ok())

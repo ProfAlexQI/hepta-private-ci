@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn validate_source_binding(
+pub(in super::super) fn validate_source_binding(
     source: &SourceDraft,
     scope: &crate::CognitiveScope,
     expected_content: &str,
@@ -18,7 +18,7 @@ pub(super) fn validate_source_binding(
     Ok(())
 }
 
-pub(super) fn require_groundable_revision(
+pub(in super::super) fn require_groundable_revision(
     revision: &MemoryRevisionDraft,
     grounded: &GroundedKgFactSetDraft,
 ) -> Result<(), CognitiveStoreError> {
@@ -37,7 +37,7 @@ pub(super) fn require_groundable_revision(
     Ok(())
 }
 
-pub(super) fn bind_exact_citation(
+pub(in super::super) fn bind_exact_citation(
     revision: &mut MemoryRevisionDraft,
     citation: &SourceRevisionId,
 ) -> Result<(), CognitiveStoreError> {
@@ -50,7 +50,7 @@ pub(super) fn bind_exact_citation(
     Ok(())
 }
 
-pub(super) fn prepare(
+pub(in super::super) fn prepare(
     source: &SourceDraft,
     grounded: &GroundedKgFactSetDraft,
 ) -> Result<PreparedGrounding, CognitiveStoreError> {
@@ -268,7 +268,7 @@ fn fact_supports(
     Ok(supports)
 }
 
-pub(super) fn validate_canonical_identity_binding(
+pub(in super::super) fn validate_canonical_identity_binding(
     prepared: &PreparedGrounding,
     canonical: &CanonicalFactSet,
 ) -> Result<(), CognitiveStoreError> {
