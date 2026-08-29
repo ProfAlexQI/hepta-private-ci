@@ -1,4 +1,4 @@
-name: p034-qualified-publisher-cross-platform-v2
+name: p034-qualified-publisher-cross-platform-v3
 
 on:
   push:
@@ -7,13 +7,15 @@ on:
     paths:
       - .github/workflows/p034-publisher-cross-platform-v1.yml
       - ci/p034-qualified-publisher.py
+      - ci/p034-qualified-publisher-v2.py
       - ci/p034-extract-full-payload.py
+      - ci/p034-forward-compat.py
 
 permissions:
   contents: write
 
 concurrency:
-  group: p034-qualified-publisher-cross-platform-v2-${{ github.sha }}
+  group: p034-qualified-publisher-cross-platform-v3-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -71,8 +73,8 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt,clippy
 
-      - name: Apply, qualify, squash, and publish exact candidate
-        run: python helper/ci/p034-qualified-publisher.py target
+      - name: Apply, qualify, repair predecessor gate, squash, and publish
+        run: python helper/ci/p034-qualified-publisher-v2.py target
 
       - name: Upload fail-closed diagnostics
         if: always()
