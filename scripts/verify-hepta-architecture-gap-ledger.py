@@ -28,6 +28,7 @@ RETIRED_WORKFLOWS = (
     ".github/workflows/hepta-automation-operation-repair-once.yml",
     ".github/workflows/hepta-operation-safety-repair-slim-once.yml",
     ".github/workflows/hepta-operation-materialize-once.yml",
+    ".github/workflows/hepta-gap-closure-once.yml",
 )
 RETIRED_MUTATORS = (
     "scripts/hepta-architecture-p0-2-portability-bootstrap.py",
@@ -43,6 +44,7 @@ RETIRED_MUTATORS = (
     "scripts/hepta-automation-operation-repair-once.py.part-02",
     "scripts/hepta-automation-operation-repair-once.py.part-03",
     "scripts/hepta-automation-model-v4.rs",
+    "scripts/hepta-close-ci-gaps-once.py",
 )
 MUTATING_WORKFLOW_NAME_PARTS = (
     "architecture",
@@ -173,12 +175,16 @@ def main() -> int:
         "Exact source-head architecture closure",
         "Merge-candidate architecture integration",
         "Hepta architecture convergence required",
+        "if: ${{ always() && !cancelled() }}",
+        "cargo test --locked -p codex-hepta-automation --test automation -- --nocapture",
         "python3 scripts/verify-hepta-architecture-gap-ledger.py",
         "python3 scripts/verify-hepta-cross-owner-operation-wiring.py",
         "source_mutation=false",
     ):
         if marker not in workflow:
             fail(f"canonical workflow marker is missing: {marker}")
+    if workflow.count("cargo test --locked -p codex-hepta-automation --test automation -- --nocapture") != 2:
+        fail("Automation integration suite must execute once for each qualification identity")
     for forbidden in ("contents: write", "git push", "git commit", "persist-credentials: true"):
         if forbidden in workflow:
             fail(f"canonical workflow contains a write path: {forbidden}")
@@ -189,6 +195,8 @@ def main() -> int:
         fail("blocking-ci does not call the canonical architecture workflow")
     if "- hepta-architecture-convergence" not in blocking:
         fail("blocking-ci required aggregator omits architecture convergence")
+    if "if: ${{ always() && !cancelled() }}" not in blocking:
+        fail("blocking-ci required aggregator can survive cancellation and starve the latest head")
 
     hosted = ledger.get("hostedQualification")
     if not isinstance(hosted, dict):
