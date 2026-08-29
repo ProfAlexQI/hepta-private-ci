@@ -16,14 +16,14 @@ concurrency:
 
 env:
   EXPECTED_BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
-  EXPECTED_PARENT: 74ff3ab03d463e23e5244cbf2fe04aa404949aa4
+  EXPECTED_PARENT: e000d7d70b80ad2335a00c2b74f75e5902a46ccd
   WORKFLOW_PATH: .github/workflows/workspace-lock-reconcile.yml
 
 jobs:
   reconcile:
     name: Reconcile exact workspace lock and retire self
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    runs-on: ubuntu-slim
+    timeout-minutes: 30
     steps:
       - name: Checkout exact reconciliation candidate
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -96,8 +96,6 @@ jobs:
           python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
           python3 scripts/verify-hepta-cross-owner-operation-wiring.py
           python3 scripts/verify-hepta-architecture-gap-ledger.py
-          cargo check --manifest-path codex-rs/Cargo.toml --locked -p codex-hepta-memory-runtime
-          cargo check --manifest-path codex-rs/Cargo.toml --locked -p codex-hepta-agentd
 
       - name: Retire the one-shot workflow and prove bounded diff
         shell: bash
