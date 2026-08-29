@@ -1,0 +1,177 @@
+name: Hepta PR53 exact-head Rust diagnostic
+
+on:
+  push:
+    branches:
+      - codex/hepta-pr53-exact-rust-diagnostic-20260829
+
+permissions:
+  contents: read
+
+env:
+  TARGET_SOURCE: abb435c263c2967c6ba613c5b8554b4cb45e6153
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+
+jobs:
+  source-and-format:
+    name: Source ratchets and repository formatting
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          fetch-depth: 2
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - name: Run all fail-closed architecture ratchets
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+          python3 scripts/verify-hepta-authority-callers-p0-1.py
+          python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python3 scripts/verify-hepta-cross-owner-operation-wiring.py
+          python3 scripts/verify-hepta-architecture-gap-ledger.py
+      - name: Check repository formatting
+        run: just fmt-check
+
+  memory-runtime:
+    name: Memory and typed runtime boundary
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: nextest
+          version: 0.9.103
+      - name: Test Memory implementation and runtime facade
+        run: |
+          set -euo pipefail
+          just test -p codex-hepta-memory
+          just test -p codex-hepta-memory-runtime
+      - name: Strict Memory Clippy
+        run: |
+          set -euo pipefail
+          just clippy -p codex-hepta-memory --all-targets -- -D warnings
+          just clippy -p codex-hepta-memory-runtime --all-targets -- -D warnings
+
+  contracts-and-automation:
+    name: Contracts and Automation operation lifecycle
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: nextest
+          version: 0.9.103
+      - name: Test operation contracts and Automation integration
+        run: |
+          set -euo pipefail
+          just test -p codex-hepta-contracts
+          just test -p codex-hepta-automation
+      - name: Strict contracts and Automation Clippy
+        run: |
+          set -euo pipefail
+          just clippy -p codex-hepta-contracts --all-targets -- -D warnings
+          just clippy -p codex-hepta-automation --all-targets -- -D warnings
+
+  matrix-fault:
+    name: Matrix journal and same-connection SQLITE_FULL
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: nextest
+          version: 0.9.103
+      - name: Execute Matrix operation and fault tests
+        run: |
+          set -euo pipefail
+          just test -p codex-hepta-matrix-store
+          just test -p codex-hepta-matrix-store --features qualification-fault-injection
+          just test -p codex-hepta-matrixd
+      - name: Strict Matrix Clippy including qualification seam
+        run: |
+          set -euo pipefail
+          just clippy -p codex-hepta-matrix-store --all-targets -- -D warnings
+          just clippy -p codex-hepta-matrix-store --all-targets --features qualification-fault-injection -- -D warnings
+          just clippy -p codex-hepta-matrixd --all-targets -- -D warnings
+
+  agent-product-graph:
+    name: Agentd composition and product graph compilation
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: nextest
+          version: 0.9.103
+      - name: Test Agentd profiles
+        run: |
+          set -euo pipefail
+          just test -p codex-hepta-agentd
+          just test -p codex-hepta-agentd --features qualification-cognitive-write
+      - name: Compile complete product graph
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-automation \
+            -p codex-hepta-agentd \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-matrix-store \
+            -p codex-hepta-matrixd \
+            -p codex-hepta-native-gateway
+          cargo check --locked --all-targets --no-default-features \
+            -p codex-hepta-agentd \
+            --features qualification-cognitive-write
+      - name: Strict Agentd Clippy
+        run: |
+          set -euo pipefail
+          just clippy -p codex-hepta-agentd --all-targets -- -D warnings
+          cargo clippy --manifest-path codex-rs/hepta-agentd/Cargo.toml \
+            --locked --all-targets --no-default-features \
+            --features qualification-cognitive-write -- -D warnings
