@@ -614,16 +614,18 @@ mod tests {
             .replace('}', ",\"unexpected\":true}");
         assert!(serde_json::from_str::<HostTurnAuthorityBinding>(&unknown).is_err());
 
-        assert!(HostTurnAuthorityBinding::new(
-            binding.owner_agent_id,
-            binding.lease_id.clone(),
-            binding.authority_epoch,
-            binding.owner_epoch,
-            binding.generation,
-            "\0",
-            binding.lease_expires_at_unix_seconds,
-            binding.lease_head_sha256.clone(),
-        )
-        .is_err());
+        assert!(
+            HostTurnAuthorityBinding::new(
+                binding.owner_agent_id,
+                binding.lease_id.clone(),
+                binding.authority_epoch,
+                binding.owner_epoch,
+                binding.generation,
+                "\0",
+                binding.lease_expires_at_unix_seconds,
+                binding.lease_head_sha256.clone(),
+            )
+            .is_err()
+        );
     }
 }
