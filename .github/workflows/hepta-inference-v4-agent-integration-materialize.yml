@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = 491760c981aed3115685f8bdf69cf196cb51fb3a
+          test "$(git rev-parse HEAD^)" = 979fd1353ff4d21b9f56e6c75bfd17ac7fcc7047
           test "$(git branch --show-current)" = agent/hepta-inference-v4-integration-staging-20260830
           test -z "$(git status --porcelain)"
 
@@ -61,7 +61,7 @@ jobs:
         working-directory: codex-rs
         run: |
           set -euo pipefail
-          cargo metadata --no-deps --format-version 1 > "$RUNNER_TEMP/integration-metadata-unlocked.json"
+          cargo metadata --format-version 1 > "$RUNNER_TEMP/integration-metadata-unlocked.json"
           cargo fmt \
             -p codex-hepta-infer-core \
             -p codex-hepta-infer-client \
