@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: hepta-a0-v451-gap-integrity-publisher-20260829-2315
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
@@ -21,13 +21,19 @@ env:
   Q0_TREE: ca455a9ef797cd95164c880c7b8faba80b305589
   PATCH_SHA256: b1f5ccbe5700841d35782ca49457e0d16af5275efe0415bfe0f2c8b144b509b1
   PATCH_PAYLOAD: automation/hepta-a0-v451-gap-integrity.patch.gz.b64
-  STAGING_BRANCH: staging/hepta-a0-v451-gap-integrity-20260829-2315
-  REPORT_DIR: artifacts/hepta-a0-v451-gap-integrity
 
 jobs:
   publish:
-    name: Build and validate one Q0-single-parent replacement
-    runs-on: ubuntu-22.04
+    name: Build one Q0-single-parent replacement (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: ubuntu-22.04
+            os: ubuntu-22.04
+          - label: macos-15
+            os: macos-15
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - name: Checkout publisher payload
@@ -45,182 +51,18 @@ jobs:
           fetch-depth: 2
           persist-credentials: true
 
-      - name: Verify immutable input identity
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
-          test "$(git -C target rev-parse HEAD)" = "$TARGET_HEAD"
-          test "$(git -C target rev-parse HEAD^{tree})" = "$TARGET_TREE"
-          test "$(git -C target rev-parse HEAD^)" = "$Q0_HEAD"
-          test "$(git -C target rev-parse "$Q0_HEAD^{tree}")" = "$Q0_TREE"
-          remote_head="$(git -C target ls-remote origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
-          test "$remote_head" = "$TARGET_HEAD"
-
-      - name: Decode and apply exact repair payload
-        shell: bash
-        run: |
-          set -euo pipefail
-          base64 -d "publisher/$PATCH_PAYLOAD" | gzip -dc > /tmp/repair.raw.patch
-          test "$(sha256sum /tmp/repair.raw.patch | awk '{print $1}')" = "$PATCH_SHA256"
-          sed -E \
-            -e 's#^--- /tmp/v451candidate/#--- a/#' \
-            -e 's#^\+\+\+ /tmp/v451fix2/#+++ b/#' \
-            /tmp/repair.raw.patch > /tmp/repair.patch
-          git -C target apply --check --whitespace=error-all /tmp/repair.patch
-          git -C target apply --whitespace=error-all /tmp/repair.patch
-          test -z "$(git -C target status --porcelain --untracked-files=no | grep -vE '^( M|M ) ' || true)"
-
-      - name: Build sole-parent candidate commit
-        id: candidate
-        shell: bash
-        run: |
-          set -euo pipefail
-          git -C target config user.name "Hepta governed source publisher"
-          git -C target config user.email "hepta-source-publisher@users.noreply.github.com"
-          git -C target add -u
-          tree="$(git -C target write-tree)"
-          commit="$(printf '%s\n' \
-            'fix(intelligence): enforce V4.5.1 gap and evidence integrity' \
-            '' \
-            'Reject unknown cross-ledger dependencies, bind every multimodal blocker to a registered gap, enforce receipt-specific closure evidence, validate canonical registries structurally, guard security-sensitive Python against optimized execution, and move Python-only A0 source gates to the executable Ubuntu 22.04 lane. Preserve the exact 17-path A0 surface and every negative authority.' \
-            | git -C target commit-tree "$tree" -p "$Q0_HEAD")"
-          git -C target reset --hard "$commit"
-          test "$(git -C target rev-parse HEAD^)" = "$Q0_HEAD"
-          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
-          printf 'tree=%s\n' "$tree" >> "$GITHUB_OUTPUT"
-
-      - name: Run strict source and compatibility gates
+      - name: Build, validate and publish immutable staging candidate
         shell: bash
         env:
-          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.commit }}
+          MATRIX_LABEL: ${{ matrix.label }}
         run: |
           set -euo pipefail
-          cd target
-          mkdir -p "$REPORT_DIR"
-          python3 -m py_compile \
-            scripts/hepta-intelligence-current-truth.py \
-            scripts/verify-hepta-intelligence-a0-authority.py \
-            scripts/verify-hepta-intelligence-document-authority.py \
-            scripts/verify-hepta-intelligence-master-plan.py
-          python3 scripts/verify-hepta-intelligence-master-plan.py
-          python3 scripts/verify-hepta-intelligence-document-authority.py
-          python3 scripts/hepta-intelligence-current-truth.py --verify
-          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
-            python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
-          done
-          GITHUB_SHA="$CANDIDATE_COMMIT" \
-          GITHUB_HEAD_REF="$TARGET_BRANCH" \
-          GITHUB_REF_NAME="$TARGET_BRANCH" \
-          GITHUB_REPOSITORY="$EXPECTED_REPOSITORY" \
-            python3 scripts/verify-hepta-intelligence-a0-authority.py \
-            | tee "$REPORT_DIR/a0-source-evidence-receipt.json"
-          git diff --check "$Q0_HEAD" "$CANDIDATE_COMMIT"
-          python3 - "$Q0_HEAD" "$CANDIDATE_COMMIT" "$REPORT_DIR/changed-paths.json" <<'PY'
-          import json
-          from pathlib import Path
-          import subprocess
-          import sys
-
-          base, head, output = sys.argv[1:]
-          changed = sorted(filter(None, subprocess.check_output(
-              ["git", "diff", "--name-only", base, head], text=True
-          ).splitlines()))
-          expected = json.loads(Path(
-              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json"
-          ).read_text(encoding="utf-8"))["allowed_changed_paths"]
-          assert changed == expected, (changed, expected)
-          assert len(changed) == 17
-          Path(output).write_text(json.dumps({
-              "changed_paths": changed,
-              "count": len(changed),
-          }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          PY
-          test -z "$(git status --porcelain --untracked-files=no)"
-
-      - name: Seal source-publisher receipt
-        shell: bash
-        env:
-          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.commit }}
-          CANDIDATE_TREE: ${{ steps.candidate.outputs.tree }}
-        run: |
-          set -euo pipefail
-          cd target
-          python3 - "$REPORT_DIR/publisher-receipt.json" <<'PY'
-          from __future__ import annotations
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-          import sys
-
-          output = Path(sys.argv[1])
-          receipt = {
-              "schema": "hepta_a0_v451_gap_integrity_source_publisher_v1",
-              "status": "PASS_HEPTA_A0_V451_GAP_INTEGRITY_SOURCE_PUBLISHER",
-              "repository": os.environ["EXPECTED_REPOSITORY"],
-              "candidate": {
-                  "branch": os.environ["TARGET_BRANCH"],
-                  "head": os.environ["CANDIDATE_COMMIT"],
-                  "tree": os.environ["CANDIDATE_TREE"],
-                  "parent": os.environ["Q0_HEAD"],
-              },
-              "predecessor": {
-                  "head": os.environ["TARGET_HEAD"],
-                  "tree": os.environ["TARGET_TREE"],
-              },
-              "patch_sha256": os.environ["PATCH_SHA256"],
-              "resolved_findings": [
-                  "STRICT_CROSS_LEDGER_DEPENDENCY_NAMESPACE",
-                  "RECEIPT_SPECIFIC_MULTIMODAL_CLOSURE_EVIDENCE",
-                  "STRICT_PR_STACK_AND_EVIDENCE_INDEX_VALIDATION",
-                  "EXACT_AUTHORITY_AND_TOP_LEVEL_SCHEMAS",
-                  "CLAIM_LADDER_REPOSITORY_ALIAS_CLASSIFICATION",
-                  "EXACT_WORKFLOW_TRIGGER_PATH_STRUCTURE",
-                  "PYTHON_OPTIMIZATION_GUARDS_FOR_SECURITY_CHECKS",
-                  "EXECUTABLE_UBUNTU_22_04_SOURCE_GATE_LANE",
-              ],
-              "a0_candidate_qualified": False,
-              "selected": False,
-              "source_writeback_by_candidate_workflow": False,
-              "authority": {
-                  "runtime_wired": False,
-                  "default_open_wired": False,
-                  "memory_write_authority": False,
-                  "projection_write_authority": False,
-                  "learning_write_authority": False,
-                  "model_runtime_authority": False,
-                  "provider_dispatch_authority": False,
-                  "external_effects": False,
-                  "production_authority": False,
-                  "operator_acceptance": False,
-                  "promotion": False,
-                  "release_authority": False,
-                  "callers_ratchet": False,
-              },
-          }
-          encoded = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
-          receipt["receipt_binding_sha256"] = hashlib.sha256(encoded).hexdigest()
-          output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          PY
-          printf '%s\n' "$CANDIDATE_COMMIT" > "$REPORT_DIR/commit.txt"
-          printf '%s\n' "$CANDIDATE_TREE" > "$REPORT_DIR/tree.txt"
-
-      - name: Publish immutable staging ref only
-        shell: bash
-        env:
-          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.commit }}
-        run: |
-          set -euo pipefail
-          remote_head="$(git -C target ls-remote origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
-          test "$remote_head" = "$TARGET_HEAD"
-          test -z "$(git -C target ls-remote origin "refs/heads/$STAGING_BRANCH")"
-          git -C target push origin "$CANDIDATE_COMMIT:refs/heads/$STAGING_BRANCH"
+          bash publisher/automation/run-hepta-a0-v451-gap-integrity-publisher.sh
 
       - name: Upload deterministic publisher evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: hepta-a0-v451-gap-integrity-${{ steps.candidate.outputs.commit }}
+          name: hepta-a0-v451-gap-integrity-${{ matrix.label }}-${{ github.sha }}
           path: target/artifacts/hepta-a0-v451-gap-integrity/**
           if-no-files-found: error
           retention-days: 30
