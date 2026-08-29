@@ -1,0 +1,217 @@
+{
+  "schema": "hepta.architecture-gap-ledger.v3",
+  "schemaVersion": 3,
+  "overallState": "source_execution_in_progress_external_gates_open",
+  "subject": {
+    "repository": "ProfHepta/hepta-private-ci",
+    "stackBasePr": 71,
+    "stackBaseBranch": "codex/hepta-gap-closure-p0-6-20260829",
+    "stackBaseCommit": "7baed12589c7af3572622b0ab076517d525e3e58",
+    "implementationBranch": "codex/hepta-gap-closure-p0-7a-20260829",
+    "sourceCommit": "resolved_by_exact_source_head_workflow",
+    "sourceTree": "resolved_by_exact_source_head_workflow",
+    "mergeCandidate": "resolved_by_pull_request_workflow"
+  },
+  "stateVocabulary": [
+    "source_implemented",
+    "source_in_progress",
+    "open",
+    "blocked_external",
+    "not_run",
+    "qualified_exact",
+    "rejected"
+  ],
+  "inheritedSourceClosures": [
+    "single_normative_architecture_model",
+    "deterministic_architecture_projections",
+    "scoped_data_authority",
+    "closed_runtime_profiles",
+    "runtime_profile_product_graph_binding",
+    "runtime_authority_context",
+    "lifecycle_epoch_generation_and_fence_binding",
+    "runtime_instance_readiness_graph",
+    "checked_provider_operation_boundary",
+    "matrix_operation_journal",
+    "matrix_sqlite_full_rollback_seam",
+    "repository_identity_and_governance_contract"
+  ],
+  "closedInThisTranche": {
+    "currentPlanPointer": {
+      "state": "source_implemented",
+      "evidence": [
+        "docs/architecture/HEPTA_CURRENT_PLAN.json",
+        "docs/architecture/HEPTA_DOCUMENT_AUTHORITY_INDEX_V2.json"
+      ]
+    },
+    "deepenedExecutionPlan": {
+      "state": "source_implemented",
+      "evidence": [
+        "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V3.md"
+      ]
+    },
+    "authorityCallerInventoryReconciled": {
+      "state": "source_implemented",
+      "evidence": [
+        "docs/architecture/HEPTA_AUTHORITY_CALLERS_V1.json",
+        "scripts/verify-hepta-cross-owner-operation-wiring.py"
+      ]
+    },
+    "uncheckedProviderCoordinatorNotPublic": {
+      "state": "source_implemented",
+      "evidence": [
+        "codex-rs/hepta-contracts/src/lib.rs",
+        "scripts/verify-hepta-cross-owner-operation-wiring.py"
+      ]
+    },
+    "explicitPhysicalBoundaryMatrix": {
+      "state": "source_implemented",
+      "evidence": [
+        "docs/architecture/HEPTA_PHYSICAL_CAPABILITY_BOUNDARY_MATRIX_V1.md"
+      ]
+    },
+    "explicitDurableFaultMatrix": {
+      "state": "source_implemented",
+      "evidence": [
+        "docs/architecture/HEPTA_COMMON_DURABLE_FAULT_MATRIX_V1.md"
+      ]
+    },
+    "explicitResourceBudgets": {
+      "state": "source_implemented",
+      "evidence": [
+        "docs/architecture/HEPTA_RESOURCE_BUDGETS_V1.md"
+      ]
+    }
+  },
+  "sourceDeliveryGraph": [
+    "P0.7a_supervisor_signed_runtime_grant_bootstrap",
+    "P0.7b_all_physical_boundaries_checked_per_use",
+    "P0.7c_memory_bounded_context_extraction",
+    "P0.7d_common_durable_fault_matrix_execution",
+    "P0.8a_ast_authority_caller_ratchet",
+    "P0.8b_fleet_runtime_instance_projection",
+    "P0.8c_runtime_resource_budget_enforcement",
+    "P0.8d_real_process_vertical_slice",
+    "P0.9_repository_operator_promotion_release"
+  ],
+  "openSourceGaps": {
+    "P0.7a_supervisorSignedRuntimeGrantBootstrap": {
+      "state": "source_in_progress",
+      "owner": "supervisor_agentd_contracts",
+      "closureCriteria": [
+        "signed envelope binds Agent, release, source commit/tree, binary, profile, graph, grant, epochs, generation, fence, signer epoch, nonce and validity window",
+        "Supervisor issuer has no model, provider or effect authority",
+        "Agentd verifies signature through an injected trust root before composition",
+        "bootstrap is delivered through inherited read-only descriptor or owner-only no-follow file",
+        "nonce is claimed once in durable supervisor state",
+        "stale release, profile, epoch, generation, fence, signature, time and replay all fail closed"
+      ]
+    },
+    "P0.7b_allPhysicalBoundariesCheckedPerUse": {
+      "state": "open",
+      "owner": "model_provider_tool_network_adapters",
+      "closureCriteria": [
+        "every physical exit consumes a typed capability",
+        "every use verifies current revocation, epoch, generation, fence and expiry immediately before crossing",
+        "verified-use token is single operation, non-serializable and non-replayable",
+        "no local profile can mint model, provider, effect or fleet authority"
+      ]
+    },
+    "P0.7c_memoryBoundedContextExtraction": {
+      "state": "open",
+      "owner": "memory_architecture",
+      "closureCriteria": [
+        "memory types, durable store, KG, retrieval, compact and learning become physical crates",
+        "one migration owner exists for each SQLite schema",
+        "production writer does not depend on shadow learning",
+        "facade compatibility and state migration tests pass"
+      ]
+    },
+    "P0.7d_commonDurableFaultMatrix": {
+      "state": "open",
+      "owner": "all_durable_store_owners",
+      "closureCriteria": [
+        "Memory, Automation, Matrix, Evidence, Fleet and TaskFlow run the common fault matrix",
+        "no fault creates duplicate effect, false terminal success, stale-owner mutation or partial projection",
+        "backup and restore preserve canonical digests and owner bindings"
+      ]
+    },
+    "P0.8a_astAuthorityCallerRatchet": {
+      "state": "open",
+      "owner": "contracts_ci",
+      "closureCriteria": [
+        "compiler or Rust AST metadata discovers constructor and authorization call sites",
+        "aliases, reexports, wrappers and macro expansion cannot bypass the allowlist",
+        "compile-fail fixtures prove denied callers cannot mint capabilities"
+      ]
+    },
+    "P0.8b_fleetRuntimeInstanceProjection": {
+      "state": "open",
+      "owner": "agentd_supervisor",
+      "closureCriteria": [
+        "desired, observed and readiness graphs are generation-fenced and candidate-bound",
+        "fleet clients can query a read-only signed snapshot",
+        "snapshot cannot mutate lifecycle or grant authority"
+      ]
+    },
+    "P0.8c_runtimeResourceBudgetEnforcement": {
+      "state": "open",
+      "owner": "agentd_and_domain_services",
+      "closureCriteria": [
+        "turn, tool process, model, queue, memory, disk and outbox limits are enforced at admission",
+        "terminal, cancellation and crash recovery release reservations exactly once",
+        "N+1, restart and pressure tests pass"
+      ]
+    },
+    "P0.8d_realProcessVerticalSlice": {
+      "state": "open",
+      "owner": "product_qualification",
+      "closureCriteria": [
+        "exact candidate starts supervisor, agentd, app-server and one ingress adapter as real processes",
+        "signed bootstrap, readiness, session, memory, automation and one governed physical boundary execute",
+        "kill and restart produce lookup-only reconciliation without duplicate effect"
+      ]
+    }
+  },
+  "externalGates": {
+    "liveRepositoryRuleset": {
+      "state": "blocked_external",
+      "closureCriteria": "GitHub administration matches the checked-in ruleset contract"
+    },
+    "exactSourceHeadExecution": {
+      "state": "not_run",
+      "closureCriteria": "assigned runner, non-empty successful steps, exact commit/tree"
+    },
+    "mergeCandidateExecution": {
+      "state": "not_run",
+      "closureCriteria": "assigned runner, non-empty successful steps, exact merge commit/tree"
+    },
+    "independentCodeOwnerReview": {
+      "state": "blocked_external",
+      "closureCriteria": "distinct current-head reviewer approval and resolved conversations"
+    },
+    "operatorAcceptance": {
+      "state": "blocked_external",
+      "closureCriteria": "candidate-bound signed independent operator acceptance"
+    },
+    "promotion": {
+      "state": "blocked_external",
+      "closureCriteria": "candidate-bound signed promotion receipt"
+    },
+    "release": {
+      "state": "blocked_external",
+      "closureCriteria": "signed release manifest, provenance, SBOM and rollback evidence"
+    }
+  },
+  "authorityBoundary": {
+    "runtime": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

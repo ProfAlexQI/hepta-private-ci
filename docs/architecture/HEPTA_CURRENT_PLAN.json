@@ -1,0 +1,38 @@
+{
+  "schema": "hepta.current-plan.v1",
+  "schemaVersion": 1,
+  "status": "normative_development_plan_pointer",
+  "repository": "ProfHepta/hepta-private-ci",
+  "architectureModel": "docs/architecture/HEPTA_ARCHITECTURE_MODEL_V2.json",
+  "currentPlan": "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V3.md",
+  "currentGapLedger": "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V3.json",
+  "documentAuthorityIndex": "docs/architecture/HEPTA_DOCUMENT_AUTHORITY_INDEX_V2.json",
+  "qualificationStatus": "docs/architecture/HEPTA_QUALIFICATION_STATUS_V2.json",
+  "supersedesPlan": "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V2.md",
+  "candidateBinding": {
+    "sourceCommit": "resolved_by_exact_source_head_workflow",
+    "sourceTree": "resolved_by_exact_source_head_workflow",
+    "mergeCandidate": "resolved_by_pull_request_workflow"
+  },
+  "claims": {
+    "sourcePlanCurrent": true,
+    "allSourceGapsClosed": false,
+    "exactHeadQualified": false,
+    "mergeCandidateQualified": false,
+    "operatorAccepted": false,
+    "promoted": false,
+    "released": false
+  },
+  "authority": {
+    "runtime": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
