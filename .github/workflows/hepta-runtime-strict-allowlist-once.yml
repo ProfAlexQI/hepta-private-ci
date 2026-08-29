@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      EXPECTED_PARENT: 51055dd7894fe7c85d03a11377835538deb0ec5f
+      EXPECTED_PARENT: 58d58f1c3c04155d2b5f1ac04b8f3ad790e2ea24
       BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
       TARGET_WORKFLOW: .github/workflows/hepta-runtime-strict-remediation-once.yml
       WORKFLOW_PATH: .github/workflows/hepta-runtime-strict-allowlist-once.yml
@@ -73,7 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           git diff --check
-          actual="$(git diff --name-only | LC_ALL=C sort)"
+          actual="$(git diff HEAD --name-only | LC_ALL=C sort)"
           expected="$(printf '%s\n' "$TARGET_WORKFLOW" "$WORKFLOW_PATH" | LC_ALL=C sort)"
           test "$actual" = "$expected"
           grep -F "EXPECTED_PARENT: $GITHUB_SHA" "$TARGET_WORKFLOW"
@@ -97,7 +97,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo "schema=hepta_runtime_strict_allowlist_once_v1"
+            echo "schema=hepta_runtime_strict_allowlist_once_v2"
             echo "bootstrap_head=$GITHUB_SHA"
             echo "expected_parent=$EXPECTED_PARENT"
             echo "job_status=${{ job.status }}"
