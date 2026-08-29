@@ -1,0 +1,194 @@
+name: Hepta inference V4 agent Q0 S1 integration materialize
+
+on:
+  push:
+    branches:
+      - agent/hepta-inference-v4-integration-staging-20260830
+    paths:
+      - .github/workflows/hepta-inference-v4-agent-integration-materialize.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-v4-agent-integration-materialize
+  cancel-in-progress: false
+
+jobs:
+  materialize-and-qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: agent/hepta-inference-v4-integration-staging-20260830
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Guard exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = 491760c981aed3115685f8bdf69cf196cb51fb3a
+          test "$(git branch --show-current)" = agent/hepta-inference-v4-integration-staging-20260830
+          test -z "$(git status --porcelain)"
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply Q0 and S1 source packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-inference-v4-agent-q0-materialize.py \
+            scripts/hepta-inference-v4-agent-s1a-materialize.py \
+            scripts/hepta-inference-v4-agent-s1a-fix.py \
+            scripts/hepta-inference-v4-agent-s1b-materialize.py \
+            scripts/hepta-inference-v4-agent-s1b-fix.py
+          python3 scripts/hepta-inference-v4-agent-q0-materialize.py
+          python3 scripts/hepta-inference-v4-agent-s1a-materialize.py
+          python3 scripts/hepta-inference-v4-agent-s1a-fix.py
+          python3 scripts/hepta-inference-v4-agent-s1b-materialize.py
+          python3 scripts/hepta-inference-v4-agent-s1b-fix.py
+          git diff --check
+
+      - name: Materialize lock and execute owned Rust gates
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo metadata --no-deps --format-version 1 > "$RUNNER_TEMP/integration-metadata-unlocked.json"
+          cargo fmt \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
+          cargo metadata --locked --no-deps --format-version 1 > "$RUNNER_TEMP/integration-metadata-locked.json"
+          cargo check --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
+          cargo test --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd \
+            -- --test-threads=1
+          cargo clippy --locked --all-targets --no-deps \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd \
+            -- -D warnings
+
+      - name: Remove transient build authority and enforce scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm \
+            scripts/hepta-inference-v4-agent-q0-materialize.py \
+            scripts/hepta-inference-v4-agent-s1a-materialize.py \
+            scripts/hepta-inference-v4-agent-s1a-fix.py \
+            scripts/hepta-inference-v4-agent-s1b-materialize.py \
+            scripts/hepta-inference-v4-agent-s1b-fix.py \
+            .github/workflows/hepta-inference-v4-agent-s1a-materialize.yml \
+            .github/workflows/hepta-inference-v4-agent-source-export.yml \
+            .github/workflows/hepta-inference-v4-agent-integration-materialize.yml
+          python3 - <<'PY'
+          import subprocess
+
+          allowed_exact = {
+              "codex-rs/Cargo.toml",
+              "codex-rs/Cargo.lock",
+              "codex-rs/hepta-infer-core/Cargo.toml",
+              "scripts/hepta-inference-v4-source-truth.py",
+              "scripts/hepta-inference-v4-agent-q0-materialize.py",
+              "scripts/hepta-inference-v4-agent-s1a-materialize.py",
+              "scripts/hepta-inference-v4-agent-s1a-fix.py",
+              "scripts/hepta-inference-v4-agent-s1b-materialize.py",
+              "scripts/hepta-inference-v4-agent-s1b-fix.py",
+              ".github/workflows/hepta-inference-v4-agent-s1a-materialize.yml",
+              ".github/workflows/hepta-inference-v4-agent-source-export.yml",
+              ".github/workflows/hepta-inference-v4-agent-integration-materialize.yml",
+          }
+          allowed_prefixes = (
+              "codex-rs/hepta-infer-core/src/",
+              "codex-rs/hepta-infer-client/src/",
+              "codex-rs/hepta-inferd/src/",
+          )
+          changed = [
+              path for path in subprocess.check_output(
+                  ["git", "diff", "--name-only", "-z"], text=False
+              ).decode().split("\0") if path
+          ]
+          unexpected = [
+              path for path in changed
+              if path not in allowed_exact
+              and not path.startswith(allowed_prefixes)
+          ]
+          if unexpected:
+              raise SystemExit("unexpected integration paths: " + ", ".join(unexpected))
+          required = {
+              "codex-rs/hepta-infer-core/src/capability.rs",
+              "codex-rs/hepta-infer-core/src/private_protocol.rs",
+              "codex-rs/hepta-infer-core/src/controller.rs",
+              "codex-rs/hepta-infer-core/src/adapter.rs",
+              "codex-rs/hepta-inferd/src/private.rs",
+              "codex-rs/hepta-inferd/src/lib.rs",
+              "scripts/hepta-inference-v4-source-truth.py",
+              "codex-rs/Cargo.lock",
+          }
+          missing = sorted(required - set(changed))
+          if missing:
+              raise SystemExit("missing required integration changes: " + ", ".join(missing))
+          PY
+          git diff --check
+
+      - name: Create ordinary source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git diff --cached --check
+          git config user.name "Qian QI"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git commit -m "feat(inference): close Q0 and authenticated private worker lane"
+
+      - name: Verify clean source truth and locked gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          python3 scripts/hepta-inference-v4-source-truth.py \
+            | tee "$RUNNER_TEMP/integration-source-truth.json"
+          (
+            cd codex-rs
+            cargo fmt \
+              -p codex-hepta-infer-core \
+              -p codex-hepta-infer-client \
+              -p codex-hepta-inferd \
+              -- --check
+            cargo metadata --locked --no-deps --format-version 1 > "$RUNNER_TEMP/integration-final-metadata.json"
+            cargo check --locked --all-targets \
+              -p codex-hepta-infer-core \
+              -p codex-hepta-infer-client \
+              -p codex-hepta-inferd
+            cargo test --locked --all-targets \
+              -p codex-hepta-infer-core \
+              -p codex-hepta-infer-client \
+              -p codex-hepta-inferd \
+              -- --test-threads=1
+            cargo clippy --locked --all-targets --no-deps \
+              -p codex-hepta-infer-core \
+              -p codex-hepta-infer-client \
+              -p codex-hepta-inferd \
+              -- -D warnings
+          )
+          test -z "$(git status --porcelain)"
+
+      - name: Push qualified ordinary source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin HEAD:refs/heads/agent/hepta-inference-v4-integration-staging-20260830
