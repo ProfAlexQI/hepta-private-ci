@@ -3,7 +3,7 @@ name: Hepta Intelligence A0 V4.5 normalized exact-parent publisher
 on:
   push:
     branches:
-      - "codex/hepta-intelligence-a0-v45-repair-generator-20260830"
+      - "ops/hepta-intelligence-a0-v45-normalized-publisher-20260830"
     paths:
       - ".github/workflows/a0-v45-normalized-publisher.yml"
       - "scripts/a0-v45-generator/payload.*"
