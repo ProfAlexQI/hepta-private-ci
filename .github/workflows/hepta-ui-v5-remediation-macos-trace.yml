@@ -1,0 +1,62 @@
+name: Hepta UI v5 remediation macOS trace
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-remediation-macos-trace-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-remediation-macos-trace.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-remediation-macos-trace
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_PARENT: bd3fc6bf824a7d22b2ab638c633152d95dfa36dc
+      BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-remediation-macos-trace.yml
+      UPSTREAM_URL: https://github.com/openai/codex.git
+      UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
+      UPSTREAM_ROLE: current_r12
+      UPSTREAM_FROZEN_REF: refs/remotes/upstream/hepta-intake-20260830-r12
+      UPSTREAM_INTAKE_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R12.json
+      UPSTREAM_RECORD_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+    steps:
+      - name: Check out exact macOS driver commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install deterministic remediation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install jq ripgrep gnu-sed
+          printf '%s\n' "$(brew --prefix)/opt/gnu-sed/libexec/gnubin" >> "$GITHUB_PATH"
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+
+      - name: Execute the exact traced retry-v4 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix)/opt/gnu-sed/libexec/gnubin:$PATH"
+          replay="$RUNNER_TEMP/hepta-ui-v5-replay-v4.sh"
+          awk '
+            /      - name: Replay remediation with exact mobile-target contract migration/ { found=1; next }
+            found && /        shell: bash/ { next }
+            found && /        run: \|/ { in_run=1; next }
+            in_run { sub(/^          /, ""); print }
+          ' .github/workflows/hepta-ui-v5-blocker-remediation-retry-v4.yml > "$replay"
+          test -s "$replay"
+          bash -n "$replay"
+          bash -x "$replay"
