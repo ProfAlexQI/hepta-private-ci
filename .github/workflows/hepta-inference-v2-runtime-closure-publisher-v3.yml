@@ -1,0 +1,59 @@
+name: Hepta inference v2 transactional runtime publisher v3
+
+on:
+  push:
+    branches:
+      - automation/hepta-inference-v2-runtime-closure-publisher-20260829
+    paths:
+      - ".github/workflows/hepta-inference-v2-runtime-closure-publisher-v3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-v2-transactional-runtime-publisher-v3
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Qualify and fast-forward runtime source transaction
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify publisher source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/hepta-inference-v2-publisher/publish_v3.py
+          test "$(sha256sum tools/hepta-inference-v2-publisher/publish_v3.py | cut -d' ' -f1)" = "d788fdbcfd67678b0d5d79dce83149bf3847607e245f59c8a70dba977e38e356"
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Execute bounded publish transaction
+        shell: bash
+        run: python3 tools/hepta-inference-v2-publisher/publish_v3.py
+
+      - name: Upload publisher evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-v2-transactional-runtime-publisher-v3-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/runtime-metadata.json
+            ${{ runner.temp }}/runtime-cargo-check.log
+            ${{ runner.temp }}/runtime-cargo-test.log
+            ${{ runner.temp }}/runtime-cargo-clippy.log
+            ${{ runner.temp }}/runtime-publisher-receipt.json
+          if-no-files-found: warn
+          retention-days: 30
