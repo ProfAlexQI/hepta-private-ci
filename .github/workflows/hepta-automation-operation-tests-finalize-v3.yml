@@ -1,0 +1,395 @@
+name: Hepta automation operation tests finalize v3
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-convergence-p0-2-20260828
+    paths:
+      - .github/workflows/hepta-automation-operation-tests-finalize-v3.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-automation-operation-tests-finalize-v3
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    name: Bind Automation fixtures with deterministic transformer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: codex/hepta-architecture-convergence-p0-2-20260828
+          fetch-depth: 2
+
+      - name: Verify expected stale integration-test blob
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "SOURCE_HEAD=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          test "$(git hash-object codex-rs/hepta-automation/tests/automation.rs)" = "45e9da6fad70fb0bdcb85eaedc723e21c25667e3"
+
+      - name: Materialize operation-bound Automation test fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-automation/tests/automation.rs")
+          lines = path.read_text().splitlines(keepends=True)
+
+          def insert_after_line(lines, marker, additions):
+              matches = [index for index, line in enumerate(lines) if line == marker]
+              if len(matches) != 1:
+                  raise SystemExit(f"expected one import marker {marker!r}, found {len(matches)}")
+              index = matches[0] + 1
+              return lines[:index] + additions + lines[index:]
+
+          lines = insert_after_line(
+              lines,
+              "use codex_hepta_automation::AutomationFuture;\n",
+              [
+                  "use codex_hepta_automation::AutomationLease;\n",
+                  "use codex_hepta_automation::AutomationOperationContext;\n",
+                  "use codex_hepta_automation::AutomationTask;\n",
+              ],
+          )
+          lines = insert_after_line(
+              lines,
+              "use codex_hepta_contracts::AgentId;\n",
+              [
+                  "use codex_hepta_contracts::DestinationAcknowledgement;\n",
+                  "use codex_hepta_contracts::Sha256Digest;\n",
+              ],
+          )
+
+          rewritten = []
+          queue_counts = {"queue": 0, "accepted": 0}
+          index = 0
+          while index < len(lines):
+              line = lines[index]
+              if "Ok(AutomationQueueReceipt {" not in line:
+                  rewritten.append(line)
+                  index += 1
+                  continue
+              end = index
+              while end < len(lines) and lines[end].strip() != "})":
+                  end += 1
+              if end == len(lines):
+                  raise SystemExit("unterminated AutomationQueueReceipt constructor")
+              block = "".join(lines[index : end + 1])
+              kind = None
+              if '"queue-{}-{}"' in block:
+                  kind = "queue"
+              elif '"accepted-{}-{}"' in block:
+                  kind = "accepted"
+              if kind is None:
+                  rewritten.extend(lines[index : end + 1])
+              else:
+                  indent = line[: len(line) - len(line.lstrip())]
+                  rewritten.extend(
+                      [
+                          f"{indent}queue_receipt(\n",
+                          f"{indent}    &admission,\n",
+                          f'{indent}    format!("{kind}-{{}}-{{}}", admission.task_id, admission.occurrence),\n',
+                          f"{indent})\n",
+                      ]
+                  )
+                  queue_counts[kind] += 1
+              index = end + 1
+          if queue_counts != {"queue": 2, "accepted": 1}:
+              raise SystemExit(f"unexpected queue receipt rewrite counts: {queue_counts}")
+          lines = rewritten
+
+          scheduler_count = sum(line.count("AutomationScheduler::new(") for line in lines)
+          if scheduler_count != 11:
+              raise SystemExit(f"expected 11 scheduler constructors, found {scheduler_count}")
+          lines = [
+              line.replace("AutomationScheduler::new(", "test_scheduler(") for line in lines
+          ]
+
+          direct_receipts = {
+              "retry-after-abort",
+              "negative-proof-retry-receipt",
+              "migration-receipt",
+              "queue-in-flight",
+          }
+          replacements = []
+          for receipt_id in direct_receipts:
+              marker = f'queued_submission_id: "{receipt_id}".to_string(),'
+              matches = [index for index, line in enumerate(lines) if marker in line]
+              if len(matches) != 1:
+                  raise SystemExit(
+                      f"expected one direct receipt marker {receipt_id}, found {len(matches)}"
+                  )
+              receipt_index = matches[0]
+              start = None
+              receiver = None
+              prefix = ""
+              for candidate in range(receipt_index - 1, max(-1, receipt_index - 16), -1):
+                  stripped = lines[candidate].strip()
+                  if stripped in {"restarted", "store", "migrated"}:
+                      start = candidate
+                      receiver = stripped
+                      break
+                  if stripped == "let submitted = store":
+                      start = candidate
+                      receiver = "store"
+                      prefix = "let submitted = "
+                      break
+              if start is None or receiver is None:
+                  raise SystemExit(f"could not find receiver for {receipt_id}")
+              end = None
+              submitted_at = None
+              for candidate in range(receipt_index + 1, min(len(lines), receipt_index + 16)):
+                  numeric = lines[candidate].strip().rstrip(",")
+                  if numeric.isdigit():
+                      submitted_at = numeric
+                  if lines[candidate].strip() == ".await":
+                      end = candidate
+                      break
+              if end is None or submitted_at is None:
+                  raise SystemExit(f"could not find await/timestamp for {receipt_id}")
+              indent = lines[start][: len(lines[start]) - len(lines[start].lstrip())]
+              replacement = (
+                  f'{indent}{prefix}persist_submitted(&{receiver}, &lease, '
+                  f'"{receipt_id}", {submitted_at}).await\n'
+              )
+              replacements.append((start, end, replacement))
+          if len({start for start, _, _ in replacements}) != 4:
+              raise SystemExit("direct receipt rewrites overlap")
+          for start, end, replacement in sorted(replacements, reverse=True):
+              lines[start : end + 1] = [replacement]
+
+          unknown_marker = (
+              'queued_submission_id: "provider-receipt-unknown-recovered".to_string(),'
+          )
+          unknown_matches = [
+              index for index, line in enumerate(lines) if unknown_marker in line
+          ]
+          if len(unknown_matches) != 1:
+              raise SystemExit(
+                  f"expected one unknown reconciliation receipt, found {len(unknown_matches)}"
+              )
+          receipt_index = unknown_matches[0]
+          start = receipt_index
+          while start >= 0 and "let receipt = AutomationQueueReceipt {" not in lines[start]:
+              start -= 1
+          end = receipt_index
+          while end < len(lines) and lines[end].strip() != "};":
+              end += 1
+          if start < 0 or end == len(lines):
+              raise SystemExit("unknown reconciliation receipt block drifted")
+          indent = lines[start][: len(lines[start]) - len(lines[start].lstrip())]
+          unknown_replacement = [
+              f"{indent}let admission = queue\n",
+              f"{indent}    .admissions()\n",
+              f"{indent}    .await\n",
+              f"{indent}    .into_iter()\n",
+              f"{indent}    .next()\n",
+              f'{indent}    .expect("captured uncertain admission");\n',
+              f"{indent}let receipt = queue_receipt(\n",
+              f"{indent}    &admission,\n",
+              f'{indent}    "provider-receipt-unknown-recovered".to_string(),\n',
+              f"{indent})\n",
+              f'{indent}.expect("operation-bound reconciliation receipt");\n',
+          ]
+          lines[start : end + 1] = unknown_replacement
+
+          closure_matches = [
+              index
+              for index, line in enumerate(lines)
+              if "let receipt = |lease: &codex_hepta_automation::AutomationLease|" in line
+          ]
+          if len(closure_matches) != 1:
+              raise SystemExit(
+                  f"expected one duplicate-receipt closure, found {len(closure_matches)}"
+              )
+          start = closure_matches[0]
+          conflict = None
+          for candidate in range(start, min(len(lines), start + 40)):
+              if "Err(AutomationError::Conflict)" in lines[candidate]:
+                  conflict = candidate
+                  break
+          if conflict is None:
+              raise SystemExit("duplicate-receipt conflict assertion drifted")
+          end = conflict
+          while end < len(lines) and lines[end].strip() != ");":
+              end += 1
+          if end == len(lines):
+              raise SystemExit("duplicate-receipt assertion terminator missing")
+          indent = lines[start][: len(lines[start]) - len(lines[start].lstrip())]
+          duplicate_replacement = [
+              f'{indent}persist_submitted(&store, &first_lease, "provider-receipt-shared", 101)\n',
+              f"{indent}    .await\n",
+              f'{indent}    .expect("first receipt");\n',
+              f"{indent}assert_eq!(\n",
+              f'{indent}    persist_submitted(&store, &second_lease, "provider-receipt-shared", 102).await,\n',
+              f"{indent}    Err(AutomationError::Conflict)\n",
+              f"{indent});\n",
+          ]
+          lines[start : end + 1] = duplicate_replacement
+
+          schema_count = sum(line.count("assert_eq!(schema, 3);") for line in lines)
+          owner_count = sum(line.count("admissions[0].agent_id") for line in lines)
+          if schema_count != 1 or owner_count != 1:
+              raise SystemExit(
+                  f"stale schema/owner markers drifted: schema={schema_count} owner={owner_count}"
+              )
+          lines = [
+              line.replace("assert_eq!(schema, 3);", "assert_eq!(schema, 4);")
+              .replace("admissions[0].agent_id", "admissions[0].owner_agent_id")
+              for line in lines
+          ]
+
+          text = "".join(lines)
+          stale_checks = {
+              "AutomationQueueReceipt literal": "AutomationQueueReceipt {",
+              "direct mark_submitted call": ".mark_submitted(",
+              "direct scheduler constructor": "AutomationScheduler::new(",
+          }
+          for label, marker in stale_checks.items():
+              if marker in text:
+                  raise SystemExit(f"stale {label} remains before helper insertion")
+
+          helpers = [
+              "#[allow(",
+              "    clippy::expect_used,",
+              '    reason = "operation-bound integration fixtures must fail loudly"',
+              ")]",
+              "fn operation_context(generation: u64) -> AutomationOperationContext {",
+              '    let fence = format!("hepta:test:automation-operation-fence:v1:{generation}");',
+              "    AutomationOperationContext::new(",
+              "        1,",
+              "        generation,",
+              "        generation,",
+              "        Sha256Digest::for_bytes(fence.as_bytes()),",
+              "    )",
+              '    .expect("valid operation context")',
+              "}",
+              "",
+              "fn queue_receipt(",
+              "    admission: &AutomationAdmission,",
+              "    queued_submission_id: String,",
+              ") -> Result<AutomationQueueReceipt, AutomationError> {",
+              "    let destination_receipt_sha256 = Sha256Digest::for_bytes(",
+              "        format!(",
+              '            "hepta:app-server-queue-receipt:v1__NUL__{}__NUL__{}",',
+              "            queued_submission_id, admission.client_user_message_id",
+              "        )",
+              "        .as_bytes(),",
+              "    );",
+              "    let acknowledgement = DestinationAcknowledgement::committed(",
+              "        &admission.operation,",
+              "        destination_receipt_sha256,",
+              "    )",
+              "    .map_err(|_| AutomationError::Conflict)?;",
+              "    Ok(AutomationQueueReceipt {",
+              "        queued_submission_id,",
+              "        client_user_message_id: admission.client_user_message_id.clone(),",
+              "        acknowledgement,",
+              "    })",
+              "}",
+              "",
+              "fn test_scheduler<Q>(",
+              "    store: AutomationStore,",
+              "    queue: Arc<Q>,",
+              "    generation: u64,",
+              "    lease_duration: Duration,",
+              "    dispatch_timeout: Duration,",
+              ") -> Result<AutomationScheduler<Q>, AutomationError>",
+              "where",
+              "    Q: AutomationTurnQueue,",
+              "{",
+              "    AutomationScheduler::new(",
+              "        store,",
+              "        queue,",
+              "        generation,",
+              "        operation_context(generation),",
+              "        lease_duration,",
+              "        dispatch_timeout,",
+              "    )",
+              "}",
+              "",
+              "async fn persist_submitted(",
+              "    store: &AutomationStore,",
+              "    lease: &AutomationLease,",
+              "    queued_submission_id: &str,",
+              "    submitted_at_ms: u64,",
+              ") -> Result<AutomationTask, AutomationError> {",
+              "    let admission = lease.admission(&operation_context(lease.lease_generation))?;",
+              "    store",
+              "        .record_dispatch_uncertain(lease, &admission.operation, submitted_at_ms)",
+              "        .await?;",
+              "    let receipt = queue_receipt(&admission, queued_submission_id.to_string())?;",
+              "    store",
+              "        .mark_submitted(lease, &admission.operation, &receipt, submitted_at_ms)",
+              "        .await",
+              "}",
+              "",
+              "",
+          ]
+          helper_text = "\n".join(helpers).replace("__NUL__", chr(92) + "0")
+          test_markers = [
+              index for index, line in enumerate(lines) if line == "#[tokio::test]\n"
+          ]
+          if not test_markers:
+              raise SystemExit("first tokio test marker missing")
+          insertion = test_markers[0]
+          lines[insertion:insertion] = [helper_text]
+          path.write_text("".join(lines))
+          PY
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Format and execute Automation integration closure
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-automation
+          cargo test --locked -p codex-hepta-automation --test automation -- --nocapture
+          cargo clippy --locked -p codex-hepta-automation --all-targets -- -D warnings
+
+      - name: Commit tested fixture closure and retire all finalizers
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/hepta-automation-operation-tests-finalize-once.yml
+          rm .github/workflows/hepta-automation-operation-tests-finalize-v2.yml
+          rm .github/workflows/hepta-automation-operation-tests-finalize-v3.yml
+          python3 - <<'PY'
+          import subprocess
+
+          allowed = {
+              "codex-rs/hepta-automation/tests/automation.rs",
+              ".github/workflows/hepta-automation-operation-tests-finalize-once.yml",
+              ".github/workflows/hepta-automation-operation-tests-finalize-v2.yml",
+              ".github/workflows/hepta-automation-operation-tests-finalize-v3.yml",
+          }
+          output = subprocess.check_output(["git", "status", "--short"], text=True)
+          paths = {line[3:] for line in output.splitlines() if line}
+          unexpected = sorted(paths - allowed)
+          if unexpected:
+              raise SystemExit(f"unexpected paths: {unexpected}")
+          PY
+          git diff --check
+          git fetch --no-tags origin "refs/heads/codex/hepta-architecture-convergence-p0-2-20260828:refs/remotes/origin/codex/hepta-architecture-convergence-p0-2-20260828"
+          test "$(git rev-parse refs/remotes/origin/codex/hepta-architecture-convergence-p0-2-20260828)" = "$SOURCE_HEAD"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add codex-rs/hepta-automation/tests/automation.rs \
+            .github/workflows/hepta-automation-operation-tests-finalize-once.yml \
+            .github/workflows/hepta-automation-operation-tests-finalize-v2.yml \
+            .github/workflows/hepta-automation-operation-tests-finalize-v3.yml
+          git commit -m 'test(hepta): bind automation fixtures to operation receipts'
+          git push origin HEAD:codex/hepta-architecture-convergence-p0-2-20260828
