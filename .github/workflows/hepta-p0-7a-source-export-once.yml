@@ -1,0 +1,47 @@
+name: Hepta P0.7a source export once
+
+on:
+  push:
+    branches:
+      - codex/hepta-gap-closure-p0-7a-runtime-bootstrap-20260829
+    paths:
+      - .github/workflows/hepta-p0-7a-source-export-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify immutable checkout identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code
+          git diff --cached --exit-code
+      - name: Package source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/hepta-p0-7a-source-$GITHUB_SHA.tar.gz"
+          tar --exclude=.git -czf "$archive" .
+          sha256sum "$archive" > "$RUNNER_TEMP/hepta-p0-7a-source-$GITHUB_SHA.sha256"
+      - name: Upload source archive
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-p0-7a-source-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/hepta-p0-7a-source-${{ github.sha }}.tar.gz
+            ${{ runner.temp }}/hepta-p0-7a-source-${{ github.sha }}.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
