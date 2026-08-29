@@ -15,8 +15,14 @@ concurrency:
 
 jobs:
   build:
-    name: Build reviewed exact-parent replacement files
-    runs-on: ubuntu-24.04
+    name: Build reviewed replacement files (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
       - name: Checkout support branch
@@ -59,7 +65,7 @@ jobs:
       - name: Upload reviewed replacement file set
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: a0-v43-reviewed-repair-${{ github.sha }}
+          name: a0-v43-reviewed-repair-${{ matrix.runner }}-${{ github.sha }}
           path: artifacts/a0-v43-reviewed-repair/**
           if-no-files-found: error
           retention-days: 30
