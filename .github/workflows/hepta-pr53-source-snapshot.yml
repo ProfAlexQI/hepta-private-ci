@@ -1,0 +1,45 @@
+name: Hepta PR53 exact-source snapshot
+
+on:
+  push:
+    branches:
+      - codex/hepta-pr53-source-snapshot-20260829-2
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-pr53-source-snapshot-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TARGET_SOURCE: cdb074e328b486d874b8fa6c1b37d067044343bb
+
+jobs:
+  export-source:
+    name: Export exact PR53 source snapshot
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - name: Verify exact source
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - name: Package source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git --exclude=target -czf "$RUNNER_TEMP/hepta-pr53-source-${TARGET_SOURCE}.tar.gz" .
+          sha256sum "$RUNNER_TEMP/hepta-pr53-source-${TARGET_SOURCE}.tar.gz" > "$RUNNER_TEMP/hepta-pr53-source-${TARGET_SOURCE}.sha256"
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-pr53-source-cdb074e328b486d874b8fa6c1b37d067044343bb
+          path: |
+            ${{ runner.temp }}/hepta-pr53-source-${{ env.TARGET_SOURCE }}.tar.gz
+            ${{ runner.temp }}/hepta-pr53-source-${{ env.TARGET_SOURCE }}.sha256
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
