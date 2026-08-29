@@ -1,0 +1,70 @@
+name: Hepta inference INF-0C capability classifier self-test
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0c-capability-v2-selftest-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf0c-capability-v2-selftest.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-inf0c-capability-v2-selftest-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  self-test:
+    name: Execute exact classifier source and strict-SSE fault fixtures
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          path: r
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/hepta-inference-inf0c-capability-v2-selftest.yml
+            /scripts/hepta-inference-inf0c-real-e2e.py
+            /scripts/hepta-inference-inf0c-protocol-evidence.py
+            /scripts/hepta-inference-inf0c-capability-classification-v2.py
+            /docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_CAPABILITY_CLASSIFIER_SOURCE_RECEIPT_2026-08-29.json
+
+      - name: Verify workflow-only child and exact source receipt parent
+        shell: pwsh
+        working-directory: r
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD^) -ne 'fef0a0d7a3f679e3486062f0ce7b48e80195b984') { throw 'unexpected parent receipt' }
+          $changed = git diff --name-only HEAD^ HEAD
+          if ($changed -ne '.github/workflows/hepta-inference-inf0c-capability-v2-selftest.yml') { throw "unexpected delta: $changed" }
+          $receipt = Get-Content docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_CAPABILITY_CLASSIFIER_SOURCE_RECEIPT_2026-08-29.json -Raw | ConvertFrom-Json
+          if ($receipt.source_candidate_commit -ne '15811927dc23a522d736fc09d1ff67f02a759229') { throw 'source receipt commit mismatch' }
+          if ($receipt.source_candidate_tree -ne 'd331cad96ac35002454b39f6ff28c174af2a0655') { throw 'source receipt tree mismatch' }
+          if ($receipt.qualified -ne $false) { throw 'source-only receipt overclaims qualification' }
+
+      - name: Verify Python syntax and execute all strict-SSE fixtures
+        shell: pwsh
+        working-directory: r
+        run: |
+          $ErrorActionPreference = 'Stop'
+          py -3 -m py_compile `
+            scripts/hepta-inference-inf0c-real-e2e.py `
+            scripts/hepta-inference-inf0c-protocol-evidence.py `
+            scripts/hepta-inference-inf0c-capability-classification-v2.py
+          py -3 scripts/hepta-inference-inf0c-capability-classification-v2.py --self-test |
+            Tee-Object -FilePath "$env:RUNNER_TEMP/hepta-inference-inf0c-capability-v2-selftest.txt"
+
+      - name: Upload self-test evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0c-capability-v2-selftest-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-inference-inf0c-capability-v2-selftest.txt
+          if-no-files-found: error
+          retention-days: 14
