@@ -1,0 +1,46 @@
+name: p034 reconstruction payload export
+
+on:
+  push:
+    branches:
+      - codex/p034-rebuild-v2-20260829
+    paths:
+      - .github/workflows/p034-payload-export.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    name: Export exact reconstruction payload
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact helper head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Reconstruct and bind payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          mkdir -p artifacts/p034-payload/extracted
+          cat ci/p034-rebuild/payload.part* > artifacts/p034-payload/payload.b64
+          base64 -d artifacts/p034-payload/payload.b64 > artifacts/p034-payload/payload.tar.gz
+          echo '1bae5fe3176c0477875010a18e817a156f6a8898996ae81b89a4ccbbe4811297  artifacts/p034-payload/payload.tar.gz' | sha256sum -c -
+          tar -xzf artifacts/p034-payload/payload.tar.gz -C artifacts/p034-payload/extracted
+          printf '%s\n' "${GITHUB_SHA}" > artifacts/p034-payload/HELPER_HEAD
+          sha256sum artifacts/p034-payload/payload.tar.gz > artifacts/p034-payload/payload.tar.gz.sha256
+          find artifacts/p034-payload/extracted -type f -print0 | sort -z | xargs -0 sha256sum > artifacts/p034-payload/EXTRACTED_SHA256SUMS
+
+      - name: Upload exact payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: p034-reconstruction-payload-${{ github.sha }}
+          path: artifacts/p034-payload
+          if-no-files-found: error
+          retention-days: 1
