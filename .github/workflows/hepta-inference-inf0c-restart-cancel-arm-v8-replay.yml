@@ -1,0 +1,279 @@
+name: Hepta inference INF-0C restart and cancel closure v8 corrected
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0c-real-services-arm-20260828
+    paths:
+      - ".github/workflows/hepta-inference-inf0c-restart-cancel-arm-v8-replay.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-inf0c-restart-cancel-arm-v8
+  cancel-in-progress: true
+
+jobs:
+  closure:
+    name: Corrected exact tuple restart and cancellation closure
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 240
+    env:
+      CANDIDATE_BRANCH: codex/hepta-inference-inf0c-toolcall-restacked-20260829
+      CANDIDATE_RECEIPT: cd3344d767667b177d6d21c7198bade228d010bb
+      CANDIDATE_SOURCE: a45d0b6b1591ed67f6f580879a706849a81c6fe9
+      CANDIDATE_TREE: eb415339159aff6bdf39a2030b55432d89321f2d
+      CANCEL_BRANCH: codex/hepta-inference-inf0c-cancel-capability-v3-20260828
+      CANCEL_SOURCE: cf8b448c4d09d1677519a674126fb7dc61452414
+      CANCEL_RECEIPT: 6109b43cd303253d84c9ef0a16ae4592d9e96cd0
+      EXPECTED_PARENT: 7eca9477976cee0d1ee3c68b1198625f5faad85c
+      SELF: .github/workflows/hepta-inference-inf0c-restart-cancel-arm-v8-replay.yml
+      SOURCE_WORKFLOW: .github/workflows/hepta-inference-inf0c-restart-cancel-arm-v8.yml
+      SOURCE_WORKFLOW_BLOB: e44de3b1dbbbd39913b71b5643ca996903f2b818
+      OLLAMA_MODEL: granite4:1b
+      LMSTUDIO_MODEL: ibm/granite-4-micro
+      LMSTUDIO_DOWNLOAD: ibm/granite-4-micro@q4_k_m
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_CONTEXT_LENGTH: "2048"
+      EXPECTED_OLLAMA_INSTALLER_SHA256: 25f64b810b947145095956533e1bdf56eacea2673c55a7e586be4515fc882c9f
+      EXPECTED_LMSTUDIO_INSTALLER_SHA256: f6492caf54327951d55f281133d0d9646efd62985c2465c597bfff8d35b6795f
+      PRIOR_CAPABILITY_RUN: "33235893994"
+      PRIOR_CAPABILITY_ARTIFACT_SHA256: 53d60bb1f990cb6c982d41e8d4597300dabedb5df3b838aa1d91dceecf170d01
+      CI: "1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify one-file replay and detach exact audited sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          test "$(git hash-object "$SOURCE_WORKFLOW")" = "$SOURCE_WORKFLOW_BLOB"
+          cp "$SOURCE_WORKFLOW" "$RUNNER_TEMP/hepta-inf0c-v8-source.yml"
+          echo "WORKFLOW_COMMIT=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "WORKFLOW_TREE=$(git rev-parse HEAD^{tree})" >> "$GITHUB_ENV"
+          git fetch --no-tags origin \
+            "refs/heads/$CANDIDATE_BRANCH:refs/remotes/origin/hepta-inf0c-capability-v3" \
+            "refs/heads/$CANCEL_BRANCH:refs/remotes/origin/hepta-inf0c-cancel-v3"
+          test "$(git rev-parse refs/remotes/origin/hepta-inf0c-capability-v3)" = "$CANDIDATE_RECEIPT"
+          test "$(git rev-parse "$CANDIDATE_RECEIPT^")" = "$CANDIDATE_SOURCE"
+          test "$(git rev-parse "$CANDIDATE_SOURCE^{tree}")" = "$CANDIDATE_TREE"
+          test "$(git rev-parse refs/remotes/origin/hepta-inf0c-cancel-v3)" = "$CANCEL_RECEIPT"
+          test "$(git rev-parse "$CANCEL_RECEIPT^")" = "$CANCEL_SOURCE"
+          git checkout --detach "$CANDIDATE_RECEIPT"
+          test -z "$(git status --porcelain)"
+
+      - name: Execute exact audited setup and evidence blocks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/hepta-inf0c-v8-source.yml" <<'PY'
+          import os
+          import pathlib
+          import subprocess
+          import sys
+          import tempfile
+
+          source = pathlib.Path(sys.argv[1])
+          lines = source.read_text(encoding="utf-8").splitlines()
+          blocks: dict[str, str] = {}
+          index = 0
+          while index < len(lines):
+              line = lines[index]
+              if not line.startswith("      - name: "):
+                  index += 1
+                  continue
+              name = line.removeprefix("      - name: ")
+              cursor = index + 1
+              while cursor < len(lines) and lines[cursor] != "        run: |":
+                  if lines[cursor].startswith("      - "):
+                      break
+                  cursor += 1
+              if cursor >= len(lines) or lines[cursor] != "        run: |":
+                  index += 1
+                  continue
+              cursor += 1
+              body: list[str] = []
+              while cursor < len(lines):
+                  candidate = lines[cursor]
+                  if candidate and not candidate.startswith("          "):
+                      break
+                  body.append(candidate[10:] if candidate.startswith("          ") else "")
+                  cursor += 1
+              if name in blocks:
+                  raise SystemExit(f"duplicate run block: {name}")
+              blocks[name] = "\n".join(body) + "\n"
+              index = cursor
+
+          targets = [
+              "Verify evidence source and materialize cancellation probe",
+              "Prepare private qualification roots",
+              "Install exact audited runtimes",
+              "Start Ollama and explicitly provision exact model",
+              "Stabilize LM Studio and explicitly provision exact GGUF",
+              "Build asynchronous digest-pinned fixed-argv control helper",
+              "Execute bounded disconnect and controlled restart evidence",
+              "Classify explicit provider cancellation fail closed",
+          ]
+          missing = [name for name in targets if name not in blocks]
+          if missing:
+              raise SystemExit(f"missing audited run blocks: {missing}")
+
+          env = dict(os.environ)
+          github_env = pathlib.Path(env["GITHUB_ENV"])
+          github_path = pathlib.Path(env["GITHUB_PATH"])
+
+          def refresh_environment() -> None:
+              if github_env.exists():
+                  for raw in github_env.read_text(encoding="utf-8").splitlines():
+                      if not raw or "=" not in raw or "<<" in raw:
+                          continue
+                      key, value = raw.split("=", 1)
+                      env[key] = value
+              if github_path.exists():
+                  additions = [line for line in github_path.read_text(encoding="utf-8").splitlines() if line]
+                  if additions:
+                      env["PATH"] = os.pathsep.join(reversed(additions)) + os.pathsep + env.get("PATH", "")
+
+          for ordinal, name in enumerate(targets, 1):
+              script = blocks[name]
+              if name == "Execute bounded disconnect and controlled restart evidence":
+                  needle = "            --run-controlled-restart \\\n"
+                  replacement = (
+                      "            --run-controlled-restart \\\n"
+                      "            --timeout-seconds 180 \\\n"
+                      "            --restart-timeout-seconds 900 \\\n"
+                      "            --disconnect-read-bytes 512 \\\n"
+                  )
+                  if needle not in script:
+                      raise SystemExit("restart invocation patch anchor missing")
+                  script = script.replace(needle, replacement, 1)
+              with tempfile.NamedTemporaryFile(
+                  "w", encoding="utf-8", suffix=".sh", delete=False
+              ) as handle:
+                  handle.write(script)
+                  script_path = pathlib.Path(handle.name)
+              print(f"::group::audited block {ordinal}/{len(targets)}: {name}", flush=True)
+              result = subprocess.run(
+                  ["/usr/bin/bash", str(script_path)],
+                  cwd=os.environ["GITHUB_WORKSPACE"],
+                  env=env,
+                  check=False,
+              )
+              script_path.unlink(missing_ok=True)
+              print("::endgroup::", flush=True)
+              if result.returncode != 0:
+                  raise SystemExit(f"audited block failed ({result.returncode}): {name}")
+              refresh_environment()
+          PY
+
+      - name: Build and enforce corrected restart cancellation receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/hepta-inf0c-v8"
+          python3 - "$root" <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import platform
+          import sys
+          import time
+
+          root = pathlib.Path(sys.argv[1])
+          restart = json.loads((root / "disconnect-restart-evidence.json").read_text())
+          classification = json.loads((root / "cancel-capability-classification.json").read_text())
+          controlled = restart["controlled_restart"]
+          assert restart["cancellation"]["ollama"]["transport_disconnect_executed"] is True
+          assert restart["cancellation"]["lmstudio"]["transport_disconnect_executed"] is True
+          assert controlled["controlled_restart_executed"] is True
+          for provider in ("ollama", "lmstudio"):
+              result = controlled[provider]
+              assert result["controlled_restart_executed"] is True
+              assert result["unavailable_observed"] is True
+              post_restart = result["post_restart"]
+              assert post_restart["model_present"] is True
+              assert post_restart["semantic_output"]["verified"] is True
+          assert classification["provider_cancel_capability_evidence_complete"] is True
+
+          files = {}
+          for path in sorted(root.iterdir()):
+              if path.is_file() and path.name != "ollama-service.log":
+                  payload = path.read_bytes()
+                  files[path.name] = {
+                      "sha256": hashlib.sha256(payload).hexdigest(),
+                      "byte_length": len(payload),
+                  }
+          receipt = {
+              "schema": "hepta.inference.inf0c.restart_cancel_closure.v2",
+              "candidate_receipt": os.environ["CANDIDATE_RECEIPT"],
+              "candidate_source": os.environ["CANDIDATE_SOURCE"],
+              "candidate_tree": os.environ["CANDIDATE_TREE"],
+              "workflow_commit": os.environ["WORKFLOW_COMMIT"],
+              "workflow_tree": os.environ["WORKFLOW_TREE"],
+              "prior_capability_run": int(os.environ["PRIOR_CAPABILITY_RUN"]),
+              "prior_capability_artifact_sha256": os.environ["PRIOR_CAPABILITY_ARTIFACT_SHA256"],
+              "runner": {
+                  "os": os.environ.get("RUNNER_OS"),
+                  "arch": os.environ.get("RUNNER_ARCH"),
+                  "platform": platform.platform(),
+              },
+              "generated_unix_ms": time.time_ns() // 1_000_000,
+              "model_tuple": {
+                  "ollama": os.environ["OLLAMA_MODEL"],
+                  "lmstudio": os.environ["LMSTUDIO_MODEL"],
+                  "lmstudio_artifact": os.environ["LMSTUDIO_DOWNLOAD"],
+              },
+              "transport_disconnect_executed": True,
+              "controlled_restart_executed": True,
+              "post_restart_exact_semantic_inference_qualified": True,
+              "provider_cancel_capability_evidence_complete": True,
+              "provider_cancel_acknowledged": classification["backend_cancellation_acknowledged"],
+              "controlled_worker_termination_required": classification[
+                  "compensating_controlled_worker_termination_required"
+              ],
+              "raw_prompt_persisted": False,
+              "raw_model_output_persisted": False,
+              "files": files,
+              "source_qualified": True,
+              "production_qualified": False,
+              "operator_accepted": False,
+              "promoted": False,
+              "released": False,
+          }
+          (root / "restart-cancel-closure.json").write_text(
+              json.dumps(receipt, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+          chmod 600 "$root"/*.json "$root"/*.txt "$root"/*.log 2>/dev/null || true
+          find "$root" -maxdepth 1 -type f ! -name SHA256SUMS -print0 \
+            | sort -z | xargs -0 sha256sum > "$root/SHA256SUMS"
+          {
+            echo "PASS_HEPTA_INFERENCE_INF0C_RESTART_CANCEL_GAPS_CLOSED"
+            echo "transport_disconnect_executed=true"
+            echo "controlled_restart_executed=true"
+            echo "post_restart_exact_semantic_inference_qualified=true"
+            echo "provider_cancel_capability_evidence_complete=true"
+            echo "production_qualified=false"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload corrected restart cancellation closure evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0c-restart-cancel-v8-corrected-${{ env.CANDIDATE_RECEIPT }}
+          path: |
+            ${{ runner.temp }}/hepta-inf0c-v8
+            ${{ runner.temp }}/hepta-inf0c-evidence-v2-selftest.txt
+            ${{ runner.temp }}/hepta-inf0c-cancel-v3-source-sha256.txt
+            ${{ runner.temp }}/hepta-inf0c-cancel-v3
+          if-no-files-found: warn
+          retention-days: 14
