@@ -1,0 +1,229 @@
+{
+  "schema": "hepta.inference.stage_matrix.v6",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V5",
+  "plan_version": "5.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "source_binding": {
+    "mode": "tracked matrix binds observed parent; exact candidate receipts are CI-generated",
+    "observed_parent_commit": "0a4cfb84434fbc252d4b1b84120f1d72df6299d7"
+  },
+  "stages": [
+    {
+      "stage": "D0",
+      "package": "INF-D0",
+      "claim": "V5 current documentation and machine truth",
+      "required_evidence": [
+        "current pointer",
+        "plan",
+        "current status",
+        "implementation status",
+        "stage matrix",
+        "blocker ledger",
+        "evidence contract",
+        "source truth gate"
+      ],
+      "status": "SOURCE_COMPONENT_PRESENT"
+    },
+    {
+      "stage": "Q0",
+      "package": "INF-Q0",
+      "claim": "exact-head repository source qualification",
+      "required_evidence": [
+        "Linux x64 Rust 1.95 fmt/check/test/clippy",
+        "Linux ARM64 Rust 1.95 fmt/check/test/clippy",
+        "macOS Intel Rust 1.95 fmt/check/test/clippy",
+        "Cargo and Bazel lock receipts",
+        "non-empty aggregate"
+      ],
+      "status": "BLOCKED_UPSTREAM"
+    },
+    {
+      "stage": "I1",
+      "package": "INF-I1",
+      "claim": "one-time bounded prompt input lease",
+      "required_evidence": [
+        "digest/length verification",
+        "request/generation/grant fence",
+        "replay and cross-request denial",
+        "no raw prompt persistence",
+        "exactly-once cleanup"
+      ],
+      "status": "NOT_STARTED"
+    },
+    {
+      "stage": "S1",
+      "package": "INF-S1",
+      "claim": "daemon-owned authenticated private control",
+      "required_evidence": [
+        "OS CSPRNG secrets",
+        "worker handshake",
+        "one-time grant",
+        "per-event authentication",
+        "operator separation",
+        "public denial"
+      ],
+      "status": "SOURCE_COMPONENT_PRESENT"
+    },
+    {
+      "stage": "S2",
+      "package": "INF-S2",
+      "claim": "bounded running cancellation and worker fault",
+      "required_evidence": [
+        "ACK path",
+        "malformed response path",
+        "EOF/crash path",
+        "timeout kill",
+        "bounded reap",
+        "accurate forced-kill receipt",
+        "generation rollover"
+      ],
+      "status": "SOURCE_COMPONENT_PRESENT"
+    },
+    {
+      "stage": "S3",
+      "package": "INF-S3",
+      "claim": "strict crash-safe receipt retention",
+      "required_evidence": [
+        "minimum retention",
+        "tombstone before delete",
+        "strict store namespace",
+        "crash injection",
+        "bounded indexes/files/bytes"
+      ],
+      "status": "SOURCE_COMPONENT_PRESENT"
+    },
+    {
+      "stage": "S4",
+      "package": "INF-S4",
+      "claim": "durable scheduler and reservation owner",
+      "required_evidence": [
+        "EDF/WFQ determinism",
+        "cost validation",
+        "durable prepared/committed/released journal",
+        "daemon integration",
+        "crash recovery",
+        "exactly-once release",
+        "bounded retained state"
+      ],
+      "status": "SOURCE_COMPONENT_PRESENT"
+    },
+    {
+      "stage": "R1S",
+      "package": "INF-R1",
+      "claim": "provider lane repository source",
+      "required_evidence": [
+        "canonical fixed manifest",
+        "duplicate identity denial",
+        "single total deadline",
+        "prompt lease",
+        "daemon/controller/scheduler/receipt integration",
+        "hermetic provider E2E"
+      ],
+      "status": "SOURCE_COMPONENT_PRESENT"
+    },
+    {
+      "stage": "R1E",
+      "package": "INF-E1",
+      "claim": "real fixed provider/model execution",
+      "required_evidence": [
+        "real provider process",
+        "real semantic output",
+        "inventory before equals after",
+        "digest-bound exact-head artifact"
+      ],
+      "status": "BLOCKED_EXTERNAL_EVIDENCE"
+    },
+    {
+      "stage": "R2S",
+      "package": "INF-R2",
+      "claim": "isolated native worker repository source",
+      "required_evidence": [
+        "shared S1 private protocol",
+        "non-fixture worker mode",
+        "real lifecycle ABI contract",
+        "verified-handle load",
+        "daemon/controller/scheduler/receipt integration",
+        "fake ABI process E2E"
+      ],
+      "status": "SOURCE_COMPONENT_PRESENT"
+    },
+    {
+      "stage": "R2E",
+      "package": "INF-E2",
+      "claim": "real native model and exact-device execution",
+      "required_evidence": [
+        "pinned runtime",
+        "fixed GGUF/tokenizer/template",
+        "real UTF-8 token",
+        "cancel/crash/OOM/stale event",
+        "runtime/model/device digests"
+      ],
+      "status": "BLOCKED_EXTERNAL_EVIDENCE"
+    },
+    {
+      "stage": "R3S",
+      "package": "INF-R3",
+      "claim": "qualification-only product shadow integration",
+      "required_evidence": [
+        "codex-hepta-agentd owner seam",
+        "default disabled and kill-switched",
+        "operator-controlled enablement",
+        "complete request fence",
+        "timeout cancellation",
+        "primary byte identity",
+        "no state/effect authority"
+      ],
+      "status": "SOURCE_COMPONENT_PRESENT"
+    },
+    {
+      "stage": "E3",
+      "package": "INF-E3",
+      "claim": "exact-device performance/privacy/rollback",
+      "required_evidence": [
+        "load and TTFT percentiles",
+        "throughput",
+        "RSS/VRAM/KV/shared memory",
+        "cancel/kill/unload recovery",
+        "privacy review",
+        "rollback"
+      ],
+      "status": "BLOCKED_EXTERNAL_EVIDENCE"
+    },
+    {
+      "stage": "A1",
+      "package": "INF-A1",
+      "claim": "independent acceptance and promotion",
+      "required_evidence": [
+        "independent operator",
+        "separate privacy acceptance",
+        "separate promotion commit",
+        "separate release receipt",
+        "no self merge"
+      ],
+      "status": "BLOCKED_INDEPENDENT_AUTHORITY"
+    }
+  ],
+  "aggregate": {
+    "repository_source_closed": false,
+    "runtime_evidence_closed": false,
+    "product_gap_closed": false,
+    "all_gaps_closed": false
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
