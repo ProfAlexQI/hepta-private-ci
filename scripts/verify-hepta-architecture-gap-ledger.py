@@ -25,6 +25,9 @@ RETIRED_WORKFLOWS = (
     ".github/workflows/hepta-legacy-production-authority-adapter-p0-1.yml",
     ".github/workflows/hepta-route-architecture-slim-once.yml",
     ".github/workflows/hepta-memory-runtime-lock-refresh-once.yml",
+    ".github/workflows/hepta-automation-operation-repair-once.yml",
+    ".github/workflows/hepta-operation-safety-repair-slim-once.yml",
+    ".github/workflows/hepta-operation-materialize-once.yml",
 )
 RETIRED_MUTATORS = (
     "scripts/hepta-architecture-p0-2-portability-bootstrap.py",
@@ -33,12 +36,20 @@ RETIRED_MUTATORS = (
     "scripts/hepta-memory-runtime-extraction-p0-1.py",
     "scripts/hepta-product-graph-authority-completion-p0-1-v2.py",
     "scripts/hepta-product-graph-authority-completion-p0-1.py",
+    "scripts/hepta-operation-safety-repair.py",
+    "scripts/hepta-automation-operation-repair-once.py",
+    "scripts/hepta-automation-operation-repair-once.py.part-00",
+    "scripts/hepta-automation-operation-repair-once.py.part-01",
+    "scripts/hepta-automation-operation-repair-once.py.part-02",
+    "scripts/hepta-automation-operation-repair-once.py.part-03",
+    "scripts/hepta-automation-model-v4.rs",
 )
 MUTATING_WORKFLOW_NAME_PARTS = (
     "architecture",
     "memory-runtime",
     "authority",
     "product-graph",
+    "operation",
 )
 MUTATING_WORKFLOW_SUFFIXES = (
     "-bootstrap.yml",
@@ -51,7 +62,7 @@ MUTATING_WORKFLOW_SUFFIXES = (
     "-refresh.yaml",
 )
 MATRIX_STORE_PACKAGE_MARKER = "-p codex-hepta-matrix-store"
-MATRIX_STORE_REQUIRED_OCCURRENCES = 8
+MATRIX_STORE_REQUIRED_OCCURRENCES = 9
 
 
 def fail(message: str) -> NoReturn:
@@ -120,7 +131,8 @@ def verify_matrix_store_qualification(workflow: str) -> None:
         )
     for marker in (
         "cargo test --locked -p codex-hepta-matrix-store --lib -- --nocapture",
-        "cargo test --locked -p codex-hepta-matrix-store --test sqlite_full -- --nocapture",
+        "cargo test --locked -p codex-hepta-matrix-store --features qualification-fault-injection --test sqlite_full -- --nocapture",
+        "cargo clippy --locked -p codex-hepta-matrix-store --all-targets --features qualification-fault-injection -- -D warnings",
         "-p codex-hepta-matrix-store \\",
     ):
         if marker not in workflow:
@@ -157,7 +169,7 @@ def main() -> int:
         "workflow_call:",
         "workflow_dispatch:",
         "contents: read",
-        "runs-on: ubuntu-24.04-arm",
+        "runs-on: ubuntu-24.04",
         "Exact source-head architecture closure",
         "Merge-candidate architecture integration",
         "Hepta architecture convergence required",
