@@ -1,0 +1,122 @@
+name: Hepta P0.7a candidate gate ARM (temporary)
+
+on:
+  push:
+    branches:
+      - "tmp/hepta-p0-7a-compiler-diagnostic-x64-20260830"
+    paths:
+      - ".github/workflows/hepta-p0-7a-candidate-gate-arm.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-p0-7a-candidate-gate-arm
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    if: >-
+      github.repository == 'ProfHepta/hepta-private-ci' &&
+      github.ref == 'refs/heads/tmp/hepta-p0-7a-compiler-diagnostic-x64-20260830'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify staged source blobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object codex-rs/hepta-agentd/src/lib.rs)" = \
+            "44eb98fa6a89bac6b21ca41afe7ad7d31ffd082c"
+          test "$(git hash-object codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs)" = \
+            "74abd3aa3ece1fc63f36a09acfe719b5a6f9528f"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Apply inode publication repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs")
+          text = path.read_text()
+          replacements = (
+              (
+                  "    let linked = std::fs::symlink_metadata(path)?;\n",
+                  "    let held_linked = file.metadata()?;\n"
+                  "    validate_registry_metadata(&temp, &held_linked, &parent_metadata, 2)?;\n"
+                  "    let linked = std::fs::symlink_metadata(path)?;\n",
+              ),
+              (
+                  "    if metadata_identity(&held) != metadata_identity(&linked) {\n",
+                  "    if metadata_identity(&held_linked) != metadata_identity(&linked) {\n",
+              ),
+              (
+                  "    let published = std::fs::symlink_metadata(path)?;\n",
+                  "    let held_published = file.metadata()?;\n"
+                  "    validate_registry_metadata(path, &held_published, &parent_metadata, 1)?;\n"
+                  "    let published = std::fs::symlink_metadata(path)?;\n",
+              ),
+              (
+                  "    if metadata_identity(&held) != metadata_identity(&published) {\n",
+                  "    if metadata_identity(&held_published) != metadata_identity(&published) {\n",
+              ),
+          )
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected registry repair anchor exactly once: {old!r}")
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: cargo-nextest@0.9.143
+
+      - name: Run exact P0.7a gates
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --package codex-hepta-agentd
+          cargo fmt --package codex-hepta-fleet
+          cargo fmt --package codex-hepta-agentd --package codex-hepta-fleet -- --check
+          just test -p codex-hepta-contracts
+          just test -p codex-hepta-fleet
+          just test -p codex-hepta-supervisor
+          just test -p codex-hepta-agentd
+          cargo check --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd \
+            -- -D warnings
+
+      - name: Verify minimal candidate diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test "$(git diff --name-only)" = \
+            "codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs"
+          test -z "$(git ls-files --others --exclude-standard)"
