@@ -6,6 +6,7 @@ use codex_hepta_automation::AutomationStore;
 use codex_hepta_contracts::AuthorityGrant;
 use codex_hepta_contracts::Authorized;
 use codex_hepta_contracts::AutomationMutationCapability;
+use codex_hepta_contracts::RuntimeAuthorityContext;
 use tokio_util::sync::CancellationToken;
 
 use crate::AgentdError;
@@ -24,7 +25,11 @@ impl AgentAutomationService {
         state: &AgentdState,
         identity: &AgentdIdentity,
         authority: &AuthorityGrant,
+        runtime_authority: &RuntimeAuthorityContext,
     ) -> Result<Self, AgentdError> {
+        runtime_authority.validate_grant(authority).map_err(|error| {
+            AgentdError::Protocol(format!("validate Automation runtime authority: {error}"))
+        })?;
         authority
             .validate_binding(&identity.agent_id, identity.spawn_generation)
             .map_err(|error| {
@@ -36,10 +41,10 @@ impl AgentAutomationService {
                 AgentdError::Protocol(format!("authorize Automation service: {error}"))
             })?;
         let operation_context = AutomationOperationContext::new(
-            u64::from(authority.schema_version()),
-            identity.spawn_generation,
-            identity.spawn_generation,
-            authority.digest(),
+            runtime_authority.authority_epoch(),
+            runtime_authority.owner_epoch(),
+            runtime_authority.generation(),
+            runtime_authority.fencing_token_sha256().clone(),
         )
         .map_err(|error| {
             AgentdError::Protocol(format!("bind Automation operation fence: {error}"))
@@ -64,7 +69,6 @@ impl AgentAutomationService {
         })
     }
 
-    #[cfg(test)]
     pub(crate) fn is_available(&self) -> bool {
         self.store.is_some()
     }

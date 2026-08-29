@@ -3,6 +3,11 @@ use std::sync::Arc;
 
 use codex_hepta_contracts::AuthorityGrant;
 use codex_hepta_contracts::ProductGraph;
+use codex_hepta_contracts::RuntimeAuthorityContext;
+use codex_hepta_contracts::RuntimeInstanceGraph;
+use codex_hepta_contracts::Sha256Digest;
+use codex_hepta_fleet::AgentLifecycle;
+use codex_hepta_fleet::AgentRecord;
 
 use crate::AgentdConfig;
 use crate::AgentdError;
@@ -19,7 +24,9 @@ pub(crate) struct AgentRuntimeComposition {
     memory_service: AgentMemoryService,
     automation_service: AgentAutomationService,
     authority: AuthorityGrant,
+    runtime_authority: RuntimeAuthorityContext,
     product_graph: ProductGraph,
+    runtime_instance: RuntimeInstanceGraph,
     writer_lock: File,
 }
 
@@ -29,29 +36,41 @@ pub(crate) struct AgentRuntimeParts {
     pub(crate) memory_service: AgentMemoryService,
     pub(crate) automation_service: AgentAutomationService,
     pub(crate) authority: AuthorityGrant,
+    pub(crate) runtime_authority: RuntimeAuthorityContext,
     pub(crate) product_graph: ProductGraph,
+    pub(crate) runtime_instance: RuntimeInstanceGraph,
     pub(crate) writer_lock: File,
 }
 
 impl AgentRuntimeComposition {
     pub(crate) async fn open(config: AgentdConfig) -> Result<Self, AgentdError> {
         let (identity, registry, writer_lock) = config.into_parts();
+        let snapshot = registry.load()?;
+        let record = snapshot
+            .agent(&identity.agent_id)
+            .cloned()
+            .ok_or_else(|| {
+                AgentdError::GenerationFenced(format!(
+                    "agent {} disappeared before product composition",
+                    identity.agent_id
+                ))
+            })?;
         let authority = authority_for_identity(&identity)?;
         authority
             .validate_binding(&identity.agent_id, identity.spawn_generation)
             .map_err(|error| {
                 AgentdError::Protocol(format!("validate Agent authority binding: {error}"))
             })?;
+        let runtime_authority = runtime_authority_context(&record, &identity, &authority)?;
         let product_graph = ProductGraph::agent_local(&authority).map_err(|error| {
             AgentdError::Protocol(format!("validate Agent product graph: {error}"))
         })?;
 
-        let federation_owner_layouts = registry
-            .load()?
+        let federation_owner_layouts = snapshot
             .agents
             .into_values()
-            .filter(|record| record.manifest.agent_id != identity.agent_id)
-            .map(|record| record.layout)
+            .filter(|candidate| candidate.manifest.agent_id != identity.agent_id)
+            .map(|candidate| candidate.layout)
             .collect::<Vec<_>>();
         let state = Arc::new(AgentdState::new(
             identity.clone(),
@@ -63,10 +82,25 @@ impl AgentRuntimeComposition {
             &identity,
             federation_owner_layouts,
             &authority,
+            &runtime_authority,
         )
         .await?;
-        let automation_service =
-            AgentAutomationService::open(state.as_ref(), &identity, &authority).await?;
+        let automation_service = AgentAutomationService::open(
+            state.as_ref(),
+            &identity,
+            &authority,
+            &runtime_authority,
+        )
+        .await?;
+        let runtime_instance = RuntimeInstanceGraph::agent_composed(
+            &authority,
+            &product_graph,
+            memory_service.is_available(),
+            automation_service.is_available(),
+        )
+        .map_err(|error| {
+            AgentdError::Protocol(format!("validate Agent runtime instance graph: {error}"))
+        })?;
 
         Ok(Self {
             identity,
@@ -74,7 +108,9 @@ impl AgentRuntimeComposition {
             memory_service,
             automation_service,
             authority,
+            runtime_authority,
             product_graph,
+            runtime_instance,
             writer_lock,
         })
     }
@@ -86,7 +122,9 @@ impl AgentRuntimeComposition {
             memory_service: self.memory_service,
             automation_service: self.automation_service,
             authority: self.authority,
+            runtime_authority: self.runtime_authority,
             product_graph: self.product_graph,
+            runtime_instance: self.runtime_instance,
             writer_lock: self.writer_lock,
         }
     }
@@ -108,10 +146,119 @@ pub(crate) fn authority_for_identity(
     authority.map_err(|error| AgentdError::Protocol(format!("build Agent authority: {error}")))
 }
 
+fn runtime_authority_context(
+    record: &AgentRecord,
+    identity: &AgentdIdentity,
+    authority: &AuthorityGrant,
+) -> Result<RuntimeAuthorityContext, AgentdError> {
+    if record.lifecycle.lifecycle != AgentLifecycle::Starting
+        || record.lifecycle.generation != identity.spawn_generation
+    {
+        return Err(AgentdError::GenerationFenced(format!(
+            "runtime authority requires Starting generation {}, found {:?} generation {}",
+            identity.spawn_generation,
+            record.lifecycle.lifecycle,
+            record.lifecycle.generation
+        )));
+    }
+    let authority_epoch = record
+        .release_state
+        .generation
+        .checked_add(1)
+        .ok_or_else(|| AgentdError::Protocol("release authority epoch overflow".to_string()))?;
+    let owner_epoch = record.lifecycle.generation;
+    let fencing_token_sha256 = runtime_fencing_token(record, identity, authority);
+    RuntimeAuthorityContext::new(
+        identity.agent_id.clone(),
+        authority_epoch,
+        owner_epoch,
+        identity.spawn_generation,
+        fencing_token_sha256,
+        authority.digest(),
+    )
+    .and_then(|context| {
+        context.validate_grant(authority)?;
+        Ok(context)
+    })
+    .map_err(|error| {
+        AgentdError::Protocol(format!("build lifecycle-owned runtime authority: {error}"))
+    })
+}
+
+fn runtime_fencing_token(
+    record: &AgentRecord,
+    identity: &AgentdIdentity,
+    authority: &AuthorityGrant,
+) -> Sha256Digest {
+    let mut bytes = Vec::new();
+    frame(&mut bytes, b"hepta:agent-runtime-fence:v1");
+    frame(&mut bytes, identity.agent_id.as_str().as_bytes());
+    frame(&mut bytes, &record.lifecycle.schema_version.to_be_bytes());
+    frame(&mut bytes, &record.lifecycle.generation.to_be_bytes());
+    frame(
+        &mut bytes,
+        lifecycle_name(record.lifecycle.lifecycle).as_bytes(),
+    );
+    frame(&mut bytes, &record.release_state.schema_version.to_be_bytes());
+    frame(&mut bytes, &record.release_state.generation.to_be_bytes());
+    frame(
+        &mut bytes,
+        record
+            .release_state
+            .current
+            .as_ref()
+            .map(|release| release.as_str())
+            .unwrap_or("")
+            .as_bytes(),
+    );
+    frame(
+        &mut bytes,
+        record
+            .release_state
+            .previous
+            .as_ref()
+            .map(|release| release.as_str())
+            .unwrap_or("")
+            .as_bytes(),
+    );
+    frame(&mut bytes, authority.digest().as_str().as_bytes());
+    frame(
+        &mut bytes,
+        &record.manifest.resources.max_concurrent_turns.to_be_bytes(),
+    );
+    frame(
+        &mut bytes,
+        &record.manifest.resources.max_tool_processes.to_be_bytes(),
+    );
+    frame(
+        &mut bytes,
+        &record.manifest.resources.turn_queue_capacity.to_be_bytes(),
+    );
+    Sha256Digest::for_bytes(&bytes)
+}
+
+fn lifecycle_name(lifecycle: AgentLifecycle) -> &'static str {
+    match lifecycle {
+        AgentLifecycle::Stopped => "stopped",
+        AgentLifecycle::Starting => "starting",
+        AgentLifecycle::Running => "running",
+        AgentLifecycle::Draining => "draining",
+        AgentLifecycle::Failed => "failed",
+    }
+}
+
+fn frame(target: &mut Vec<u8>, part: &[u8]) {
+    target.extend_from_slice(&(part.len() as u64).to_be_bytes());
+    target.extend_from_slice(part);
+}
+
 #[cfg(test)]
 mod tests {
     use codex_hepta_contracts::AgentId;
     use codex_hepta_contracts::AuthorityAction;
+    use codex_hepta_contracts::ProductComponentId;
+    use codex_hepta_contracts::RuntimeServiceRequirement;
+    use codex_hepta_contracts::RuntimeServiceState;
     use codex_hepta_fleet::AgentLifecycle;
     use codex_hepta_fleet::AgentManifest;
     use codex_hepta_fleet::FleetRegistry;
@@ -171,6 +318,20 @@ mod tests {
         assert!(parts.authority.is_product_closed());
         assert!(!parts.authority.allows(AuthorityAction::ExternalEffect));
         assert!(!parts.authority.allows(AuthorityAction::PromoteRelease));
+        assert_eq!(parts.runtime_authority.authority_epoch(), 1);
+        assert_eq!(parts.runtime_authority.owner_epoch(), 1);
+        assert_eq!(parts.runtime_authority.generation(), 1);
+        assert!(!parts.runtime_instance.ready());
+        assert_eq!(
+            parts
+                .runtime_instance
+                .component_status(ProductComponentId::AppServer)
+                .map(|status| (status.requirement, status.state)),
+            Some((
+                RuntimeServiceRequirement::Required,
+                RuntimeServiceState::Starting,
+            ))
+        );
         assert!(parts.state.automation_is_available().expect("state lock"));
     }
 }

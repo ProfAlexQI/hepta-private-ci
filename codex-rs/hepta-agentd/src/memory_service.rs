@@ -7,6 +7,7 @@ use codex_hepta_contracts::AuthorityGrant;
 use codex_hepta_contracts::Authorized;
 use codex_hepta_contracts::CognitiveWriteCapability;
 use codex_hepta_contracts::MemoryReadCapability;
+use codex_hepta_contracts::RuntimeAuthorityContext;
 use codex_hepta_memory::CognitiveRuntime;
 use codex_hepta_memory_runtime::AgentMemoryRuntime;
 
@@ -26,7 +27,11 @@ impl AgentMemoryService {
         identity: &AgentdIdentity,
         federation_owner_layouts: Vec<codex_hepta_paths::HeptaAgentLayout>,
         authority: &AuthorityGrant,
+        runtime_authority: &RuntimeAuthorityContext,
     ) -> Result<Self, AgentdError> {
+        runtime_authority.validate_grant(authority).map_err(|error| {
+            AgentdError::Protocol(format!("validate Memory runtime authority: {error}"))
+        })?;
         authority
             .validate_binding(&identity.agent_id, identity.spawn_generation)
             .map_err(|error| {
@@ -97,12 +102,10 @@ impl AgentMemoryService {
         })
     }
 
-    #[cfg(test)]
     pub(crate) fn is_available(&self) -> bool {
         self.runtime.cognitive_runtime().available_store().is_some()
     }
 
-    #[cfg(test)]
     pub(crate) fn cognitive_write_enabled(&self) -> bool {
         self.cognitive_write.is_some()
     }

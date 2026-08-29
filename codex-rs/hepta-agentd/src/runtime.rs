@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 #[cfg(test)]
@@ -12,6 +13,8 @@ use codex_arg0::Arg0DispatchPaths;
 use codex_hepta_automation::AutomationError;
 #[cfg(test)]
 use codex_hepta_automation::AutomationStore;
+use codex_hepta_contracts::ProductComponentId;
+use codex_hepta_contracts::RuntimeInstanceGraph;
 #[cfg(test)]
 use codex_hepta_memory::CognitiveRuntime;
 #[cfg(test)]
@@ -52,9 +55,12 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
         memory_service,
         automation_service,
         authority,
+        runtime_authority: _runtime_authority,
         product_graph: _product_graph,
+        runtime_instance,
         writer_lock: _writer_lock,
     } = AgentRuntimeComposition::open(config).await?.into_parts();
+    let runtime_instance = Arc::new(Mutex::new(runtime_instance));
     let (cognitive_runtime, cognitive_write) = memory_service.into_runtime_parts();
 
     let app_server = AgentAppServerService::new(
@@ -74,7 +80,10 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
     .await?;
     let mut control_task = tokio::spawn(control.run());
     let mut app_server_task = tokio::spawn(app_server.run());
-    let mut monitor_task = tokio::spawn(monitor_runtime(Arc::clone(&state)));
+    let mut monitor_task = tokio::spawn(monitor_runtime_with_instance(
+        Arc::clone(&state),
+        Arc::clone(&runtime_instance),
+    ));
     let mut automation_task =
         tokio::spawn(automation_service.run(Arc::clone(&state), identity, cancellation.clone()));
 
@@ -167,7 +176,22 @@ where
     Ok(runtime)
 }
 
+#[cfg(test)]
 async fn monitor_runtime(state: Arc<AgentdState>) -> Result<(), AgentdError> {
+    monitor_runtime_inner(state, None).await
+}
+
+async fn monitor_runtime_with_instance(
+    state: Arc<AgentdState>,
+    runtime_instance: Arc<Mutex<RuntimeInstanceGraph>>,
+) -> Result<(), AgentdError> {
+    monitor_runtime_inner(state, Some(runtime_instance)).await
+}
+
+async fn monitor_runtime_inner(
+    state: Arc<AgentdState>,
+    runtime_instance: Option<Arc<Mutex<RuntimeInstanceGraph>>>,
+) -> Result<(), AgentdError> {
     let mut app_server_ready = false;
     loop {
         if state.is_fenced()? {
@@ -182,6 +206,26 @@ async fn monitor_runtime(state: Arc<AgentdState>) -> Result<(), AgentdError> {
         if !app_server_ready {
             match probe_app_server(state.identity()).await {
                 Ok(()) => {
+                    if let Some(instance) = runtime_instance.as_ref() {
+                        let mut instance = instance.lock().map_err(|_| {
+                            AgentdError::Protocol(
+                                "runtime instance graph lock is poisoned".to_string(),
+                            )
+                        })?;
+                        instance
+                            .mark_ready(ProductComponentId::AppServer)
+                            .map_err(|error| {
+                                AgentdError::Protocol(format!(
+                                    "advance runtime instance readiness: {error}"
+                                ))
+                            })?;
+                        if !instance.ready() {
+                            return Err(AgentdError::Protocol(
+                                "App Server is reachable but the required runtime graph is not ready"
+                                    .to_string(),
+                            ));
+                        }
+                    }
                     state.mark_app_server_ready()?;
                     app_server_ready = true;
                 }
