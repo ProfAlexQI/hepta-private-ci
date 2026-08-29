@@ -220,8 +220,7 @@ repository/run-bound jobs_url
 valid evidence_sha256
 ```
 
-Operator rule: only after `PASS_CI_EXECUTION_ONLY` dispatch exact-source
-qualification v3.
+Operator rule: only after PASS_CI_EXECUTION_ONLY dispatch exact-source qualification v3.
 
 Only then may the plan advance to canonical exact-source qualification v3.
 All Browser, Servo, build, runtime, operator, merge, promotion, and release
