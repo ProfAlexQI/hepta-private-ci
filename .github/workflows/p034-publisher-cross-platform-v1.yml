@@ -1,0 +1,70 @@
+name: p034-qualified-publisher-cross-platform-v1
+
+on:
+  push:
+    branches:
+      - codex/p034-payload-helper-arm-v1-20260829
+    paths:
+      - .github/workflows/p034-publisher-cross-platform-v1.yml
+      - ci/p034-qualified-publisher.py
+      - ci/p034-payload/part-00.b64
+
+permissions:
+  contents: write
+
+concurrency:
+  group: p034-qualified-publisher-cross-platform-v1-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  qualify-and-publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-2025
+          - macos-14
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    env:
+      TARGET_BRANCH: codex/hepta-intelligence-legacy-governance-v2-20260829
+      EXPECTED_TARGET: 6d225487d4b42370800e676ca8309f86848f8c36
+      P033_HEAD: eddcb59ca43a76ac83b64507983bd908f406ff48
+      PAYLOAD_SHA256: 0a3c110310edaf463bd7fd4a31148e3cb8dcbdbebc9f38700d94bfcdd5059373
+    steps:
+      - name: Checkout immutable helper payload
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          path: helper
+
+      - name: Checkout exact P0.3.4 staging branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          path: target
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Apply, qualify, squash, and publish exact candidate
+        run: python helper/ci/p034-qualified-publisher.py target
+
+      - name: Upload fail-closed diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p034-cross-platform-${{ matrix.os }}-${{ github.sha }}
+          path: target/artifacts/hepta-intelligence-legacy-grounding-governance-v1
+          if-no-files-found: warn
+          retention-days: 21
