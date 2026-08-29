@@ -1,0 +1,236 @@
+name: Hepta inference INF-2A shadow client qualification
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf2a-shadow-client-v2-20260829
+    paths:
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF2A_SHADOW_CLIENT_SOURCE_RECEIPT_2026-08-29.json"
+  pull_request:
+    paths:
+      - "codex-rs/hepta-infer-client/**"
+      - "codex-rs/hepta-infer-core/**"
+      - "codex-rs/hepta-inferd/**"
+      - "codex-rs/Cargo.toml"
+      - "codex-rs/Cargo.lock"
+      - "scripts/hepta-inference-inf2a-shadow-client-source-gate.py"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_POLICY_V1.json"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_RECEIPT_2026-08-29.json"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF4_PERFORMANCE_CLASSIFICATION_2026-08-29.json"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF2A_SHADOW_CLIENT_STATUS_V1.json"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF2A_SHADOW_CLIENT_SOURCE_RECEIPT_2026-08-29.json"
+      - ".github/workflows/hepta-inference-inf2a-shadow-client.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-inf2a-shadow-client-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  binding:
+    name: Exact append-only source and authority binding
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+
+      - name: Verify source receipt and closed authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import subprocess
+
+          receipt_path = pathlib.Path(
+              "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF2A_SHADOW_CLIENT_SOURCE_RECEIPT_2026-08-29.json"
+          )
+          status_path = pathlib.Path(
+              "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF2A_SHADOW_CLIENT_STATUS_V1.json"
+          )
+          receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+          status = json.loads(status_path.read_text(encoding="utf-8"))
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          source = subprocess.check_output(["git", "rev-parse", "HEAD^"], text=True).strip()
+          tree = subprocess.check_output(
+              ["git", "show", "-s", "--format=%T", source], text=True
+          ).strip()
+          changed = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only", source, head], text=True
+              ).splitlines()
+          )
+          assert changed == {str(receipt_path)}
+          assert receipt["source_candidate_commit"] == source
+          assert receipt["source_candidate_tree"] == tree
+          assert receipt["source_parent_clean_commit"] == "4ca73889683c9da273ef6a54aecb9bf4753350ef"
+          assert receipt["parent_inf1_qualification_receipt"] == "6f3286f99f5576b4cc545003889437bf388bb28a"
+          assert receipt["claim"] == "SOURCE_PRESENT_NOT_RUN"
+          assert receipt["qualified"] is False
+          assert status["status"] == "SOURCE_PRESENT_NOT_RUN"
+          assert status["qualified"] is False
+          assert status["route"]["mode"] == "SHADOW_COMPARE_ONLY"
+          assert status["route"]["default_route_changed"] is False
+          for value in (receipt, status):
+              authority = value["authority"]
+              assert authority["qualification_only"] is True
+              for field in (
+                  "production_listener",
+                  "production_writer",
+                  "provider_effect",
+                  "external_effect",
+                  "shared_kg_write",
+                  "memory_write",
+                  "route_write",
+                  "fleet_write",
+                  "model_npu",
+                  "remote_inference",
+                  "automatic_model_install",
+                  "operator_acceptance",
+                  "promotion",
+                  "release",
+              ):
+                  assert authority[field] is False
+          print("PASS_HEPTA_INFERENCE_INF2A_APPEND_ONLY_SOURCE_BINDING")
+          PY
+
+      - name: Verify fail-closed client source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/hepta-inference-inf2a-shadow-client-source-gate.py
+          python3 scripts/hepta-inference-inf2a-shadow-client-source-gate.py
+
+  qualify:
+    name: Rust 1.95 ${{ matrix.name }}
+    needs: binding
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-arm64
+            runner: ubuntu-24.04-arm
+          - name: linux-x64
+            runner: ubuntu-24.04
+          - name: macos-intel
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Check exact owned formatting
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-inferd \
+            -p codex-hepta-infer-client \
+            -- --check
+
+      - name: Locked compile
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo check --locked \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-inferd \
+            -p codex-hepta-infer-client
+
+      - name: Locked controller and client tests
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo test --locked \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-inferd \
+            -p codex-hepta-infer-client \
+            -- --test-threads=1
+
+      - name: Strict owned-source Clippy
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --all-targets --no-deps \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-inferd \
+            -p codex-hepta-infer-client \
+            -- -D warnings
+
+      - name: Record qualification-only evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/hepta-inference-inf2a-${{ matrix.name }}.txt"
+          {
+            echo "head=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "rustc=$(rustc --version)"
+            echo "cargo=$(cargo --version)"
+            echo "fmt=PASS"
+            echo "check=PASS"
+            echo "test=PASS"
+            echo "clippy_all_targets_no_deps_D_warnings=PASS"
+            echo "route_mode=SHADOW_COMPARE_ONLY"
+            echo "production_listener=false"
+            echo "product_default_route_changed=false"
+            echo "operator_accepted=false"
+            echo "promoted=false"
+          } | tee "$evidence"
+
+      - name: Upload qualification evidence
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf2a-${{ matrix.name }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/hepta-inference-inf2a-${{ matrix.name }}.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  aggregate:
+    name: Qualification-only aggregate
+    if: always()
+    needs:
+      - binding
+      - qualify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Enforce all exact-head gates
+        shell: bash
+        env:
+          BINDING: ${{ needs.binding.result }}
+          QUALIFY: ${{ needs.qualify.result }}
+        run: |
+          set -euo pipefail
+          test "$BINDING" = success
+          test "$QUALIFY" = success
+          echo "PASS_HEPTA_INFERENCE_INF2A_SHADOW_CLIENT_QUALIFICATION_ONLY"
+          echo "production_listener=false"
+          echo "product_default_route_changed=false"
+          echo "operator_accepted=false"
+          echo "promoted=false"
