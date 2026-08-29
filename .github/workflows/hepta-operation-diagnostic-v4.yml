@@ -1,0 +1,95 @@
+name: Hepta operation diagnostic v4
+
+on:
+  push:
+    branches:
+      - codex/hepta-operation-diagnostic-v4-20260829
+
+permissions:
+  contents: read
+
+env:
+  TARGET_HEAD: 48f2818f94f07204ce818e7288c0de5f71e8ccab
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+
+jobs:
+  source-ratchets:
+    name: Current source ratchets after retirement
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_HEAD }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_HEAD"
+      - run: python3 scripts/hepta-operation-safety-repair.py
+      - run: |
+          set -euo pipefail
+          rm -f scripts/hepta-automation-operation-repair-once.py
+          git rm -f --ignore-unmatch \
+            .github/workflows/hepta-automation-operation-repair-once.yml \
+            .github/workflows/hepta-operation-materialize-once.yml \
+            .github/workflows/hepta-operation-safety-repair-slim-once.yml \
+            .github/workflows/hepta-pr53-superseded-run-cleanup.yml \
+            scripts/.hepta-automation-repair-trigger \
+            scripts/hepta-operation-safety-repair.py \
+            scripts/hepta-automation-operation-repair-once.py.part-00 \
+            scripts/hepta-automation-operation-repair-once.py.part-01 \
+            scripts/hepta-automation-operation-repair-once.py.part-02 \
+            scripts/hepta-automation-operation-repair-once.py.part-03 \
+            scripts/hepta-automation-model-v4.rs
+          python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+          python3 scripts/verify-hepta-cross-owner-operation-wiring.py
+          python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python3 scripts/verify-hepta-architecture-gap-ledger.py
+
+  matrix-fault:
+    name: Same-connection Matrix SQLITE_FULL
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_HEAD }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_HEAD"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - run: python3 scripts/hepta-operation-safety-repair.py
+      - working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          rustfmt --edition 2024 --config skip_children=true \
+            hepta-matrix-store/src/operation.rs \
+            hepta-matrix-store/src/store.rs \
+            hepta-matrix-store/tests/sqlite_full.rs
+          cargo test --locked -p codex-hepta-matrix-store operation::tests -- --nocapture
+          cargo test --locked -p codex-hepta-matrix-store \
+            --features qualification-fault-injection --test sqlite_full -- --nocapture
+          cargo clippy --locked -p codex-hepta-matrix-store --all-targets \
+            --features qualification-fault-injection -- -D warnings
+
+  memory-runtime:
+    name: Memory Runtime typed production-writer boundary
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_HEAD }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_HEAD"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          rustfmt --edition 2024 --check --config skip_children=true \
+            hepta-memory-runtime/src/production_writer.rs
+          cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
+          cargo clippy --locked -p codex-hepta-memory-runtime --all-targets -- -D warnings
