@@ -1,0 +1,69 @@
+name: hepta-ui-v4-current-head-export-once
+
+on:
+  push:
+    branches:
+      - "ops/hepta-ui-v4-current-head-export-20260829"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v4-current-head-export-once
+  cancel-in-progress: true
+
+jobs:
+  export:
+    name: Export exact current-head remediation inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TARGET_SHA: f9f362c8c0eb2fa6e28ded8cb141e4d4e8a02a2d
+      TARGET_TREE: 1d0b228bd5d389d3b94d35b257ac4439bb38f121
+    steps:
+      - name: Checkout exact target
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify and package exact files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$TARGET_TREE"
+          mkdir -p artifacts/current-head
+          paths=(
+            .gitattributes
+            codex-rs/hepta-core/build.rs
+            apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs
+            scripts/hepta-ui-v4-exact-candidate-materialization-gate
+            .github/workflows/hepta-ui-v4-rust-served-cross-browser-final.yml
+            .github/workflows/hepta-ui-v4-windows-material-profile-runtime.yml
+            .github/workflows/hepta-ui-v4-windows-material-profile-aggregate.yml
+            .github/workflows/hepta-ui-v4-windows-material-profile-exact.yml
+            .github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml
+            .github/workflows/hepta-ui-v4-final-gap-closure-v4.yml
+            .github/workflows/hepta-ui-v4.yml
+          )
+          for path in "${paths[@]}"; do
+            test -s "$path"
+          done
+          printf '%s\n' "${paths[@]}" > artifacts/current-head/paths.txt
+          printf '%s\n' "$TARGET_SHA" > artifacts/current-head/commit.txt
+          printf '%s\n' "$TARGET_TREE" > artifacts/current-head/tree.txt
+          git ls-tree "$TARGET_SHA" -- "${paths[@]}" > artifacts/current-head/git-ls-tree.txt
+          sha256sum "${paths[@]}" > artifacts/current-head/files.sha256
+          tar -czf artifacts/current-head/current-head-files.tar.gz "${paths[@]}"
+          sha256sum artifacts/current-head/current-head-files.tar.gz \
+            > artifacts/current-head/current-head-files.tar.gz.sha256
+
+      - name: Upload exact current-head bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-current-head-inputs-${{ env.TARGET_SHA }}
+          path: artifacts/current-head
+          if-no-files-found: error
+          retention-days: 7
