@@ -289,6 +289,52 @@ def apply_verifier() -> None:
 """,
         "Provider verifier markers",
     )
+    replace_once(
+        path,
+        """def verify_real_store_fault() -> None:
+    require_markers(
+        "codex-rs/hepta-matrix-store/tests/sqlite_full.rs",
+        (
+            "real_matrix_sqlite_full_rolls_back_failed_inbox_and_preserves_operation_reopen",
+            "PRAGMA max_page_count",
+            "real SQLite growth must reach SQLITE_FULL",
+            "the failed product transaction must not leave a partial inbox row",
+            "MatrixDurableStore::open(&layout",
+            "reopened_operation",
+        ),
+    )
+""",
+        """def verify_real_store_fault() -> None:
+    require_markers(
+        "codex-rs/hepta-matrix-store/src/store.rs",
+        (
+            "ingest_inbox_with_max_page_count_for_qualification",
+            "PRAGMA max_page_count",
+            "AssertSqlSafe",
+            "transaction.rollback()",
+            "PRAGMA max_page_count = 2147483646",
+        ),
+    )
+    require_markers(
+        "codex-rs/hepta-matrix-store/tests/sqlite_full.rs",
+        (
+            "real_matrix_sqlite_full_rolls_back_failed_inbox_and_preserves_operation_reopen",
+            "ingest_inbox_with_max_page_count_for_qualification",
+            "the product write transaction must observe SQLITE_FULL on its own connection",
+            "the failed product transaction must not leave a partial inbox row",
+            "MatrixDurableStore::open(&layout",
+            "reopened_operation",
+        ),
+    )
+""",
+        "Matrix same-connection fault verifier",
+    )
+    replace_once(
+        path,
+        '        "cargo test --locked -p codex-hepta-matrix-store --test sqlite_full",\n',
+        '        "cargo test --locked -p codex-hepta-matrix-store --features qualification-fault-injection --test sqlite_full",\n',
+        "Matrix qualification workflow marker",
+    )
 
 
 def main() -> None:
