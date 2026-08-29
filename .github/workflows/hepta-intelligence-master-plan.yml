@@ -105,10 +105,11 @@ jobs:
   bazel-runner-closure-carrier:
     name: Close Bazel hosted-runner checkout gaps
     if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'codex/hepta-intelligence-plan-v3-20260828'
-    runs-on: macos-15
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     env:
-      SOURCE_SHA: 5bc538454a71612697e19b7948ae88a882427351
+      LEASE_PARENT: 98ca9c235a93739307457cbe59e65b999fc48472
+      RESTORE_SHA: 5bc538454a71612697e19b7948ae88a882427351
       CARRIER_SHA: ${{ github.event.pull_request.head.sha }}
       TARGET_BRANCH: codex/hepta-intelligence-plan-v3-20260828
       MASTER_WORKFLOW: .github/workflows/hepta-intelligence-master-plan.yml
@@ -127,8 +128,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$CARRIER_SHA"
-          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
-          test "$(git diff --name-only "$SOURCE_SHA"..HEAD)" = "$MASTER_WORKFLOW"
+          test "$(git rev-parse HEAD^)" = "$LEASE_PARENT"
+          test "$(git diff --name-only "$LEASE_PARENT"..HEAD)" = "$MASTER_WORKFLOW"
 
       - name: Apply exact runner closure and retire carriers
         shell: bash
@@ -174,7 +175,7 @@ jobs:
           )
           PY
 
-          git checkout "$SOURCE_SHA" -- "$MASTER_WORKFLOW"
+          git checkout "$RESTORE_SHA" -- "$MASTER_WORKFLOW"
           rm "$UNUSED_CARRIER"
 
           test "$(grep -c 'macos-15-xlarge' "$BAZEL_WORKFLOW" || true)" = "0"
