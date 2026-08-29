@@ -1,0 +1,861 @@
+name: Hepta inference V4 INF-R1 provider host closure
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-v4-r1-provider-host-chatgpt-20260830
+    paths:
+      - .github/workflows/hepta-inference-v4-r1-provider-host-chatgpt.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-v4-r1-provider-host-chatgpt
+  cancel-in-progress: false
+
+jobs:
+  implement-and-qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 2
+
+      - name: Guard exact package parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = codex/hepta-inference-v4-r1-provider-host-chatgpt-20260830
+          test "$(git rev-parse HEAD^)" = dbf68bfed0a2a034fb519c66a89725e2b74edce3
+          test -z "$(git status --porcelain)"
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Add bounded loopback Ollama provider host
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > codex-rs/hepta-inferd/src/provider_host.rs <<'RS'
+          //! Fixed-tuple loopback provider execution owned by `hepta-inferd`.
+          //!
+          //! The host connects directly to a validated loopback socket. It does not inspect
+          //! proxy environment variables, follow redirects, install models, switch models,
+          //! or fall back to a remote endpoint. Every call is bounded and inventory-fenced.
+
+          use std::fmt;
+          use std::io;
+          use std::net::SocketAddr;
+          use std::time::Duration;
+
+          use codex_hepta_infer_core::Digest;
+          use serde_json::Value;
+          use serde_json::json;
+          use sha2::Digest as ShaDigest;
+          use sha2::Sha256;
+          use tokio::io::AsyncReadExt;
+          use tokio::io::AsyncWriteExt;
+          use tokio::net::TcpStream;
+          use tokio::time;
+          use tokio::time::Instant;
+
+          const MAX_HEADER_BYTES: usize = 16 * 1024;
+          const MAX_IDENTITY_BYTES: usize = 256;
+
+          pub type ProviderHostResult<T> = std::result::Result<T, ProviderHostError>;
+
+          #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+          pub enum ProviderKind {
+              Ollama,
+          }
+
+          #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+          pub enum ProviderExecutionClass {
+              HermeticFixture,
+              RealProcessUnattested,
+          }
+
+          #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+          pub enum ProviderHostError {
+              ConnectTimeout,
+              ContentType,
+              ExchangeTimeout,
+              HttpShape,
+              HttpStatus,
+              InvalidManifest,
+              InventoryDrift,
+              Io,
+              Json,
+              ModelMismatch,
+              ModelMissing,
+              RedirectDenied,
+              RequestTooLarge,
+              ResponseTooLarge,
+              SemanticOutput,
+              VersionMismatch,
+          }
+
+          impl ProviderHostError {
+              pub const fn code(self) -> &'static str {
+                  match self {
+                      Self::ConnectTimeout => "INF_PROVIDER_CONNECT_TIMEOUT",
+                      Self::ContentType => "INF_PROVIDER_CONTENT_TYPE",
+                      Self::ExchangeTimeout => "INF_PROVIDER_EXCHANGE_TIMEOUT",
+                      Self::HttpShape => "INF_PROVIDER_HTTP_SHAPE",
+                      Self::HttpStatus => "INF_PROVIDER_HTTP_STATUS",
+                      Self::InvalidManifest => "INF_PROVIDER_MANIFEST_INVALID",
+                      Self::InventoryDrift => "INF_PROVIDER_INVENTORY_DRIFT",
+                      Self::Io => "INF_PROVIDER_IO",
+                      Self::Json => "INF_PROVIDER_JSON",
+                      Self::ModelMismatch => "INF_PROVIDER_MODEL_MISMATCH",
+                      Self::ModelMissing => "INF_PROVIDER_MODEL_MISSING",
+                      Self::RedirectDenied => "INF_PROVIDER_REDIRECT_DENIED",
+                      Self::RequestTooLarge => "INF_PROVIDER_REQUEST_TOO_LARGE",
+                      Self::ResponseTooLarge => "INF_PROVIDER_RESPONSE_TOO_LARGE",
+                      Self::SemanticOutput => "INF_PROVIDER_SEMANTIC_OUTPUT_INVALID",
+                      Self::VersionMismatch => "INF_PROVIDER_VERSION_MISMATCH",
+                  }
+              }
+          }
+
+          impl fmt::Display for ProviderHostError {
+              fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                  formatter.write_str(self.code())
+              }
+          }
+
+          impl std::error::Error for ProviderHostError {}
+
+          impl From<io::Error> for ProviderHostError {
+              fn from(_: io::Error) -> Self {
+                  Self::Io
+              }
+          }
+
+          #[derive(Clone, Debug)]
+          pub struct ProviderTupleManifest {
+              pub provider: ProviderKind,
+              pub endpoint: SocketAddr,
+              pub expected_provider_version: String,
+              pub model_id: String,
+              pub expected_model_digest: String,
+              pub tuple_digest: Digest,
+              pub max_request_bytes: usize,
+              pub max_response_bytes: usize,
+              pub max_semantic_output_bytes: usize,
+              pub connect_timeout: Duration,
+              pub exchange_timeout: Duration,
+              pub execution_class: ProviderExecutionClass,
+          }
+
+          impl ProviderTupleManifest {
+              pub fn validate(&self) -> ProviderHostResult<()> {
+                  if self.provider != ProviderKind::Ollama
+                      || !self.endpoint.ip().is_loopback()
+                      || self.endpoint.port() == 0
+                      || self.expected_provider_version.is_empty()
+                      || self.expected_provider_version.len() > MAX_IDENTITY_BYTES
+                      || self.model_id.is_empty()
+                      || self.model_id.len() > MAX_IDENTITY_BYTES
+                      || self.expected_model_digest.is_empty()
+                      || self.expected_model_digest.len() > MAX_IDENTITY_BYTES
+                      || self.max_request_bytes == 0
+                      || self.max_response_bytes == 0
+                      || self.max_semantic_output_bytes == 0
+                      || self.max_semantic_output_bytes > self.max_response_bytes
+                      || self.connect_timeout.is_zero()
+                      || self.exchange_timeout.is_zero()
+                  {
+                      return Err(ProviderHostError::InvalidManifest);
+                  }
+                  Ok(())
+              }
+          }
+
+          #[derive(Clone, Debug, Eq, PartialEq)]
+          pub struct ProviderExecutionReceipt {
+              pub provider: ProviderKind,
+              pub tuple_digest: Digest,
+              pub provider_version: String,
+              pub model_id: String,
+              pub model_digest: String,
+              pub inventory_before_digest: Digest,
+              pub inventory_after_digest: Digest,
+              pub output_digest: Digest,
+              pub output_bytes: usize,
+              pub execution_class: ProviderExecutionClass,
+              pub real_provider_executed: bool,
+              pub automatic_model_install: bool,
+              pub model_switch: bool,
+              pub remote_fallback: bool,
+          }
+
+          #[derive(Clone, Debug, Eq, PartialEq)]
+          pub struct ProviderExecution {
+              pub semantic_text: String,
+              pub receipt: ProviderExecutionReceipt,
+          }
+
+          #[derive(Clone, Debug, Eq, PartialEq)]
+          struct Inventory {
+              entries: Vec<(String, String)>,
+              digest: Digest,
+          }
+
+          pub struct ProviderRuntimeHost {
+              manifest: ProviderTupleManifest,
+          }
+
+          impl ProviderRuntimeHost {
+              pub fn new(manifest: ProviderTupleManifest) -> ProviderHostResult<Self> {
+                  manifest.validate()?;
+                  Ok(Self { manifest })
+              }
+
+              pub async fn execute(&self, prompt: &str) -> ProviderHostResult<ProviderExecution> {
+                  if prompt.is_empty()
+                      || prompt.len() > self.manifest.max_request_bytes
+                      || !prompt.chars().any(|character| !character.is_whitespace())
+                  {
+                      return Err(ProviderHostError::RequestTooLarge);
+                  }
+                  let provider_version = self.provider_version().await?;
+                  if provider_version != self.manifest.expected_provider_version {
+                      return Err(ProviderHostError::VersionMismatch);
+                  }
+                  let inventory_before = self.inventory().await?;
+                  self.require_fixed_model(&inventory_before)?;
+                  let semantic_text = self.generate(prompt).await?;
+                  let inventory_after = self.inventory().await?;
+                  self.require_fixed_model(&inventory_after)?;
+                  if inventory_before != inventory_after {
+                      return Err(ProviderHostError::InventoryDrift);
+                  }
+                  let output_digest = digest_bytes(&[semantic_text.as_bytes()])?;
+                  let real_provider_executed =
+                      self.manifest.execution_class == ProviderExecutionClass::RealProcessUnattested;
+                  Ok(ProviderExecution {
+                      receipt: ProviderExecutionReceipt {
+                          provider: self.manifest.provider,
+                          tuple_digest: self.manifest.tuple_digest.clone(),
+                          provider_version,
+                          model_id: self.manifest.model_id.clone(),
+                          model_digest: self.manifest.expected_model_digest.clone(),
+                          inventory_before_digest: inventory_before.digest,
+                          inventory_after_digest: inventory_after.digest,
+                          output_digest,
+                          output_bytes: semantic_text.len(),
+                          execution_class: self.manifest.execution_class,
+                          real_provider_executed,
+                          automatic_model_install: false,
+                          model_switch: false,
+                          remote_fallback: false,
+                      },
+                      semantic_text,
+                  })
+              }
+
+              async fn provider_version(&self) -> ProviderHostResult<String> {
+                  let bytes = self.request_json("GET", "/api/version", None).await?;
+                  let value: Value = serde_json::from_slice(&bytes)
+                      .map_err(|_| ProviderHostError::Json)?;
+                  bounded_string(value.get("version"), ProviderHostError::VersionMismatch)
+              }
+
+              async fn inventory(&self) -> ProviderHostResult<Inventory> {
+                  let bytes = self.request_json("GET", "/api/tags", None).await?;
+                  let value: Value = serde_json::from_slice(&bytes)
+                      .map_err(|_| ProviderHostError::Json)?;
+                  let models = value
+                      .get("models")
+                      .and_then(Value::as_array)
+                      .ok_or(ProviderHostError::Json)?;
+                  let mut entries = Vec::with_capacity(models.len());
+                  for model in models {
+                      let name = bounded_string(
+                          model.get("name").or_else(|| model.get("model")),
+                          ProviderHostError::Json,
+                      )?;
+                      let digest = bounded_string(
+                          model.get("digest"),
+                          ProviderHostError::Json,
+                      )?;
+                      entries.push((name, digest));
+                  }
+                  entries.sort();
+                  entries.dedup();
+                  let mut canonical = Vec::new();
+                  for (name, digest) in &entries {
+                      append_bounded(&mut canonical, name.as_bytes())?;
+                      append_bounded(&mut canonical, digest.as_bytes())?;
+                  }
+                  Ok(Inventory {
+                      entries,
+                      digest: digest_bytes(&[&canonical])?,
+                  })
+              }
+
+              fn require_fixed_model(&self, inventory: &Inventory) -> ProviderHostResult<()> {
+                  if inventory.entries.iter().any(|(name, digest)| {
+                      name == &self.manifest.model_id
+                          && digest == &self.manifest.expected_model_digest
+                  }) {
+                      Ok(())
+                  } else {
+                      Err(ProviderHostError::ModelMissing)
+                  }
+              }
+
+              async fn generate(&self, prompt: &str) -> ProviderHostResult<String> {
+                  let body = serde_json::to_vec(&json!({
+                      "model": self.manifest.model_id,
+                      "prompt": prompt,
+                      "stream": false,
+                  }))
+                  .map_err(|_| ProviderHostError::Json)?;
+                  if body.len() > self.manifest.max_request_bytes {
+                      return Err(ProviderHostError::RequestTooLarge);
+                  }
+                  let bytes = self
+                      .request_json("POST", "/api/generate", Some(&body))
+                      .await?;
+                  let value: Value = serde_json::from_slice(&bytes)
+                      .map_err(|_| ProviderHostError::Json)?;
+                  let model = bounded_string(
+                      value.get("model"),
+                      ProviderHostError::ModelMismatch,
+                  )?;
+                  if model != self.manifest.model_id {
+                      return Err(ProviderHostError::ModelMismatch);
+                  }
+                  if value.get("done").and_then(Value::as_bool) != Some(true) {
+                      return Err(ProviderHostError::SemanticOutput);
+                  }
+                  let output = bounded_string(
+                      value.get("response"),
+                      ProviderHostError::SemanticOutput,
+                  )?;
+                  if output.len() > self.manifest.max_semantic_output_bytes
+                      || !output.chars().any(|character| !character.is_whitespace())
+                  {
+                      return Err(ProviderHostError::SemanticOutput);
+                  }
+                  Ok(output)
+              }
+
+              async fn request_json(
+                  &self,
+                  method: &str,
+                  path: &str,
+                  body: Option<&[u8]>,
+              ) -> ProviderHostResult<Vec<u8>> {
+                  let mut stream = time::timeout(
+                      self.manifest.connect_timeout,
+                      TcpStream::connect(self.manifest.endpoint),
+                  )
+                  .await
+                  .map_err(|_| ProviderHostError::ConnectTimeout)??;
+                  stream.set_nodelay(true)?;
+                  let body = body.unwrap_or_default();
+                  if body.len() > self.manifest.max_request_bytes {
+                      return Err(ProviderHostError::RequestTooLarge);
+                  }
+                  let request = format!(
+                      "{method} {path} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nAccept: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                      self.manifest.endpoint,
+                      body.len()
+                  );
+                  let deadline = Instant::now() + self.manifest.exchange_timeout;
+                  time::timeout_at(deadline, stream.write_all(request.as_bytes()))
+                      .await
+                      .map_err(|_| ProviderHostError::ExchangeTimeout)??;
+                  if !body.is_empty() {
+                      time::timeout_at(deadline, stream.write_all(body))
+                          .await
+                          .map_err(|_| ProviderHostError::ExchangeTimeout)??;
+                  }
+                  time::timeout_at(deadline, stream.flush())
+                      .await
+                      .map_err(|_| ProviderHostError::ExchangeTimeout)??;
+
+                  let total_limit = MAX_HEADER_BYTES
+                      .checked_add(self.manifest.max_response_bytes)
+                      .ok_or(ProviderHostError::ResponseTooLarge)?;
+                  let mut response = Vec::new();
+                  let mut buffer = [0u8; 4096];
+                  loop {
+                      let read = time::timeout_at(deadline, stream.read(&mut buffer))
+                          .await
+                          .map_err(|_| ProviderHostError::ExchangeTimeout)??;
+                      if read == 0 {
+                          break;
+                      }
+                      response.extend_from_slice(&buffer[..read]);
+                      if response.len() > total_limit {
+                          return Err(ProviderHostError::ResponseTooLarge);
+                      }
+                  }
+                  parse_http_json(&response, self.manifest.max_response_bytes)
+              }
+          }
+
+          fn parse_http_json(response: &[u8], max_body_bytes: usize) -> ProviderHostResult<Vec<u8>> {
+              let header_end = response
+                  .windows(4)
+                  .position(|window| window == b"\r\n\r\n")
+                  .ok_or(ProviderHostError::HttpShape)?;
+              if header_end > MAX_HEADER_BYTES {
+                  return Err(ProviderHostError::HttpShape);
+              }
+              let headers = std::str::from_utf8(&response[..header_end])
+                  .map_err(|_| ProviderHostError::HttpShape)?;
+              let mut lines = headers.split("\r\n");
+              let status_line = lines.next().ok_or(ProviderHostError::HttpShape)?;
+              let mut status_parts = status_line.split_whitespace();
+              let protocol = status_parts.next().ok_or(ProviderHostError::HttpShape)?;
+              let status = status_parts
+                  .next()
+                  .ok_or(ProviderHostError::HttpShape)?
+                  .parse::<u16>()
+                  .map_err(|_| ProviderHostError::HttpShape)?;
+              if !matches!(protocol, "HTTP/1.0" | "HTTP/1.1") {
+                  return Err(ProviderHostError::HttpShape);
+              }
+              if (300..400).contains(&status) {
+                  return Err(ProviderHostError::RedirectDenied);
+              }
+              if status != 200 {
+                  return Err(ProviderHostError::HttpStatus);
+              }
+              let mut content_length = None;
+              let mut content_type = None;
+              for line in lines {
+                  let (name, value) = line
+                      .split_once(':')
+                      .ok_or(ProviderHostError::HttpShape)?;
+                  if name.eq_ignore_ascii_case("transfer-encoding") {
+                      return Err(ProviderHostError::HttpShape);
+                  }
+                  if name.eq_ignore_ascii_case("content-length") {
+                      content_length = Some(
+                          value
+                              .trim()
+                              .parse::<usize>()
+                              .map_err(|_| ProviderHostError::HttpShape)?,
+                      );
+                  }
+                  if name.eq_ignore_ascii_case("content-type") {
+                      content_type = Some(value.trim().to_ascii_lowercase());
+                  }
+              }
+              let content_length = content_length.ok_or(ProviderHostError::HttpShape)?;
+              if content_length == 0 || content_length > max_body_bytes {
+                  return Err(ProviderHostError::ResponseTooLarge);
+              }
+              if !content_type
+                  .as_deref()
+                  .is_some_and(|value| value.starts_with("application/json"))
+              {
+                  return Err(ProviderHostError::ContentType);
+              }
+              let body_start = header_end
+                  .checked_add(4)
+                  .ok_or(ProviderHostError::HttpShape)?;
+              let body = response
+                  .get(body_start..)
+                  .ok_or(ProviderHostError::HttpShape)?;
+              if body.len() != content_length {
+                  return Err(ProviderHostError::HttpShape);
+              }
+              Ok(body.to_vec())
+          }
+
+          fn bounded_string(
+              value: Option<&Value>,
+              error: ProviderHostError,
+          ) -> ProviderHostResult<String> {
+              let value = value.and_then(Value::as_str).ok_or(error)?;
+              if value.is_empty() || value.len() > MAX_IDENTITY_BYTES {
+                  return Err(error);
+              }
+              Ok(value.to_owned())
+          }
+
+          fn append_bounded(buffer: &mut Vec<u8>, value: &[u8]) -> ProviderHostResult<()> {
+              let length = u64::try_from(value.len())
+                  .map_err(|_| ProviderHostError::ResponseTooLarge)?;
+              buffer.extend_from_slice(&length.to_be_bytes());
+              buffer.extend_from_slice(value);
+              Ok(())
+          }
+
+          fn digest_bytes(parts: &[&[u8]]) -> ProviderHostResult<Digest> {
+              let mut hasher = Sha256::new();
+              for part in parts {
+                  hasher.update(part);
+              }
+              let bytes = hasher.finalize();
+              const HEX: &[u8; 16] = b"0123456789abcdef";
+              let mut encoded = String::with_capacity(71);
+              encoded.push_str("sha256:");
+              for byte in bytes {
+                  encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+                  encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+              }
+              Digest::parse(&encoded).map_err(|_| ProviderHostError::Json)
+          }
+
+          #[cfg(test)]
+          mod tests {
+              use super::*;
+              use tokio::net::TcpListener;
+              use tokio::task::JoinHandle;
+
+              #[derive(Clone, Copy)]
+              enum Scenario {
+                  Success,
+                  Malformed,
+                  Oversize,
+                  Timeout,
+                  ModelMismatch,
+                  InventoryDrift,
+                  Redirect,
+              }
+
+              struct FakeProvider {
+                  endpoint: SocketAddr,
+                  task: JoinHandle<()>,
+              }
+
+              impl Drop for FakeProvider {
+                  fn drop(&mut self) {
+                      self.task.abort();
+                  }
+              }
+
+              fn must<T, E: fmt::Display>(result: std::result::Result<T, E>) -> T {
+                  match result {
+                      Ok(value) => value,
+                      Err(error) => panic!("unexpected error: {error}"),
+                  }
+              }
+
+              fn manifest(endpoint: SocketAddr) -> ProviderTupleManifest {
+                  ProviderTupleManifest {
+                      provider: ProviderKind::Ollama,
+                      endpoint,
+                      expected_provider_version: "0.12.0-test".to_owned(),
+                      model_id: "granite-test:latest".to_owned(),
+                      expected_model_digest: "sha256:model-a".to_owned(),
+                      tuple_digest: must(Digest::parse(&format!(
+                          "sha256:{}",
+                          "a".repeat(64)
+                      ))),
+                      max_request_bytes: 2048,
+                      max_response_bytes: 4096,
+                      max_semantic_output_bytes: 1024,
+                      connect_timeout: Duration::from_secs(1),
+                      exchange_timeout: Duration::from_millis(100),
+                      execution_class: ProviderExecutionClass::HermeticFixture,
+                  }
+              }
+
+              async fn run(scenario: Scenario) -> ProviderHostResult<ProviderExecution> {
+                  let provider = spawn_fake_provider(scenario).await;
+                  let host = must(ProviderRuntimeHost::new(manifest(provider.endpoint)));
+                  host.execute("answer with one bounded sentence").await
+              }
+
+              async fn spawn_fake_provider(scenario: Scenario) -> FakeProvider {
+                  let listener = must(TcpListener::bind("127.0.0.1:0").await);
+                  let endpoint = must(listener.local_addr());
+                  let task = tokio::spawn(async move {
+                      let mut inventory_calls = 0usize;
+                      loop {
+                          let accepted = listener.accept().await;
+                          let (mut stream, _) = match accepted {
+                              Ok(value) => value,
+                              Err(_) => return,
+                          };
+                          let request = match read_request(&mut stream).await {
+                              Ok(value) => value,
+                              Err(_) => return,
+                          };
+                          let path = request
+                              .split("\r\n")
+                              .next()
+                              .and_then(|line| line.split_whitespace().nth(1))
+                              .unwrap_or_default();
+                          match path {
+                              "/api/version" => {
+                                  let _ = write_json(
+                                      &mut stream,
+                                      200,
+                                      "application/json",
+                                      br#"{"version":"0.12.0-test"}"#,
+                                  )
+                                  .await;
+                              }
+                              "/api/tags" => {
+                                  inventory_calls += 1;
+                                  let body = if matches!(scenario, Scenario::InventoryDrift)
+                                      && inventory_calls > 1
+                                  {
+                                      br#"{"models":[{"name":"granite-test:latest","digest":"sha256:model-b"}]}"#.as_slice()
+                                  } else {
+                                      br#"{"models":[{"name":"granite-test:latest","digest":"sha256:model-a"}]}"#.as_slice()
+                                  };
+                                  let _ = write_json(
+                                      &mut stream,
+                                      200,
+                                      "application/json",
+                                      body,
+                                  )
+                                  .await;
+                              }
+                              "/api/generate" => match scenario {
+                                  Scenario::Success | Scenario::InventoryDrift => {
+                                      let _ = write_json(
+                                          &mut stream,
+                                          200,
+                                          "application/json; charset=utf-8",
+                                          br#"{"model":"granite-test:latest","response":"semantic fixture output","done":true}"#,
+                                      )
+                                      .await;
+                                  }
+                                  Scenario::Malformed => {
+                                      let _ = write_json(
+                                          &mut stream,
+                                          200,
+                                          "application/json",
+                                          b"{",
+                                      )
+                                      .await;
+                                  }
+                                  Scenario::Oversize => {
+                                      let _ = stream
+                                          .write_all(
+                                              b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 5000\r\nConnection: close\r\n\r\n",
+                                          )
+                                          .await;
+                                  }
+                                  Scenario::Timeout => {
+                                      time::sleep(Duration::from_millis(250)).await;
+                                  }
+                                  Scenario::ModelMismatch => {
+                                      let _ = write_json(
+                                          &mut stream,
+                                          200,
+                                          "application/json",
+                                          br#"{"model":"other:latest","response":"semantic fixture output","done":true}"#,
+                                      )
+                                      .await;
+                                  }
+                                  Scenario::Redirect => {
+                                      let _ = write_json(
+                                          &mut stream,
+                                          302,
+                                          "application/json",
+                                          b"{}",
+                                      )
+                                      .await;
+                                  }
+                              },
+                              _ => {
+                                  let _ = write_json(
+                                      &mut stream,
+                                      404,
+                                      "application/json",
+                                      b"{}",
+                                  )
+                                  .await;
+                              }
+                          }
+                      }
+                  });
+                  FakeProvider { endpoint, task }
+              }
+
+              async fn read_request(stream: &mut TcpStream) -> io::Result<String> {
+                  let mut bytes = Vec::new();
+                  let mut buffer = [0u8; 1024];
+                  loop {
+                      let read = stream.read(&mut buffer).await?;
+                      if read == 0 {
+                          break;
+                      }
+                      bytes.extend_from_slice(&buffer[..read]);
+                      if bytes.windows(4).any(|window| window == b"\r\n\r\n") {
+                          break;
+                      }
+                      if bytes.len() > 16 * 1024 {
+                          return Err(io::Error::other("request header too large"));
+                      }
+                  }
+                  let header_end = bytes
+                      .windows(4)
+                      .position(|window| window == b"\r\n\r\n")
+                      .ok_or_else(|| io::Error::other("request header incomplete"))?;
+                  let header = std::str::from_utf8(&bytes[..header_end])
+                      .map_err(|_| io::Error::other("request header utf8"))?;
+                  let length = header
+                      .split("\r\n")
+                      .find_map(|line| {
+                          let (name, value) = line.split_once(':')?;
+                          name.eq_ignore_ascii_case("content-length")
+                              .then(|| value.trim().parse::<usize>().ok())
+                              .flatten()
+                      })
+                      .unwrap_or_default();
+                  let body_start = header_end + 4;
+                  while bytes.len().saturating_sub(body_start) < length {
+                      let read = stream.read(&mut buffer).await?;
+                      if read == 0 {
+                          break;
+                      }
+                      bytes.extend_from_slice(&buffer[..read]);
+                  }
+                  String::from_utf8(bytes).map_err(|_| io::Error::other("request utf8"))
+              }
+
+              async fn write_json(
+                  stream: &mut TcpStream,
+                  status: u16,
+                  content_type: &str,
+                  body: &[u8],
+              ) -> io::Result<()> {
+                  let response = format!(
+                      "HTTP/1.1 {status} TEST\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                      body.len()
+                  );
+                  stream.write_all(response.as_bytes()).await?;
+                  stream.write_all(body).await?;
+                  stream.shutdown().await
+              }
+
+              #[tokio::test]
+              async fn fixed_tuple_executes_with_stable_inventory_and_safe_fixture_receipt() {
+                  let execution = must(run(Scenario::Success).await);
+                  assert_eq!(execution.semantic_text, "semantic fixture output");
+                  assert_eq!(
+                      execution.receipt.execution_class,
+                      ProviderExecutionClass::HermeticFixture
+                  );
+                  assert!(!execution.receipt.real_provider_executed);
+                  assert_eq!(
+                      execution.receipt.inventory_before_digest,
+                      execution.receipt.inventory_after_digest
+                  );
+                  assert!(!execution.receipt.automatic_model_install);
+                  assert!(!execution.receipt.model_switch);
+                  assert!(!execution.receipt.remote_fallback);
+              }
+
+              #[tokio::test]
+              async fn malformed_oversized_timeout_mismatch_drift_and_redirect_fail_closed() {
+                  for (scenario, expected) in [
+                      (Scenario::Malformed, ProviderHostError::Json),
+                      (Scenario::Oversize, ProviderHostError::ResponseTooLarge),
+                      (Scenario::Timeout, ProviderHostError::ExchangeTimeout),
+                      (Scenario::ModelMismatch, ProviderHostError::ModelMismatch),
+                      (Scenario::InventoryDrift, ProviderHostError::ModelMissing),
+                      (Scenario::Redirect, ProviderHostError::RedirectDenied),
+                  ] {
+                      assert_eq!(run(scenario).await, Err(expected));
+                  }
+              }
+
+              #[test]
+              fn non_loopback_endpoint_is_rejected_before_connect() {
+                  let manifest = manifest(SocketAddr::from(([8, 8, 8, 8], 11434)));
+                  assert!(matches!(
+                      ProviderRuntimeHost::new(manifest),
+                      Err(ProviderHostError::InvalidManifest)
+                  ));
+              }
+          }
+          RS
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lib = Path("codex-rs/hepta-inferd/src/lib.rs")
+          source = lib.read_text(encoding="utf-8")
+          marker = "use std::collections::HashMap;\n"
+          replacement = (
+              "mod provider_host;\n\n"
+              "pub use provider_host::ProviderExecution;\n"
+              "pub use provider_host::ProviderExecutionClass;\n"
+              "pub use provider_host::ProviderExecutionReceipt;\n"
+              "pub use provider_host::ProviderHostError;\n"
+              "pub use provider_host::ProviderHostResult;\n"
+              "pub use provider_host::ProviderKind;\n"
+              "pub use provider_host::ProviderRuntimeHost;\n"
+              "pub use provider_host::ProviderTupleManifest;\n\n"
+              + marker
+          )
+          if source.count(marker) != 1:
+              raise SystemExit("unexpected provider module marker")
+          source = source.replace(marker, replacement, 1)
+          lib.write_text(source, encoding="utf-8")
+
+          cargo = Path("codex-rs/hepta-inferd/Cargo.toml")
+          source = cargo.read_text(encoding="utf-8")
+          marker = "codex-uds = { workspace = true }\n"
+          dependencies = (
+              marker
+              + "serde_json = { workspace = true }\n"
+              + "sha2 = { workspace = true }\n"
+          )
+          if source.count(marker) != 1:
+              raise SystemExit("unexpected provider dependency marker")
+          source = source.replace(marker, dependencies, 1)
+          cargo.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Format and qualify INF-R1 source
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-inferd
+          cargo check --locked --all-targets -p codex-hepta-inferd
+          cargo test --locked --all-targets -p codex-hepta-inferd -- --test-threads=1
+          cargo clippy --locked --all-targets --no-deps \
+            -p codex-hepta-inferd -- -D warnings
+
+      - name: Enforce package source change set
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git diff --name-only | LC_ALL=C sort)"
+          expected="$(cat <<'EOF' | LC_ALL=C sort
+          codex-rs/hepta-inferd/Cargo.toml
+          codex-rs/hepta-inferd/src/lib.rs
+          codex-rs/hepta-inferd/src/provider_host.rs
+          EOF
+          )"
+          test "$actual" = "$expected"
+          git diff --check
+          cargo metadata --locked --manifest-path codex-rs/Cargo.toml --no-deps --format-version 1 >/dev/null
+          test -z "$(git status --porcelain -- codex-rs/Cargo.lock)"
+
+      - name: Commit qualified package source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/hepta-inference-v4-r1-provider-host-chatgpt.yml
+          git add -A \
+            .github/workflows/hepta-inference-v4-r1-provider-host-chatgpt.yml \
+            codex-rs/hepta-inferd/Cargo.toml \
+            codex-rs/hepta-inferd/src/lib.rs \
+            codex-rs/hepta-inferd/src/provider_host.rs
+          git diff --cached --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "feat(inference): close INF-R1 provider host source"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

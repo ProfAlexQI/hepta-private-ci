@@ -1,0 +1,935 @@
+name: Hepta inference V4 INF-S4 scheduler closure
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-v4-s4-scheduler-chatgpt-20260830
+    paths:
+      - .github/workflows/hepta-inference-v4-s4-scheduler-chatgpt.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-v4-s4-scheduler-chatgpt
+  cancel-in-progress: false
+
+jobs:
+  implement-and-qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 2
+
+      - name: Guard exact package parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = codex/hepta-inference-v4-s4-scheduler-chatgpt-20260830
+          test "$(git rev-parse HEAD^)" = dbf68bfed0a2a034fb519c66a89725e2b74edce3
+          test -z "$(git status --porcelain)"
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Add deterministic EDF/WFQ scheduler and reservation journal
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > codex-rs/hepta-infer-core/src/scheduler.rs <<'RS'
+          //! Deterministic no-cache dispatch scheduler and reservation ledger.
+          //!
+          //! EDF is the primary order. Equal urgency is broken by a tenant virtual-finish
+          //! score, while requests that reach the configured logical starvation bound are
+          //! promoted ahead of newly-arrived work. Reservation is explicitly two phase and
+          //! every terminal/fault path releases the same request identifier at most once.
+
+          use std::collections::HashMap;
+          use std::collections::HashSet;
+          use std::fmt;
+
+          use crate::Digest;
+          use crate::RequestId;
+          use crate::TenantId;
+
+          const VIRTUAL_FINISH_SCALE: u128 = 1024;
+
+          pub type SchedulerResult<T> = std::result::Result<T, SchedulerError>;
+
+          #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+          pub enum SchedulerError {
+              DuplicateRequest,
+              GenerationMismatch,
+              InvalidConfig,
+              InvalidRequest,
+              InvalidReservationState,
+              JournalInvariant,
+              NoDispatchableRequest,
+              ReservationAlreadyReleased,
+              ReservationOverflow,
+              UnknownRequest,
+          }
+
+          impl fmt::Display for SchedulerError {
+              fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                  formatter.write_str(match self {
+                      Self::DuplicateRequest => "INF_SCHEDULER_DUPLICATE_REQUEST",
+                      Self::GenerationMismatch => "INF_SCHEDULER_GENERATION_MISMATCH",
+                      Self::InvalidConfig => "INF_SCHEDULER_CONFIG_INVALID",
+                      Self::InvalidRequest => "INF_SCHEDULER_REQUEST_INVALID",
+                      Self::InvalidReservationState => {
+                          "INF_SCHEDULER_RESERVATION_STATE_INVALID"
+                      }
+                      Self::JournalInvariant => "INF_SCHEDULER_JOURNAL_INVARIANT",
+                      Self::NoDispatchableRequest => "INF_SCHEDULER_NO_DISPATCHABLE_REQUEST",
+                      Self::ReservationAlreadyReleased => {
+                          "INF_SCHEDULER_RESERVATION_ALREADY_RELEASED"
+                      }
+                      Self::ReservationOverflow => "INF_SCHEDULER_RESERVATION_OVERFLOW",
+                      Self::UnknownRequest => "INF_SCHEDULER_UNKNOWN_REQUEST",
+                  })
+              }
+          }
+
+          impl std::error::Error for SchedulerError {}
+
+          #[derive(Clone, Debug, Eq, PartialEq)]
+          pub struct SchedulerConfig {
+              pub max_reserved_units_global: u64,
+              pub max_reserved_units_per_tenant: u64,
+              pub max_reserved_units_per_tuple: u64,
+              pub max_starvation_ticks: u64,
+          }
+
+          impl SchedulerConfig {
+              pub fn validate(&self) -> SchedulerResult<()> {
+                  if self.max_reserved_units_global == 0
+                      || self.max_reserved_units_per_tenant == 0
+                      || self.max_reserved_units_per_tuple == 0
+                      || self.max_starvation_ticks == 0
+                      || self.max_reserved_units_per_tenant > self.max_reserved_units_global
+                      || self.max_reserved_units_per_tuple > self.max_reserved_units_global
+                  {
+                      return Err(SchedulerError::InvalidConfig);
+                  }
+                  Ok(())
+              }
+          }
+
+          #[derive(Clone, Debug, Eq, PartialEq)]
+          pub struct SchedulingRequest {
+              pub request_id: RequestId,
+              pub tenant_id: TenantId,
+              pub tuple_digest: Digest,
+              pub deadline_unix_ms: u64,
+              pub cost_units: u32,
+              pub tenant_weight: u32,
+          }
+
+          impl SchedulingRequest {
+              fn validate(&self, now_unix_ms: u64) -> SchedulerResult<()> {
+                  if self.deadline_unix_ms <= now_unix_ms
+                      || self.cost_units == 0
+                      || self.tenant_weight == 0
+                  {
+                      return Err(SchedulerError::InvalidRequest);
+                  }
+                  Ok(())
+              }
+          }
+
+          #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+          pub enum ReservationState {
+              Prepared,
+              Committed,
+          }
+
+          #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+          pub enum ReservationReleaseReason {
+              Completed,
+              Cancelled,
+              DeadlineExpired,
+              WorkerCrash,
+              BackendRestart,
+          }
+
+          #[derive(Clone, Debug, Eq, PartialEq)]
+          pub struct DispatchReservation {
+              pub request_id: RequestId,
+              pub tenant_id: TenantId,
+              pub tuple_digest: Digest,
+              pub scheduler_generation: u64,
+              pub cost_units: u32,
+              pub virtual_finish: u128,
+              pub state: ReservationState,
+          }
+
+          #[derive(Clone, Debug, Eq, PartialEq)]
+          pub enum SchedulerJournalEvent {
+              Enqueued {
+                  request: SchedulingRequest,
+                  enqueued_tick: u64,
+                  enqueue_order: u64,
+              },
+              Reserved(DispatchReservation),
+              Committed {
+                  request_id: RequestId,
+                  scheduler_generation: u64,
+              },
+              Released {
+                  request_id: RequestId,
+                  scheduler_generation: u64,
+                  reason: ReservationReleaseReason,
+              },
+              CancelledPending {
+                  request_id: RequestId,
+              },
+              ExpiredPending {
+                  request_id: RequestId,
+              },
+          }
+
+          #[derive(Clone, Debug, Eq, PartialEq)]
+          pub struct SchedulerSnapshot {
+              pub scheduler_generation: u64,
+              pub pending_request_ids: Vec<RequestId>,
+              pub prepared_request_ids: Vec<RequestId>,
+              pub committed_request_ids: Vec<RequestId>,
+              pub released_request_ids: Vec<RequestId>,
+              pub reserved_units_global: u64,
+              pub reserved_units_per_tenant: Vec<(TenantId, u64)>,
+              pub reserved_units_per_tuple: Vec<(Digest, u64)>,
+              pub tenant_virtual_finish: Vec<(TenantId, u128)>,
+          }
+
+          #[derive(Clone, Debug)]
+          struct PendingRequest {
+              request: SchedulingRequest,
+              enqueued_tick: u64,
+              enqueue_order: u64,
+          }
+
+          #[derive(Debug)]
+          pub struct DeterministicScheduler {
+              config: SchedulerConfig,
+              scheduler_generation: u64,
+              next_enqueue_order: u64,
+              pending: HashMap<RequestId, PendingRequest>,
+              reservations: HashMap<RequestId, DispatchReservation>,
+              released: HashSet<RequestId>,
+              reserved_units_global: u64,
+              reserved_units_per_tenant: HashMap<TenantId, u64>,
+              reserved_units_per_tuple: HashMap<Digest, u64>,
+              tenant_virtual_finish: HashMap<TenantId, u128>,
+              journal: Vec<SchedulerJournalEvent>,
+          }
+
+          impl DeterministicScheduler {
+              pub fn new(
+                  config: SchedulerConfig,
+                  scheduler_generation: u64,
+              ) -> SchedulerResult<Self> {
+                  config.validate()?;
+                  if scheduler_generation == 0 {
+                      return Err(SchedulerError::GenerationMismatch);
+                  }
+                  Ok(Self {
+                      config,
+                      scheduler_generation,
+                      next_enqueue_order: 1,
+                      pending: HashMap::new(),
+                      reservations: HashMap::new(),
+                      released: HashSet::new(),
+                      reserved_units_global: 0,
+                      reserved_units_per_tenant: HashMap::new(),
+                      reserved_units_per_tuple: HashMap::new(),
+                      tenant_virtual_finish: HashMap::new(),
+                      journal: Vec::new(),
+                  })
+              }
+
+              pub fn enqueue(
+                  &mut self,
+                  request: SchedulingRequest,
+                  now_unix_ms: u64,
+                  now_tick: u64,
+              ) -> SchedulerResult<()> {
+                  request.validate(now_unix_ms)?;
+                  if self.pending.contains_key(&request.request_id)
+                      || self.reservations.contains_key(&request.request_id)
+                      || self.released.contains(&request.request_id)
+                  {
+                      return Err(SchedulerError::DuplicateRequest);
+                  }
+                  let enqueue_order = self.next_enqueue_order;
+                  self.next_enqueue_order = self
+                      .next_enqueue_order
+                      .checked_add(1)
+                      .ok_or(SchedulerError::JournalInvariant)?;
+                  self.pending.insert(
+                      request.request_id.clone(),
+                      PendingRequest {
+                          request: request.clone(),
+                          enqueued_tick: now_tick,
+                          enqueue_order,
+                      },
+                  );
+                  self.journal.push(SchedulerJournalEvent::Enqueued {
+                      request,
+                      enqueued_tick: now_tick,
+                      enqueue_order,
+                  });
+                  Ok(())
+              }
+
+              pub fn cancel_pending(&mut self, request_id: &RequestId) -> SchedulerResult<()> {
+                  if self.pending.remove(request_id).is_none() {
+                      return Err(SchedulerError::UnknownRequest);
+                  }
+                  self.journal
+                      .push(SchedulerJournalEvent::CancelledPending {
+                          request_id: request_id.clone(),
+                      });
+                  Ok(())
+              }
+
+              pub fn expire_pending(&mut self, now_unix_ms: u64) -> Vec<RequestId> {
+                  let mut expired: Vec<RequestId> = self
+                      .pending
+                      .values()
+                      .filter(|pending| pending.request.deadline_unix_ms <= now_unix_ms)
+                      .map(|pending| pending.request.request_id.clone())
+                      .collect();
+                  expired.sort();
+                  for request_id in &expired {
+                      self.pending.remove(request_id);
+                      self.journal.push(SchedulerJournalEvent::ExpiredPending {
+                          request_id: request_id.clone(),
+                      });
+                  }
+                  expired
+              }
+
+              pub fn reserve_next(
+                  &mut self,
+                  now_unix_ms: u64,
+                  now_tick: u64,
+              ) -> SchedulerResult<DispatchReservation> {
+                  let selected = self
+                      .pending
+                      .values()
+                      .filter(|pending| pending.request.deadline_unix_ms > now_unix_ms)
+                      .filter(|pending| self.can_reserve(&pending.request))
+                      .map(|pending| {
+                          let starved = now_tick.saturating_sub(pending.enqueued_tick)
+                              >= self.config.max_starvation_ticks;
+                          let virtual_finish = self.virtual_finish(&pending.request);
+                          (
+                              !starved,
+                              pending.request.deadline_unix_ms,
+                              virtual_finish,
+                              pending.enqueue_order,
+                              pending.request.request_id.clone(),
+                          )
+                      })
+                      .min()
+                      .ok_or(SchedulerError::NoDispatchableRequest)?;
+                  let request_id = selected.4;
+                  let pending = self
+                      .pending
+                      .remove(&request_id)
+                      .ok_or(SchedulerError::JournalInvariant)?;
+                  let reservation = DispatchReservation {
+                      request_id: request_id.clone(),
+                      tenant_id: pending.request.tenant_id.clone(),
+                      tuple_digest: pending.request.tuple_digest.clone(),
+                      scheduler_generation: self.scheduler_generation,
+                      cost_units: pending.request.cost_units,
+                      virtual_finish: selected.2,
+                      state: ReservationState::Prepared,
+                  };
+                  self.increment_reservation(&reservation)?;
+                  self.tenant_virtual_finish
+                      .insert(reservation.tenant_id.clone(), reservation.virtual_finish);
+                  self.reservations
+                      .insert(request_id, reservation.clone());
+                  self.journal
+                      .push(SchedulerJournalEvent::Reserved(reservation.clone()));
+                  Ok(reservation)
+              }
+
+              pub fn commit_dispatch(
+                  &mut self,
+                  request_id: &RequestId,
+                  scheduler_generation: u64,
+              ) -> SchedulerResult<DispatchReservation> {
+                  self.require_generation(scheduler_generation)?;
+                  let reservation = self
+                      .reservations
+                      .get_mut(request_id)
+                      .ok_or(SchedulerError::UnknownRequest)?;
+                  if reservation.state != ReservationState::Prepared {
+                      return Err(SchedulerError::InvalidReservationState);
+                  }
+                  reservation.state = ReservationState::Committed;
+                  let committed = reservation.clone();
+                  self.journal.push(SchedulerJournalEvent::Committed {
+                      request_id: request_id.clone(),
+                      scheduler_generation,
+                  });
+                  Ok(committed)
+              }
+
+              pub fn release(
+                  &mut self,
+                  request_id: &RequestId,
+                  scheduler_generation: u64,
+                  reason: ReservationReleaseReason,
+              ) -> SchedulerResult<DispatchReservation> {
+                  self.require_generation(scheduler_generation)?;
+                  if self.released.contains(request_id) {
+                      return Err(SchedulerError::ReservationAlreadyReleased);
+                  }
+                  let reservation = self
+                      .reservations
+                      .remove(request_id)
+                      .ok_or(SchedulerError::UnknownRequest)?;
+                  self.decrement_reservation(&reservation)?;
+                  self.released.insert(request_id.clone());
+                  self.journal.push(SchedulerJournalEvent::Released {
+                      request_id: request_id.clone(),
+                      scheduler_generation,
+                      reason,
+                  });
+                  Ok(reservation)
+              }
+
+              pub fn snapshot(&self) -> SchedulerSnapshot {
+                  let mut pending_request_ids: Vec<RequestId> =
+                      self.pending.keys().cloned().collect();
+                  pending_request_ids.sort();
+                  let mut prepared_request_ids = Vec::new();
+                  let mut committed_request_ids = Vec::new();
+                  for reservation in self.reservations.values() {
+                      match reservation.state {
+                          ReservationState::Prepared => {
+                              prepared_request_ids.push(reservation.request_id.clone());
+                          }
+                          ReservationState::Committed => {
+                              committed_request_ids.push(reservation.request_id.clone());
+                          }
+                      }
+                  }
+                  prepared_request_ids.sort();
+                  committed_request_ids.sort();
+                  let mut released_request_ids: Vec<RequestId> =
+                      self.released.iter().cloned().collect();
+                  released_request_ids.sort();
+                  SchedulerSnapshot {
+                      scheduler_generation: self.scheduler_generation,
+                      pending_request_ids,
+                      prepared_request_ids,
+                      committed_request_ids,
+                      released_request_ids,
+                      reserved_units_global: self.reserved_units_global,
+                      reserved_units_per_tenant: sorted_map(&self.reserved_units_per_tenant),
+                      reserved_units_per_tuple: sorted_map(&self.reserved_units_per_tuple),
+                      tenant_virtual_finish: sorted_map(&self.tenant_virtual_finish),
+                  }
+              }
+
+              pub fn journal(&self) -> &[SchedulerJournalEvent] {
+                  &self.journal
+              }
+
+              pub fn recover(
+                  config: SchedulerConfig,
+                  scheduler_generation: u64,
+                  events: &[SchedulerJournalEvent],
+              ) -> SchedulerResult<Self> {
+                  let mut scheduler = Self::new(config, scheduler_generation)?;
+                  for event in events {
+                      scheduler.apply_recovery_event(event)?;
+                      scheduler.journal.push(event.clone());
+                  }
+                  Ok(scheduler)
+              }
+
+              fn apply_recovery_event(
+                  &mut self,
+                  event: &SchedulerJournalEvent,
+              ) -> SchedulerResult<()> {
+                  match event {
+                      SchedulerJournalEvent::Enqueued {
+                          request,
+                          enqueued_tick,
+                          enqueue_order,
+                      } => {
+                          request.validate(0)?;
+                          if *enqueue_order != self.next_enqueue_order
+                              || self.pending.contains_key(&request.request_id)
+                              || self.reservations.contains_key(&request.request_id)
+                              || self.released.contains(&request.request_id)
+                          {
+                              return Err(SchedulerError::JournalInvariant);
+                          }
+                          self.next_enqueue_order = self
+                              .next_enqueue_order
+                              .checked_add(1)
+                              .ok_or(SchedulerError::JournalInvariant)?;
+                          self.pending.insert(
+                              request.request_id.clone(),
+                              PendingRequest {
+                                  request: request.clone(),
+                                  enqueued_tick: *enqueued_tick,
+                                  enqueue_order: *enqueue_order,
+                              },
+                          );
+                      }
+                      SchedulerJournalEvent::Reserved(reservation) => {
+                          self.require_generation(reservation.scheduler_generation)?;
+                          if reservation.state != ReservationState::Prepared {
+                              return Err(SchedulerError::JournalInvariant);
+                          }
+                          let pending = self
+                              .pending
+                              .remove(&reservation.request_id)
+                              .ok_or(SchedulerError::JournalInvariant)?;
+                          let expected_finish = self.virtual_finish(&pending.request);
+                          if reservation.tenant_id != pending.request.tenant_id
+                              || reservation.tuple_digest != pending.request.tuple_digest
+                              || reservation.cost_units != pending.request.cost_units
+                              || reservation.virtual_finish != expected_finish
+                              || !self.can_reserve(&pending.request)
+                          {
+                              return Err(SchedulerError::JournalInvariant);
+                          }
+                          self.increment_reservation(reservation)?;
+                          self.tenant_virtual_finish.insert(
+                              reservation.tenant_id.clone(),
+                              reservation.virtual_finish,
+                          );
+                          self.reservations
+                              .insert(reservation.request_id.clone(), reservation.clone());
+                      }
+                      SchedulerJournalEvent::Committed {
+                          request_id,
+                          scheduler_generation,
+                      } => {
+                          self.require_generation(*scheduler_generation)?;
+                          let reservation = self
+                              .reservations
+                              .get_mut(request_id)
+                              .ok_or(SchedulerError::JournalInvariant)?;
+                          if reservation.state != ReservationState::Prepared {
+                              return Err(SchedulerError::JournalInvariant);
+                          }
+                          reservation.state = ReservationState::Committed;
+                      }
+                      SchedulerJournalEvent::Released {
+                          request_id,
+                          scheduler_generation,
+                          reason: _,
+                      } => {
+                          self.require_generation(*scheduler_generation)?;
+                          if self.released.contains(request_id) {
+                              return Err(SchedulerError::JournalInvariant);
+                          }
+                          let reservation = self
+                              .reservations
+                              .remove(request_id)
+                              .ok_or(SchedulerError::JournalInvariant)?;
+                          self.decrement_reservation(&reservation)?;
+                          self.released.insert(request_id.clone());
+                      }
+                      SchedulerJournalEvent::CancelledPending { request_id }
+                      | SchedulerJournalEvent::ExpiredPending { request_id } => {
+                          if self.pending.remove(request_id).is_none() {
+                              return Err(SchedulerError::JournalInvariant);
+                          }
+                      }
+                  }
+                  Ok(())
+              }
+
+              fn virtual_finish(&self, request: &SchedulingRequest) -> u128 {
+                  let current = self
+                      .tenant_virtual_finish
+                      .get(&request.tenant_id)
+                      .copied()
+                      .unwrap_or_default();
+                  let service = (u128::from(request.cost_units) * VIRTUAL_FINISH_SCALE)
+                      .div_ceil(u128::from(request.tenant_weight));
+                  current.saturating_add(service)
+              }
+
+              fn can_reserve(&self, request: &SchedulingRequest) -> bool {
+                  let cost = u64::from(request.cost_units);
+                  within_limit(
+                      self.reserved_units_global,
+                      cost,
+                      self.config.max_reserved_units_global,
+                  ) && within_limit(
+                      self.reserved_units_per_tenant
+                          .get(&request.tenant_id)
+                          .copied()
+                          .unwrap_or_default(),
+                      cost,
+                      self.config.max_reserved_units_per_tenant,
+                  ) && within_limit(
+                      self.reserved_units_per_tuple
+                          .get(&request.tuple_digest)
+                          .copied()
+                          .unwrap_or_default(),
+                      cost,
+                      self.config.max_reserved_units_per_tuple,
+                  )
+              }
+
+              fn increment_reservation(
+                  &mut self,
+                  reservation: &DispatchReservation,
+              ) -> SchedulerResult<()> {
+                  let cost = u64::from(reservation.cost_units);
+                  self.reserved_units_global = self
+                      .reserved_units_global
+                      .checked_add(cost)
+                      .ok_or(SchedulerError::ReservationOverflow)?;
+                  increment_map(
+                      &mut self.reserved_units_per_tenant,
+                      reservation.tenant_id.clone(),
+                      cost,
+                  )?;
+                  increment_map(
+                      &mut self.reserved_units_per_tuple,
+                      reservation.tuple_digest.clone(),
+                      cost,
+                  )?;
+                  if self.reserved_units_global > self.config.max_reserved_units_global
+                      || self
+                          .reserved_units_per_tenant
+                          .get(&reservation.tenant_id)
+                          .copied()
+                          .unwrap_or_default()
+                          > self.config.max_reserved_units_per_tenant
+                      || self
+                          .reserved_units_per_tuple
+                          .get(&reservation.tuple_digest)
+                          .copied()
+                          .unwrap_or_default()
+                          > self.config.max_reserved_units_per_tuple
+                  {
+                      return Err(SchedulerError::ReservationOverflow);
+                  }
+                  Ok(())
+              }
+
+              fn decrement_reservation(
+                  &mut self,
+                  reservation: &DispatchReservation,
+              ) -> SchedulerResult<()> {
+                  let cost = u64::from(reservation.cost_units);
+                  self.reserved_units_global = self
+                      .reserved_units_global
+                      .checked_sub(cost)
+                      .ok_or(SchedulerError::JournalInvariant)?;
+                  decrement_map(
+                      &mut self.reserved_units_per_tenant,
+                      &reservation.tenant_id,
+                      cost,
+                  )?;
+                  decrement_map(
+                      &mut self.reserved_units_per_tuple,
+                      &reservation.tuple_digest,
+                      cost,
+                  )
+              }
+
+              fn require_generation(&self, generation: u64) -> SchedulerResult<()> {
+                  if generation == self.scheduler_generation {
+                      Ok(())
+                  } else {
+                      Err(SchedulerError::GenerationMismatch)
+                  }
+              }
+          }
+
+          fn within_limit(current: u64, additional: u64, limit: u64) -> bool {
+              current
+                  .checked_add(additional)
+                  .is_some_and(|total| total <= limit)
+          }
+
+          fn increment_map<K>(map: &mut HashMap<K, u64>, key: K, amount: u64) -> SchedulerResult<()>
+          where
+              K: Eq + std::hash::Hash,
+          {
+              let value = map.entry(key).or_default();
+              *value = value
+                  .checked_add(amount)
+                  .ok_or(SchedulerError::ReservationOverflow)?;
+              Ok(())
+          }
+
+          fn decrement_map<K>(
+              map: &mut HashMap<K, u64>,
+              key: &K,
+              amount: u64,
+          ) -> SchedulerResult<()>
+          where
+              K: Eq + std::hash::Hash,
+          {
+              let remove = {
+                  let value = map.get_mut(key).ok_or(SchedulerError::JournalInvariant)?;
+                  *value = value
+                      .checked_sub(amount)
+                      .ok_or(SchedulerError::JournalInvariant)?;
+                  *value == 0
+              };
+              if remove {
+                  map.remove(key);
+              }
+              Ok(())
+          }
+
+          fn sorted_map<K, V>(map: &HashMap<K, V>) -> Vec<(K, V)>
+          where
+              K: Clone + Ord,
+              V: Copy,
+          {
+              let mut entries: Vec<(K, V)> =
+                  map.iter().map(|(key, value)| (key.clone(), *value)).collect();
+              entries.sort_by(|left, right| left.0.cmp(&right.0));
+              entries
+          }
+
+          #[cfg(test)]
+          mod tests {
+              use super::*;
+
+              fn must<T, E: fmt::Display>(result: std::result::Result<T, E>) -> T {
+                  match result {
+                      Ok(value) => value,
+                      Err(error) => panic!("unexpected error: {error}"),
+                  }
+              }
+
+              fn request(
+                  id: &str,
+                  tenant: &str,
+                  deadline_unix_ms: u64,
+                  tenant_weight: u32,
+              ) -> SchedulingRequest {
+                  SchedulingRequest {
+                      request_id: must(RequestId::parse(id)),
+                      tenant_id: must(TenantId::parse(tenant)),
+                      tuple_digest: must(Digest::parse(&format!(
+                          "sha256:{}",
+                          if tenant == "tenant-a" { "a" } else { "b" }.repeat(64)
+                      ))),
+                      deadline_unix_ms,
+                      cost_units: 1,
+                      tenant_weight,
+                  }
+              }
+
+              fn config() -> SchedulerConfig {
+                  SchedulerConfig {
+                      max_reserved_units_global: 8,
+                      max_reserved_units_per_tenant: 4,
+                      max_reserved_units_per_tuple: 4,
+                      max_starvation_ticks: 3,
+                  }
+              }
+
+              #[test]
+              fn edf_is_primary_order() {
+                  let mut scheduler = must(DeterministicScheduler::new(config(), 7));
+                  must(scheduler.enqueue(request("request-late", "tenant-a", 20, 1), 1, 0));
+                  must(scheduler.enqueue(request("request-early", "tenant-b", 10, 1), 1, 0));
+                  let reservation = must(scheduler.reserve_next(2, 1));
+                  assert_eq!(reservation.request_id.as_str(), "request-early");
+              }
+
+              #[test]
+              fn weighted_fair_tie_break_is_deterministic() {
+                  let mut scheduler = must(DeterministicScheduler::new(config(), 7));
+                  for index in 0..4 {
+                      must(scheduler.enqueue(
+                          request(&format!("request-a-{index}"), "tenant-a", 100, 1),
+                          1,
+                          0,
+                      ));
+                      must(scheduler.enqueue(
+                          request(&format!("request-b-{index}"), "tenant-b", 100, 3),
+                          1,
+                          0,
+                      ));
+                  }
+                  let mut selected = Vec::new();
+                  for tick in 1..=4 {
+                      let reservation = must(scheduler.reserve_next(2, tick));
+                      selected.push(reservation.tenant_id.as_str().to_owned());
+                      must(scheduler.commit_dispatch(&reservation.request_id, 7));
+                      must(scheduler.release(
+                          &reservation.request_id,
+                          7,
+                          ReservationReleaseReason::Completed,
+                      ));
+                  }
+                  assert_eq!(
+                      selected
+                          .iter()
+                          .filter(|tenant| tenant.as_str() == "tenant-b")
+                          .count(),
+                      3
+                  );
+              }
+
+              #[test]
+              fn starvation_bound_promotes_old_request() {
+                  let mut scheduler = must(DeterministicScheduler::new(config(), 7));
+                  must(scheduler.enqueue(request("request-old", "tenant-a", 1_000, 1), 1, 0));
+                  for tick in 1..3 {
+                      let id = format!("request-urgent-{tick}");
+                      must(scheduler.enqueue(request(&id, "tenant-b", 10 + tick, 1), 1, tick));
+                      let reservation = must(scheduler.reserve_next(2, tick));
+                      assert_eq!(reservation.request_id.as_str(), id);
+                      must(scheduler.release(
+                          &reservation.request_id,
+                          7,
+                          ReservationReleaseReason::Completed,
+                      ));
+                  }
+                  must(scheduler.enqueue(
+                      request("request-urgent-3", "tenant-b", 13, 1),
+                      1,
+                      3,
+                  ));
+                  let reservation = must(scheduler.reserve_next(2, 3));
+                  assert_eq!(reservation.request_id.as_str(), "request-old");
+              }
+
+              #[test]
+              fn reservations_do_not_overcommit_and_release_exactly_once() {
+                  let mut limited = config();
+                  limited.max_reserved_units_global = 2;
+                  limited.max_reserved_units_per_tenant = 1;
+                  limited.max_reserved_units_per_tuple = 2;
+                  let mut scheduler = must(DeterministicScheduler::new(limited, 9));
+                  must(scheduler.enqueue(request("request-a-1", "tenant-a", 20, 1), 1, 0));
+                  must(scheduler.enqueue(request("request-a-2", "tenant-a", 21, 1), 1, 0));
+                  must(scheduler.enqueue(request("request-b-1", "tenant-b", 22, 1), 1, 0));
+                  let first = must(scheduler.reserve_next(2, 1));
+                  assert_eq!(first.tenant_id.as_str(), "tenant-a");
+                  let second = must(scheduler.reserve_next(2, 1));
+                  assert_eq!(second.tenant_id.as_str(), "tenant-b");
+                  assert_eq!(scheduler.snapshot().reserved_units_global, 2);
+                  must(scheduler.release(
+                      &first.request_id,
+                      9,
+                      ReservationReleaseReason::WorkerCrash,
+                  ));
+                  assert_eq!(
+                      scheduler.release(
+                          &first.request_id,
+                          9,
+                          ReservationReleaseReason::BackendRestart,
+                      ),
+                      Err(SchedulerError::ReservationAlreadyReleased)
+                  );
+                  assert_eq!(scheduler.snapshot().reserved_units_global, 1);
+              }
+
+              #[test]
+              fn journal_recovery_is_state_identical() {
+                  let mut scheduler = must(DeterministicScheduler::new(config(), 11));
+                  must(scheduler.enqueue(request("request-one", "tenant-a", 20, 1), 1, 0));
+                  must(scheduler.enqueue(request("request-two", "tenant-b", 30, 2), 1, 0));
+                  let reservation = must(scheduler.reserve_next(2, 1));
+                  must(scheduler.commit_dispatch(&reservation.request_id, 11));
+                  must(scheduler.release(
+                      &reservation.request_id,
+                      11,
+                      ReservationReleaseReason::Completed,
+                  ));
+                  let journal = scheduler.journal().to_vec();
+                  let recovered = must(DeterministicScheduler::recover(config(), 11, &journal));
+                  assert_eq!(recovered.snapshot(), scheduler.snapshot());
+                  assert_eq!(recovered.journal(), scheduler.journal());
+              }
+          }
+          RS
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-infer-core/src/lib.rs")
+          source = path.read_text(encoding="utf-8")
+          module_marker = "mod security;\nmod worker;\n"
+          module_insert = "mod scheduler;\n" + module_marker
+          if source.count(module_marker) != 1:
+              raise SystemExit("unexpected scheduler module marker")
+          source = source.replace(module_marker, module_insert, 1)
+          export_marker = "pub use security::MessageRole;\n"
+          exports = """pub use scheduler::DeterministicScheduler;
+          pub use scheduler::DispatchReservation;
+          pub use scheduler::ReservationReleaseReason;
+          pub use scheduler::ReservationState;
+          pub use scheduler::SchedulerConfig;
+          pub use scheduler::SchedulerError;
+          pub use scheduler::SchedulerJournalEvent;
+          pub use scheduler::SchedulerResult;
+          pub use scheduler::SchedulerSnapshot;
+          pub use scheduler::SchedulingRequest;
+          """
+          if source.count(export_marker) != 1:
+              raise SystemExit("unexpected scheduler export marker")
+          source = source.replace(export_marker, exports + export_marker, 1)
+          path.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Format and qualify INF-S4 source
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-infer-core
+          cargo check --locked --all-targets -p codex-hepta-infer-core
+          cargo test --locked --all-targets -p codex-hepta-infer-core -- --test-threads=1
+          cargo clippy --locked --all-targets --no-deps \
+            -p codex-hepta-infer-core -- -D warnings
+
+      - name: Enforce package source change set
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git diff --name-only | LC_ALL=C sort)"
+          expected="$(cat <<'EOF' | LC_ALL=C sort
+          codex-rs/hepta-infer-core/src/lib.rs
+          codex-rs/hepta-infer-core/src/scheduler.rs
+          EOF
+          )"
+          test "$actual" = "$expected"
+          git diff --check
+          cargo metadata --locked --manifest-path codex-rs/Cargo.toml --no-deps --format-version 1 >/dev/null
+          test -z "$(git status --porcelain -- codex-rs/Cargo.lock)"
+
+      - name: Commit qualified package source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/hepta-inference-v4-s4-scheduler-chatgpt.yml
+          git add -A \
+            .github/workflows/hepta-inference-v4-s4-scheduler-chatgpt.yml \
+            codex-rs/hepta-infer-core/src/lib.rs \
+            codex-rs/hepta-infer-core/src/scheduler.rs
+          git diff --cached --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "feat(inference): close INF-S4 scheduler reservations"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

@@ -1,0 +1,372 @@
+name: Hepta inference V4 INF-R2 token-chain integrity closure
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-v4-r2-chain-integrity-chatgpt-20260830
+    paths:
+      - .github/workflows/hepta-inference-v4-r2-chain-integrity-chatgpt.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-v4-r2-chain-integrity-chatgpt
+  cancel-in-progress: false
+
+jobs:
+  integrate-and-qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 2
+
+      - name: Guard exact correction parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = codex/hepta-inference-v4-r2-chain-integrity-chatgpt-20260830
+          test "$(git rev-parse HEAD^)" = 519bef80de8147dcab7621a4955f9b854b8dcd9a
+          test -z "$(git status --porcelain)"
+          test -f codex-rs/hepta-infer-worker-host/src/protocol.rs
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Export the controller token-chain algorithm
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-infer-core/src/controller.rs")
+          source = path.read_text(encoding="utf-8")
+          replacements = (
+              (
+                  "let token_chain_digest = initial_token_chain(&request, self.backend_generation)?;",
+                  "let token_chain_digest = initial_token_chain_digest(&request, self.backend_generation)?;",
+              ),
+              (
+                  "let next_digest = next_token_chain(",
+                  "let next_digest = next_token_chain_digest(",
+              ),
+              (
+                  "fn initial_token_chain(request: &InferenceRequest, backend_generation: u64) -> Result<Digest> {",
+                  "pub fn initial_token_chain_digest(\n    request: &InferenceRequest,\n    backend_generation: u64,\n) -> Result<Digest> {",
+              ),
+              (
+                  "fn next_token_chain(\n",
+                  "pub fn next_token_chain_digest(\n",
+              ),
+          )
+          for old, new in replacements:
+              if source.count(old) != 1:
+                  raise SystemExit(f"unexpected controller chain marker: {old!r}")
+              source = source.replace(old, new, 1)
+          path.write_text(source, encoding="utf-8")
+
+          path = Path("codex-rs/hepta-infer-core/src/lib.rs")
+          source = path.read_text(encoding="utf-8")
+          marker = "pub use controller::EventFence;\n"
+          if source.count(marker) != 1:
+              raise SystemExit("unexpected token chain export marker")
+          source = source.replace(
+              marker,
+              marker
+              + "pub use controller::initial_token_chain_digest;\n"
+              + "pub use controller::next_token_chain_digest;\n",
+              1,
+          )
+          path.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Bind worker submit and completion to the exact rolling chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-infer-worker-host/src/protocol.rs")
+          source = path.read_text(encoding="utf-8")
+          replacements = (
+              (
+                  "        sequence: u64,\n        grant_digest: Digest,\n",
+                  "        sequence: u64,\n        initial_chain_digest: Digest,\n        grant_digest: Digest,\n",
+              ),
+              (
+                  "            sequence,\n            grant_digest,\n            prompt_digest,\n",
+                  "            sequence,\n            initial_chain_digest,\n            grant_digest,\n            prompt_digest,\n",
+              ),
+              (
+                  "                encoder.sequence(*sequence)?;\n                encoder.digest(grant_digest)?;\n",
+                  "                encoder.sequence(*sequence)?;\n                encoder.digest(initial_chain_digest)?;\n                encoder.digest(grant_digest)?;\n",
+              ),
+              (
+                  "                let sequence = decoder.sequence()?;\n                let grant_digest = decoder.digest()?;\n",
+                  "                let sequence = decoder.sequence()?;\n                let initial_chain_digest = decoder.digest()?;\n                let grant_digest = decoder.digest()?;\n",
+              ),
+              (
+                  "                    sequence,\n                    grant_digest,\n                    prompt_digest,\n",
+                  "                    sequence,\n                    initial_chain_digest,\n                    grant_digest,\n                    prompt_digest,\n",
+              ),
+              (
+                  "            sequence: 3,\n            grant_digest: digest('a'),\n",
+                  "            sequence: 3,\n            initial_chain_digest: digest('c'),\n            grant_digest: digest('a'),\n",
+              ),
+          )
+          for old, new in replacements:
+              if source.count(old) != 1:
+                  raise SystemExit(f"unexpected worker protocol marker: {old!r}")
+              source = source.replace(old, new, 1)
+          path.write_text(source, encoding="utf-8")
+
+          path = Path("codex-rs/hepta-infer-worker-host/src/lib.rs")
+          source = path.read_text(encoding="utf-8")
+          replacements = (
+              (
+                  "use codex_hepta_infer_core::RequestId;\n",
+                  "use codex_hepta_infer_core::RequestId;\nuse codex_hepta_infer_core::next_token_chain_digest;\n",
+              ),
+              (
+                  "    pub grant_digest: Digest,\n    pub token_digest: Digest,\n",
+                  "    pub initial_chain_digest: Digest,\n    pub grant_digest: Digest,\n    pub token_digest: Digest,\n",
+              ),
+              (
+                  "        initial_sequence: u64,\n        grant_digest: Digest,\n",
+                  "        initial_sequence: u64,\n        initial_chain_digest: Digest,\n        grant_digest: Digest,\n",
+              ),
+              (
+                  "            sequence: initial_sequence,\n            grant_digest: grant_digest.clone(),\n",
+                  "            sequence: initial_sequence,\n            initial_chain_digest: initial_chain_digest.clone(),\n            grant_digest: grant_digest.clone(),\n",
+              ),
+              (
+                  "                && sequence == initial_sequence.saturating_add(1)\n                && token_bytes > 0 => (token_digest, sequence),\n",
+                  "                && sequence == initial_sequence.saturating_add(1)\n                && token_bytes > 0 => (token_digest, sequence, token_bytes),\n",
+              ),
+              (
+                  "        let complete = self.read().await?;\n",
+                  "        let expected_result_digest = next_token_chain_digest(\n            &initial_chain_digest,\n            token_sequence,\n            &token_digest,\n            token_bytes,\n        )\n        .map_err(|_| WorkerHostError::ProtocolFence)?;\n        let complete = self.read().await?;\n",
+              ),
+              (
+                  "        if result_digest != token_digest {\n",
+                  "        if result_digest != expected_result_digest {\n",
+              ),
+              (
+                  "            session_digest: self.session_digest.clone(),\n            grant_digest,\n",
+                  "            session_digest: self.session_digest.clone(),\n            initial_chain_digest,\n            grant_digest,\n",
+              ),
+          )
+          for old, new in replacements:
+              if source.count(old) != 1:
+                  raise SystemExit(f"unexpected worker host chain marker: {old!r}")
+              source = source.replace(old, new, 1)
+          source = source.replace(
+              "let (token_digest, token_sequence) = match token {",
+              "let (token_digest, token_sequence, token_bytes) = match token {",
+              1,
+          )
+          path.write_text(source, encoding="utf-8")
+
+          path = Path("codex-rs/hepta-infer-worker-host/src/main.rs")
+          source = path.read_text(encoding="utf-8")
+          replacements = (
+              (
+                  "use codex_hepta_infer_core::Digest;\n",
+                  "use codex_hepta_infer_core::Digest;\nuse codex_hepta_infer_core::next_token_chain_digest;\n",
+              ),
+              (
+                  "                sequence,\n                grant_digest: _,\n",
+                  "                sequence,\n                initial_chain_digest,\n                grant_digest: _,\n",
+              ),
+              (
+                  "                \"success\" => {\n",
+                  "                \"success\" | \"forged\" => {\n",
+              ),
+              (
+                  "                            result_digest: token_digest,\n",
+                  "                            result_digest: if mode == \"forged\" {\n                                fixed_digest('e')?\n                            } else {\n                                next_token_chain_digest(\n                                    &initial_chain_digest,\n                                    sequence.checked_add(1).ok_or_else(|| {\n                                        io::Error::other(\"INF_WORKER_SEQUENCE_OVERFLOW\")\n                                    })?,\n                                    &token_digest,\n                                    7,\n                                )\n                                .map_err(|_| {\n                                    io::Error::other(\"INF_WORKER_TOKEN_CHAIN_INVALID\")\n                                })?\n                            },\n",
+              ),
+          )
+          for old, new in replacements:
+              if source.count(old) != 1:
+                  raise SystemExit(f"unexpected worker binary chain marker: {old!r}")
+              source = source.replace(old, new, 1)
+          path.write_text(source, encoding="utf-8")
+
+          path = Path("codex-rs/hepta-infer-worker-host/tests/process.rs")
+          source = path.read_text(encoding="utf-8")
+          import_marker = "use codex_hepta_infer_core::RequestId;\n"
+          if source.count(import_marker) != 1:
+              raise SystemExit("unexpected process chain import marker")
+          source = source.replace(
+              import_marker,
+              import_marker + "use codex_hepta_infer_core::next_token_chain_digest;\n",
+              1,
+          )
+          call_marker = "                3,\n                digest('b'),\n                digest('c'),\n                8,\n"
+          if source.count(call_marker) != 3:
+              raise SystemExit("unexpected worker submit call count")
+          source = source.replace(
+              call_marker,
+              "                3,\n                digest('e'),\n                digest('b'),\n                digest('c'),\n                8,\n",
+          )
+          assertion_marker = "    assert_eq!(receipt.output_tokens, 1);\n"
+          if source.count(assertion_marker) != 1:
+              raise SystemExit("unexpected process receipt assertion marker")
+          source = source.replace(
+              assertion_marker,
+              assertion_marker
+              + "    assert_eq!(\n"
+              + "        receipt.result_digest,\n"
+              + "        must(next_token_chain_digest(\n"
+              + "            &digest('e'),\n"
+              + "            4,\n"
+              + "            &receipt.token_digest,\n"
+              + "            7,\n"
+              + "        ))\n"
+              + "    );\n",
+              1,
+          )
+          stale_marker = "#[tokio::test]\nasync fn stale_generation_and_oom_frames_fail_closed() {\n"
+          forged_test = """#[tokio::test]
+          async fn forged_completion_digest_is_rejected() {
+              let mut worker = spawn("forged", Duration::from_secs(2)).await;
+              assert_eq!(
+                  worker
+                      .submit_fixture(
+                          must(RequestId::parse("request-worker-forged")),
+                          2,
+                          3,
+                          digest('e'),
+                          digest('b'),
+                          digest('c'),
+                          8,
+                      )
+                      .await,
+                  Err(WorkerHostError::ProtocolFence)
+              );
+          }
+
+          """
+          if source.count(stale_marker) != 1:
+              raise SystemExit("unexpected forged test insertion marker")
+          source = source.replace(stale_marker, forged_test + stale_marker, 1)
+          path.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Wire worker-host and missing workspace dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/Cargo.toml")
+          source = path.read_text(encoding="utf-8")
+          member = '    "hepta-inferd",\n'
+          dependency = 'codex-hepta-inferd = { path = "hepta-inferd" }\n'
+          external = 'libc = "0.2.182"\n'
+          for marker in (member, dependency, external):
+              if source.count(marker) != 1:
+                  raise SystemExit(f"unexpected worker workspace marker: {marker!r}")
+          source = source.replace(member, member + '    "hepta-infer-worker-host",\n', 1)
+          source = source.replace(
+              dependency,
+              dependency
+              + 'codex-hepta-infer-worker-host = { path = "hepta-infer-worker-host" }\n',
+              1,
+          )
+          source = source.replace(external, external + 'libloading = "0.8.9"\n', 1)
+          path.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Materialize lock state and qualify the corrected package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --manifest-path codex-rs/Cargo.toml --format-version 1 >/dev/null
+          just bazel-lock-update
+          (
+            cd codex-rs
+            cargo fmt \
+              -p codex-hepta-infer-core \
+              -p codex-hepta-infer-worker-host
+            cargo check --locked --all-targets \
+              -p codex-hepta-infer-core \
+              -p codex-hepta-infer-worker-host
+            cargo test --locked --all-targets \
+              -p codex-hepta-infer-core \
+              -p codex-hepta-infer-worker-host -- --test-threads=1
+            cargo clippy --locked --all-targets --no-deps \
+              -p codex-hepta-infer-core \
+              -p codex-hepta-infer-worker-host -- -D warnings
+          )
+          cargo metadata --locked --manifest-path codex-rs/Cargo.toml --no-deps --format-version 1 >/dev/null
+          just bazel-lock-check
+
+      - name: Enforce exact correction scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only"], text=True
+          ).splitlines()
+          allowed = {
+              "MODULE.bazel.lock",
+              "codex-rs/Cargo.lock",
+              "codex-rs/Cargo.toml",
+              "codex-rs/hepta-infer-core/src/controller.rs",
+              "codex-rs/hepta-infer-core/src/lib.rs",
+              "codex-rs/hepta-infer-worker-host/src/lib.rs",
+              "codex-rs/hepta-infer-worker-host/src/main.rs",
+              "codex-rs/hepta-infer-worker-host/src/protocol.rs",
+              "codex-rs/hepta-infer-worker-host/tests/process.rs",
+          }
+          unexpected = [path for path in changed if path not in allowed]
+          if unexpected:
+              raise SystemExit("unexpected R2 correction paths: " + ", ".join(unexpected))
+          for required in (
+              "codex-rs/Cargo.lock",
+              "codex-rs/Cargo.toml",
+              "codex-rs/hepta-infer-core/src/controller.rs",
+              "codex-rs/hepta-infer-worker-host/src/protocol.rs",
+          ):
+              if required not in changed:
+                  raise SystemExit(f"required R2 correction missing: {required}")
+          PY
+          git diff --check
+
+      - name: Commit corrected package and remove one-shot workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/hepta-inference-v4-r2-worker-host-chatgpt.yml
+          rm .github/workflows/hepta-inference-v4-r2-chain-integrity-chatgpt.yml
+          git add -A \
+            .github/workflows/hepta-inference-v4-r2-worker-host-chatgpt.yml \
+            .github/workflows/hepta-inference-v4-r2-chain-integrity-chatgpt.yml \
+            MODULE.bazel.lock \
+            codex-rs/Cargo.lock \
+            codex-rs/Cargo.toml \
+            codex-rs/hepta-infer-core/src/controller.rs \
+            codex-rs/hepta-infer-core/src/lib.rs \
+            codex-rs/hepta-infer-worker-host/src/lib.rs \
+            codex-rs/hepta-infer-worker-host/src/main.rs \
+            codex-rs/hepta-infer-worker-host/src/protocol.rs \
+            codex-rs/hepta-infer-worker-host/tests/process.rs
+          git diff --cached --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "fix(inference): bind worker completion to controller token chain"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

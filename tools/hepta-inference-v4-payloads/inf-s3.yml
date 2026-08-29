@@ -1,0 +1,989 @@
+name: Hepta inference V4 INF-S3 receipt retention closure
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-v4-s3-retention-chatgpt-20260830
+    paths:
+      - .github/workflows/hepta-inference-v4-s3-retention-chatgpt.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-v4-s3-retention-chatgpt
+  cancel-in-progress: false
+
+jobs:
+  implement-and-qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 2
+
+      - name: Guard exact package parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = codex/hepta-inference-v4-s3-retention-chatgpt-20260830
+          test "$(git rev-parse HEAD^)" = dbf68bfed0a2a034fb519c66a89725e2b74edce3
+          test -z "$(git status --porcelain)"
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Expose bounded SHA-256 receipt digests and compacted error
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          hashing = Path("codex-rs/hepta-infer-core/src/hashing.rs")
+          source = hashing.read_text(encoding="utf-8")
+          use_marker = "use crate::InferError;\n"
+          if source.count(use_marker) != 1:
+              raise SystemExit("unexpected hashing import marker")
+          source = source.replace(use_marker, "use crate::Digest;\n" + use_marker, 1)
+          test_marker = "\n#[cfg(test)]\nmod tests {"
+          helper = r'''
+
+          pub fn sha256_digest(parts: &[&[u8]]) -> Result<Digest> {
+              let bytes = sha256(parts)?;
+              const HEX: &[u8; 16] = b"0123456789abcdef";
+              let mut encoded = String::with_capacity(71);
+              encoded.push_str("sha256:");
+              for byte in bytes {
+                  encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+                  encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+              }
+              Digest::parse(&encoded)
+          }
+          '''
+          if source.count(test_marker) != 1:
+              raise SystemExit("unexpected hashing test marker")
+          source = source.replace(test_marker, helper + test_marker, 1)
+          hashing.write_text(source, encoding="utf-8")
+
+          lib = Path("codex-rs/hepta-infer-core/src/lib.rs")
+          source = lib.read_text(encoding="utf-8")
+          export_marker = "pub use identity::WorkspaceId;\n"
+          if source.count(export_marker) != 1:
+              raise SystemExit("unexpected digest export marker")
+          source = source.replace(
+              export_marker,
+              export_marker + "pub use hashing::sha256_digest;\n",
+              1,
+          )
+          error_marker = "    ReceiptSequenceNotReached,\n"
+          if source.count(error_marker) != 1:
+              raise SystemExit("unexpected compacted error marker")
+          source = source.replace(
+              error_marker,
+              "    ReceiptCompacted,\n" + error_marker,
+              1,
+          )
+          code_marker = (
+              "            Self::ReceiptSequenceNotReached => "
+              "\"INF_RECEIPT_SEQUENCE_NOT_REACHED\",\n"
+          )
+          if source.count(code_marker) != 1:
+              raise SystemExit("unexpected compacted code marker")
+          source = source.replace(
+              code_marker,
+              "            Self::ReceiptCompacted => \"INF_RECEIPT_COMPACTED\",\n"
+              + code_marker,
+              1,
+          )
+          lib.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Add crash-safe startup retention and tombstone journal
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > codex-rs/hepta-inferd/src/receipt_retention.rs <<'RS'
+          //! Crash-safe terminal-receipt retention for the qualification-only daemon.
+          //!
+          //! Compaction is disabled by default and may only run before the public listener is
+          //! opened under a fixed startup policy. A durable tombstone is written and fsynced
+          //! before its receipt is deleted. Recovery treats the tombstone as authoritative,
+          //! so a crash at any point cannot make the request identifier reusable.
+
+          use std::collections::HashMap;
+          use std::collections::HashSet;
+          use std::io;
+          use std::io::ErrorKind;
+          use std::path::Path;
+          use std::path::PathBuf;
+          use std::time::Duration;
+          use std::time::SystemTime;
+          use std::time::UNIX_EPOCH;
+
+          use codex_hepta_infer_core::Digest;
+          use codex_hepta_infer_core::InferError;
+          use codex_hepta_infer_core::RequestId;
+          use codex_hepta_infer_core::ServerMessage;
+          use codex_hepta_infer_core::TerminalReceipt;
+          use codex_hepta_infer_core::sha256_digest;
+          use tokio::fs;
+          use tokio::io::AsyncWriteExt;
+
+          use super::receipt_file_name;
+          use super::sync_directory;
+
+          const TOMBSTONE_SCHEMA: &str = "hepta.inference.receipt-tombstone.v1";
+
+          #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+          pub struct ReceiptRetentionPolicy {
+              pub minimum_retention: Duration,
+              pub compact_on_start: bool,
+          }
+
+          #[derive(Debug)]
+          pub(super) struct RetentionRecovery {
+              pub compacted_request_ids: HashSet<RequestId>,
+              pub files: usize,
+              pub total_bytes: u64,
+          }
+
+          #[derive(Clone, Debug, Eq, PartialEq)]
+          pub(super) struct ReceiptTombstone {
+              request_id: RequestId,
+              request_generation: u64,
+              backend_generation: u64,
+              last_sequence: u64,
+              receipt_digest: Digest,
+              compacted_unix_ms: u64,
+          }
+
+          pub(super) async fn compact_and_recover(
+              root: &Path,
+              policy: ReceiptRetentionPolicy,
+              now_unix_ms: u64,
+              active_request_ids: &HashSet<RequestId>,
+              max_files: usize,
+              max_bytes: u64,
+          ) -> io::Result<RetentionRecovery> {
+              if policy.minimum_retention.is_zero() || max_files == 0 || max_bytes == 0 {
+                  return Err(io::Error::new(
+                      ErrorKind::InvalidInput,
+                      "INF_RECEIPT_RETENTION_POLICY_INVALID",
+                  ));
+              }
+              let minimum_age_ms = u64::try_from(policy.minimum_retention.as_millis())
+                  .map_err(|_| invalid_data("INF_RECEIPT_RETENTION_AGE_OVERFLOW"))?;
+              let mut paths = Vec::new();
+              let mut entries = fs::read_dir(root).await?;
+              while let Some(entry) = entries.next_entry().await? {
+                  if !entry.file_type().await?.is_file() {
+                      continue;
+                  }
+                  paths.push(entry.path());
+              }
+              paths.sort();
+
+              for path in &paths {
+                  let name = file_name(path)?;
+                  if name.contains(".tmp-") {
+                      fs::remove_file(path).await?;
+                  }
+              }
+
+              let mut tombstones = HashMap::new();
+              let mut files = 0usize;
+              let mut total_bytes = 0u64;
+              for path in &paths {
+                  let name = file_name(path)?;
+                  if name.contains(".tmp-") || !is_tombstone_name(&name) {
+                      continue;
+                  }
+                  let bytes = fs::read(path).await?;
+                  let tombstone = decode_tombstone(&bytes)?;
+                  if name != tombstone_file_name(&tombstone) {
+                      return Err(invalid_data("INF_RECEIPT_TOMBSTONE_FILENAME_MISMATCH"));
+                  }
+                  if tombstones
+                      .insert(tombstone.request_id.clone(), tombstone)
+                      .is_some()
+                  {
+                      return Err(invalid_data("INF_RECEIPT_TOMBSTONE_DUPLICATE"));
+                  }
+                  files = files
+                      .checked_add(1)
+                      .ok_or_else(|| invalid_data("INF_RECEIPT_FILE_COUNT_OVERFLOW"))?;
+                  total_bytes = total_bytes
+                      .checked_add(u64::try_from(bytes.len()).map_err(|_| {
+                          invalid_data("INF_RECEIPT_TOMBSTONE_LENGTH_OVERFLOW")
+                      })?)
+                      .ok_or_else(|| invalid_data("INF_RECEIPT_BYTE_COUNT_OVERFLOW"))?;
+              }
+
+              let mut receipt_paths = Vec::new();
+              for path in &paths {
+                  let name = file_name(path)?;
+                  if name.starts_with("receipt-") && name.ends_with(".cbor") {
+                      receipt_paths.push(path.clone());
+                  }
+              }
+              receipt_paths.sort();
+
+              for path in receipt_paths {
+                  let bytes = fs::read(&path).await?;
+                  let receipt = decode_receipt(&bytes)?;
+                  if file_name(&path)? != receipt_file_name(&receipt) {
+                      return Err(invalid_data("INF_RECEIPT_STORE_FILENAME_MISMATCH"));
+                  }
+                  if let Some(tombstone) = tombstones.get(&receipt.request_id) {
+                      validate_tombstone_matches(tombstone, &receipt, &bytes)?;
+                      fs::remove_file(&path).await?;
+                      sync_directory(root.to_path_buf()).await?;
+                      continue;
+                  }
+
+                  let metadata = fs::metadata(&path).await?;
+                  let persisted_unix_ms = modified_unix_ms(&metadata)?;
+                  let expired = now_unix_ms.saturating_sub(persisted_unix_ms) >= minimum_age_ms;
+                  if policy.compact_on_start
+                      && expired
+                      && !active_request_ids.contains(&receipt.request_id)
+                  {
+                      let tombstone = tombstone_for_receipt(&receipt, &bytes, now_unix_ms)?;
+                      let tombstone_bytes = encode_tombstone(&tombstone);
+                      let next_files = files
+                          .checked_add(1)
+                          .ok_or_else(|| invalid_data("INF_RECEIPT_FILE_COUNT_OVERFLOW"))?;
+                      let next_bytes = total_bytes
+                          .checked_add(u64::try_from(tombstone_bytes.len()).map_err(|_| {
+                              invalid_data("INF_RECEIPT_TOMBSTONE_LENGTH_OVERFLOW")
+                          })?)
+                          .ok_or_else(|| invalid_data("INF_RECEIPT_BYTE_COUNT_OVERFLOW"))?;
+                      if next_files > max_files || next_bytes > max_bytes {
+                          return Err(io::Error::other(
+                              "INF_RECEIPT_TOMBSTONE_BUDGET_EXCEEDED",
+                          ));
+                      }
+                      write_tombstone(root, &tombstone, &tombstone_bytes).await?;
+                      fs::remove_file(&path).await?;
+                      sync_directory(root.to_path_buf()).await?;
+                      files = next_files;
+                      total_bytes = next_bytes;
+                      tombstones.insert(receipt.request_id.clone(), tombstone);
+                  } else {
+                      files = files
+                          .checked_add(1)
+                          .ok_or_else(|| invalid_data("INF_RECEIPT_FILE_COUNT_OVERFLOW"))?;
+                      total_bytes = total_bytes
+                          .checked_add(u64::try_from(bytes.len()).map_err(|_| {
+                              invalid_data("INF_RECEIPT_LENGTH_OVERFLOW")
+                          })?)
+                          .ok_or_else(|| invalid_data("INF_RECEIPT_BYTE_COUNT_OVERFLOW"))?;
+                  }
+              }
+
+              if files > max_files || total_bytes > max_bytes {
+                  return Err(invalid_data("INF_RECEIPT_STORE_BUDGET_EXCEEDED"));
+              }
+              Ok(RetentionRecovery {
+                  compacted_request_ids: tombstones.into_keys().collect(),
+                  files,
+                  total_bytes,
+              })
+          }
+
+          pub(super) fn tombstone_for_receipt(
+              receipt: &TerminalReceipt,
+              bytes: &[u8],
+              compacted_unix_ms: u64,
+          ) -> io::Result<ReceiptTombstone> {
+              Ok(ReceiptTombstone {
+                  request_id: receipt.request_id.clone(),
+                  request_generation: receipt.request_generation,
+                  backend_generation: receipt.backend_generation,
+                  last_sequence: receipt.last_sequence,
+                  receipt_digest: sha256_digest(&[bytes]).map_err(infer_error_to_io)?,
+                  compacted_unix_ms,
+              })
+          }
+
+          pub(super) async fn write_tombstone_for_test(
+              root: &Path,
+              tombstone: &ReceiptTombstone,
+          ) -> io::Result<()> {
+              let bytes = encode_tombstone(tombstone);
+              write_tombstone(root, tombstone, &bytes).await
+          }
+
+          async fn write_tombstone(
+              root: &Path,
+              tombstone: &ReceiptTombstone,
+              bytes: &[u8],
+          ) -> io::Result<()> {
+              let final_path = root.join(tombstone_file_name(tombstone));
+              if fs::symlink_metadata(&final_path).await.is_ok() {
+                  return Err(io::Error::new(
+                      ErrorKind::AlreadyExists,
+                      "INF_RECEIPT_TOMBSTONE_ALREADY_EXISTS",
+                  ));
+              }
+              let temp_path = root.join(format!(
+                  ".{}-{}.tmp-{}",
+                  tombstone_file_name(tombstone),
+                  std::process::id(),
+                  tombstone.compacted_unix_ms
+              ));
+              let mut options = fs::OpenOptions::new();
+              options.create_new(true).write(true);
+              #[cfg(unix)]
+              {
+                  options.mode(0o600);
+              }
+              let mut file = options.open(&temp_path).await?;
+              if let Err(error) = async {
+                  file.write_all(bytes).await?;
+                  file.flush().await?;
+                  file.sync_all().await?;
+                  drop(file);
+                  fs::rename(&temp_path, &final_path).await?;
+                  sync_directory(root.to_path_buf()).await
+              }
+              .await
+              {
+                  let _ = fs::remove_file(&temp_path).await;
+                  return Err(error);
+              }
+              Ok(())
+          }
+
+          fn validate_tombstone_matches(
+              tombstone: &ReceiptTombstone,
+              receipt: &TerminalReceipt,
+              bytes: &[u8],
+          ) -> io::Result<()> {
+              let digest = sha256_digest(&[bytes]).map_err(infer_error_to_io)?;
+              if tombstone.request_generation != receipt.request_generation
+                  || tombstone.backend_generation != receipt.backend_generation
+                  || tombstone.last_sequence != receipt.last_sequence
+                  || tombstone.receipt_digest != digest
+              {
+                  return Err(invalid_data("INF_RECEIPT_TOMBSTONE_MISMATCH"));
+              }
+              Ok(())
+          }
+
+          fn decode_receipt(bytes: &[u8]) -> io::Result<TerminalReceipt> {
+              match ServerMessage::decode_canonical(bytes).map_err(infer_error_to_io)? {
+                  ServerMessage::Receipt(receipt) => {
+                      receipt
+                          .authority
+                          .validate_closed()
+                          .map_err(infer_error_to_io)?;
+                      Ok(receipt)
+                  }
+                  _ => Err(invalid_data("INF_RECEIPT_STORE_INVALID_MESSAGE")),
+              }
+          }
+
+          fn encode_tombstone(tombstone: &ReceiptTombstone) -> Vec<u8> {
+              format!(
+                  "schema={TOMBSTONE_SCHEMA}\nrequest_id={}\nrequest_generation={}\nbackend_generation={}\nlast_sequence={}\nreceipt_digest={}\ncompacted_unix_ms={}\n",
+                  tombstone.request_id,
+                  tombstone.request_generation,
+                  tombstone.backend_generation,
+                  tombstone.last_sequence,
+                  tombstone.receipt_digest,
+                  tombstone.compacted_unix_ms
+              )
+              .into_bytes()
+          }
+
+          fn decode_tombstone(bytes: &[u8]) -> io::Result<ReceiptTombstone> {
+              let text = std::str::from_utf8(bytes)
+                  .map_err(|_| invalid_data("INF_RECEIPT_TOMBSTONE_UTF8"))?;
+              let mut lines = text.lines();
+              require_line(&mut lines, "schema", TOMBSTONE_SCHEMA)?;
+              let request_id = RequestId::parse(&line_value(&mut lines, "request_id")?)
+                  .map_err(infer_error_to_io)?;
+              let request_generation = parse_u64(&mut lines, "request_generation")?;
+              let backend_generation = parse_u64(&mut lines, "backend_generation")?;
+              let last_sequence = parse_u64(&mut lines, "last_sequence")?;
+              let receipt_digest = Digest::parse(&line_value(&mut lines, "receipt_digest")?)
+                  .map_err(infer_error_to_io)?;
+              let compacted_unix_ms = parse_u64(&mut lines, "compacted_unix_ms")?;
+              if lines.next().is_some()
+                  || request_generation == 0
+                  || backend_generation == 0
+                  || last_sequence == 0
+                  || compacted_unix_ms == 0
+              {
+                  return Err(invalid_data("INF_RECEIPT_TOMBSTONE_SHAPE"));
+              }
+              Ok(ReceiptTombstone {
+                  request_id,
+                  request_generation,
+                  backend_generation,
+                  last_sequence,
+                  receipt_digest,
+                  compacted_unix_ms,
+              })
+          }
+
+          fn require_line<'a>(
+              lines: &mut impl Iterator<Item = &'a str>,
+              key: &str,
+              expected: &str,
+          ) -> io::Result<()> {
+              if line_value(lines, key)? == expected {
+                  Ok(())
+              } else {
+                  Err(invalid_data("INF_RECEIPT_TOMBSTONE_SCHEMA"))
+              }
+          }
+
+          fn line_value<'a>(
+              lines: &mut impl Iterator<Item = &'a str>,
+              key: &str,
+          ) -> io::Result<String> {
+              let line = lines
+                  .next()
+                  .ok_or_else(|| invalid_data("INF_RECEIPT_TOMBSTONE_TRUNCATED"))?;
+              let prefix = format!("{key}=");
+              line.strip_prefix(&prefix)
+                  .filter(|value| !value.is_empty())
+                  .map(str::to_owned)
+                  .ok_or_else(|| invalid_data("INF_RECEIPT_TOMBSTONE_FIELD"))
+          }
+
+          fn parse_u64<'a>(
+              lines: &mut impl Iterator<Item = &'a str>,
+              key: &str,
+          ) -> io::Result<u64> {
+              line_value(lines, key)?
+                  .parse::<u64>()
+                  .map_err(|_| invalid_data("INF_RECEIPT_TOMBSTONE_INTEGER"))
+          }
+
+          fn tombstone_file_name(tombstone: &ReceiptTombstone) -> String {
+              format!(
+                  "tombstone-{}-{}-{}-{}.txt",
+                  tombstone.request_id,
+                  tombstone.request_generation,
+                  tombstone.backend_generation,
+                  tombstone.last_sequence
+              )
+          }
+
+          fn is_tombstone_name(name: &str) -> bool {
+              name.starts_with("tombstone-") && name.ends_with(".txt")
+          }
+
+          fn modified_unix_ms(metadata: &std::fs::Metadata) -> io::Result<u64> {
+              system_time_unix_ms(metadata.modified()?)
+          }
+
+          fn system_time_unix_ms(value: SystemTime) -> io::Result<u64> {
+              let duration = value
+                  .duration_since(UNIX_EPOCH)
+                  .map_err(|_| invalid_data("INF_RECEIPT_TIME_BEFORE_EPOCH"))?;
+              u64::try_from(duration.as_millis())
+                  .map_err(|_| invalid_data("INF_RECEIPT_TIME_OVERFLOW"))
+          }
+
+          fn file_name(path: &PathBuf) -> io::Result<String> {
+              path.file_name()
+                  .and_then(|value| value.to_str())
+                  .map(str::to_owned)
+                  .ok_or_else(|| invalid_data("INF_RECEIPT_FILENAME_UTF8"))
+          }
+
+          fn infer_error_to_io(error: InferError) -> io::Error {
+              io::Error::new(ErrorKind::InvalidData, error)
+          }
+
+          fn invalid_data(code: &'static str) -> io::Error {
+              io::Error::new(ErrorKind::InvalidData, code)
+          }
+          RS
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-inferd/src/lib.rs")
+          source = path.read_text(encoding="utf-8")
+
+          import_marker = "use std::collections::HashMap;\n"
+          replacement = (
+              "mod receipt_retention;\n\n"
+              "pub use receipt_retention::ReceiptRetentionPolicy;\n\n"
+              + import_marker
+          )
+          if source.count(import_marker) != 1:
+              raise SystemExit("unexpected receipt module marker")
+          source = source.replace(import_marker, replacement, 1)
+
+          constant_marker = (
+              "const DEFAULT_DEADLINE_SWEEP_INTERVAL: Duration = Duration::from_millis(250);\n"
+          )
+          constant_insert = constant_marker + (
+              "const DEFAULT_RECEIPT_MINIMUM_RETENTION: Duration = "
+              "Duration::from_secs(30 * 24 * 60 * 60);\n"
+          )
+          if source.count(constant_marker) != 1:
+              raise SystemExit("unexpected retention constant marker")
+          source = source.replace(constant_marker, constant_insert, 1)
+
+          config_marker = "    pub deadline_sweep_interval: Duration,\n"
+          config_insert = config_marker + (
+              "    pub receipt_minimum_retention: Duration,\n"
+              "    pub compact_receipts_on_start: bool,\n"
+          )
+          if source.count(config_marker) != 1:
+              raise SystemExit("unexpected retention config marker")
+          source = source.replace(config_marker, config_insert, 1)
+
+          default_marker = "            deadline_sweep_interval: DEFAULT_DEADLINE_SWEEP_INTERVAL,\n"
+          default_insert = default_marker + (
+              "            receipt_minimum_retention: DEFAULT_RECEIPT_MINIMUM_RETENTION,\n"
+              "            compact_receipts_on_start: false,\n"
+          )
+          if source.count(default_marker) != 1:
+              raise SystemExit("unexpected retention default marker")
+          source = source.replace(default_marker, default_insert, 1)
+
+          validation_marker = "            || self.deadline_sweep_interval.is_zero()\n"
+          validation_insert = validation_marker + "            || self.receipt_minimum_retention.is_zero()\n"
+          if source.count(validation_marker) != 1:
+              raise SystemExit("unexpected retention validation marker")
+          source = source.replace(validation_marker, validation_insert, 1)
+
+          open_marker = """    let receipt_store = Arc::new(
+              ReceiptStore::open(
+                  config.receipt_dir.clone(),
+                  config.max_receipt_files,
+                  config.max_receipt_bytes,
+              )
+              .await?,
+          );
+          """
+          open_insert = """    let active_request_ids = HashSet::new();
+              let retention = receipt_retention::compact_and_recover(
+                  &config.receipt_dir,
+                  ReceiptRetentionPolicy {
+                      minimum_retention: config.receipt_minimum_retention,
+                      compact_on_start: config.compact_receipts_on_start,
+                  },
+                  unix_time_ms()?,
+                  &active_request_ids,
+                  config.max_receipt_files,
+                  config.max_receipt_bytes,
+              )
+              .await?;
+              let receipt_store = Arc::new(
+                  ReceiptStore::open(
+                      config.receipt_dir.clone(),
+                      config.max_receipt_files,
+                      config.max_receipt_bytes,
+                      retention,
+                  )
+                  .await?,
+              );
+          """
+          if source.count(open_marker) != 1:
+              raise SystemExit("unexpected receipt open marker")
+          source = source.replace(open_marker, open_insert, 1)
+
+          store_field_marker = "    state: RwLock<ReceiptState>,\n"
+          store_field_insert = (
+              "    compacted_request_ids: HashSet<RequestId>,\n" + store_field_marker
+          )
+          if source.count(store_field_marker) != 1:
+              raise SystemExit("unexpected store field marker")
+          source = source.replace(store_field_marker, store_field_insert, 1)
+
+          signature_marker = (
+              "    async fn open(root: PathBuf, max_files: usize, max_bytes: u64) "
+              "-> io::Result<Self> {\n"
+              "        let mut state = ReceiptState {\n"
+              "            receipts: HashMap::new(),\n"
+              "            files: 0,\n"
+              "            total_bytes: 0,\n"
+              "        };\n"
+          )
+          signature_insert = (
+              "    async fn open(\n"
+              "        root: PathBuf,\n"
+              "        max_files: usize,\n"
+              "        max_bytes: u64,\n"
+              "        retention: receipt_retention::RetentionRecovery,\n"
+              "    ) -> io::Result<Self> {\n"
+              "        let mut state = ReceiptState {\n"
+              "            receipts: HashMap::new(),\n"
+              "            files: retention.files,\n"
+              "            total_bytes: retention.total_bytes,\n"
+              "        };\n"
+          )
+          if source.count(signature_marker) != 1:
+              raise SystemExit("unexpected store open signature")
+          source = source.replace(signature_marker, signature_insert, 1)
+
+          name_marker = """            if !name.starts_with("receipt-") || !name.ends_with(".cbor") {
+                      return Err(invalid_data("INF_RECEIPT_STORE_UNKNOWN_FILE"));
+                  }
+          """
+          name_insert = """            if name.starts_with("tombstone-") && name.ends_with(".txt") {
+                      continue;
+                  }
+                  if !name.starts_with("receipt-") || !name.ends_with(".cbor") {
+                      return Err(invalid_data("INF_RECEIPT_STORE_UNKNOWN_FILE"));
+                  }
+          """
+          if source.count(name_marker) != 1:
+              raise SystemExit("unexpected receipt name marker")
+          source = source.replace(name_marker, name_insert, 1)
+
+          receipt_marker = """            let key = ReceiptKey::from(&receipt);
+                  if state.receipts.insert(key, receipt).is_some() {
+          """
+          receipt_insert = """            if retention.compacted_request_ids.contains(&receipt.request_id) {
+                      return Err(invalid_data("INF_RECEIPT_TOMBSTONE_RECOVERY_INCOMPLETE"));
+                  }
+                  let key = ReceiptKey::from(&receipt);
+                  if state.receipts.insert(key, receipt).is_some() {
+          """
+          if source.count(receipt_marker) != 1:
+              raise SystemExit("unexpected receipt index marker")
+          source = source.replace(receipt_marker, receipt_insert, 1)
+
+          self_marker = """            persist_lock: Mutex::new(()),
+                      state: RwLock::new(state),
+          """
+          self_insert = """            persist_lock: Mutex::new(()),
+                      compacted_request_ids: retention.compacted_request_ids,
+                      state: RwLock::new(state),
+          """
+          if source.count(self_marker) != 1:
+              raise SystemExit("unexpected store construction marker")
+          source = source.replace(self_marker, self_insert, 1)
+
+          contains_marker = """    async fn contains_request_id(&self, request_id: &RequestId) -> bool {
+                  self.state
+                      .read()
+                      .await
+                      .receipts
+                      .values()
+                      .any(|receipt| receipt.request_id == *request_id)
+              }
+          """
+          contains_insert = """    async fn contains_request_id(&self, request_id: &RequestId) -> bool {
+                  self.compacted_request_ids.contains(request_id)
+                      || self
+                          .state
+                          .read()
+                          .await
+                          .receipts
+                          .values()
+                          .any(|receipt| receipt.request_id == *request_id)
+              }
+          """
+          if source.count(contains_marker) != 1:
+              raise SystemExit("unexpected contains marker")
+          source = source.replace(contains_marker, contains_insert, 1)
+
+          lookup_marker = """    ) -> codex_hepta_infer_core::Result<TerminalReceipt> {
+                  let state = self.state.read().await;
+          """
+          lookup_insert = """    ) -> codex_hepta_infer_core::Result<TerminalReceipt> {
+                  if self.compacted_request_ids.contains(request_id) {
+                      return Err(InferError::ReceiptCompacted);
+                  }
+                  let state = self.state.read().await;
+          """
+          if source.count(lookup_marker) != 1:
+              raise SystemExit("unexpected lookup marker")
+          source = source.replace(lookup_marker, lookup_insert, 1)
+
+          persist_marker = """        let key = ReceiptKey::from(receipt);
+                  {
+                      let state = self.state.read().await;
+          """
+          persist_insert = """        let key = ReceiptKey::from(receipt);
+                  if self.compacted_request_ids.contains(&receipt.request_id) {
+                      return Err(io::Error::new(
+                          ErrorKind::AlreadyExists,
+                          "INF_RECEIPT_REQUEST_COMPACTED",
+                      ));
+                  }
+                  {
+                      let state = self.state.read().await;
+          """
+          if source.count(persist_marker) != 1:
+              raise SystemExit("unexpected persist marker")
+          source = source.replace(persist_marker, persist_insert, 1)
+
+          tests_marker = "#[cfg(test)]\nmod tests;\n"
+          tests_insert = tests_marker + "#[cfg(test)]\nmod retention_tests;\n"
+          if source.count(tests_marker) != 1:
+              raise SystemExit("unexpected tests module marker")
+          source = source.replace(tests_marker, tests_insert, 1)
+          path.write_text(source, encoding="utf-8")
+          PY
+
+          cat > codex-rs/hepta-inferd/src/retention_tests.rs <<'RS'
+          use std::collections::HashSet;
+          use std::time::Duration;
+
+          use codex_hepta_infer_core::AuthoritySnapshot;
+          use codex_hepta_infer_core::InferError;
+          use codex_hepta_infer_core::LifecycleState;
+          use codex_hepta_infer_core::RequestId;
+          use codex_hepta_infer_core::ServerMessage;
+          use codex_hepta_infer_core::TerminalReceipt;
+          use tempfile::TempDir;
+
+          use super::ReceiptStore;
+          use super::receipt_retention;
+          use super::receipt_retention::ReceiptRetentionPolicy;
+
+          fn must<T, E: std::fmt::Display>(result: std::result::Result<T, E>) -> T {
+              match result {
+                  Ok(value) => value,
+                  Err(error) => panic!("unexpected error: {error}"),
+              }
+          }
+
+          fn receipt(id: &str, sequence: u64) -> TerminalReceipt {
+              TerminalReceipt {
+                  request_id: must(RequestId::parse(id)),
+                  request_generation: 1,
+                  cancel_generation: 2,
+                  backend_generation: 7,
+                  terminal_state: LifecycleState::Cancelled,
+                  last_sequence: sequence,
+                  output_tokens: 0,
+                  result_digest: None,
+                  forced_worker_termination: false,
+                  authority: AuthoritySnapshot::qualification_only_closed(),
+              }
+          }
+
+          async fn open_store(root: &std::path::Path) -> ReceiptStore {
+              let recovery = must(
+                  receipt_retention::compact_and_recover(
+                      root,
+                      ReceiptRetentionPolicy {
+                          minimum_retention: Duration::from_millis(1),
+                          compact_on_start: false,
+                      },
+                      1,
+                      &HashSet::new(),
+                      32,
+                      1024 * 1024,
+                  )
+                  .await,
+              );
+              must(ReceiptStore::open(
+                  root.to_path_buf(),
+                  32,
+                  1024 * 1024,
+                  recovery,
+              )
+              .await)
+          }
+
+          #[tokio::test]
+          async fn expired_receipt_compacts_to_tombstone_and_blocks_replay() {
+              let temp = must(TempDir::new());
+              let store = open_store(temp.path()).await;
+              let receipt = receipt("request-expired", 3);
+              must(store.persist(&receipt).await);
+              drop(store);
+
+              let recovery = must(
+                  receipt_retention::compact_and_recover(
+                      temp.path(),
+                      ReceiptRetentionPolicy {
+                          minimum_retention: Duration::from_millis(1),
+                          compact_on_start: true,
+                      },
+                      u64::MAX,
+                      &HashSet::new(),
+                      32,
+                      1024 * 1024,
+                  )
+                  .await,
+              );
+              assert!(recovery.compacted_request_ids.contains(&receipt.request_id));
+              let store = must(ReceiptStore::open(
+                  temp.path().to_path_buf(),
+                  32,
+                  1024 * 1024,
+                  recovery,
+              )
+              .await);
+              assert_eq!(
+                  store.lookup(&receipt.request_id, 1, 7, 1).await,
+                  Err(InferError::ReceiptCompacted)
+              );
+              assert!(store.contains_request_id(&receipt.request_id).await);
+              assert!(store.persist(&receipt).await.is_err());
+          }
+
+          #[tokio::test]
+          async fn active_and_young_receipts_are_preserved() {
+              let temp = must(TempDir::new());
+              let store = open_store(temp.path()).await;
+              let active = receipt("request-active", 3);
+              let eligible = receipt("request-eligible", 4);
+              must(store.persist(&active).await);
+              must(store.persist(&eligible).await);
+              drop(store);
+
+              let mut active_ids = HashSet::new();
+              active_ids.insert(active.request_id.clone());
+              let young = must(
+                  receipt_retention::compact_and_recover(
+                      temp.path(),
+                      ReceiptRetentionPolicy {
+                          minimum_retention: Duration::from_secs(24 * 60 * 60),
+                          compact_on_start: true,
+                      },
+                      super::unix_time_ms().unwrap_or(u64::MAX),
+                      &HashSet::new(),
+                      32,
+                      1024 * 1024,
+                  )
+                  .await,
+              );
+              assert!(young.compacted_request_ids.is_empty());
+
+              let recovery = must(
+                  receipt_retention::compact_and_recover(
+                      temp.path(),
+                      ReceiptRetentionPolicy {
+                          minimum_retention: Duration::from_millis(1),
+                          compact_on_start: true,
+                      },
+                      u64::MAX,
+                      &active_ids,
+                      32,
+                      1024 * 1024,
+                  )
+                  .await,
+              );
+              assert!(!recovery.compacted_request_ids.contains(&active.request_id));
+              assert!(recovery.compacted_request_ids.contains(&eligible.request_id));
+              let store = must(ReceiptStore::open(
+                  temp.path().to_path_buf(),
+                  32,
+                  1024 * 1024,
+                  recovery,
+              )
+              .await);
+              assert_eq!(
+                  must(store.lookup(&active.request_id, 1, 7, 1).await),
+                  active
+              );
+              assert_eq!(
+                  store.lookup(&eligible.request_id, 1, 7, 1).await,
+                  Err(InferError::ReceiptCompacted)
+              );
+          }
+
+          #[tokio::test]
+          async fn tombstone_before_delete_is_recovered_after_crash_point() {
+              let temp = must(TempDir::new());
+              let store = open_store(temp.path()).await;
+              let receipt = receipt("request-crash-window", 5);
+              must(store.persist(&receipt).await);
+              drop(store);
+
+              let receipt_path = temp.path().join(super::receipt_file_name(&receipt));
+              let bytes = must(tokio::fs::read(&receipt_path).await);
+              let tombstone = must(receipt_retention::tombstone_for_receipt(
+                  &receipt,
+                  &bytes,
+                  u64::MAX - 1,
+              ));
+              must(
+                  receipt_retention::write_tombstone_for_test(temp.path(), &tombstone).await,
+              );
+              assert!(receipt_path.exists(), "crash point keeps both files");
+
+              let recovery = must(
+                  receipt_retention::compact_and_recover(
+                      temp.path(),
+                      ReceiptRetentionPolicy {
+                          minimum_retention: Duration::from_millis(1),
+                          compact_on_start: false,
+                      },
+                      u64::MAX,
+                      &HashSet::new(),
+                      32,
+                      1024 * 1024,
+                  )
+                  .await,
+              );
+              assert!(!receipt_path.exists());
+              assert!(recovery.compacted_request_ids.contains(&receipt.request_id));
+              let encoded = must(ServerMessage::Receipt(receipt).encode_canonical());
+              assert!(!encoded.is_empty());
+          }
+          RS
+
+      - name: Format and qualify INF-S3 source
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-inferd
+          cargo check --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-inferd
+          cargo test --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-inferd -- --test-threads=1
+          cargo clippy --locked --all-targets --no-deps \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-inferd -- -D warnings
+
+      - name: Enforce package source change set
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git diff --name-only | LC_ALL=C sort)"
+          expected="$(cat <<'EOF' | LC_ALL=C sort
+          codex-rs/hepta-infer-core/src/hashing.rs
+          codex-rs/hepta-infer-core/src/lib.rs
+          codex-rs/hepta-inferd/src/lib.rs
+          codex-rs/hepta-inferd/src/receipt_retention.rs
+          codex-rs/hepta-inferd/src/retention_tests.rs
+          EOF
+          )"
+          test "$actual" = "$expected"
+          git diff --check
+          cargo metadata --locked --manifest-path codex-rs/Cargo.toml --no-deps --format-version 1 >/dev/null
+          test -z "$(git status --porcelain -- codex-rs/Cargo.lock)"
+
+      - name: Commit qualified package source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/hepta-inference-v4-s3-retention-chatgpt.yml
+          git add -A \
+            .github/workflows/hepta-inference-v4-s3-retention-chatgpt.yml \
+            codex-rs/hepta-infer-core/src/hashing.rs \
+            codex-rs/hepta-infer-core/src/lib.rs \
+            codex-rs/hepta-inferd/src/lib.rs \
+            codex-rs/hepta-inferd/src/receipt_retention.rs \
+            codex-rs/hepta-inferd/src/retention_tests.rs
+          git diff --cached --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "feat(inference): close INF-S3 receipt retention"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
