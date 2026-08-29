@@ -1,0 +1,107 @@
+name: hepta-ui-v4-build-remediation-macos-v3
+
+on:
+  push:
+    branches:
+      - "ops/hepta-ui-v4-commit-builder-20260829"
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: hepta-ui-v4-build-remediation-macos-v3
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and compile remediation on macOS
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_SHA: f9f362c8c0eb2fa6e28ded8cb141e4d4e8a02a2d
+      TARGET_TREE: 1d0b228bd5d389d3b94d35b257ac4439bb38f121
+    steps:
+      - name: Checkout remediation driver
+        uses: actions/checkout@v4
+        with:
+          ref: ops/hepta-ui-v4-commit-builder-20260829
+          path: driver
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          path: candidate
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+
+      - name: Transform, validate, and compile
+        shell: bash
+        env:
+          HEPTA_CANDIDATE_ROOT: ${{ github.workspace }}/candidate
+          HEPTA_MODIFIED_PATHS_OUT: ${{ github.workspace }}/artifacts/modified-paths.json
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          test "$(git -C candidate rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git -C candidate rev-parse 'HEAD^{tree}')" = "$TARGET_TREE"
+          python3 -m py_compile \
+            driver/ops/hepta-ui-v4-build-remediation.py \
+            driver/ops/hepta-ui-v4-finalize-remediation.py
+          python3 driver/ops/hepta-ui-v4-build-remediation.py \
+            | tee artifacts/transformed-paths.txt
+          ruby -c candidate/scripts/hepta-ui-v4-exact-candidate-materialization-gate
+          ruby -e 'require "yaml"; ARGV.each { |path| YAML.parse_file(path) }' \
+            candidate/.github/workflows/hepta-ui-v4-rust-served-cross-browser-final.yml \
+            candidate/.github/workflows/hepta-ui-v4-windows-material-profile-runtime.yml \
+            candidate/.github/workflows/hepta-ui-v4-windows-material-profile-aggregate.yml \
+            candidate/.github/workflows/hepta-ui-v4-windows-material-profile-exact.yml \
+            candidate/.github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml
+          git -C candidate diff --check
+          (
+            cd candidate
+            git check-attr eol -- \
+              apps/hepta-control-ui/index.html \
+              apps/hepta-control-ui/styles.css \
+              apps/hepta-control-ui/control-ui.js \
+              apps/hepta-control-ui/control-ui-v4-runtime.js \
+              | tee ../artifacts/eol-attributes.txt
+            grep -c 'eol: lf$' ../artifacts/eol-attributes.txt | grep -qx 4
+            ruby scripts/hepta-ui-v4-exact-candidate-materialization-gate \
+              | tee ../artifacts/exact-source-gate.json
+            cargo check --manifest-path codex-rs/Cargo.toml -p hepta-core
+            cargo test --manifest-path codex-rs/Cargo.toml -p hepta-core \
+              --test control_ui_v4_bundle
+            cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
+            cargo check --manifest-path apps/hepta-native/Cargo.toml \
+              --lib --no-default-features
+          )
+
+      - name: Create immutable remote commit object
+        shell: bash
+        env:
+          HEPTA_CANDIDATE_ROOT: ${{ github.workspace }}/candidate
+          HEPTA_MODIFIED_PATHS_OUT: ${{ github.workspace }}/artifacts/modified-paths.json
+          HEPTA_COMMIT_OBJECT_OUT: ${{ github.workspace }}/artifacts/commit-object.json
+        run: |
+          set -euo pipefail
+          python3 driver/ops/hepta-ui-v4-finalize-remediation.py
+
+      - name: Upload qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-remediation-macos-v3-${{ github.run_id }}
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 14
