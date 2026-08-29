@@ -132,6 +132,58 @@ jobs:
       - name: Materialize Bazel lock
         run: just bazel-lock-update
 
+      - name: Advance source truth after deterministic lock closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import json
+          from pathlib import Path
+
+          readme_path = Path("README.md")
+          readme = readme_path.read_text(encoding="utf-8")
+          marker = "neither source presence nor qualification activates authority"
+          if marker not in readme:
+              readme = readme.rstrip() + (
+                  "\n\n## Authority activation boundary\n\n"
+                  "The governing invariant is: **neither source presence nor qualification "
+                  "activates authority**. Runtime, production caller, writer, model, provider, "
+                  "tool, network, fleet, operator, promotion and release authority remain "
+                  "false until their separately bound acceptance receipts exist.\n"
+              )
+              readme_path.write_text(readme, encoding="utf-8")
+
+          ledger_path = Path("docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V4.json")
+          ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+          lock = ledger["sourceControlledBlockers"]["A-LOCK-01"]
+          if lock["state"] not in {"open", "source_in_progress", "source_implemented"}:
+              raise SystemExit(f"unexpected A-LOCK-01 state: {lock['state']}")
+          lock["state"] = "source_implemented"
+          lock["sourceEvidence"] = ["codex-rs/Cargo.lock", "MODULE.bazel.lock"]
+          package = ledger["sourcePackages"]["P0.7a_signedRuntimeBootstrapClosure"]
+          package["state"] = "source_implemented"
+          package["blockedBy"] = [value for value in package.get("blockedBy", []) if value != "A-LOCK-01"]
+          pending = package.setdefault("implementedPendingQualification", [])
+          for value in ("A-LOCK-01", "A-TRANSPORT-01", "A-RECOVERY-01"):
+              if value not in pending:
+                  pending.append(value)
+          ledger_path.write_text(json.dumps(ledger, indent=2) + "\n", encoding="utf-8")
+
+          status_path = Path("docs/architecture/HEPTA_QUALIFICATION_STATUS_V3.json")
+          status = json.loads(status_path.read_text(encoding="utf-8"))
+          closure = status["sourceClosure"]
+          closure["currentBlockers"] = [
+              value for value in closure.get("currentBlockers", []) if value != "A-LOCK-01"
+          ]
+          pending = closure.setdefault("implementedPendingQualification", [])
+          for value in ("A-LOCK-01", "A-TRANSPORT-01", "A-RECOVERY-01"):
+              if value not in pending:
+                  pending.append(value)
+          status_path.write_text(json.dumps(status, indent=2) + "\n", encoding="utf-8")
+          PY
+
       - name: Verify deterministic source result
         shell: bash
         run: |
@@ -142,14 +194,18 @@ jobs:
           python3 scripts/verify-hepta-architecture-plan-v4.py
           git diff --check
 
-      - name: Commit generated source closure
+      - name: Commit generated source closure and remove materializer
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add \
+          rm .github/workflows/hepta-p0-7a-materialize.yml
+          git add -A -- \
+            .github/workflows/hepta-p0-7a-materialize.yml \
+            .github/workflows/hepta-runtime-bootstrap-p0-7a.yml \
             MODULE.bazel.lock \
+            README.md \
             codex-rs/Cargo.lock \
             codex-rs/hepta-contracts/src/runtime_bootstrap.rs \
             codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs \
@@ -158,9 +214,11 @@ jobs:
             codex-rs/hepta-supervisor/src/runtime_bootstrap_tests.rs \
             codex-rs/hepta-agentd/src/runtime_bootstrap.rs \
             codex-rs/hepta-agentd/src/runtime_bootstrap_tests.rs \
+            docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V4.json \
+            docs/architecture/HEPTA_QUALIFICATION_STATUS_V3.json \
             docs/architecture/HEPTA_RUNTIME_BOOTSTRAP_RECOVERY_MATRIX_V1.md \
-            scripts/verify-hepta-p0-7a-format.py \
-            .github/workflows/hepta-runtime-bootstrap-p0-7a.yml
+            scripts/verify-hepta-p0-7a-format.py
+          git diff --cached --check
           if git diff --cached --quiet; then
             echo 'No materialized changes were required.'
             exit 0
