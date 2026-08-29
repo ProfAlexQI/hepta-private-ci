@@ -1,0 +1,62 @@
+name: Hepta Intelligence Q0 reconstruction probe cea130f
+
+on:
+  push:
+    branches:
+      - qualification/hepta-intelligence-q0-reconstruct-probe-cea130f-20260829
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-q0-reconstruct-probe-cea130f
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: Prove exact reconstruction closure on macOS
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Checkout probe wrapper
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify wrapper-only commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "cea130fc5ce40f6638a8002206381cb603a55636"
+          test "$(git diff --name-only HEAD^..HEAD)" = ".github/workflows/hepta-intelligence-q0-reconstruct-probe-cea130f.yml"
+
+      - name: Materialize current exact source twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout --detach cea130fc5ce40f6638a8002206381cb603a55636
+          python3 -m py_compile \
+            .github/scripts/hepta-intelligence-q0-reconstruct-v7.py \
+            .github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py
+          python3 .github/scripts/hepta-intelligence-q0-reconstruct-v7.py
+          git diff --check
+          git diff --name-only | sort | tee /tmp/reconstruction-paths.txt
+          test -s /tmp/reconstruction-paths.txt
+          first_digest="$(git diff --binary | shasum -a 256 | awk '{print $1}')"
+          python3 .github/scripts/hepta-intelligence-q0-reconstruct-v7.py
+          second_digest="$(git diff --binary | shasum -a 256 | awk '{print $1}')"
+          test "$first_digest" = "$second_digest"
+          printf '%s\n' "$first_digest" | tee /tmp/reconstruction-digest.txt
+
+      - name: Upload reconstruction evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: q0-reconstruction-probe-cea130f
+          path: |
+            /tmp/reconstruction-paths.txt
+            /tmp/reconstruction-digest.txt
+          if-no-files-found: warn
+          retention-days: 7
