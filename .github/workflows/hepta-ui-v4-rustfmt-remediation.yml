@@ -1,0 +1,104 @@
+name: hepta-ui-v4-rustfmt-remediation
+
+on:
+  push:
+    branches: ["codex/ui-v4-executable-final-gap-closure-v3-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+concurrency:
+  group: hepta-ui-v4-rustfmt-remediation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture-rustfmt:
+    name: Capture canonical Rust 1.95 formatting patch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+
+      - name: Install Rust 1.95 rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+
+      - name: Produce canonical formatting patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path apps/hepta-native/Cargo.toml
+          cargo fmt --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml
+          cargo fmt --manifest-path tools/hepta-ui-windows-product-host-safety/Cargo.toml
+          cargo fmt --manifest-path tools/hepta-ui-windows-product-host-device-drill/Cargo.toml
+
+          git diff --check
+          mkdir -p artifacts/rustfmt
+          git diff --binary > artifacts/rustfmt/hepta-ui-v4-rustfmt.patch
+          git diff --name-only > artifacts/rustfmt/changed-files.txt
+          git diff --name-only -z > artifacts/rustfmt/changed-files.zlist
+
+          if [[ -s artifacts/rustfmt/changed-files.zlist ]]; then
+            tar --null --files-from=artifacts/rustfmt/changed-files.zlist \
+              -czf artifacts/rustfmt/formatted-sources.tar.gz
+          else
+            tar -czf artifacts/rustfmt/formatted-sources.tar.gz --files-from=/dev/null
+          fi
+
+          sha256sum artifacts/rustfmt/hepta-ui-v4-rustfmt.patch \
+            > artifacts/rustfmt/hepta-ui-v4-rustfmt.patch.sha256
+          sha256sum artifacts/rustfmt/formatted-sources.tar.gz \
+            > artifacts/rustfmt/formatted-sources.tar.gz.sha256
+          ruby -rjson -e '
+            files=File.readlines("artifacts/rustfmt/changed-files.txt",chomp:true)
+            payload={
+              "schema"=>"hepta.ui.v4.rustfmt-remediation.v1",
+              "status"=>"PASS_RUSTFMT_REMEDIATION_ARTIFACT",
+              "candidate"=>{
+                "commit"=>ENV.fetch("HEPTA_CANDIDATE_SHA"),
+                "tree"=>`git rev-parse HEAD^{tree}`.strip
+              },
+              "rustToolchain"=>"1.95.0",
+              "changedFiles"=>files,
+              "changedFileCount"=>files.length,
+              "productBound"=>false,
+              "systemMaterialBound"=>false,
+              "authority"=>{
+                "network"=>false,
+                "mutation"=>false,
+                "effect"=>false,
+                "liveAdapter"=>false,
+                "production"=>false,
+                "operatorAcceptance"=>false,
+                "promotion"=>false,
+                "release"=>false
+              }
+            }
+            File.write("artifacts/rustfmt/receipt.json",JSON.pretty_generate(payload)+"\n")
+          '
+
+      - name: Upload canonical formatting artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-rustfmt-remediation-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: artifacts/rustfmt
+          if-no-files-found: error
+          retention-days: 7
