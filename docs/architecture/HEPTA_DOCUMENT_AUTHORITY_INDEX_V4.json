@@ -1,0 +1,186 @@
+{
+  "schema": "hepta.document-authority-index.v4",
+  "schemaVersion": 4,
+  "status": "normative_document_authority",
+  "resolutionOrder": [
+    "docs/architecture/HEPTA_CURRENT_PLAN.json",
+    "docs/architecture/HEPTA_ARCHITECTURE_MODEL_V2.json",
+    "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md",
+    "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json",
+    "docs/architecture/HEPTA_QUALIFICATION_STATUS_V4.json",
+    "docs/architecture/HEPTA_P0_7B_VERIFIED_USE_DELIVERY_CONTRACT_V1.md",
+    "docs/architecture/HEPTA_PHYSICAL_CAPABILITY_BOUNDARY_MATRIX_V1.md"
+  ],
+  "documents": [
+    {
+      "id": "current_plan_pointer",
+      "path": "docs/architecture/HEPTA_CURRENT_PLAN.json",
+      "class": "normative_pointer",
+      "editable": true,
+      "authority": "document_selection_only"
+    },
+    {
+      "id": "architecture_model",
+      "path": "docs/architecture/HEPTA_ARCHITECTURE_MODEL_V2.json",
+      "class": "normative_architecture_source",
+      "editable": true,
+      "authority": "architecture_facts"
+    },
+    {
+      "id": "architecture_human_projection",
+      "path": "ARCHITECTURE.md",
+      "class": "generated_projection",
+      "editable": false,
+      "generator": "scripts/generate-hepta-architecture-projections.py"
+    },
+    {
+      "id": "data_authority_projection",
+      "path": "docs/architecture/DATA_AUTHORITY_MAP.md",
+      "class": "generated_projection",
+      "editable": false,
+      "generator": "scripts/generate-hepta-architecture-projections.py"
+    },
+    {
+      "id": "compatibility_architecture_projection",
+      "path": "docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json",
+      "class": "generated_compatibility_projection",
+      "editable": false,
+      "generator": "scripts/generate-hepta-architecture-projections.py"
+    },
+    {
+      "id": "current_development_plan",
+      "path": "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md",
+      "class": "normative_execution_plan",
+      "editable": true,
+      "authority": "source_delivery_order_exit_criteria_faults_resources_and_stop_conditions"
+    },
+    {
+      "id": "current_gap_ledger",
+      "path": "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json",
+      "class": "normative_gap_state",
+      "editable": true,
+      "authority": "source_executable_external_gap_and_issuer_classification"
+    },
+    {
+      "id": "qualification_status",
+      "path": "docs/architecture/HEPTA_QUALIFICATION_STATUS_V4.json",
+      "class": "candidate_neutral_status_contract",
+      "editable": true,
+      "authority": "state_vocabulary_and_observed_execution_only"
+    },
+    {
+      "id": "runtime_grant_bootstrap",
+      "path": "docs/architecture/HEPTA_RUNTIME_GRANT_BOOTSTRAP_V1.md",
+      "class": "normative_component_contract",
+      "editable": true
+    },
+    {
+      "id": "runtime_bootstrap_recovery_matrix",
+      "path": "docs/architecture/HEPTA_RUNTIME_BOOTSTRAP_RECOVERY_MATRIX_V1.md",
+      "class": "normative_component_contract",
+      "editable": true
+    },
+    {
+      "id": "verified_use_delivery_contract",
+      "path": "docs/architecture/HEPTA_P0_7B_VERIFIED_USE_DELIVERY_CONTRACT_V1.md",
+      "class": "normative_component_contract",
+      "editable": true,
+      "authority": "p0_7b_b0_source_contract_only"
+    },
+    {
+      "id": "physical_capability_boundaries",
+      "path": "docs/architecture/HEPTA_PHYSICAL_CAPABILITY_BOUNDARY_MATRIX_V1.md",
+      "class": "normative_boundary_matrix",
+      "editable": true
+    },
+    {
+      "id": "durable_fault_matrix",
+      "path": "docs/architecture/HEPTA_COMMON_DURABLE_FAULT_MATRIX_V1.md",
+      "class": "normative_fault_matrix",
+      "editable": true
+    },
+    {
+      "id": "resource_budgets",
+      "path": "docs/architecture/HEPTA_RESOURCE_BUDGETS_V1.md",
+      "class": "normative_resource_contract",
+      "editable": true
+    },
+    {
+      "id": "v5_source_verifier",
+      "path": "scripts/verify-hepta-architecture-plan-v5.py",
+      "class": "machine_verifier",
+      "editable": true,
+      "authority": "source_consistency_only"
+    },
+    {
+      "id": "v5_b0_workflow",
+      "path": ".github/workflows/hepta-architecture-v5-b0-verified-use.yml",
+      "class": "qualification_workflow",
+      "editable": true,
+      "authority": "package_execution_only"
+    },
+    {
+      "id": "v4_plan",
+      "path": "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V4.md",
+      "class": "historical_plan",
+      "editable": false,
+      "supersededBy": "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md"
+    },
+    {
+      "id": "v4_gap_ledger",
+      "path": "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V4.json",
+      "class": "historical_gap_ledger",
+      "editable": false,
+      "supersededBy": "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json"
+    },
+    {
+      "id": "v3_document_authority_index",
+      "path": "docs/architecture/HEPTA_DOCUMENT_AUTHORITY_INDEX_V3.json",
+      "class": "historical_document_authority",
+      "editable": false,
+      "supersededBy": "docs/architecture/HEPTA_DOCUMENT_AUTHORITY_INDEX_V4.json"
+    },
+    {
+      "id": "dropbox_development_snapshots",
+      "path": "docs/hepta-vnext/dropbox-current-2026-08-27",
+      "class": "archival_snapshot",
+      "editable": false,
+      "authority": "none"
+    }
+  ],
+  "nonAuthoritativeClasses": [
+    "draft_pull_request_body",
+    "historical_plan",
+    "historical_gap_ledger",
+    "historical_document_authority",
+    "archival_snapshot",
+    "dropbox_snapshot",
+    "source_only_receipt",
+    "queued_action_run",
+    "runner_zero_job",
+    "empty_step_job",
+    "generated_build_artifact"
+  ],
+  "rules": {
+    "draftPrCanSelectCurrentPlanOnItsOwnBranch": true,
+    "draftPrCanSelectCurrentPlanOnDefaultBranch": false,
+    "receiptCanRewritePlan": false,
+    "sourceCanSelfIssueIndependentReview": false,
+    "sourceCanSelfIssueOperatorAcceptance": false,
+    "sourceCanSelfIssuePromotion": false,
+    "sourceCanSelfIssueRelease": false,
+    "buildLockDriftCanPass": false,
+    "queuedOrEmptyExecutionCanPass": false,
+    "unknownDocumentClassFailsClosed": true,
+    "selfReferentialDocumentDigestAllowed": false
+  },
+  "authority": {
+    "runtime": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "externalEffect": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
