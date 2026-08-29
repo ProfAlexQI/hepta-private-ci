@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
-      EXPECTED_PARENT: cdb074e328b486d874b8fa6c1b37d067044343bb
+      EXPECTED_PARENT: 4351a61f44b8b2b7fa0db46091741453137bae65
       EXPECTED_BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
       WORKFLOW_PATH: .github/workflows/hepta-architecture-product-test-diagnostic.yml
     steps:
@@ -185,11 +185,13 @@ jobs:
           )
           test "${changed[*]}" = "${expected[*]}"
 
-      - name: Verify formatting and agentd runtime
+      - name: Format and verify agentd runtime
         working-directory: codex-rs
         shell: bash
         run: |
           set -euo pipefail
+          cargo fmt -p codex-hepta-agentd
+          git diff --check
           cargo fmt -p codex-hepta-agentd -- --check
           cargo test --locked -p codex-hepta-agentd --lib -- --nocapture
           cargo test --locked -p codex-hepta-agentd --features qualification-cognitive-write --lib -- --nocapture
