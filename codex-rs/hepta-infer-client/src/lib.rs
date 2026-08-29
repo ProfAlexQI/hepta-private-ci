@@ -1,8 +1,9 @@
-//! Bounded owner-local client for the qualification-only Hepta inference controller.
+//! Bounded owner-local public client for the qualification-only Hepta inference controller.
 //!
 //! The client transports only canonical digest/identity/control messages. It has no
-//! raw prompt field, HTTP fallback, model installer, remote route, or production
-//! authority. Product callers must opt into a separately qualified shadow route.
+//! raw prompt field, HTTP fallback, model installer, remote route, worker-event API,
+//! operator API, or production authority. Product callers must opt into a separately
+//! qualified shadow route.
 
 use std::fmt;
 use std::io;
@@ -18,7 +19,6 @@ use codex_hepta_infer_core::InferenceRequest;
 use codex_hepta_infer_core::MAX_FRAME_BYTES;
 use codex_hepta_infer_core::RequestId;
 use codex_hepta_infer_core::ServerMessage;
-use codex_hepta_infer_core::StateEvent;
 use codex_hepta_infer_core::TerminalReceipt;
 use codex_uds::UnixStream;
 use tokio::io::AsyncReadExt;
@@ -134,6 +134,7 @@ pub enum ClientError {
     ModelTupleNotRouted,
     CapabilityUnsupported(InferenceCapability),
     CapabilityKnownGap(InferenceCapability),
+    RoleNotAuthorized,
 }
 
 impl ClientError {
@@ -149,6 +150,7 @@ impl ClientError {
             Self::ModelTupleNotRouted => "INF_CLIENT_MODEL_TUPLE_NOT_ROUTED",
             Self::CapabilityUnsupported(_) => "INF_CLIENT_CAPABILITY_UNSUPPORTED",
             Self::CapabilityKnownGap(_) => "INF_CLIENT_CAPABILITY_KNOWN_GAP_NOT_ROUTED",
+            Self::RoleNotAuthorized => "INF_CLIENT_ROLE_NOT_AUTHORIZED",
         }
     }
 }
@@ -165,9 +167,10 @@ impl fmt::Display for ClientError {
             Self::CapabilityUnsupported(capability) | Self::CapabilityKnownGap(capability) => {
                 write!(formatter, "{}: {}", self.code(), capability.as_str())
             }
-            Self::ConnectTimeout | Self::ExchangeTimeout | Self::ModelTupleNotRouted => {
-                formatter.write_str(self.code())
-            }
+            Self::ConnectTimeout
+            | Self::ExchangeTimeout
+            | Self::ModelTupleNotRouted
+            | Self::RoleNotAuthorized => formatter.write_str(self.code()),
         }
     }
 }
@@ -246,24 +249,10 @@ impl InferdClient {
     }
 
     pub async fn exchange(&self, message: ClientMessage) -> Result<ServerMessage> {
-        let connect = UnixStream::connect(&self.config.socket_path);
-        let mut stream = timeout(self.config.connect_timeout, connect)
-            .await
-            .map_err(|_| ClientError::ConnectTimeout)??;
-        stream.ensure_current_user_peer()?;
-
-        timeout(self.config.exchange_timeout, async {
-            write_request(&mut stream, &message, self.config.max_frame_bytes).await?;
-            let response = read_response(&mut stream, self.config.max_frame_bytes).await?;
-            match stream.shutdown().await {
-                Ok(()) => {}
-                Err(error) if error.kind() == ErrorKind::NotConnected => {}
-                Err(error) => return Err(error.into()),
-            }
-            Ok(response)
-        })
-        .await
-        .map_err(|_| ClientError::ExchangeTimeout)?
+        if !message.is_public_client_operation() {
+            return Err(ClientError::RoleNotAuthorized);
+        }
+        self.exchange_public(message).await
     }
 
     pub async fn ping(&self, nonce: u64) -> Result<()> {
@@ -289,81 +278,6 @@ impl InferdClient {
 
     pub async fn admit(&self, request: InferenceRequest) -> Result<ServerMessage> {
         self.expect_non_error(ClientMessage::Admit(request)).await
-    }
-
-    pub async fn start(
-        &self,
-        request_id: RequestId,
-        request_generation: u64,
-        backend_generation: u64,
-    ) -> Result<StateEvent> {
-        match self
-            .expect_non_error(ClientMessage::Start {
-                request_id,
-                request_generation,
-                backend_generation,
-            })
-            .await?
-        {
-            ServerMessage::State(event) => Ok(event),
-            _ => Err(ClientError::UnexpectedResponse(
-                "INF_CLIENT_START_RESPONSE_MISMATCH",
-            )),
-        }
-    }
-
-    pub async fn token(
-        &self,
-        request_id: RequestId,
-        request_generation: u64,
-        backend_generation: u64,
-        sequence: u64,
-        token_digest: Digest,
-        token_byte_length: u64,
-    ) -> Result<StateEvent> {
-        match self
-            .expect_non_error(ClientMessage::Token {
-                request_id,
-                request_generation,
-                backend_generation,
-                sequence,
-                token_digest,
-                token_byte_length,
-            })
-            .await?
-        {
-            ServerMessage::State(event) => Ok(event),
-            _ => Err(ClientError::UnexpectedResponse(
-                "INF_CLIENT_TOKEN_RESPONSE_MISMATCH",
-            )),
-        }
-    }
-
-    pub async fn complete(
-        &self,
-        request_id: RequestId,
-        request_generation: u64,
-        backend_generation: u64,
-        sequence: u64,
-        result_digest: Digest,
-        output_tokens: u32,
-    ) -> Result<TerminalReceipt> {
-        match self
-            .expect_non_error(ClientMessage::Complete {
-                request_id,
-                request_generation,
-                backend_generation,
-                sequence,
-                result_digest,
-                output_tokens,
-            })
-            .await?
-        {
-            ServerMessage::Receipt(receipt) => Ok(receipt),
-            _ => Err(ClientError::UnexpectedResponse(
-                "INF_CLIENT_COMPLETE_RESPONSE_MISMATCH",
-            )),
-        }
     }
 
     pub async fn receipt(
@@ -426,7 +340,7 @@ impl InferdClient {
 
     pub async fn cancel(
         &self,
-        request_id: codex_hepta_infer_core::RequestId,
+        request_id: RequestId,
         request_generation: u64,
         cancel_generation: u64,
         backend_generation: u64,
@@ -440,18 +354,32 @@ impl InferdClient {
         .await
     }
 
-    pub async fn restart_backend(&self, expected_generation: u64) -> Result<ServerMessage> {
-        self.expect_non_error(ClientMessage::RestartBackend {
-            expected_generation,
-        })
-        .await
-    }
-
     async fn expect_non_error(&self, message: ClientMessage) -> Result<ServerMessage> {
         match self.exchange(message).await? {
             ServerMessage::Error { code } => Err(ClientError::Remote(code)),
             response => Ok(response),
         }
+    }
+
+    async fn exchange_public(&self, message: ClientMessage) -> Result<ServerMessage> {
+        let connect = UnixStream::connect(&self.config.socket_path);
+        let mut stream = timeout(self.config.connect_timeout, connect)
+            .await
+            .map_err(|_| ClientError::ConnectTimeout)??;
+        stream.ensure_current_user_peer()?;
+
+        timeout(self.config.exchange_timeout, async {
+            write_request(&mut stream, &message, self.config.max_frame_bytes).await?;
+            let response = read_response(&mut stream, self.config.max_frame_bytes).await?;
+            match stream.shutdown().await {
+                Ok(()) => {}
+                Err(error) if error.kind() == ErrorKind::NotConnected => {}
+                Err(error) => return Err(error.into()),
+            }
+            Ok(response)
+        })
+        .await
+        .map_err(|_| ClientError::ExchangeTimeout)?
     }
 }
 
@@ -495,59 +423,6 @@ impl ShadowInferdClient {
         self.transport.snapshot().await
     }
 
-    pub async fn start(
-        &self,
-        request_id: RequestId,
-        request_generation: u64,
-        backend_generation: u64,
-    ) -> Result<StateEvent> {
-        self.transport
-            .start(request_id, request_generation, backend_generation)
-            .await
-    }
-
-    pub async fn token(
-        &self,
-        request_id: RequestId,
-        request_generation: u64,
-        backend_generation: u64,
-        sequence: u64,
-        token_digest: Digest,
-        token_byte_length: u64,
-    ) -> Result<StateEvent> {
-        self.transport
-            .token(
-                request_id,
-                request_generation,
-                backend_generation,
-                sequence,
-                token_digest,
-                token_byte_length,
-            )
-            .await
-    }
-
-    pub async fn complete(
-        &self,
-        request_id: RequestId,
-        request_generation: u64,
-        backend_generation: u64,
-        sequence: u64,
-        result_digest: Digest,
-        output_tokens: u32,
-    ) -> Result<TerminalReceipt> {
-        self.transport
-            .complete(
-                request_id,
-                request_generation,
-                backend_generation,
-                sequence,
-                result_digest,
-                output_tokens,
-            )
-            .await
-    }
-
     pub async fn receipt(
         &self,
         request_id: RequestId,
@@ -586,7 +461,7 @@ impl ShadowInferdClient {
 
     pub async fn cancel_controller(
         &self,
-        request_id: codex_hepta_infer_core::RequestId,
+        request_id: RequestId,
         request_generation: u64,
         cancel_generation: u64,
         backend_generation: u64,

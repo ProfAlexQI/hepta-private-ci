@@ -5,26 +5,22 @@
   "repository": "ProfHepta/hepta-private-ci",
   "development_pr": 73,
   "development_branch": "codex/hepta-inference-gap-closure-20260829",
-  "observed_parent_commit": "211948a45874890d69cb60b1bdafd946da2fc77f",
-  "observed_parent_tree": "ad1879dc529f0da44ebb48d84b22e06749a8ef5a",
+  "source_binding": {
+    "mode": "tracked status binds observed parent; exact source candidate is emitted by CI",
+    "observed_parent_commit": "a8f3ed8ff722e62e9ec305d392dddbac82dea686",
+    "observed_parent_tree": "ffb8a586ca433a09317dd3f3c3a2959c79d9aae1"
+  },
   "status": "SOURCE_PRESENT_NOT_RUN",
-  "qualified_for_this_status_commit": false,
-  "source_inventory": {
+  "qualified_for_this_candidate": false,
+  "workspace_source": {
     "codex_hepta_infer_core": true,
     "codex_hepta_infer_client": true,
     "codex_hepta_inferd": true,
-    "hepta_infer_backend_v1_crate": false,
-    "hepta_infer_input_lease_crate": false,
-    "hepta_infer_model_registry_crate": false,
-    "hepta_infer_product_bridge_crate": false,
-    "hepta_infer_router_crate": false,
-    "hepta_infer_scheduler_crate": false,
-    "hepta_infer_semantic_crate": false,
-    "hepta_infer_worker_host_crate": false,
-    "hepta_inference_v2_qualification_tool": false,
-    "inf0c_cancel_capability_v4_script": false
+    "hepta_infer_worker_host": false,
+    "hepta_infer_scheduler": false,
+    "hepta_infer_product_bridge": false
   },
-  "implemented_contracts": {
+  "baseline_contracts_present": {
     "strict_digest_and_bounded_ids": true,
     "closed_authority_snapshot": true,
     "backend_neutral_admission": true,
@@ -35,10 +31,8 @@
     "owner_local_uds": true,
     "same_user_peer_check": true,
     "single_daemon_socket": true,
-    "queue_bound": true,
-    "per_tenant_queue_bound": true,
     "terminal_digest_only_receipt": true,
-    "controlled_generation_restart": true,
+    "controlled_generation_restart_contract": true,
     "shadow_only_capability_profile": true,
     "native_backend_abi_contract": true,
     "gguf_manifest_contract": true,
@@ -46,54 +40,62 @@
     "native_worker_supervisor_contract": true,
     "ollama_lmstudio_compatibility_hardening": true
   },
-  "partially_implemented": {
-    "role_separation": {
-      "present": false,
-      "gap": "one public same-user protocol exposes product, worker and operator messages"
-    },
-    "resource_governance": {
-      "present": true,
-      "gap": "queue limits exist but total inflight/running/connection/terminal limits do not"
-    },
-    "cancellation": {
-      "present": true,
-      "gap": "controller terminality exists but no real worker acknowledgement or forced process kill"
-    },
-    "receipt_persistence": {
-      "present": true,
-      "gap": "files are written and synced but not atomically journaled, recovered, indexed, expired or disk-budgeted"
-    },
-    "adapter_execution": {
-      "present": true,
-      "gap": "capability/admission contracts exist but daemon does not perform the real provider call"
-    },
-    "native_worker": {
-      "present": true,
-      "gap": "ABI/manifest/supervisor state machine exists but no worker process, FFI bridge or model call"
-    }
+  "candidate_hardening_source_present": {
+    "message_role_classification": true,
+    "public_worker_event_denial": true,
+    "public_operator_command_denial": true,
+    "unprivileged_client_surface": true,
+    "all_role_shadow_entry_point_removed": true,
+    "global_inflight_bound": true,
+    "per_tenant_inflight_bound": true,
+    "global_running_bound": true,
+    "per_tenant_running_bound": true,
+    "active_accounting_release": true,
+    "domain_separated_token_chain": true,
+    "token_sequence_digest_and_byte_length_binding": true,
+    "accepted_token_count_validation": true,
+    "output_token_limit_enforcement": true,
+    "caller_final_digest_validation": true,
+    "running_cancel_refuses_fake_terminal_ack": true,
+    "connection_semaphore": true,
+    "frame_read_timeout": true,
+    "response_write_timeout": true,
+    "active_deadline_sweep": true,
+    "receipt_atomic_temp_write_sync_rename": true,
+    "receipt_parent_directory_sync": true,
+    "receipt_startup_recovery": true,
+    "receipt_exact_fence_lookup_after_restart": true,
+    "receipt_file_count_limit": true,
+    "receipt_disk_byte_limit": true,
+    "receipt_memory_eviction_after_durable_write": true,
+    "durable_request_id_replay_guard": true,
+    "corrupt_or_unknown_receipt_startup_rejection": true,
+    "source_truth_gate": true,
+    "workflow_path_inventory_converged": true,
+    "multi_platform_exact_head_workflow": true
   },
-  "not_implemented_or_not_executed": {
-    "public_worker_operator_authority_split": false,
+  "candidate_test_source_present": {
+    "sha256_known_vectors": true,
+    "message_role_negative_vectors": true,
+    "inflight_start_bypass_regression": true,
+    "token_count_digest_limit_faults": true,
+    "queued_and_running_cancel_classification": true,
+    "deadline_expiry_and_account_release": true,
+    "deterministic_token_chain_replay": true,
+    "same_uid_raw_uds_role_denial": true,
+    "receipt_restart_recovery": true,
+    "durable_request_id_replay_denial": true,
+    "corrupt_receipt_startup_failure": true,
+    "partial_frame_timeout_permit_release": true,
+    "receipt_budget_exhaustion_fail_closed": true
+  },
+  "source_or_runtime_gaps_remaining": {
     "daemon_minted_request_capability": false,
+    "authenticated_private_worker_channel": false,
+    "authenticated_private_operator_channel": false,
     "worker_session_nonce": false,
-    "global_inflight_limit": false,
-    "per_tenant_inflight_limit": false,
-    "global_running_limit": false,
-    "per_tenant_running_limit": false,
-    "connection_semaphore": false,
-    "frame_read_timeout": false,
-    "response_write_timeout": false,
-    "active_deadline_expiration": false,
-    "rolling_token_digest": false,
-    "accepted_token_count_validation": false,
-    "accepted_token_byte_validation": false,
-    "output_token_limit_enforced_during_stream": false,
-    "completion_digest_recomputed": false,
-    "receipt_startup_recovery": false,
-    "receipt_memory_eviction_after_durable_write": false,
-    "receipt_file_count_limit": false,
-    "receipt_disk_byte_limit": false,
-    "receipt_ttl": false,
+    "running_deadline_worker_cancel_ack_or_kill": false,
+    "receipt_ttl_or_retention_compaction": false,
     "real_provider_call_behind_daemon": false,
     "isolated_worker_process": false,
     "real_llama_cpp_abi_call": false,
@@ -113,39 +115,22 @@
     "promotion": false,
     "release": false
   },
-  "last_verified_owned_source_execution": {
-    "head": "211948a45874890d69cb60b1bdafd946da2fc77f",
-    "run_id": 33258442369,
-    "source_gate": "PASS",
-    "rust_1_95_fmt": "PASS",
-    "rust_1_95_locked_check": "PASS",
-    "rust_1_95_all_target_tests": "PASS",
-    "rust_1_95_strict_clippy": "PASS",
-    "aggregate": "PASS",
-    "classification": "EXECUTED_PASSED_QUALIFICATION_ONLY"
+  "prior_execution_evidence": {
+    "owned_source_run_id": 33258442369,
+    "owned_source_head": "211948a45874890d69cb60b1bdafd946da2fc77f",
+    "owned_source_classification": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+    "future_source_run_id": 33258442434,
+    "future_source_job_id": 99116112224,
+    "future_source_classification": "EXECUTED_FAILED"
   },
-  "last_verified_failed_future_source_execution": {
-    "head": "211948a45874890d69cb60b1bdafd946da2fc77f",
-    "run_id": 33258442434,
-    "job_id": 99116112224,
-    "classification": "EXECUTED_FAILED",
-    "missing_path_failure": true,
-    "rust_matrix_executed": false
+  "candidate_execution_evidence": {
+    "exact_head": null,
+    "exact_tree": null,
+    "source_truth": "NOT_EXECUTED",
+    "rust_linux_x64": "NOT_EXECUTED",
+    "rust_linux_arm64": "NOT_EXECUTED",
+    "rust_macos_intel": "NOT_EXECUTED"
   },
-  "next_required_packages": [
-    "INF-T1",
-    "INF-H1",
-    "INF-H2",
-    "INF-H3",
-    "INF-H4"
-  ],
-  "external_evidence_packages": [
-    "INF-2A",
-    "INF-2B",
-    "INF-2C",
-    "INF-4",
-    "INF-7"
-  ],
   "authority": {
     "qualification_only": true,
     "production_listener": false,

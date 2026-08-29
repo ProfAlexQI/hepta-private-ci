@@ -5,227 +5,156 @@
   "repository": "ProfHepta/hepta-private-ci",
   "development_pr": 73,
   "development_branch": "codex/hepta-inference-gap-closure-20260829",
-  "observed_parent_commit": "211948a45874890d69cb60b1bdafd946da2fc77f",
-  "historical_matrix": "HEPTA_INFERENCE_STAGE_MATRIX_V3.json",
-  "current_package": "INF-T0",
+  "source_binding": {
+    "mode": "tracked matrix binds observed parent; exact candidate evidence is CI-generated",
+    "observed_parent_commit": "a8f3ed8ff722e62e9ec305d392dddbac82dea686",
+    "observed_parent_tree": "ffb8a586ca433a09317dd3f3c3a2959c79d9aae1"
+  },
+  "current_packages": [
+    "INF-T1",
+    "INF-H1",
+    "INF-H2",
+    "INF-H3",
+    "INF-H4"
+  ],
   "packages": [
     {
       "id": "INF-0A",
       "name": "historical source rebind and plan freeze",
       "status": "EXECUTED_PASSED_QUALIFICATION_ONLY",
-      "historical": true,
-      "qualified": true,
-      "operator_accepted": false,
-      "promoted": false
+      "historical": true
     },
     {
       "id": "INF-0B",
       "name": "historical backend-neutral reference contracts",
       "status": "EXECUTED_PASSED_QUALIFICATION_ONLY",
-      "historical": true,
-      "qualified": true,
-      "operator_accepted": false,
-      "promoted": false
+      "historical": true
     },
     {
       "id": "INF-0C",
       "name": "historical compatibility readiness hardening",
       "status": "EXECUTED_PASSED_QUALIFICATION_ONLY",
-      "historical": true,
-      "qualified": true,
-      "operator_accepted": false,
-      "promoted": false
+      "historical": true
     },
     {
       "id": "INF-1",
       "name": "minimal owner-local UDS controller",
       "status": "EXECUTED_PASSED_QUALIFICATION_ONLY",
       "historical": true,
-      "qualified": true,
-      "new_hardening_required": true,
       "product_wired": false,
-      "runtime_activated": false,
-      "operator_accepted": false,
-      "promoted": false
+      "runtime_activated": false
     },
     {
       "id": "INF-T0",
       "name": "current truth and documentation rebase",
       "status": "SOURCE_PRESENT_NOT_RUN",
-      "blockers": [
-        "INF-B002"
-      ],
       "source_present": true,
-      "executed": false,
-      "qualified": false,
-      "operator_accepted": false,
-      "promoted": false
+      "qualified_for_current_candidate": false
     },
     {
       "id": "INF-T1",
       "name": "exact-head CI convergence",
-      "status": "EXECUTED_FAILED",
-      "blockers": [
-        "INF-B001"
-      ],
+      "status": "SOURCE_PRESENT_NOT_RUN",
       "source_present": true,
-      "executed": true,
-      "qualified": false,
-      "operator_accepted": false,
-      "promoted": false
+      "future_untracked_paths_removed": true,
+      "source_truth_gate_present": true,
+      "qualified_for_current_candidate": false
     },
     {
       "id": "INF-H1",
       "name": "public worker operator authority separation",
-      "status": "PLANNED",
-      "blockers": [
-        "INF-B003"
-      ],
-      "source_present": false,
-      "executed": false,
-      "qualified": false,
-      "operator_accepted": false,
-      "promoted": false
+      "status": "SOURCE_PRESENT_NOT_RUN",
+      "public_role_enforcement_source_present": true,
+      "all_role_shadow_entry_point_removed": true,
+      "private_worker_channel_present": false,
+      "private_operator_channel_present": false,
+      "qualified_for_current_candidate": false
     },
     {
       "id": "INF-H2",
       "name": "controller inflight running and deadline resource bounds",
-      "status": "PLANNED",
-      "blockers": [
-        "INF-B004"
-      ],
-      "source_present": false,
-      "executed": false,
-      "qualified": false,
-      "operator_accepted": false,
-      "promoted": false
+      "status": "SOURCE_PRESENT_NOT_RUN",
+      "global_and_tenant_inflight_source_present": true,
+      "global_and_tenant_running_source_present": true,
+      "active_accounting_release_source_present": true,
+      "queued_deadline_sweep_source_present": true,
+      "running_deadline_backend_ack_or_kill_present": false,
+      "qualified_for_current_candidate": false
     },
     {
       "id": "INF-H3",
       "name": "token stream integrity and output enforcement",
-      "status": "PLANNED",
-      "blockers": [
-        "INF-B005"
-      ],
-      "source_present": false,
-      "executed": false,
-      "qualified": false,
-      "operator_accepted": false,
-      "promoted": false
+      "status": "SOURCE_PRESENT_NOT_RUN",
+      "rolling_digest_source_present": true,
+      "sequence_digest_byte_length_binding_source_present": true,
+      "token_count_and_limit_enforcement_source_present": true,
+      "qualified_for_current_candidate": false
     },
     {
       "id": "INF-H4",
       "name": "connection bounds receipt journal and restart recovery",
-      "status": "PLANNED",
-      "blockers": [
-        "INF-B006",
-        "INF-B007"
-      ],
-      "source_present": false,
-      "executed": false,
-      "qualified": false,
-      "operator_accepted": false,
-      "promoted": false
+      "status": "SOURCE_PRESENT_NOT_RUN",
+      "connection_semaphore_and_timeouts_source_present": true,
+      "atomic_receipt_and_parent_sync_source_present": true,
+      "startup_recovery_source_present": true,
+      "file_and_byte_budget_source_present": true,
+      "terminal_memory_release_source_present": true,
+      "retention_ttl_or_compaction_present": false,
+      "qualified_for_current_candidate": false
     },
     {
       "id": "INF-2A",
       "name": "real Ollama or LM Studio adapter behind daemon",
       "status": "BLOCKED_EXTERNAL_DEPENDENCY",
-      "blockers": [
-        "INF-B008"
-      ],
       "contract_source_present": true,
-      "real_provider_executed": false,
-      "qualified": false,
-      "product_wired": false,
-      "runtime_activated": false,
-      "operator_accepted": false,
-      "promoted": false
+      "real_provider_executed": false
     },
     {
       "id": "INF-2B",
       "name": "isolated llama.cpp native worker",
       "status": "BLOCKED_EXTERNAL_DEPENDENCY",
-      "blockers": [
-        "INF-B009"
-      ],
       "abi_and_supervisor_contract_source_present": true,
       "worker_process_source_present": false,
-      "real_native_model_executed": false,
-      "qualified": false,
-      "operator_accepted": false,
-      "promoted": false
+      "real_native_model_executed": false
     },
     {
       "id": "INF-2C",
       "name": "worker acknowledged cancellation and forced termination",
       "status": "BLOCKED_EXTERNAL_DEPENDENCY",
-      "blockers": [
-        "INF-B010"
-      ],
-      "controller_cancel_contract_present": true,
+      "controller_fake_ack_refused": true,
       "worker_cancel_ack_executed": false,
-      "forced_process_termination_executed": false,
-      "qualified": false,
-      "operator_accepted": false,
-      "promoted": false
+      "forced_process_termination_executed": false
     },
     {
       "id": "INF-3",
       "name": "scheduler cache and resource leases",
       "status": "NOT_STARTED",
-      "blockers": [
-        "INF-B011"
-      ],
-      "source_present": false,
-      "executed": false,
-      "qualified": false,
-      "operator_accepted": false,
-      "promoted": false
+      "source_present": false
     },
     {
       "id": "INF-4",
       "name": "exact-device functional and performance qualification",
       "status": "BLOCKED_EXTERNAL_DEPENDENCY",
-      "blockers": [
-        "INF-B013"
-      ],
-      "source_present": false,
-      "hardware_receipt": false,
-      "qualified": false,
-      "operator_accepted": false,
-      "promoted": false
+      "hardware_receipt": false
     },
     {
       "id": "INF-5",
       "name": "typed product shadow integration",
       "status": "NOT_STARTED",
-      "blockers": [
-        "INF-B012"
-      ],
       "source_present": false,
       "product_wired": false,
-      "runtime_activated": false,
-      "qualified": false,
-      "operator_accepted": false,
-      "promoted": false
+      "runtime_activated": false
     },
     {
       "id": "INF-6",
       "name": "audio and image extension",
       "status": "NOT_STARTED",
-      "out_of_current_scope": true,
-      "qualified": false,
-      "operator_accepted": false,
-      "promoted": false
+      "out_of_current_scope": true
     },
     {
       "id": "INF-7",
       "name": "independent operator acceptance promotion and release",
       "status": "BLOCKED_EXTERNAL_DEPENDENCY",
-      "blockers": [
-        "INF-B013"
-      ],
       "operator_accepted": false,
       "promoted": false,
       "released": false
@@ -235,18 +164,20 @@
       "name": "remote or federated inference future lane",
       "status": "NOT_STARTED",
       "frozen": true,
-      "remote_inference": false,
-      "qualified": false,
-      "operator_accepted": false,
-      "promoted": false
+      "remote_inference": false
     }
   ],
+  "current_candidate_evidence": {
+    "exact_head": null,
+    "exact_tree": null,
+    "source_truth": "NOT_EXECUTED",
+    "rust_linux_x64": "NOT_EXECUTED",
+    "rust_linux_arm64": "NOT_EXECUTED",
+    "rust_macos_intel": "NOT_EXECUTED"
+  },
   "global_claims": {
-    "source_only_control_plane_exists": true,
-    "public_role_boundary_closed": false,
-    "resource_bounds_closed": false,
-    "token_integrity_closed": false,
-    "receipt_recovery_closed": false,
+    "source_candidate_present": true,
+    "source_candidate_qualified": false,
     "real_provider_executed": false,
     "real_native_worker_executed": false,
     "product_wired": false,

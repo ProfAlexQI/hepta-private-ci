@@ -9,105 +9,99 @@
   "development_branch": "codex/hepta-inference-gap-closure-20260829",
   "development_base_commit": "6f3286f99f5576b4cc545003889437bf388bb28a",
   "source_binding": {
-    "mode": "tracked_status_binds_observed_parent; exact head and tree are emitted by CI",
-    "observed_parent_commit": "211948a45874890d69cb60b1bdafd946da2fc77f",
-    "observed_parent_tree": "ad1879dc529f0da44ebb48d84b22e06749a8ef5a"
+    "mode": "tracked status binds the observed parent; exact candidate head/tree are emitted only by CI",
+    "observed_parent_commit": "a8f3ed8ff722e62e9ec305d392dddbac82dea686",
+    "observed_parent_tree": "ffb8a586ca433a09317dd3f3c3a2959c79d9aae1"
   },
-  "current_execution_package": "INF-T0",
+  "current_execution_packages": [
+    "INF-T1",
+    "INF-H1",
+    "INF-H2",
+    "INF-H3",
+    "INF-H4"
+  ],
   "current_status": "SOURCE_PRESENT_NOT_RUN",
   "truth_documents": {
     "active_plan": "HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V3.md",
     "stage_matrix": "HEPTA_INFERENCE_STAGE_MATRIX_V4.json",
     "implementation_status": "HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V2.json",
     "blocker_ledger": "HEPTA_INFERENCE_BLOCKER_LEDGER_V1.json",
-    "closure_evidence_contract": "HEPTA_INFERENCE_V3_CLOSURE_EVIDENCE_CONTRACT_V1.json",
-    "historical_plan": "HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V2.md",
-    "historical_current_status": "HEPTA_INFERENCE_CURRENT_STATUS_V2.json",
-    "historical_stage_matrix": "HEPTA_INFERENCE_STAGE_MATRIX_V3.json",
-    "historical_implementation_status": "HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V1.json"
+    "closure_evidence_contract": "HEPTA_INFERENCE_V3_CLOSURE_EVIDENCE_CONTRACT_V1.json"
   },
-  "verified_source_facts": {
-    "workspace_crates_present": [
-      "codex-hepta-infer-core",
-      "codex-hepta-infer-client",
-      "codex-hepta-inferd"
-    ],
-    "backend_neutral_contracts_present": true,
-    "owner_local_uds_daemon_present": true,
-    "canonical_bounded_cbor_present": true,
-    "same_user_peer_gate_present": true,
-    "shadow_client_present": true,
-    "adapter_capability_contracts_present": true,
-    "native_worker_abi_and_supervisor_contracts_present": true,
+  "candidate_source": {
+    "workflow_paths_converged_to_tracked_source": true,
+    "future_untracked_crates_removed_from_required_matrix": true,
+    "public_same_uid_worker_events_denied": true,
+    "public_same_uid_operator_restart_denied": true,
+    "unprivileged_client_api_only": true,
+    "all_role_shadow_binary_removed": true,
+    "global_inflight_accounting_present": true,
+    "per_tenant_inflight_accounting_present": true,
+    "global_running_accounting_present": true,
+    "per_tenant_running_accounting_present": true,
+    "queued_running_terminal_release_accounting_present": true,
+    "controller_token_chain_present": true,
+    "token_count_and_output_limit_enforcement_present": true,
+    "running_cancel_requires_worker_path": true,
+    "connection_semaphore_present": true,
+    "frame_read_timeout_present": true,
+    "response_write_timeout_present": true,
+    "deadline_sweep_present": true,
+    "atomic_receipt_write_and_directory_sync_present": true,
+    "receipt_startup_scan_and_exact_fence_lookup_present": true,
+    "receipt_file_and_byte_budget_present": true,
+    "terminal_controller_record_release_after_persist_present": true,
+    "durable_request_id_replay_guard_present": true
+  },
+  "known_source_gaps_after_candidate": {
+    "private_worker_capability_channel": false,
+    "private_operator_capability_channel": false,
+    "worker_session_nonce": false,
+    "receipt_ttl_or_operator_retention_compaction": false,
     "real_provider_call_behind_daemon": false,
     "isolated_native_worker_process": false,
     "real_native_model_call": false,
-    "product_wired": false,
-    "runtime_activated": false
+    "worker_cancel_ack": false,
+    "forced_process_kill_execution": false,
+    "scheduler_and_resource_lease": false,
+    "tenant_scoped_kv_prefix_cache": false,
+    "product_shadow_bridge": false,
+    "exact_device_performance_receipt": false
   },
-  "ci_evidence": {
-    "last_known_passing_owned_source_run": {
+  "prior_ci_evidence": {
+    "last_passing_owned_source_run": {
       "run_id": 33258442369,
       "head": "211948a45874890d69cb60b1bdafd946da2fc77f",
-      "source_contract": "EXECUTED_PASSED_QUALIFICATION_ONLY",
-      "rust_1_95_fmt": "EXECUTED_PASSED_QUALIFICATION_ONLY",
-      "rust_1_95_locked_check": "EXECUTED_PASSED_QUALIFICATION_ONLY",
-      "rust_1_95_all_target_tests": "EXECUTED_PASSED_QUALIFICATION_ONLY",
-      "rust_1_95_strict_clippy": "EXECUTED_PASSED_QUALIFICATION_ONLY",
-      "aggregate": "EXECUTED_PASSED_QUALIFICATION_ONLY"
+      "classification": "EXECUTED_PASSED_QUALIFICATION_ONLY"
     },
-    "last_known_failed_future_source_run": {
+    "last_failed_future_source_run": {
       "run_id": 33258442434,
       "job_id": 99116112224,
       "head": "211948a45874890d69cb60b1bdafd946da2fc77f",
-      "status": "EXECUTED_FAILED",
-      "failed_step": "Compile qualification Python",
-      "reason": "workflow referenced untracked qualification directory and script; downstream Rust matrix was skipped"
-    },
-    "msrv_assessment": "Rust 1.95 is not an evidenced blocker for the current three owned inference crates; do not change toolchain without a new exact-head failure"
+      "classification": "EXECUTED_FAILED",
+      "reason": "required workflow referenced untracked tools, script, and future crates"
+    }
   },
-  "open_blockers": [
-    "INF-B001",
-    "INF-B002",
-    "INF-B003",
-    "INF-B004",
-    "INF-B005",
-    "INF-B006",
-    "INF-B007",
-    "INF-B008",
-    "INF-B009",
-    "INF-B010",
-    "INF-B011",
-    "INF-B012",
-    "INF-B013"
-  ],
-  "next_ordered_packages": [
-    "INF-T1",
-    "INF-H1",
-    "INF-H2",
-    "INF-H3",
-    "INF-H4",
-    "INF-2A",
-    "INF-2B",
-    "INF-2C",
-    "INF-3",
-    "INF-4",
-    "INF-5",
-    "INF-7"
-  ],
-  "claims": {
-    "documents_current": true,
-    "source_qualified_for_this_status_commit": false,
-    "control_plane_source_present": true,
-    "control_plane_hardened": false,
+  "candidate_claims": {
+    "source_candidate_present": true,
+    "source_candidate_exact_head_executed": false,
+    "source_candidate_qualified": false,
     "real_provider_executed": false,
     "real_native_backend_executed": false,
     "hardware_qualified": false,
+    "product_wired": false,
+    "runtime_activated": false,
     "production_qualified": false,
     "operator_accepted": false,
     "promoted": false,
     "released": false
   },
+  "next_evidence": [
+    "V3 exact source and closed-authority contract",
+    "Rust 1.95 locked metadata/fmt/check/test/strict Clippy on linux-x64",
+    "Rust 1.95 locked metadata/fmt/check/test/strict Clippy on linux-arm64",
+    "Rust 1.95 locked metadata/fmt/check/test/strict Clippy on macos-intel"
+  ],
   "authority": {
     "qualification_only": true,
     "production_listener": false,

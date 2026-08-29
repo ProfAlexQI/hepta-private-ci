@@ -1,27 +1,21 @@
-name: Hepta inference v2 exact-head runtime closure qualification
+name: Hepta inference V3 exact-head multi-platform qualification-only
 
 on:
   pull_request:
     paths:
-      - "codex-rs/hepta-infer-backend-v1/**"
-      - "codex-rs/hepta-infer-input-lease/**"
-      - "codex-rs/hepta-infer-model-registry/**"
-      - "codex-rs/hepta-infer-product-bridge/**"
-      - "codex-rs/hepta-infer-router/**"
-      - "codex-rs/hepta-infer-scheduler/**"
-      - "codex-rs/hepta-infer-semantic/**"
-      - "codex-rs/hepta-infer-worker-host/**"
       - "codex-rs/hepta-infer-core/**"
       - "codex-rs/hepta-infer-client/**"
       - "codex-rs/hepta-inferd/**"
       - "codex-rs/Cargo.toml"
       - "codex-rs/Cargo.lock"
-      - "tools/hepta-inference-v2-qualification/**"
-      - "scripts/hepta-inference-inf0c-cancel-capability-v4.py"
-      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_V2_REMAINING_*"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V3.md"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_BLOCKER_LEDGER_V1.json"
       - "docs/hepta-vnext/inference/HEPTA_INFERENCE_CURRENT_STATUS_V3.json"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V2.json"
       - "docs/hepta-vnext/inference/HEPTA_INFERENCE_STAGE_MATRIX_V4.json"
-      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_V2_CLOSURE_EVIDENCE_CONTRACT_V1.json"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_V3_CLOSURE_EVIDENCE_CONTRACT_V1.json"
+      - "scripts/hepta-inference-v3-source-truth.py"
+      - ".github/workflows/hepta-inference-gap-closure.yml"
       - ".github/workflows/hepta-inference-v2-remaining-source.yml"
   workflow_dispatch:
 
@@ -29,7 +23,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: hepta-inference-v2-exact-head-${{ github.event.pull_request.number || github.ref }}
+  group: hepta-inference-v3-platform-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -38,9 +32,9 @@ env:
 
 jobs:
   source-contract:
-    name: Exact source, authority, and deterministic process gates
+    name: V3 exact-head source inventory and authority
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -53,102 +47,29 @@ jobs:
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
-          git rev-parse HEAD
-          git rev-parse 'HEAD^{tree}'
-
-      - name: Compile qualification Python
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m compileall -q tools/hepta-inference-v2-qualification
-          python3 -m py_compile scripts/hepta-inference-inf0c-cancel-capability-v4.py
-
-      - name: Run closed-authority source gate
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/hepta-inference-v2-qualification/source_gate.py \
-            > "$RUNNER_TEMP/hepta-inference-v2-source-gate.json"
-
-      - name: Execute native ABI sanitizer fixture
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/hepta-inference-v2-qualification/run_native_abi_sanitizer.py \
-            --output "$RUNNER_TEMP/hepta-inference-v2-native-abi-sanitizer.json"
-
-      - name: Execute hermetic qualification suite
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m pytest -q tools/hepta-inference-v2-qualification/tests \
-            | tee "$RUNNER_TEMP/hepta-inference-v2-pytest.txt"
-
-      - name: Emit exact-head source receipt
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/hepta-inference-v2-qualification/qualify.py \
-            --output "$RUNNER_TEMP/hepta-inference-v2-local-source-receipt.json"
-          python3 - "$RUNNER_TEMP/hepta-inference-v2-exact-source-receipt.json" <<'PY'
-          import hashlib
-          import json
-          import pathlib
-          import subprocess
-          import sys
-
-          def git(*args: str) -> str:
-              return subprocess.check_output(["git", *args], text=True).strip()
-
-          output = pathlib.Path(sys.argv[1])
-          source_gate = pathlib.Path(__import__("os").environ["RUNNER_TEMP"]) / "hepta-inference-v2-source-gate.json"
-          tests = pathlib.Path(__import__("os").environ["RUNNER_TEMP"]) / "hepta-inference-v2-pytest.txt"
-          native_abi = pathlib.Path(__import__("os").environ["RUNNER_TEMP"]) / "hepta-inference-v2-native-abi-sanitizer.json"
-          receipt = {
-              "schema": "hepta.inference.v2.exact_source_receipt.v1",
-              "head": git("rev-parse", "HEAD"),
-              "tree": git("rev-parse", "HEAD^{tree}"),
-              "parent": git("rev-parse", "HEAD^"),
-              "source_gate_digest": "sha256:" + hashlib.sha256(source_gate.read_bytes()).hexdigest(),
-              "test_output_digest": "sha256:" + hashlib.sha256(tests.read_bytes()).hexdigest(),
-              "native_abi_sanitizer_digest": "sha256:" + hashlib.sha256(native_abi.read_bytes()).hexdigest(),
-              "native_abi_sanitizer": "EXECUTED_PASSED_QUALIFICATION_ONLY_FIXTURE",
-              "python_source_and_process_qualification": "EXECUTED_PASSED_QUALIFICATION_ONLY",
-              "rust_qualification": "PENDING_MATRIX",
-              "native_llamacpp_inference": "NOT_EXECUTED",
-              "hardware_performance": "NOT_EXECUTED",
-              "product_default_route_changed": False,
-              "operator_accepted": False,
-              "promoted": False,
-              "released": False,
-          }
-          output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-          PY
+          python3 -m py_compile scripts/hepta-inference-v3-source-truth.py
+          python3 scripts/hepta-inference-v3-source-truth.py \
+            | tee "$RUNNER_TEMP/hepta-inference-v3-exact-source.json"
 
       - name: Upload exact source evidence
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-inference-v2-source-${{ github.event.pull_request.head.sha || github.sha }}
-          path: |
-            ${{ runner.temp }}/hepta-inference-v2-source-gate.json
-            ${{ runner.temp }}/hepta-inference-v2-pytest.txt
-            ${{ runner.temp }}/hepta-inference-v2-native-abi-sanitizer.json
-            ${{ runner.temp }}/hepta-inference-v2-local-source-receipt.json
-            ${{ runner.temp }}/hepta-inference-v2-exact-source-receipt.json
+          name: hepta-inference-v3-exact-source-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/hepta-inference-v3-exact-source.json
           if-no-files-found: error
           retention-days: 30
 
   rust-qualification:
-    name: Rust 1.95 ${{ matrix.name }}
+    name: Rust 1.95 ${{ matrix.name }} source qualification
     needs: source-contract
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: linux-arm64
-            runner: ubuntu-24.04-arm
           - name: linux-x64
             runner: ubuntu-24.04
+          - name: linux-arm64
+            runner: ubuntu-24.04-arm
           - name: macos-intel
             runner: macos-15-intel
     runs-on: ${{ matrix.runner }}
@@ -160,43 +81,18 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
 
-      - uses: ./.github/actions/setup-ci
-
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
           components: rustfmt, clippy
 
-      - name: Verify Rust 1.95-compatible Rama lock graph
+      - name: Verify locked metadata
         shell: bash
         working-directory: codex-rs
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import pathlib
-          import tomllib
-          lock = tomllib.loads(pathlib.Path("Cargo.lock").read_text(encoding="utf-8"))
-          packages = {package["name"]: package for package in lock.get("package", []) if package.get("name") in {"rama-error", "rama-macros", "rama-utils"}}
-          expected = {
-              "rama-error": ("0.3.0-alpha.4", "3c452aba1beb7e29b873ff32f304536164cffcc596e786921aea64e858ff8f40"),
-              "rama-macros": ("0.3.0-alpha.4", "ea18a110bcf21e35c5f194168e6914ccea45ffdd0fea51bc4b169fbeafef6428"),
-              "rama-utils": ("0.3.0-alpha.4", "bf28b18ba4a57f8334d7992d3f8020194ea359b246ae6f8f98b8df524c7a14ef"),
-          }
-          if set(packages) != set(expected):
-              raise SystemExit(f"Rama lock package set drift: {sorted(packages)}")
-          for name, (version, checksum) in expected.items():
-              package = packages[name]
-              if package.get("version") != version or package.get("checksum") != checksum:
-                  raise SystemExit(f"Rama lock drift for {name}: version={package.get('version')} checksum={package.get('checksum')}")
-          print("PASS_HEPTA_INFERENCE_RAMA_ALPHA4_RUST_1_95_LOCK")
-          PY
-
-      - name: Verify workspace lock is unchanged
-        shell: bash
-        working-directory: codex-rs
-        run: |
-          set -euo pipefail
-          cargo metadata --locked --no-deps --format-version 1 > "$RUNNER_TEMP/hepta-inference-v2-metadata.json"
-          test -z "$(git status --porcelain -- Cargo.lock Cargo.toml)"
+          cargo metadata --locked --no-deps --format-version 1 \
+            > "$RUNNER_TEMP/hepta-inference-v3-metadata-${{ matrix.name }}.json"
+          test -z "$(git status --porcelain -- Cargo.toml Cargo.lock)"
 
       - name: Check exact owned formatting
         shell: bash
@@ -206,55 +102,29 @@ jobs:
           cargo fmt \
             -p codex-hepta-infer-core \
             -p codex-hepta-infer-client \
-            -p codex-hepta-inferd \
-            -p codex-hepta-infer-backend-v1 \
-            -p codex-hepta-infer-input-lease \
-            -p codex-hepta-infer-model-registry \
-            -p codex-hepta-infer-product-bridge \
-            -p codex-hepta-infer-router \
-            -p codex-hepta-infer-scheduler \
-            -p codex-hepta-infer-semantic \
-            -p codex-hepta-infer-worker-host \
-            -- --check
+            -p codex-hepta-inferd -- --check
 
-      - name: Locked compile
+      - name: Locked all-target compile
         shell: bash
         working-directory: codex-rs
         run: |
           set -euo pipefail
-          cargo check --locked \
+          cargo check --locked --all-targets \
             -p codex-hepta-infer-core \
             -p codex-hepta-infer-client \
-            -p codex-hepta-inferd \
-            -p codex-hepta-infer-backend-v1 \
-            -p codex-hepta-infer-input-lease \
-            -p codex-hepta-infer-model-registry \
-            -p codex-hepta-infer-product-bridge \
-            -p codex-hepta-infer-router \
-            -p codex-hepta-infer-scheduler \
-            -p codex-hepta-infer-semantic \
-            -p codex-hepta-infer-worker-host
+            -p codex-hepta-inferd
 
-      - name: Locked tests
+      - name: Locked all-target tests
         shell: bash
         working-directory: codex-rs
         run: |
           set -euo pipefail
-          cargo test --locked \
+          cargo test --locked --all-targets \
             -p codex-hepta-infer-core \
             -p codex-hepta-infer-client \
-            -p codex-hepta-inferd \
-            -p codex-hepta-infer-backend-v1 \
-            -p codex-hepta-infer-input-lease \
-            -p codex-hepta-infer-model-registry \
-            -p codex-hepta-infer-product-bridge \
-            -p codex-hepta-infer-router \
-            -p codex-hepta-infer-scheduler \
-            -p codex-hepta-infer-semantic \
-            -p codex-hepta-infer-worker-host \
-            -- --test-threads=1
+            -p codex-hepta-inferd
 
-      - name: Strict owned-source Clippy
+      - name: Strict all-target Clippy
         shell: bash
         working-directory: codex-rs
         run: |
@@ -262,55 +132,48 @@ jobs:
           cargo clippy --locked --all-targets --no-deps \
             -p codex-hepta-infer-core \
             -p codex-hepta-infer-client \
-            -p codex-hepta-inferd \
-            -p codex-hepta-infer-backend-v1 \
-            -p codex-hepta-infer-input-lease \
-            -p codex-hepta-infer-model-registry \
-            -p codex-hepta-infer-product-bridge \
-            -p codex-hepta-infer-router \
-            -p codex-hepta-infer-scheduler \
-            -p codex-hepta-infer-semantic \
-            -p codex-hepta-infer-worker-host \
-            -- -D warnings
+            -p codex-hepta-inferd -- -D warnings
 
-      - name: Emit Rust qualification receipt
+      - name: Emit platform receipt
         shell: bash
         run: |
           set -euo pipefail
-          receipt="$RUNNER_TEMP/hepta-inference-v2-rust-${{ matrix.name }}.txt"
+          receipt="$RUNNER_TEMP/hepta-inference-v3-rust-${{ matrix.name }}.txt"
           {
             echo "head=$(git rev-parse HEAD)"
             echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "parent=$(git rev-parse HEAD^)"
             echo "runner_os=$RUNNER_OS"
             echo "runner_arch=$RUNNER_ARCH"
             echo "rustc=$(rustc --version)"
             echo "cargo=$(cargo --version)"
             echo "metadata_locked=PASS"
             echo "fmt=PASS"
-            echo "check=PASS"
-            echo "test=PASS"
+            echo "check_all_targets=PASS"
+            echo "test_all_targets=PASS"
             echo "clippy_all_targets_no_deps_D_warnings=PASS"
             echo "qualification_only=true"
-            echo "native_llamacpp_inference=false"
-            echo "hardware_performance=false"
+            echo "real_provider_executed=false"
+            echo "real_native_model_executed=false"
+            echo "hardware_qualified=false"
             echo "product_default_route_changed=false"
             echo "operator_accepted=false"
             echo "promoted=false"
             echo "released=false"
           } | tee "$receipt"
 
-      - name: Upload Rust evidence
+      - name: Upload platform evidence
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-inference-v2-rust-${{ matrix.name }}-${{ github.event.pull_request.head.sha || github.sha }}
+          name: hepta-inference-v3-rust-${{ matrix.name }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
-            ${{ runner.temp }}/hepta-inference-v2-metadata.json
-            ${{ runner.temp }}/hepta-inference-v2-rust-${{ matrix.name }}.txt
+            ${{ runner.temp }}/hepta-inference-v3-metadata-${{ matrix.name }}.json
+            ${{ runner.temp }}/hepta-inference-v3-rust-${{ matrix.name }}.txt
           if-no-files-found: error
           retention-days: 30
 
   aggregate:
-    name: Qualification-only aggregate
+    name: V3 multi-platform qualification-only aggregate
     if: always()
     needs:
       - source-contract
@@ -318,7 +181,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Enforce all exact-head source gates
+      - name: Enforce every required exact-head source job
         shell: bash
         env:
           SOURCE_CONTRACT: ${{ needs.source-contract.result }}
@@ -327,10 +190,11 @@ jobs:
           set -euo pipefail
           test "$SOURCE_CONTRACT" = success
           test "$RUST_QUALIFICATION" = success
-          echo "PASS_HEPTA_INFERENCE_V2_EXACT_HEAD_RUNTIME_CLOSURE_QUALIFICATION_ONLY"
-          echo "native_llamacpp_inference=false"
-          echo "hardware_performance=false"
-          echo "product_default_route_changed=false"
-          echo "operator_accepted=false"
-          echo "promoted=false"
-          echo "released=false"
+          echo PASS_HEPTA_INFERENCE_V3_MULTI_PLATFORM_QUALIFICATION_ONLY
+          echo real_provider_executed=false
+          echo real_native_model_executed=false
+          echo hardware_qualified=false
+          echo product_default_route_changed=false
+          echo operator_accepted=false
+          echo promoted=false
+          echo released=false

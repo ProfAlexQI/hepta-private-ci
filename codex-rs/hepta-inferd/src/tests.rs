@@ -1,12 +1,15 @@
 use std::io;
 use std::path::Path;
 use std::time::Duration;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use codex_hepta_infer_core::AgentId;
 use codex_hepta_infer_core::AuthoritySnapshot;
 use codex_hepta_infer_core::ClientMessage;
 use codex_hepta_infer_core::Digest;
 use codex_hepta_infer_core::InferenceRequest;
+use codex_hepta_infer_core::LifecycleState;
 use codex_hepta_infer_core::RequestId;
 use codex_hepta_infer_core::RequestIdentity;
 use codex_hepta_infer_core::ResourceBudgetId;
@@ -16,7 +19,7 @@ use codex_hepta_infer_core::TenantId;
 use codex_hepta_infer_core::WorkspaceId;
 use codex_uds::UnixStream;
 use tempfile::TempDir;
-use tokio::io::AsyncReadExt;
+use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -39,19 +42,19 @@ fn digest(fill: char) -> Digest {
     )))
 }
 
-fn request(tuple: Digest) -> InferenceRequest {
+fn request(tuple: Digest, request_id: &str, deadline_unix_ms: u64) -> InferenceRequest {
     InferenceRequest {
         identity: RequestIdentity {
             tenant_id: must(TenantId::parse("tenant-a")),
             workspace_id: must(WorkspaceId::parse("workspace-a")),
             agent_id: must(AgentId::parse("agent-a")),
             task_id: must(TaskId::parse("task-a")),
-            request_id: must(RequestId::parse("request-a")),
+            request_id: must(RequestId::parse(request_id)),
         },
         agent_generation: 1,
         request_generation: 1,
         cancel_generation: 0,
-        deadline_unix_ms: u64::MAX,
+        deadline_unix_ms,
         model_tuple_digest: tuple,
         policy_digest: digest('b'),
         resource_budget_id: must(ResourceBudgetId::parse("budget-a")),
@@ -62,32 +65,31 @@ fn request(tuple: Digest) -> InferenceRequest {
     }
 }
 
-struct Harness {
-    _temp: TempDir,
-    config: DaemonConfig,
+fn config(temp: &TempDir) -> DaemonConfig {
+    DaemonConfig::qualification_only(
+        temp.path().join("socket").join("infer.sock"),
+        temp.path().join("receipts"),
+        digest('a'),
+    )
+}
+
+struct RunningDaemon {
     shutdown: Option<oneshot::Sender<()>>,
     task: Option<JoinHandle<io::Result<()>>>,
 }
 
-impl Harness {
-    async fn start() -> Self {
-        let temp = must(TempDir::new());
-        let socket_dir = temp.path().join("socket");
-        let socket_path = socket_dir.join("infer.sock");
-        let receipt_dir = temp.path().join("receipts");
-        let config = DaemonConfig::qualification_only(socket_path, receipt_dir, digest('a'));
+impl RunningDaemon {
+    async fn start(config: DaemonConfig) -> Self {
+        let socket_path = config.socket_path.clone();
         let (shutdown, receiver) = oneshot::channel();
-        let task_config = config.clone();
         let task = tokio::spawn(async move {
-            serve_with_shutdown(task_config, async {
+            serve_with_shutdown(config, async {
                 let _ = receiver.await;
             })
             .await
         });
-        wait_for_socket(&config.socket_path).await;
+        wait_for_socket(&socket_path).await;
         Self {
-            _temp: temp,
-            config,
             shutdown: Some(shutdown),
             task: Some(task),
         }
@@ -98,16 +100,14 @@ impl Harness {
             let _ = shutdown.send(());
         }
         if let Some(task) = self.task.take() {
-            match must(timeout(Duration::from_secs(5), task).await) {
-                Ok(Ok(())) => {}
-                Ok(Err(error)) => panic!("daemon failed: {error}"),
-                Err(error) => panic!("daemon task failed: {error}"),
-            }
+            let joined = must(timeout(Duration::from_secs(5), task).await);
+            let daemon_result = must(joined);
+            must(daemon_result);
         }
     }
 }
 
-impl Drop for Harness {
+impl Drop for RunningDaemon {
     fn drop(&mut self) {
         if let Some(shutdown) = self.shutdown.take() {
             let _ = shutdown.send(());
@@ -121,6 +121,7 @@ impl Drop for Harness {
 async fn wait_for_socket(path: &Path) {
     for _ in 0..200 {
         if UnixStream::connect(path).await.is_ok() {
+            sleep(Duration::from_millis(10)).await;
             return;
         }
         sleep(Duration::from_millis(10)).await;
@@ -128,175 +129,324 @@ async fn wait_for_socket(path: &Path) {
     panic!("socket did not become ready: {}", path.display());
 }
 
-async fn exchange(path: &Path, message: ClientMessage) -> ServerMessage {
-    let mut stream = must(UnixStream::connect(path).await);
-    let payload = must(message.encode_canonical());
-    let length = must(u32::try_from(payload.len()));
-    must(stream.write_all(&length.to_be_bytes()).await);
-    must(stream.write_all(&payload).await);
-    must(stream.flush().await);
-    let mut length_bytes = [0u8; 4];
-    must(stream.read_exact(&mut length_bytes).await);
-    let response_length = must(usize::try_from(u32::from_be_bytes(length_bytes)));
-    let mut response = vec![0u8; response_length];
-    must(stream.read_exact(&mut response).await);
-    must(ServerMessage::decode_canonical(&response))
+async fn raw_exchange(path: &Path, request: ClientMessage) -> io::Result<ServerMessage> {
+    let mut stream = UnixStream::connect(path).await?;
+    stream.ensure_current_user_peer()?;
+    let bytes = request.encode_canonical().map_err(infer_error_to_io)?;
+    write_frame(&mut stream, &bytes, MAX_FRAME_BYTES).await?;
+    let response = read_frame(&mut stream, MAX_FRAME_BYTES).await?;
+    ServerMessage::decode_canonical(&response).map_err(infer_error_to_io)
+}
+
+fn assert_error(response: ServerMessage, expected: &str) {
+    match response {
+        ServerMessage::Error { code } => assert_eq!(code, expected),
+        other => panic!("expected error {expected}, received {other:?}"),
+    }
+}
+
+fn current_time_ms() -> u64 {
+    let elapsed = must(SystemTime::now().duration_since(UNIX_EPOCH));
+    must(u64::try_from(elapsed.as_millis()))
+}
+
+#[test]
+fn daemon_configuration_rejects_unbounded_or_invalid_resources() {
+    let temp = must(TempDir::new());
+    let mut invalid = config(&temp);
+    invalid.max_connections = 0;
+    assert!(invalid.validate().is_err());
+
+    let mut invalid = config(&temp);
+    invalid.max_receipt_files = 0;
+    assert!(invalid.validate().is_err());
+
+    let mut invalid = config(&temp);
+    invalid.max_receipt_bytes = 1;
+    assert!(invalid.validate().is_err());
+
+    let mut invalid = config(&temp);
+    invalid.frame_read_timeout = Duration::ZERO;
+    assert!(invalid.validate().is_err());
 }
 
 #[tokio::test]
-async fn same_user_uds_round_trip_and_terminal_receipt_are_bounded() {
-    let mut harness = Harness::start().await;
-    assert_eq!(
-        exchange(
-            &harness.config.socket_path,
-            ClientMessage::Ping { nonce: 7 }
+async fn same_uid_public_peer_cannot_publish_worker_or_operator_messages() {
+    let temp = must(TempDir::new());
+    let config = config(&temp);
+    let mut daemon = RunningDaemon::start(config.clone()).await;
+    let request_id = must(RequestId::parse("request-role-denial"));
+
+    let privileged = [
+        ClientMessage::Start {
+            request_id: request_id.clone(),
+            request_generation: 1,
+            backend_generation: 1,
+        },
+        ClientMessage::Token {
+            request_id: request_id.clone(),
+            request_generation: 1,
+            backend_generation: 1,
+            sequence: 1,
+            token_digest: digest('d'),
+            token_byte_length: 1,
+        },
+        ClientMessage::Complete {
+            request_id: request_id.clone(),
+            request_generation: 1,
+            backend_generation: 1,
+            sequence: 1,
+            result_digest: digest('e'),
+            output_tokens: 1,
+        },
+        ClientMessage::RestartBackend {
+            expected_generation: 1,
+        },
+    ];
+    for message in privileged {
+        assert_error(
+            must(raw_exchange(&config.socket_path, message).await),
+            "INF_ROLE_NOT_AUTHORIZED",
+        );
+    }
+    assert!(matches!(
+        must(
+            raw_exchange(
+                &config.socket_path,
+                ClientMessage::Ping { nonce: 91 },
+            )
+            .await
+        ),
+        ServerMessage::Pong { nonce: 91 }
+    ));
+    daemon.stop().await;
+}
+
+#[tokio::test]
+async fn receipt_is_atomic_memory_bounded_and_recovered_across_restart() {
+    let temp = must(TempDir::new());
+    let config = config(&temp);
+    let mut first = RunningDaemon::start(config.clone()).await;
+    let request_id = must(RequestId::parse("request-recovery"));
+    let admitted = must(
+        raw_exchange(
+            &config.socket_path,
+            ClientMessage::Admit(request(digest('a'), request_id.as_str(), u64::MAX)),
         )
         .await,
-        ServerMessage::Pong { nonce: 7 }
     );
-
-    let accepted = exchange(
-        &harness.config.socket_path,
-        ClientMessage::Admit(request(digest('a'))),
-    )
-    .await;
-    let backend_generation = match accepted {
+    let generation = match admitted {
         ServerMessage::Accepted(event) => event.backend_generation,
         other => panic!("unexpected admission response: {other:?}"),
     };
-    let request_id = must(RequestId::parse("request-a"));
-    let cancelled = exchange(
-        &harness.config.socket_path,
-        ClientMessage::Cancel {
-            request_id: request_id.clone(),
-            request_generation: 1,
-            cancel_generation: 1,
-            backend_generation,
-        },
-    )
-    .await;
-    let cancelled_receipt = match cancelled {
-        ServerMessage::Receipt(receipt) => {
-            assert_eq!(receipt.cancel_generation, 1);
-            assert!(receipt.result_digest.is_none());
-            assert_eq!(
-                receipt.authority,
-                AuthoritySnapshot::qualification_only_closed()
-            );
-            receipt
-        }
-        other => panic!("unexpected cancellation response: {other:?}"),
-    };
-
-    let queried = exchange(
-        &harness.config.socket_path,
-        ClientMessage::GetReceipt {
-            request_id: request_id.clone(),
-            request_generation: 1,
-            backend_generation,
-            minimum_sequence: cancelled_receipt.last_sequence,
-        },
-    )
-    .await;
-    assert_eq!(queried, ServerMessage::Receipt(cancelled_receipt.clone()));
-    assert_eq!(
-        exchange(
-            &harness.config.socket_path,
-            ClientMessage::GetReceipt {
-                request_id,
+    let receipt = match must(
+        raw_exchange(
+            &config.socket_path,
+            ClientMessage::Cancel {
+                request_id: request_id.clone(),
                 request_generation: 1,
-                backend_generation,
-                minimum_sequence: cancelled_receipt.last_sequence + 1,
+                cancel_generation: 1,
+                backend_generation: generation,
             },
         )
         .await,
-        ServerMessage::Error {
-            code: "INF_RECEIPT_SEQUENCE_NOT_REACHED".to_owned(),
-        }
+    ) {
+        ServerMessage::Receipt(receipt) => receipt,
+        other => panic!("unexpected cancel response: {other:?}"),
+    };
+    assert_eq!(receipt.terminal_state, LifecycleState::Cancelled);
+    let snapshot = must(
+        raw_exchange(&config.socket_path, ClientMessage::Snapshot).await,
     );
-
-    let mut entries = must(tokio::fs::read_dir(&harness.config.receipt_dir).await);
-    let mut receipt_files = Vec::new();
-    while let Some(entry) = must(entries.next_entry().await) {
-        receipt_files.push(entry.path());
+    match snapshot {
+        ServerMessage::Snapshot(snapshot) => assert_eq!(snapshot.terminal_receipts, 0),
+        other => panic!("unexpected snapshot response: {other:?}"),
     }
-    assert_eq!(
-        receipt_files.len(),
-        1,
-        "read-only query must not persist twice"
-    );
-    let bytes = must(tokio::fs::read(&receipt_files[0]).await);
-    assert!(bytes.len() <= codex_hepta_infer_core::MAX_FRAME_BYTES);
-    assert!(!String::from_utf8_lossy(&bytes).contains("prompt"));
-    harness.stop().await;
-}
+    first.stop().await;
 
-#[tokio::test]
-async fn second_controller_instance_fails_closed() {
-    let mut harness = Harness::start().await;
-    let (_shutdown, receiver) = oneshot::channel::<()>();
-    let second = timeout(
-        Duration::from_secs(5),
-        serve_with_shutdown(harness.config.clone(), async {
-            let _ = receiver.await;
-        }),
-    )
-    .await;
-    let error = match must(second) {
-        Ok(()) => panic!("a second controller instance unexpectedly started"),
-        Err(error) => error,
-    };
-    assert_eq!(error.kind(), io::ErrorKind::AddrInUse);
-    harness.stop().await;
-}
-
-#[tokio::test]
-async fn controlled_restart_increments_backend_generation() {
-    let mut harness = Harness::start().await;
-    let first = exchange(&harness.config.socket_path, ClientMessage::Snapshot).await;
-    let first_generation = match first {
-        ServerMessage::Snapshot(snapshot) => snapshot.backend_generation,
-        other => panic!("unexpected first snapshot: {other:?}"),
-    };
-    harness.stop().await;
-
-    let (shutdown, receiver) = oneshot::channel();
-    let config = harness.config.clone();
-    let socket = config.socket_path.clone();
-    let task = tokio::spawn(async move {
-        serve_with_shutdown(config, async {
-            let _ = receiver.await;
-        })
-        .await
-    });
-    wait_for_socket(&socket).await;
-    let second = exchange(&socket, ClientMessage::Snapshot).await;
-    let second_generation = match second {
-        ServerMessage::Snapshot(snapshot) => snapshot.backend_generation,
-        other => panic!("unexpected second snapshot: {other:?}"),
-    };
-    assert_eq!(second_generation, first_generation + 1);
-    let _ = shutdown.send(());
-    match must(timeout(Duration::from_secs(5), task).await) {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) => panic!("restarted daemon failed: {error}"),
-        Err(error) => panic!("restarted daemon task failed: {error}"),
-    }
-}
-
-#[tokio::test]
-async fn truncated_connection_is_connection_local() {
-    let mut harness = Harness::start().await;
-    let stream = must(UnixStream::connect(&harness.config.socket_path).await);
-    drop(stream);
-    sleep(Duration::from_millis(25)).await;
-    assert_eq!(
-        exchange(
-            &harness.config.socket_path,
-            ClientMessage::Ping { nonce: 19 }
+    let mut second = RunningDaemon::start(config.clone()).await;
+    let recovered = must(
+        raw_exchange(
+            &config.socket_path,
+            ClientMessage::GetReceipt {
+                request_id: request_id.clone(),
+                request_generation: 1,
+                backend_generation: generation,
+                minimum_sequence: receipt.last_sequence,
+            },
         )
         .await,
-        ServerMessage::Pong { nonce: 19 }
     );
-    harness.stop().await;
+    assert_eq!(recovered, ServerMessage::Receipt(receipt.clone()));
+    assert_error(
+        must(
+            raw_exchange(
+                &config.socket_path,
+                ClientMessage::Admit(request(digest('a'), request_id.as_str(), u64::MAX)),
+            )
+            .await
+        ),
+        "INF_DUPLICATE_REQUEST",
+    );
+    second.stop().await;
+
+    let mut entries = must(fs::read_dir(&config.receipt_dir).await);
+    let mut files = 0usize;
+    while must(entries.next_entry().await).is_some() {
+        files += 1;
+    }
+    assert_eq!(files, 1);
+}
+
+#[tokio::test]
+async fn corrupt_receipt_store_fails_closed_on_startup() {
+    let temp = must(TempDir::new());
+    let config = config(&temp);
+    must(codex_uds::prepare_private_socket_directory(&config.receipt_dir).await);
+    must(fs::write(config.receipt_dir.join("receipt-corrupt.cbor"), b"not-cbor").await);
+    let error = serve_with_shutdown(config, std::future::pending::<()>())
+        .await
+        .expect_err("corrupt receipt store must fail startup");
+    assert_eq!(error.kind(), ErrorKind::InvalidData);
+}
+
+#[tokio::test]
+async fn partial_frame_times_out_and_releases_the_connection_permit() {
+    let temp = must(TempDir::new());
+    let mut config = config(&temp);
+    config.max_connections = 1;
+    config.frame_read_timeout = Duration::from_millis(50);
+    let mut daemon = RunningDaemon::start(config.clone()).await;
+
+    let mut stalled = must(UnixStream::connect(&config.socket_path).await);
+    must(stalled.write_all(&[0]).await);
+    sleep(Duration::from_millis(150)).await;
+    drop(stalled);
+
+    assert!(matches!(
+        must(
+            raw_exchange(
+                &config.socket_path,
+                ClientMessage::Ping { nonce: 73 },
+            )
+            .await
+        ),
+        ServerMessage::Pong { nonce: 73 }
+    ));
+    daemon.stop().await;
+}
+
+#[tokio::test]
+async fn deadline_sweep_persists_queued_failure_and_releases_capacity() {
+    let temp = must(TempDir::new());
+    let mut config = config(&temp);
+    config.controller.max_queue = 1;
+    config.controller.max_per_tenant = 1;
+    config.deadline_sweep_interval = Duration::from_millis(10);
+    let mut daemon = RunningDaemon::start(config.clone()).await;
+    let request_id = must(RequestId::parse("request-deadline"));
+    let admitted = must(
+        raw_exchange(
+            &config.socket_path,
+            ClientMessage::Admit(request(
+                digest('a'),
+                request_id.as_str(),
+                current_time_ms() + 75,
+            )),
+        )
+        .await,
+    );
+    let generation = match admitted {
+        ServerMessage::Accepted(event) => event.backend_generation,
+        other => panic!("unexpected admission response: {other:?}"),
+    };
+
+    let mut terminal = None;
+    for _ in 0..50 {
+        sleep(Duration::from_millis(10)).await;
+        let response = must(
+            raw_exchange(
+                &config.socket_path,
+                ClientMessage::GetReceipt {
+                    request_id: request_id.clone(),
+                    request_generation: 1,
+                    backend_generation: generation,
+                    minimum_sequence: 2,
+                },
+            )
+            .await,
+        );
+        match response {
+            ServerMessage::Receipt(receipt) => {
+                terminal = Some(receipt);
+                break;
+            }
+            ServerMessage::Error { code }
+                if code == "INF_REQUEST_NOT_TERMINAL" || code == "INF_UNKNOWN_REQUEST" => {}
+            other => panic!("unexpected receipt polling response: {other:?}"),
+        }
+    }
+    let receipt = terminal.expect("deadline sweep must create a terminal receipt");
+    assert_eq!(receipt.terminal_state, LifecycleState::FailedClosed);
+    assert!(!receipt.forced_worker_termination);
+
+    assert!(matches!(
+        must(
+            raw_exchange(
+                &config.socket_path,
+                ClientMessage::Admit(request(
+                    digest('a'),
+                    "request-after-deadline",
+                    u64::MAX,
+                )),
+            )
+            .await
+        ),
+        ServerMessage::Accepted(_)
+    ));
+    daemon.stop().await;
+}
+
+#[tokio::test]
+async fn receipt_store_budget_is_enforced_before_second_terminal_write() {
+    let temp = must(TempDir::new());
+    let mut config = config(&temp);
+    config.max_receipt_files = 1;
+    let mut daemon = RunningDaemon::start(config.clone()).await;
+
+    for index in 0..2 {
+        let request_id = must(RequestId::parse(&format!("request-budget-{index}")));
+        let admitted = must(
+            raw_exchange(
+                &config.socket_path,
+                ClientMessage::Admit(request(digest('a'), request_id.as_str(), u64::MAX)),
+            )
+            .await,
+        );
+        let generation = match admitted {
+            ServerMessage::Accepted(event) => event.backend_generation,
+            other => panic!("unexpected admission response: {other:?}"),
+        };
+        let result = raw_exchange(
+            &config.socket_path,
+            ClientMessage::Cancel {
+                request_id,
+                request_generation: 1,
+                cancel_generation: 1,
+                backend_generation: generation,
+            },
+        )
+        .await;
+        if index == 0 {
+            assert!(matches!(must(result), ServerMessage::Receipt(_)));
+        } else {
+            assert!(result.is_err());
+        }
+    }
+
+    let task = daemon.task.take().expect("daemon task must be present");
+    let joined = must(timeout(Duration::from_secs(5), task).await);
+    let error = must(joined).expect_err("receipt budget exhaustion must stop the daemon");
+    assert_eq!(error.kind(), ErrorKind::Other);
+    daemon.shutdown.take();
 }

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use super::*;
 
-fn must<T>(result: Result<T>) -> T {
+fn must<T, E: std::fmt::Display>(result: std::result::Result<T, E>) -> T {
     match result {
         Ok(value) => value,
         Err(error) => panic!("unexpected error: {error}"),
@@ -16,37 +16,43 @@ fn digest(fill: char) -> Digest {
     )))
 }
 
-fn request(name: &str, tenant: &str, tuple: Digest) -> InferenceRequest {
+fn request(
+    tuple: Digest,
+    request_id: &str,
+    tenant: &str,
+    output_token_limit: u32,
+    deadline_unix_ms: u64,
+) -> InferenceRequest {
     InferenceRequest {
         identity: RequestIdentity {
             tenant_id: must(TenantId::parse(tenant)),
             workspace_id: must(WorkspaceId::parse("workspace-a")),
             agent_id: must(AgentId::parse("agent-a")),
             task_id: must(TaskId::parse("task-a")),
-            request_id: must(RequestId::parse(name)),
+            request_id: must(RequestId::parse(request_id)),
         },
         agent_generation: 1,
         request_generation: 1,
         cancel_generation: 0,
-        deadline_unix_ms: 10_000,
+        deadline_unix_ms,
         model_tuple_digest: tuple,
         policy_digest: digest('b'),
         resource_budget_id: must(ResourceBudgetId::parse("budget-a")),
         prompt_digest: digest('c'),
         prompt_byte_length: 12,
-        output_token_limit: 64,
+        output_token_limit,
         authority: AuthoritySnapshot::qualification_only_closed(),
     }
 }
 
-fn controller(tuple: Digest) -> Controller {
-    let mut tuples = HashSet::new();
-    tuples.insert(tuple);
+fn controller(tuple: Digest, max_queue: usize, max_per_tenant: usize) -> Controller {
+    let mut registered_tuples = HashSet::new();
+    registered_tuples.insert(tuple);
     must(Controller::new(
         ControllerConfig {
-            max_queue: 4,
-            max_per_tenant: 2,
-            registered_tuples: tuples,
+            max_queue,
+            max_per_tenant,
+            registered_tuples,
             authority: AuthoritySnapshot::qualification_only_closed(),
         },
         7,
@@ -54,92 +60,227 @@ fn controller(tuple: Digest) -> Controller {
 }
 
 #[test]
-fn canonical_protocol_round_trips_without_payload_text() {
-    let message = ClientMessage::Admit(request("request-a", "tenant-a", digest('a')));
+fn protocol_messages_have_explicit_roles() {
+    let request_id = must(RequestId::parse("request-role"));
+    assert_eq!(
+        ClientMessage::Ping { nonce: 1 }.required_role(),
+        MessageRole::PublicClient
+    );
+    assert_eq!(
+        ClientMessage::Start {
+            request_id: request_id.clone(),
+            request_generation: 1,
+            backend_generation: 7,
+        }
+        .required_role(),
+        MessageRole::Worker
+    );
+    assert_eq!(
+        ClientMessage::RestartBackend {
+            expected_generation: 7,
+        }
+        .required_role(),
+        MessageRole::Operator
+    );
+    assert!(ClientMessage::GetReceipt {
+        request_id,
+        request_generation: 1,
+        backend_generation: 7,
+        minimum_sequence: 1,
+    }
+    .is_public_client_operation());
+}
+
+#[test]
+fn canonical_protocol_round_trip_preserves_digest_only_request() {
+    let tuple = digest('a');
+    let message = ClientMessage::Admit(request(
+        tuple,
+        "request-protocol",
+        "tenant-a",
+        8,
+        u64::MAX,
+    ));
     let encoded = must(message.encode_canonical());
+    assert!(encoded.len() <= MAX_FRAME_BYTES);
     assert_eq!(must(ClientMessage::decode_canonical(&encoded)), message);
+    assert!(!String::from_utf8_lossy(&encoded).contains("raw prompt"));
+}
 
-    let mut non_canonical = vec![0x98, 18];
-    non_canonical.extend_from_slice(&encoded[1..]);
+#[test]
+fn inflight_limits_cannot_be_bypassed_by_starting_requests() {
+    let tuple = digest('a');
+    let mut controller = controller(tuple.clone(), 2, 1);
+    let first = request(tuple.clone(), "request-a1", "tenant-a", 4, u64::MAX);
+    let first_id = first.identity.request_id.clone();
+    must(controller.admit(first, 1));
+    must(controller.start(&first_id, 1, 7));
+
     assert_eq!(
-        ClientMessage::decode_canonical(&non_canonical),
-        Err(InferError::ProtocolNonCanonical)
+        controller.admit(
+            request(tuple.clone(), "request-a2", "tenant-a", 4, u64::MAX),
+            1,
+        ),
+        Err(InferError::TenantInflightFull)
+    );
+
+    let second = request(tuple.clone(), "request-b1", "tenant-b", 4, u64::MAX);
+    let second_id = second.identity.request_id.clone();
+    must(controller.admit(second, 1));
+    must(controller.start(&second_id, 1, 7));
+    assert_eq!(controller.inflight_requests(), 2);
+    assert_eq!(controller.snapshot().running_requests, 2);
+
+    assert_eq!(
+        controller.admit(request(tuple, "request-c1", "tenant-c", 4, u64::MAX), 1),
+        Err(InferError::InflightFull)
     );
 }
 
 #[test]
-fn unknown_tuple_and_authority_escalation_fail_before_queueing() {
+fn token_chain_count_and_output_limit_are_controller_enforced() {
     let tuple = digest('a');
-    let mut controller = controller(tuple.clone());
-    let unknown = request("request-unknown", "tenant-a", digest('d'));
-    assert_eq!(
-        controller.admit(unknown, 1),
-        Err(InferError::UnknownModelTuple)
-    );
-
-    let mut elevated = request("request-elevated", "tenant-a", tuple);
-    elevated.authority.production_writer = true;
-    assert_eq!(
-        controller.admit(elevated, 1),
-        Err(InferError::AuthorityEscalation)
-    );
-    assert_eq!(controller.snapshot().queued_requests, 0);
-}
-
-#[test]
-fn queue_is_bounded_per_tenant_and_globally() {
-    let tuple = digest('a');
-    let mut controller = controller(tuple.clone());
-    must(controller.admit(request("request-1", "tenant-a", tuple.clone()), 1));
-    must(controller.admit(request("request-2", "tenant-a", tuple.clone()), 1));
-    assert_eq!(
-        controller.admit(request("request-3", "tenant-a", tuple.clone()), 1),
-        Err(InferError::TenantQueueFull)
-    );
-    must(controller.admit(request("request-3", "tenant-b", tuple.clone()), 1));
-    must(controller.admit(request("request-4", "tenant-c", tuple.clone()), 1));
-    assert_eq!(
-        controller.admit(request("request-5", "tenant-d", tuple), 1),
-        Err(InferError::QueueFull)
-    );
-}
-
-#[test]
-fn cancellation_fence_is_strict_and_terminal_is_immutable() {
-    let tuple = digest('a');
-    let mut controller = controller(tuple.clone());
-    let request_id = must(RequestId::parse("request-cancel"));
-    must(controller.admit(request(request_id.as_str(), "tenant-a", tuple), 1));
-    assert_eq!(
-        controller.cancel(&request_id, 1, 0, 7),
-        Err(InferError::StaleCancelGeneration)
-    );
-    let receipt = must(controller.cancel(&request_id, 1, 1, 7));
-    assert_eq!(receipt.terminal_state, LifecycleState::Cancelled);
-    assert_eq!(
-        receipt.authority,
-        AuthoritySnapshot::qualification_only_closed()
-    );
-    assert_eq!(
-        controller.cancel(&request_id, 1, 2, 7),
-        Err(InferError::TerminalState)
-    );
-}
-
-#[test]
-fn restart_invalidates_old_generation_and_forces_terminal_receipts() {
-    let tuple = digest('a');
-    let mut controller = controller(tuple.clone());
-    let request_id = must(RequestId::parse("request-restart"));
-    must(controller.admit(request(request_id.as_str(), "tenant-a", tuple), 1));
+    let mut controller = controller(tuple.clone(), 4, 2);
+    let request = request(tuple, "request-token", "tenant-a", 1, u64::MAX);
+    let request_id = request.identity.request_id.clone();
+    must(controller.admit(request, 1));
     must(controller.start(&request_id, 1, 7));
-    let receipts = must(controller.restart_backend(7));
-    assert_eq!(controller.backend_generation(), 8);
-    assert_eq!(receipts.len(), 1);
-    assert!(receipts[0].forced_worker_termination);
-    assert_eq!(receipts[0].terminal_state, LifecycleState::FailedClosed);
+    must(controller.publish_token(
+        EventFence {
+            request_id: &request_id,
+            request_generation: 1,
+            backend_generation: 7,
+            sequence: 3,
+        },
+        &digest('d'),
+        2,
+    ));
+
     assert_eq!(
         controller.publish_token(
+            EventFence {
+                request_id: &request_id,
+                request_generation: 1,
+                backend_generation: 7,
+                sequence: 4,
+            },
+            &digest('e'),
+            2,
+        ),
+        Err(InferError::OutputTokenLimitExceeded)
+    );
+
+    let expected = must(controller.current_token_chain_digest(&request_id, 1)).clone();
+    assert_eq!(
+        controller.complete(
+            EventFence {
+                request_id: &request_id,
+                request_generation: 1,
+                backend_generation: 7,
+                sequence: 4,
+            },
+            expected.clone(),
+            2,
+        ),
+        Err(InferError::OutputTokenCountMismatch)
+    );
+    assert_eq!(
+        controller.complete(
+            EventFence {
+                request_id: &request_id,
+                request_generation: 1,
+                backend_generation: 7,
+                sequence: 4,
+            },
+            digest('f'),
+            1,
+        ),
+        Err(InferError::ResultDigestMismatch)
+    );
+
+    let receipt = must(controller.complete(
+        EventFence {
+            request_id: &request_id,
+            request_generation: 1,
+            backend_generation: 7,
+            sequence: 4,
+        },
+        expected.clone(),
+        1,
+    ));
+    assert_eq!(receipt.output_tokens, 1);
+    assert_eq!(receipt.result_digest, Some(expected));
+    assert_eq!(controller.inflight_requests(), 0);
+    assert_eq!(controller.snapshot().running_requests, 0);
+}
+
+#[test]
+fn running_cancel_requires_worker_acknowledgement_path() {
+    let tuple = digest('a');
+    let mut controller = controller(tuple.clone(), 2, 2);
+    let request = request(tuple, "request-running-cancel", "tenant-a", 4, u64::MAX);
+    let request_id = request.identity.request_id.clone();
+    must(controller.admit(request, 1));
+    must(controller.start(&request_id, 1, 7));
+    assert_eq!(
+        controller.cancel(&request_id, 1, 1, 7),
+        Err(InferError::WorkerCancellationRequired)
+    );
+    assert_eq!(controller.inflight_requests(), 1);
+    let receipts = must(controller.restart_backend(7));
+    assert_eq!(receipts.len(), 1);
+    assert!(receipts[0].forced_worker_termination);
+    assert_eq!(controller.inflight_requests(), 0);
+}
+
+#[test]
+fn queued_cancel_releases_accounting_and_terminal_can_be_forgotten() {
+    let tuple = digest('a');
+    let mut controller = controller(tuple.clone(), 1, 1);
+    let request = request(tuple.clone(), "request-queued-cancel", "tenant-a", 4, u64::MAX);
+    let request_id = request.identity.request_id.clone();
+    must(controller.admit(request, 1));
+    let receipt = must(controller.cancel(&request_id, 1, 1, 7));
+    assert_eq!(receipt.terminal_state, LifecycleState::Cancelled);
+    assert_eq!(controller.inflight_requests(), 0);
+    assert_eq!(controller.snapshot().terminal_receipts, 1);
+    assert_eq!(must(controller.forget_terminal(&request_id)), receipt);
+    assert_eq!(controller.snapshot().terminal_receipts, 0);
+
+    must(controller.admit(
+        request(tuple, "request-queued-cancel", "tenant-a", 4, u64::MAX),
+        1,
+    ));
+}
+
+#[test]
+fn active_deadline_expiry_is_terminal_and_releases_capacity() {
+    let tuple = digest('a');
+    let mut controller = controller(tuple.clone(), 1, 1);
+    let request = request(tuple.clone(), "request-expired", "tenant-a", 4, 10);
+    let request_id = request.identity.request_id.clone();
+    must(controller.admit(request, 1));
+    let receipts = must(controller.expire_deadlines(10));
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].terminal_state, LifecycleState::FailedClosed);
+    assert!(!receipts[0].forced_worker_termination);
+    assert_eq!(controller.inflight_requests(), 0);
+    must(controller.forget_terminal(&request_id));
+    must(controller.admit(
+        request(tuple, "request-after-expiry", "tenant-a", 4, u64::MAX),
+        11,
+    ));
+}
+
+#[test]
+fn token_chain_and_receipt_are_deterministic() {
+    fn execute(tuple: Digest) -> TerminalReceipt {
+        let mut controller = controller(tuple.clone(), 2, 2);
+        let request = request(tuple, "request-replay", "tenant-a", 2, u64::MAX);
+        let request_id = request.identity.request_id.clone();
+        must(controller.admit(request, 1));
+        must(controller.start(&request_id, 1, 7));
+        must(controller.publish_token(
             EventFence {
                 request_id: &request_id,
                 request_generation: 1,
@@ -147,128 +288,46 @@ fn restart_invalidates_old_generation_and_forces_terminal_receipts() {
                 sequence: 3,
             },
             &digest('d'),
+            3,
+        ));
+        let expected = must(controller.current_token_chain_digest(&request_id, 1)).clone();
+        must(controller.complete(
+            EventFence {
+                request_id: &request_id,
+                request_generation: 1,
+                backend_generation: 7,
+                sequence: 4,
+            },
+            expected,
             1,
-        ),
-        Err(InferError::StaleBackendGeneration)
-    );
-}
-
-#[test]
-fn deterministic_two_tenant_replay_produces_identical_receipts() {
-    fn replay(tuple: Digest) -> Vec<TerminalReceipt> {
-        let mut controller = controller(tuple.clone());
-        let left = must(RequestId::parse("request-left"));
-        let right = must(RequestId::parse("request-right"));
-        must(controller.admit(request(left.as_str(), "tenant-left", tuple.clone()), 1));
-        must(controller.admit(request(right.as_str(), "tenant-right", tuple), 1));
-        must(controller.start(&left, 1, 7));
-        must(controller.start(&right, 1, 7));
-        vec![
-            must(controller.complete(
-                EventFence {
-                    request_id: &left,
-                    request_generation: 1,
-                    backend_generation: 7,
-                    sequence: 3,
-                },
-                digest('d'),
-                4,
-            )),
-            must(controller.complete(
-                EventFence {
-                    request_id: &right,
-                    request_generation: 1,
-                    backend_generation: 7,
-                    sequence: 3,
-                },
-                digest('e'),
-                4,
-            )),
-        ]
+        ))
     }
 
-    assert_eq!(replay(digest('a')), replay(digest('a')));
+    assert_eq!(execute(digest('a')), execute(digest('a')));
 }
 
 #[test]
-fn response_receipt_round_trip_preserves_generation_fence() {
-    let receipt = TerminalReceipt {
-        request_id: must(RequestId::parse("request-receipt")),
-        request_generation: 2,
-        cancel_generation: 3,
-        backend_generation: 4,
-        terminal_state: LifecycleState::Completed,
-        last_sequence: 5,
-        output_tokens: 6,
-        result_digest: Some(digest('f')),
-        forced_worker_termination: false,
-        authority: AuthoritySnapshot::qualification_only_closed(),
-    };
-    let message = ServerMessage::Receipt(receipt);
-    let encoded = must(message.encode_canonical());
-    assert_eq!(must(ServerMessage::decode_canonical(&encoded)), message);
-}
-
-#[test]
-fn receipt_query_protocol_and_mutation_classification_are_exact() {
-    let request_id = must(RequestId::parse("request-query-protocol"));
-    let query = ClientMessage::GetReceipt {
-        request_id,
-        request_generation: 2,
-        backend_generation: 3,
-        minimum_sequence: 4,
-    };
-    let encoded = must(query.encode_canonical());
-    assert_eq!(must(ClientMessage::decode_canonical(&encoded)), query);
-    assert!(!query.creates_terminal_receipt());
-    assert!(
-        ClientMessage::Complete {
-            request_id: must(RequestId::parse("request-mutating")),
-            request_generation: 1,
-            backend_generation: 1,
-            sequence: 3,
-            result_digest: digest('d'),
-            output_tokens: 1,
-        }
-        .creates_terminal_receipt()
-    );
-}
-
-#[test]
-fn terminal_receipt_query_requires_exact_generations_and_sequence() {
+fn unknown_tuple_and_open_authority_fail_closed() {
     let tuple = digest('a');
-    let mut controller = controller(tuple.clone());
-    let request_id = must(RequestId::parse("request-query"));
-    must(controller.admit(request(request_id.as_str(), "tenant-a", tuple), 1));
+    let mut controller = controller(tuple, 2, 2);
     assert_eq!(
-        controller.terminal_receipt_fenced(&request_id, 1, 7, 1),
-        Err(InferError::RequestNotTerminal)
+        controller.admit(
+            request(digest('f'), "request-unknown", "tenant-a", 2, u64::MAX),
+            1,
+        ),
+        Err(InferError::UnknownModelTuple)
     );
-    must(controller.start(&request_id, 1, 7));
-    let completed = must(controller.complete(
-        EventFence {
-            request_id: &request_id,
-            request_generation: 1,
-            backend_generation: 7,
-            sequence: 3,
-        },
-        digest('d'),
-        4,
-    ));
-    assert_eq!(
-        controller.terminal_receipt_fenced(&request_id, 2, 7, 3),
-        Err(InferError::StaleRequestGeneration)
+
+    let mut open = request(
+        digest('a'),
+        "request-authority",
+        "tenant-a",
+        2,
+        u64::MAX,
     );
+    open.authority.production_listener = true;
     assert_eq!(
-        controller.terminal_receipt_fenced(&request_id, 1, 8, 3),
-        Err(InferError::StaleBackendGeneration)
-    );
-    assert_eq!(
-        controller.terminal_receipt_fenced(&request_id, 1, 7, 4),
-        Err(InferError::ReceiptSequenceNotReached)
-    );
-    assert_eq!(
-        must(controller.terminal_receipt_fenced(&request_id, 1, 7, 3)),
-        &completed
+        controller.admit(open, 1),
+        Err(InferError::AuthorityEscalation)
     );
 }

@@ -5,9 +5,11 @@
 
 mod adapter;
 mod controller;
+mod hashing;
 mod identity;
 mod model;
 mod protocol;
+mod security;
 mod worker;
 
 use std::fmt;
@@ -45,6 +47,7 @@ pub use protocol::MAX_FRAME_BYTES;
 pub use protocol::PROTOCOL_VERSION;
 pub use protocol::ServerMessage;
 pub use protocol::token_fence;
+pub use security::MessageRole;
 pub use worker::AbiByteSlice;
 pub use worker::AbiOwnedBuffer;
 pub use worker::BackendAbiContract;
@@ -86,11 +89,14 @@ pub enum InferError {
     EmptyPrompt,
     EmptyToken,
     GenerationOverflow,
+    InflightFull,
     InvalidControllerConfig,
     InvalidDigest,
     InvalidGeneration,
     InvalidIdentity(&'static str),
     InvalidTransition,
+    OutputTokenCountMismatch,
+    OutputTokenLimitExceeded,
     ProtocolBound,
     ProtocolIndefinite,
     ProtocolNonCanonical,
@@ -103,15 +109,21 @@ pub enum InferError {
     QueueInvariant,
     ReceiptSequenceNotReached,
     RequestNotTerminal,
+    ResultDigestMismatch,
+    RoleNotAuthorized,
+    RunningFull,
     SequenceOverflow,
     StaleBackendGeneration,
     StaleCancelGeneration,
     StaleOrNonMonotonicSequence,
     StaleRequestGeneration,
+    TenantInflightFull,
     TenantQueueFull,
+    TenantRunningFull,
     TerminalState,
     UnknownModelTuple,
     UnknownRequest,
+    WorkerCancellationRequired,
 }
 
 impl InferError {
@@ -131,11 +143,14 @@ impl InferError {
             Self::EmptyPrompt => "INF_EMPTY_PROMPT",
             Self::EmptyToken => "INF_EMPTY_TOKEN",
             Self::GenerationOverflow => "INF_GENERATION_OVERFLOW",
+            Self::InflightFull => "INF_INFLIGHT_FULL",
             Self::InvalidControllerConfig => "INF_INVALID_CONTROLLER_CONFIG",
             Self::InvalidDigest => "INF_INVALID_DIGEST",
             Self::InvalidGeneration => "INF_INVALID_GENERATION",
             Self::InvalidIdentity(_) => "INF_INVALID_IDENTITY",
             Self::InvalidTransition => "INF_INVALID_TRANSITION",
+            Self::OutputTokenCountMismatch => "INF_OUTPUT_TOKEN_COUNT_MISMATCH",
+            Self::OutputTokenLimitExceeded => "INF_OUTPUT_TOKEN_LIMIT_EXCEEDED",
             Self::ProtocolBound => "INF_PROTOCOL_BOUND",
             Self::ProtocolIndefinite => "INF_PROTOCOL_INDEFINITE",
             Self::ProtocolNonCanonical => "INF_PROTOCOL_NON_CANONICAL",
@@ -148,15 +163,21 @@ impl InferError {
             Self::QueueInvariant => "INF_QUEUE_INVARIANT",
             Self::ReceiptSequenceNotReached => "INF_RECEIPT_SEQUENCE_NOT_REACHED",
             Self::RequestNotTerminal => "INF_REQUEST_NOT_TERMINAL",
+            Self::ResultDigestMismatch => "INF_RESULT_DIGEST_MISMATCH",
+            Self::RoleNotAuthorized => "INF_ROLE_NOT_AUTHORIZED",
+            Self::RunningFull => "INF_RUNNING_FULL",
             Self::SequenceOverflow => "INF_SEQUENCE_OVERFLOW",
             Self::StaleBackendGeneration => "INF_STALE_BACKEND_GENERATION",
             Self::StaleCancelGeneration => "INF_STALE_CANCEL_GENERATION",
             Self::StaleOrNonMonotonicSequence => "INF_STALE_OR_NON_MONOTONIC_SEQUENCE",
             Self::StaleRequestGeneration => "INF_STALE_REQUEST_GENERATION",
+            Self::TenantInflightFull => "INF_TENANT_INFLIGHT_FULL",
             Self::TenantQueueFull => "INF_TENANT_QUEUE_FULL",
+            Self::TenantRunningFull => "INF_TENANT_RUNNING_FULL",
             Self::TerminalState => "INF_TERMINAL_STATE",
             Self::UnknownModelTuple => "INF_UNKNOWN_MODEL_TUPLE",
             Self::UnknownRequest => "INF_UNKNOWN_REQUEST",
+            Self::WorkerCancellationRequired => "INF_WORKER_CANCELLATION_REQUIRED",
         }
     }
 }

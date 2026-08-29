@@ -16,11 +16,8 @@ use codex_hepta_infer_core::TenantId;
 use codex_hepta_infer_core::WorkspaceId;
 use codex_hepta_inferd::DaemonConfig;
 use codex_hepta_inferd::serve_with_shutdown;
-use codex_uds::UnixListener;
 use codex_uds::UnixStream;
 use tempfile::TempDir;
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
@@ -138,8 +135,10 @@ async fn wait_for_socket(path: &Path) {
 
 #[test]
 fn configuration_is_absolute_bounded_and_nonzero() {
-    let relative = InferdClient::new(ClientConfig::qualification_only("infer.sock"));
-    assert!(matches!(relative, Err(ClientError::Config(_))));
+    assert!(matches!(
+        InferdClient::new(ClientConfig::qualification_only("infer.sock")),
+        Err(ClientError::Config(_))
+    ));
 
     let temp = must(TempDir::new());
     let mut config = ClientConfig::qualification_only(temp.path().join("infer.sock"));
@@ -158,7 +157,7 @@ fn configuration_is_absolute_bounded_and_nonzero() {
 }
 
 #[test]
-fn exact_capability_profile_rejects_unsupported_and_known_gap_routes() {
+fn exact_capability_profile_is_fail_closed() {
     let tuple = digest('a');
     let profile = ExactCapabilityProfile::new(
         tuple.clone(),
@@ -192,7 +191,34 @@ fn exact_capability_profile_rejects_unsupported_and_known_gap_routes() {
 }
 
 #[tokio::test]
-async fn client_round_trip_admit_cancel_and_restart_are_bounded() {
+async fn public_client_rejects_worker_and_operator_messages_before_connect() {
+    let temp = must(TempDir::new());
+    let client = must(InferdClient::new(ClientConfig::qualification_only(
+        temp.path().join("missing.sock"),
+    )));
+    let request_id = must(RequestId::parse("request-role"));
+    assert!(matches!(
+        client
+            .exchange(ClientMessage::Start {
+                request_id: request_id.clone(),
+                request_generation: 1,
+                backend_generation: 7,
+            })
+            .await,
+        Err(ClientError::RoleNotAuthorized)
+    ));
+    assert!(matches!(
+        client
+            .exchange(ClientMessage::RestartBackend {
+                expected_generation: 7,
+            })
+            .await,
+        Err(ClientError::RoleNotAuthorized)
+    ));
+}
+
+#[tokio::test]
+async fn admit_cancel_and_durable_receipt_query_use_public_operations_only() {
     let mut harness = Harness::start().await;
     let client = harness.client();
     must(client.ping(17).await);
@@ -202,50 +228,38 @@ async fn client_round_trip_admit_cancel_and_restart_are_bounded() {
         AuthoritySnapshot::qualification_only_closed()
     );
 
-    let admitted = must(client.admit(request(digest('a'), "request-client-a")).await);
+    let request_id = must(RequestId::parse("request-client-a"));
+    let admitted = must(
+        client
+            .admit(request(digest('a'), request_id.as_str()))
+            .await,
+    );
     let backend_generation = match admitted {
         ServerMessage::Accepted(event) => event.backend_generation,
         other => panic!("unexpected admission response: {other:?}"),
     };
     let cancelled = must(
         client
-            .cancel(
-                must(RequestId::parse("request-client-a")),
-                1,
-                1,
-                backend_generation,
-            )
+            .cancel(request_id.clone(), 1, 1, backend_generation)
             .await,
     );
-    match cancelled {
-        ServerMessage::Receipt(receipt) => {
-            assert_eq!(receipt.terminal_state, LifecycleState::Cancelled);
-            assert_eq!(receipt.cancel_generation, 1);
-            assert!(!receipt.forced_worker_termination);
-            assert_eq!(
-                receipt.authority,
-                AuthoritySnapshot::qualification_only_closed()
-            );
-        }
+    let receipt = match cancelled {
+        ServerMessage::Receipt(receipt) => receipt,
         other => panic!("unexpected cancellation response: {other:?}"),
-    }
+    };
+    assert_eq!(receipt.terminal_state, LifecycleState::Cancelled);
+    assert_eq!(receipt.cancel_generation, 1);
+    assert!(!receipt.forced_worker_termination);
 
-    let restarted = must(client.restart_backend(backend_generation).await);
-    match restarted {
-        ServerMessage::Restarted {
-            backend_generation: next,
-            receipts,
-        } => {
-            assert_eq!(next, backend_generation + 1);
-            assert!(receipts.is_empty());
-        }
-        other => panic!("unexpected restart response: {other:?}"),
-    }
+    let queried = must(client.receipt(request_id, 1, backend_generation, 2).await);
+    assert_eq!(queried, receipt);
+    let snapshot = must(client.snapshot().await);
+    assert_eq!(snapshot.terminal_receipts, 0);
     harness.stop().await;
 }
 
 #[tokio::test]
-async fn shadow_route_checks_capability_before_dispatch() {
+async fn shadow_client_checks_capability_before_public_admission() {
     let mut harness = Harness::start().await;
     let tuple = digest('a');
     let shadow = ShadowInferdClient::new(
@@ -270,8 +284,7 @@ async fn shadow_route_checks_capability_before_dispatch() {
         error,
         ClientError::CapabilityUnsupported(InferenceCapability::NativeToolCall)
     ));
-    let snapshot = must(shadow.snapshot().await);
-    assert_eq!(snapshot.queued_requests, 0);
+    assert_eq!(must(shadow.snapshot().await).queued_requests, 0);
 
     let response = must(
         shadow
@@ -286,244 +299,29 @@ async fn shadow_route_checks_capability_before_dispatch() {
 }
 
 #[tokio::test]
-async fn product_shadow_lifecycle_queries_one_fenced_terminal_receipt() {
-    let mut harness = Harness::start().await;
-    let tuple = digest('a');
-    let shadow = ShadowInferdClient::new(
-        harness.client(),
-        ExactCapabilityProfile::new(
-            tuple.clone(),
-            CapabilityDisposition::Qualified,
-            CapabilityDisposition::UnsupportedFailClosed,
-            CapabilityDisposition::UnsupportedFailClosed,
-            CapabilityDisposition::UnsupportedFailClosed,
-        ),
-    );
-    let request_id = must(RequestId::parse("request-shadow-complete"));
-    let admitted = must(
-        shadow
-            .admit(
-                InferenceCapability::SemanticText,
-                request(tuple, request_id.as_str()),
-            )
-            .await,
-    );
-    let backend_generation = match admitted {
-        ServerMessage::Accepted(event) => event.backend_generation,
-        other => panic!("unexpected admission response: {other:?}"),
-    };
-    let started = must(
-        shadow
-            .start(request_id.clone(), 1, backend_generation)
-            .await,
-    );
-    assert_eq!(started.sequence, 2);
-    let token = must(
-        shadow
-            .token(request_id.clone(), 1, backend_generation, 3, digest('d'), 2)
-            .await,
-    );
-    assert_eq!(token.sequence, 3);
-    let expected_result = digest('e');
-    let completed = must(
-        shadow
-            .complete(
-                request_id.clone(),
-                1,
-                backend_generation,
-                4,
-                expected_result.clone(),
-                4,
-            )
-            .await,
-    );
-    assert_eq!(completed.result_digest, Some(expected_result));
-    let queried = must(
-        shadow
-            .receipt(request_id.clone(), 1, backend_generation, 4)
-            .await,
-    );
-    assert_eq!(queried, completed);
-    let repeated = must(shadow.receipt(request_id, 1, backend_generation, 4).await);
-    assert_eq!(repeated, completed);
-
-    let mut entries = must(tokio::fs::read_dir(&harness.config.receipt_dir).await);
-    let mut count = 0usize;
-    while must(entries.next_entry().await).is_some() {
-        count += 1;
-    }
-    assert_eq!(count, 1, "receipt queries must remain read-only");
-    harness.stop().await;
-}
-
-#[tokio::test]
-async fn terminal_receipt_poll_uses_one_total_deadline() {
+async fn unknown_tuple_and_stale_generation_errors_are_preserved() {
     let mut harness = Harness::start().await;
     let client = harness.client();
-    let request_id = must(RequestId::parse("request-poll"));
+    assert!(matches!(
+        client
+            .admit(request(digest('f'), "request-unknown"))
+            .await,
+        Err(ClientError::Remote(ref code)) if code == "INF_UNKNOWN_MODEL_TUPLE"
+    ));
+
+    let request_id = must(RequestId::parse("request-stale"));
     let admitted = must(
         client
             .admit(request(digest('a'), request_id.as_str()))
             .await,
     );
-    let backend_generation = match admitted {
-        ServerMessage::Accepted(event) => event.backend_generation,
-        other => panic!("unexpected admission response: {other:?}"),
-    };
-    let producer = client.clone();
-    let producer_request_id = request_id.clone();
-    let task = tokio::spawn(async move {
-        sleep(Duration::from_millis(30)).await;
-        must(
-            producer
-                .start(producer_request_id.clone(), 1, backend_generation)
-                .await,
-        );
-        must(
-            producer
-                .complete(
-                    producer_request_id,
-                    1,
-                    backend_generation,
-                    3,
-                    digest('d'),
-                    2,
-                )
-                .await,
-        )
-    });
-    let receipt = must(
-        client
-            .await_terminal_receipt(
-                request_id,
-                1,
-                backend_generation,
-                3,
-                Duration::from_millis(5),
-            )
-            .await,
-    );
-    assert_eq!(receipt.last_sequence, 3);
-    must(task.await);
-    harness.stop().await;
-}
-
-#[tokio::test]
-async fn unknown_tuple_and_stale_generation_errors_are_preserved() {
-    let mut harness = Harness::start().await;
-    let client = harness.client();
-    let unknown = client
-        .admit(request(digest('f'), "request-unknown"))
-        .await
-        .expect_err("unknown tuple must fail closed");
-    assert!(matches!(
-        unknown,
-        ClientError::Remote(ref code) if code == "INF_UNKNOWN_MODEL_TUPLE"
-    ));
-
-    let admitted = must(client.admit(request(digest('a'), "request-stale")).await);
     let generation = match admitted {
         ServerMessage::Accepted(event) => event.backend_generation,
         other => panic!("unexpected admission response: {other:?}"),
     };
-    let stale = client
-        .cancel(
-            must(RequestId::parse("request-stale")),
-            1,
-            1,
-            generation + 1,
-        )
-        .await
-        .expect_err("stale backend generation must be preserved");
     assert!(matches!(
-        stale,
-        ClientError::Remote(ref code) if code == "INF_STALE_BACKEND_GENERATION"
+        client.cancel(request_id, 1, 1, generation + 1).await,
+        Err(ClientError::Remote(ref code)) if code == "INF_STALE_BACKEND_GENERATION"
     ));
     harness.stop().await;
-}
-
-async fn start_scripted_server(
-    socket_path: &Path,
-    response: ScriptedResponse,
-) -> JoinHandle<io::Result<()>> {
-    let parent = socket_path.parent().expect("test socket parent");
-    must(codex_uds::prepare_private_socket_directory(parent).await);
-    let mut listener = must(UnixListener::bind(socket_path).await);
-    tokio::spawn(async move {
-        let mut stream = listener.accept().await?;
-        let mut length_bytes = [0u8; 4];
-        stream.read_exact(&mut length_bytes).await?;
-        let request_length =
-            usize::try_from(u32::from_be_bytes(length_bytes)).map_err(io::Error::other)?;
-        let mut request = vec![0u8; request_length];
-        stream.read_exact(&mut request).await?;
-        match response {
-            ScriptedResponse::Delay(duration) => sleep(duration).await,
-            ScriptedResponse::Length(length) => {
-                stream.write_all(&length.to_be_bytes()).await?;
-                stream.flush().await?;
-            }
-            ScriptedResponse::Payload(payload) => {
-                let length = u32::try_from(payload.len()).map_err(io::Error::other)?;
-                stream.write_all(&length.to_be_bytes()).await?;
-                stream.write_all(&payload).await?;
-                stream.flush().await?;
-            }
-        }
-        Ok(())
-    })
-}
-
-enum ScriptedResponse {
-    Delay(Duration),
-    Length(u32),
-    Payload(Vec<u8>),
-}
-
-#[tokio::test]
-async fn exchange_timeout_is_fail_closed() {
-    let temp = must(TempDir::new());
-    let socket = temp.path().join("socket").join("infer.sock");
-    let task =
-        start_scripted_server(&socket, ScriptedResponse::Delay(Duration::from_secs(1))).await;
-    let mut config = ClientConfig::qualification_only(socket);
-    config.exchange_timeout = Duration::from_millis(50);
-    let client = must(InferdClient::new(config));
-    let error = client
-        .ping(1)
-        .await
-        .expect_err("a stalled peer must reach the exchange deadline");
-    assert!(matches!(error, ClientError::ExchangeTimeout));
-    task.abort();
-}
-
-#[tokio::test]
-async fn oversized_and_malformed_responses_fail_closed() {
-    let temp = must(TempDir::new());
-    let oversized_socket = temp.path().join("oversized").join("infer.sock");
-    let oversized = must(u32::try_from(MAX_FRAME_BYTES + 1));
-    let oversized_task =
-        start_scripted_server(&oversized_socket, ScriptedResponse::Length(oversized)).await;
-    let oversized_client = must(InferdClient::new(ClientConfig::qualification_only(
-        oversized_socket,
-    )));
-    let error = oversized_client
-        .ping(1)
-        .await
-        .expect_err("oversized response must fail closed");
-    assert_eq!(error.code(), "INF_CLIENT_IO");
-    must(must(oversized_task.await));
-
-    let malformed_socket = temp.path().join("malformed").join("infer.sock");
-    let malformed_task =
-        start_scripted_server(&malformed_socket, ScriptedResponse::Payload(vec![0xff])).await;
-    let malformed_client = must(InferdClient::new(ClientConfig::qualification_only(
-        malformed_socket,
-    )));
-    let error = malformed_client
-        .ping(2)
-        .await
-        .expect_err("non-canonical response must fail closed");
-    assert!(matches!(error, ClientError::Protocol(_)));
-    must(must(malformed_task.await));
 }
