@@ -1,0 +1,5 @@
+candidate_commit=7f38e460fab501112cc9ff9a0e9a4fbc4169e011
+candidate_tree=a1c07a0700aedf47c82e490a47670f56cdd1533d
+purpose=rerun exact hosted source/native/platform/mobile closure
+product_authority=false
+release_authority=false
