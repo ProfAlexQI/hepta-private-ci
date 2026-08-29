@@ -1,0 +1,315 @@
+name: Hepta Intelligence A0 exact-head source evidence
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-a0-authority-gap-closure-*"
+  pull_request:
+    paths:
+      - ".github/workflows/hepta-intelligence-a0-authority.yml"
+      - ".github/workflows/hepta-intelligence-execution-spec.yml"
+      - ".github/workflows/hepta-intelligence-master-plan.yml"
+      - "plans/hepta-intelligence/AGENTS.md"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json"
+      - "scripts/hepta-intelligence-current-truth.py"
+      - "scripts/verify-hepta-intelligence-a0-authority.py"
+      - "scripts/verify-hepta-intelligence-document-authority.py"
+      - "scripts/verify-hepta-intelligence-master-plan.py"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+  EXPECTED_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  EXPECTED_PARENT: c768bcbeb4c1168088d2499828c24da521a2a73a
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  SOURCE_ARTIFACT_NAME: hepta-intelligence-a0-source-${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  source-evidence:
+    name: A0 exact-head source evidence producer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ARTIFACT_DIR: artifacts/hepta-intelligence-a0-source
+    steps:
+      - name: Checkout exact source candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify exact identity and one-parent topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" = "$EXPECTED_BRANCH"
+          test "$(git rev-list --count "$EXPECTED_PARENT"..HEAD)" = 1
+
+      - name: Compile strict validators
+        run: |
+          python3 -m py_compile             scripts/hepta-intelligence-current-truth.py             scripts/verify-hepta-intelligence-a0-authority.py             scripts/verify-hepta-intelligence-document-authority.py             scripts/verify-hepta-intelligence-master-plan.py
+
+      - name: Run canonical plan, document, truth and compatibility gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-document-authority.py
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
+            python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
+          done
+
+      - name: Produce authority-negative source receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          GITHUB_SHA="$EXPECTED_HEAD_SHA"             python3 scripts/verify-hepta-intelligence-a0-authority.py             | tee "$ARTIFACT_DIR/a0-source-evidence-receipt.json"
+          python3 scripts/hepta-intelligence-current-truth.py --compact             > "$ARTIFACT_DIR/current-truth-1.json"
+          python3 scripts/hepta-intelligence-current-truth.py --compact             > "$ARTIFACT_DIR/current-truth-2.json"
+          cmp "$ARTIFACT_DIR/current-truth-1.json" "$ARTIFACT_DIR/current-truth-2.json"
+          cp "$ARTIFACT_DIR/current-truth-1.json" "$ARTIFACT_DIR/current-truth.json"
+
+      - name: Bind workflow and changed-path manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$ARTIFACT_DIR/source-manifest.json" <<'PY'
+          import hashlib, json, pathlib, subprocess, sys
+          root = pathlib.Path.cwd()
+          workflow = root / ".github/workflows/hepta-intelligence-a0-authority.yml"
+          changed = sorted(subprocess.check_output(
+              ["git", "diff", "--name-only", "HEAD^", "HEAD"], text=True
+          ).splitlines())
+          manifest = {
+              "schema": "hepta_intelligence_a0_source_manifest_v2",
+              "head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(),
+              "parent": subprocess.check_output(["git", "rev-parse", "HEAD^"], text=True).strip(),
+              "workflow_path": workflow.relative_to(root).as_posix(),
+              "workflow_blob_sha": subprocess.check_output(["git", "rev-parse", "HEAD:.github/workflows/hepta-intelligence-a0-authority.yml"], text=True).strip(),
+              "workflow_content_sha256": hashlib.sha256(workflow.read_bytes()).hexdigest(),
+              "changed_paths": changed,
+              "changed_paths_sha256": hashlib.sha256(("\n".join(changed) + "\n").encode()).hexdigest(),
+              "source_writeback": False,
+              "a0_candidate_qualified": False,
+          }
+          pathlib.Path(sys.argv[1]).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+          PY
+          git diff --check HEAD^ HEAD
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Upload exact-head source evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ env.SOURCE_ARTIFACT_NAME }}
+          path: artifacts/hepta-intelligence-a0-source/**
+          if-no-files-found: error
+          retention-days: 30
+
+  observe-source-evidence:
+    name: A0 cross-job exact-head evidence observer
+    needs: source-evidence
+    if: ${{ always() && needs.source-evidence.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      API_DIR: artifacts/hepta-intelligence-a0-api
+      SOURCE_DIR: artifacts/hepta-intelligence-a0-extracted
+      FINAL_DIR: artifacts/hepta-intelligence-a0-observer
+    steps:
+      - name: Checkout exact candidate for observer identity
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Fetch completed producer metadata and archive
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$API_DIR" "$SOURCE_DIR" "$FINAL_DIR"
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          headers=(
+            -H "Authorization: Bearer ${GH_TOKEN}"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+          curl -fsSL "${headers[@]}" "$api/actions/runs/${GITHUB_RUN_ID}" > "$API_DIR/run.json"
+          curl -fsSL "${headers[@]}" "$api/actions/runs/${GITHUB_RUN_ID}/jobs?filter=latest&per_page=100" > "$API_DIR/jobs.json"
+          curl -fsSL "${headers[@]}" "$api/actions/runs/${GITHUB_RUN_ID}/artifacts?per_page=100" > "$API_DIR/artifacts.json"
+          artifact_url="$(python3 - "$API_DIR/artifacts.json" <<'PY'
+          import json, os, sys
+          artifacts = json.load(open(sys.argv[1], encoding="utf-8"))["artifacts"]
+          found = [a for a in artifacts if a["name"] == os.environ["SOURCE_ARTIFACT_NAME"]]
+          assert len(found) == 1 and not found[0]["expired"]
+          print(found[0]["archive_download_url"])
+          PY
+          )"
+          curl -fsSL -L "${headers[@]}" "$artifact_url" -o "$API_DIR/source-artifact.zip"
+
+      - name: Verify archive digest and safely extract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$API_DIR" "$SOURCE_DIR" <<'PY'
+          import hashlib, json, os, pathlib, stat, sys, zipfile
+          api_dir = pathlib.Path(sys.argv[1])
+          out = pathlib.Path(sys.argv[2])
+          artifacts = json.loads((api_dir / "artifacts.json").read_text())["artifacts"]
+          found = [a for a in artifacts if a["name"] == os.environ["SOURCE_ARTIFACT_NAME"]]
+          assert len(found) == 1
+          artifact = found[0]
+          archive = api_dir / "source-artifact.zip"
+          digest = "sha256:" + hashlib.sha256(archive.read_bytes()).hexdigest()
+          assert digest == artifact["digest"], (digest, artifact["digest"])
+          seen = set()
+          total = 0
+          manifest = []
+          with zipfile.ZipFile(archive) as zf:
+              infos = zf.infolist()
+              assert 0 < len(infos) <= 256
+              for info in infos:
+                  pure = pathlib.PurePosixPath(info.filename)
+                  assert not pure.is_absolute()
+                  assert ".." not in pure.parts
+                  normalized = pure.as_posix().rstrip("/")
+                  assert normalized and normalized not in seen
+                  seen.add(normalized)
+                  mode = (info.external_attr >> 16) & 0xFFFF
+                  assert not stat.S_ISLNK(mode)
+                  assert not stat.S_ISCHR(mode) and not stat.S_ISBLK(mode) and not stat.S_ISFIFO(mode)
+                  total += info.file_size
+                  assert total <= 16 * 1024 * 1024
+                  target = out / pure
+                  target.resolve().relative_to(out.resolve())
+                  if info.is_dir():
+                      target.mkdir(parents=True, exist_ok=True)
+                      continue
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  data = zf.read(info)
+                  assert len(data) == info.file_size
+                  target.write_bytes(data)
+                  manifest.append({"path": normalized, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()})
+          (api_dir / "safe-extraction-manifest.json").write_text(json.dumps({
+              "archive_sha256": digest,
+              "expanded_bytes": total,
+              "files": sorted(manifest, key=lambda x: x["path"]),
+          }, indent=2, sort_keys=True) + "\n")
+          PY
+
+      - name: Build non-self-qualifying observer receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$API_DIR" "$SOURCE_DIR" "$FINAL_DIR/a0-exact-head-evidence-receipt.json" <<'PY'
+          import hashlib, json, os, pathlib, subprocess, sys
+          api_dir, source_dir, output = map(pathlib.Path, sys.argv[1:])
+          run = json.loads((api_dir / "run.json").read_text())
+          jobs = json.loads((api_dir / "jobs.json").read_text())["jobs"]
+          artifacts = json.loads((api_dir / "artifacts.json").read_text())["artifacts"]
+          manifest = json.loads((api_dir / "safe-extraction-manifest.json").read_text())
+          producer = [j for j in jobs if j["name"] == "A0 exact-head source evidence producer"]
+          source_artifact = [a for a in artifacts if a["name"] == os.environ["SOURCE_ARTIFACT_NAME"]]
+          assert len(producer) == 1 and len(source_artifact) == 1
+          producer = producer[0]; source_artifact = source_artifact[0]
+          assert producer["status"] == "completed" and producer["conclusion"] == "success"
+          assert int(producer.get("runner_id") or 0) > 0 and producer.get("steps")
+          assert all(s.get("conclusion") == "success" for s in producer["steps"] if s["name"] not in {"Complete job"})
+          workflow = pathlib.Path(".github/workflows/hepta-intelligence-a0-authority.yml")
+          source_receipts = list(source_dir.rglob("a0-source-evidence-receipt.json"))
+          source_manifests = list(source_dir.rglob("source-manifest.json"))
+          truths = list(source_dir.rglob("current-truth.json"))
+          assert len(source_receipts) == len(source_manifests) == len(truths) == 1
+          source_receipt = json.loads(source_receipts[0].read_text())
+          assert source_receipt["a0_candidate_qualified"] is False
+          receipt = {
+              "schema": "hepta_intelligence_a0_exact_head_evidence_receipt_v2",
+              "status": "PASS_HEPTA_INTELLIGENCE_A0_EXACT_HEAD_EVIDENCE_OBSERVED",
+              "repository": os.environ["EXPECTED_REPOSITORY"],
+              "candidate": {
+                  "branch": os.environ["EXPECTED_BRANCH"],
+                  "head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+                  "tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(),
+                  "parent": subprocess.check_output(["git", "rev-parse", "HEAD^"], text=True).strip(),
+              },
+              "workflow": {
+                  "path": workflow.as_posix(),
+                  "blob_sha": subprocess.check_output(["git", "rev-parse", "HEAD:.github/workflows/hepta-intelligence-a0-authority.yml"], text=True).strip(),
+                  "content_sha256": hashlib.sha256(workflow.read_bytes()).hexdigest(),
+                  "run_id": run["id"],
+                  "run_attempt": run["run_attempt"],
+                  "event": run["event"],
+                  "head_sha": run["head_sha"],
+                  "head_branch": run["head_branch"],
+              },
+              "producer_job": {
+                  "id": producer["id"], "runner_id": producer["runner_id"],
+                  "runner_name": producer["runner_name"], "labels": producer["labels"],
+                  "status": producer["status"], "conclusion": producer["conclusion"],
+                  "steps": [{"name": s["name"], "status": s["status"], "conclusion": s["conclusion"]} for s in producer["steps"]],
+              },
+              "source_artifact": {
+                  "id": source_artifact["id"], "name": source_artifact["name"],
+                  "digest": source_artifact["digest"], "created_at": source_artifact["created_at"],
+                  "expires_at": source_artifact["expires_at"], "expired": source_artifact["expired"],
+                  "archive_sha256": manifest["archive_sha256"],
+                  "expanded_manifest_sha256": hashlib.sha256((api_dir / "safe-extraction-manifest.json").read_bytes()).hexdigest(),
+              },
+              "evidence": {
+                  "source_receipt_sha256": hashlib.sha256(source_receipts[0].read_bytes()).hexdigest(),
+                  "source_manifest_sha256": hashlib.sha256(source_manifests[0].read_bytes()).hexdigest(),
+                  "current_truth_sha256": hashlib.sha256(truths[0].read_bytes()).hexdigest(),
+              },
+              "observer_transport_self_binding": False,
+              "external_reviewer_must_bind_completed_observer_artifact": True,
+              "a0_candidate_qualified": False,
+              "selected": False,
+              "full_repository_merge_green": False,
+              "authority": source_receipt["authority"],
+          }
+          encoded = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+          receipt["receipt_binding_sha256"] = hashlib.sha256(encoded).hexdigest()
+          output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+          PY
+          git diff --check HEAD^ HEAD
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Upload exact-head observer evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-a0-observer-${{ env.EXPECTED_HEAD_SHA }}
+          path: |
+            artifacts/hepta-intelligence-a0-observer/**
+            artifacts/hepta-intelligence-a0-api/run.json
+            artifacts/hepta-intelligence-a0-api/jobs.json
+            artifacts/hepta-intelligence-a0-api/artifacts.json
+            artifacts/hepta-intelligence-a0-api/safe-extraction-manifest.json
+          if-no-files-found: error
+          retention-days: 30

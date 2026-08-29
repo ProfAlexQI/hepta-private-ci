@@ -1,113 +1,236 @@
 {
-  "schema": "hepta_intelligence_document_authority_registry_v1",
-  "generated_at": "2026-08-28T13:15:00Z",
-  "repository": "ProfHepta/hepta-private-ci",
-  "rules": {
-    "single_current_machine_authority": true,
-    "single_current_human_authority": true,
-    "compatibility_contracts_may_be_machine_consumed": true,
-    "compatibility_contracts_are_current_authority": false,
-    "receipts_are_append_only_evidence": true,
-    "historical_documents_must_not_override_current": true,
-    "breaking_a_registered_consumer_requires_migration_receipt": true,
-    "on_conflict": "FAIL_CLOSED"
+  "authority": {
+    "callers_ratchet": false,
+    "default_open_wired": false,
+    "external_effects": false,
+    "learning_write_authority": false,
+    "memory_write_authority": false,
+    "model_runtime_authority": false,
+    "operator_acceptance": false,
+    "outbox_dispatch_authority": false,
+    "product_module_registered": false,
+    "production_authority": false,
+    "projection_write_authority": false,
+    "promotion": false,
+    "provider_dispatch_authority": false,
+    "release_authority": false,
+    "runtime_wired": false,
+    "tool_registered": false
   },
-  "current_authority": {
-    "machine": {
-      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
-      "schema": "hepta_intelligence_current_plan_v2"
-    },
-    "human": {
-      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
-      "plan_id": "HEPTA_INTELLIGENCE_MASTER_PLAN_V4"
-    }
+  "claim_ladder_policy": {
+    "content_sha256": "a3bff5582cc827c999d4e4bfcaa116a3e30a01cc6ca5c1faa8497a4f978a74b0",
+    "current_state_authority": false,
+    "current_state_source": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
+    "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CLAIM_LADDER_V1.json",
+    "schema": "hepta_intelligence_claim_ladder_v1"
   },
   "compatibility_contracts": [
     {
-      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
-      "schema": "hepta_intelligence_execution_status_v2",
-      "classification": "LEGACY_MACHINE_COMPATIBILITY_CONTRACT",
+      "content_sha256": "4f53487c3a782df6ac3619a516bc318b970b616c90a5ba7ec07d77a471e8304e",
       "current_authority": false,
-      "schema_preserved": true,
-      "mutation_policy": "BACKWARD_COMPATIBLE_ONLY_UNTIL_ALL_CONSUMERS_MIGRATE",
+      "mutation_policy": "BACKWARD_COMPATIBLE_ONLY_UNTIL_ALL_CONSUMERS_MIGRATE_WITH_RECEIPT",
+      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
       "registered_consumers": [
-        "scripts/verify-hepta-intelligence-grounding-ledger.py",
-        "scripts/verify-hepta-intelligence-grounding-gate.py",
-        "scripts/verify-hepta-intelligence-mutation-state.py",
-        "scripts/verify-hepta-intelligence-mutation-journal.py",
-        "scripts/verify-hepta-intelligence-shadow-host.py",
         ".github/workflows/hepta-intelligence-p0-compatibility-matrix.yml",
-        ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml"
-      ]
+        ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml",
+        "scripts/verify-hepta-intelligence-grounding-gate.py",
+        "scripts/verify-hepta-intelligence-grounding-ledger.py",
+        "scripts/verify-hepta-intelligence-mutation-journal.py",
+        "scripts/verify-hepta-intelligence-mutation-state.py",
+        "scripts/verify-hepta-intelligence-shadow-host.py"
+      ],
+      "schema": "hepta_intelligence_execution_status_v2",
+      "schema_preserved": true
     },
     {
-      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V3.json",
-      "schema": "hepta_intelligence_execution_status_v3",
-      "classification": "LEGACY_MACHINE_COMPATIBILITY_CONTRACT",
+      "content_sha256": "6a9c8a502683ae18b664876c42f55c4f3e889b124043538bb4cb4d3244a591bc",
       "current_authority": false,
-      "schema_preserved": true,
-      "mutation_policy": "BACKWARD_COMPATIBLE_ONLY_UNTIL_ALL_CONSUMERS_MIGRATE",
+      "mutation_policy": "BACKWARD_COMPATIBLE_ONLY_UNTIL_ALL_CONSUMERS_MIGRATE_WITH_RECEIPT",
+      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V3.json",
       "registered_consumers": [
-        "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PLAN_V3_REVIEW_RECEIPT_2026-08-28.json"
-      ]
+        ".github/workflows/hepta-intelligence-p0-compatibility-matrix.yml",
+        "scripts/hepta-intelligence-status-compat.py",
+        "scripts/verify-hepta-intelligence-document-authority.py"
+      ],
+      "schema": "hepta_intelligence_execution_status_v3",
+      "schema_preserved": true
     }
   ],
-  "policy_documents": [
-    {
-      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CLAIM_LADDER_V1.json",
-      "classification": "POLICY_SCHEMA_AND_TRANSITION_RULES",
-      "current_state_authority": false,
-      "current_state_source": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json"
-    }
-  ],
-  "historical_human_redirects": [
-    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V2_2026-08-28.md",
-    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28.md"
-  ],
-  "evidence_only": [
-    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PLAN_V3_REVIEW_RECEIPT_2026-08-28.json",
-    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN_V4_RECEIPT_2026-08-28.json",
-    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN_V4_HOSTED_SOURCE_RECEIPT_2026-08-28.json",
-    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V1.json",
-    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V2.json"
-  ],
-  "migration_gate": {
-    "required_before_replacing_a_compatibility_contract": [
-      "all registered consumers read the new canonical registry or an explicit adapter",
-      "old and new consumers pass paired fixtures",
-      "exact-head and merge-candidate lanes pass",
-      "append-only migration receipt binds old schema, new schema, consumers and rollback",
-      "no production, runtime, memory, KG, outbox or CALLERS authority changes"
-    ]
-  },
-  "authority": {
-    "runtime_wired": false,
-    "learning_write_authority": false,
-    "production_authority": false,
-    "external_effects": false,
-    "operator_acceptance": false,
-    "promotion": false,
-    "callers_ratchet": false
-  },
   "consumer_migration_receipts": [
     {
-      "compatibility_contract": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
-      "receipt": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V2.json",
-      "retired_consumers": [
-        ".github/workflows/hepta-intelligence-grounding-ledger.yml",
-        ".github/workflows/hepta-intelligence-grounding-gate.yml",
-        ".github/workflows/hepta-intelligence-mutation-state-machine.yml",
-        ".github/workflows/hepta-intelligence-mutation-journal.yml",
-        ".github/workflows/hepta-intelligence-shadow-host.yml"
-      ],
-      "replacement_consumers": [
-        ".github/workflows/hepta-intelligence-p0-compatibility-matrix.yml",
-        ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml"
-      ],
-      "schema_preserved": true,
-      "compatibility_contract_replaced": false,
-      "authority_changed": false,
-      "rollback": "restore retired workflow implementations only from the receipt-bound Git history; never grant runtime or production authority"
+      "content_sha256": "8d19f053686f34f1677a345c194d67a8f88f293236dfe649d40a11227c70d299",
+      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V1.json"
+    },
+    {
+      "content_sha256": "6c19e24a4f640894f4d6f7c0aaa3161426e6eecabb2555425479bad6957c133c",
+      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V2.json"
     }
-  ]
+  ],
+  "generated_at_utc": null,
+  "immutable_tranche_snapshots": [
+    {
+      "content_sha256": "ed17ea45320bcae15202ff5339e76cec524d69e2da846438aaf0fc78f5127214",
+      "current_authority": false,
+      "mutation_policy": "IMMUTABLE_UNTIL_RECEIPTED_CONSUMER_MIGRATION",
+      "path": "plans/hepta-intelligence/status-snapshots/HEPTA_INTELLIGENCE_P0_2_STATUS_SNAPSHOT_V1.json",
+      "schema": "hepta_intelligence_tranche_status_snapshot_v1",
+      "snapshot_id": "P0.2",
+      "source_ref": "ad0cf81cd820bbb4b8154633c61ea68fb35bf872",
+      "source_status_blob_sha": "9190cf9efeff87ba4a12066dbf98da19354e9ae4"
+    },
+    {
+      "content_sha256": "17f25aade62a474983a3785c7c6a48675ec3149fe149b3076c7efd1425fec01e",
+      "current_authority": false,
+      "mutation_policy": "IMMUTABLE_UNTIL_RECEIPTED_CONSUMER_MIGRATION",
+      "path": "plans/hepta-intelligence/status-snapshots/HEPTA_INTELLIGENCE_P0_3_STATUS_SNAPSHOT_V1.json",
+      "schema": "hepta_intelligence_tranche_status_snapshot_v1",
+      "snapshot_id": "P0.3",
+      "source_ref": "256a47d882413ac1f80892a80177419bb5d12c70",
+      "source_status_blob_sha": "7be5d96034599c60c44f43006580620af428d00f"
+    },
+    {
+      "content_sha256": "23d7800a231fcf7a16e7cbcf8a7117768b1f30b8e811be7c3fcf1e054683f299",
+      "current_authority": false,
+      "mutation_policy": "IMMUTABLE_UNTIL_RECEIPTED_CONSUMER_MIGRATION",
+      "path": "plans/hepta-intelligence/status-snapshots/HEPTA_INTELLIGENCE_P0_4A_STATUS_SNAPSHOT_V1.json",
+      "schema": "hepta_intelligence_tranche_status_snapshot_v1",
+      "snapshot_id": "P0.4a",
+      "source_ref": "39c30cc1f07c90c4d5176da05e9bd97e1792bd2a",
+      "source_status_blob_sha": "edcd25afb896afc37bd7c4841f39f23040f2cd1d"
+    },
+    {
+      "content_sha256": "b661bd907298608b5d4378d59c8c2594d874d1d5e1a769db9847f066ca08f0c7",
+      "current_authority": false,
+      "mutation_policy": "IMMUTABLE_UNTIL_RECEIPTED_CONSUMER_MIGRATION",
+      "path": "plans/hepta-intelligence/status-snapshots/HEPTA_INTELLIGENCE_P0_4B_STATUS_SNAPSHOT_V1.json",
+      "schema": "hepta_intelligence_tranche_status_snapshot_v1",
+      "snapshot_id": "P0.4b",
+      "source_ref": "a5de899e9f6a97fa0803cc1e73d664be8b7d68bc",
+      "source_status_blob_sha": "c12fc3973dec87c6af74a0a68c5e8451f14a94da"
+    },
+    {
+      "content_sha256": "9ee1a94d0ae5e7a74ccc4395071377911edf19e20e7f2ff459ad2c00bb78b942",
+      "current_authority": false,
+      "mutation_policy": "IMMUTABLE_UNTIL_RECEIPTED_CONSUMER_MIGRATION",
+      "path": "plans/hepta-intelligence/status-snapshots/HEPTA_INTELLIGENCE_P0_4C_STATUS_SNAPSHOT_V1.json",
+      "schema": "hepta_intelligence_tranche_status_snapshot_v1",
+      "snapshot_id": "P0.4c",
+      "source_ref": "7691978b786dd00c69477d1a3355be13db2c4d67",
+      "source_status_blob_sha": "7ec0ceff73628453420378969def14a97bbfc8a3"
+    }
+  ],
+  "precedence": {
+    "on_conflict": "FAIL_CLOSED",
+    "read_order": [
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md"
+    ],
+    "single_aggregate_machine_authority": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
+    "single_human_plan": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
+    "subordinate_execution_spec": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md"
+  },
+  "registered_canonical_inputs": [
+    {
+      "conflict_rule": "EARLIER_READ_ORDER_ENTRY_CONTROLS; ANY_SEMANTIC_MISMATCH_FAILS_CLOSED",
+      "content_sha256": "a305c110d72d153b75059bae87005d172c6cd215f8a6d40cc36bf1a9e35a139c",
+      "current_plan_authority": true,
+      "digest_scope": "RAW_FILE_BYTES",
+      "mutation_policy": "UPDATE_ONLY_WITH_CANONICAL_CROSS_VERIFIER_AND_EXACT_HEAD_EVIDENCE",
+      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
+      "role": "SOLE_AGGREGATE_MACHINE_AUTHORITY",
+      "schema": "hepta_intelligence_current_plan_v2"
+    },
+    {
+      "conflict_rule": "EARLIER_READ_ORDER_ENTRY_CONTROLS; ANY_SEMANTIC_MISMATCH_FAILS_CLOSED",
+      "content_sha256": "5da7eb85212a979840ef545934a565158f6d4707900590cd3673db1440adce24",
+      "current_plan_authority": false,
+      "digest_scope": "CANONICAL_JSON_WITH_SELF_DIGEST_NULL",
+      "mutation_policy": "UPDATE_ONLY_WITH_CANONICAL_CROSS_VERIFIER_AND_EXACT_HEAD_EVIDENCE",
+      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json",
+      "role": "DOCUMENT_PRECEDENCE_AND_COMPATIBILITY_REGISTRY",
+      "schema": "hepta_intelligence_document_authority_registry_v1"
+    },
+    {
+      "conflict_rule": "EARLIER_READ_ORDER_ENTRY_CONTROLS; ANY_SEMANTIC_MISMATCH_FAILS_CLOSED",
+      "content_sha256": "9747411aae60b6dba6ee4496a37fd18f83383f3ae4a7e32d9b7fc21f1e691f99",
+      "current_plan_authority": false,
+      "digest_scope": "RAW_FILE_BYTES",
+      "mutation_policy": "UPDATE_ONLY_WITH_CANONICAL_CROSS_VERIFIER_AND_EXACT_HEAD_EVIDENCE",
+      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json",
+      "role": "APPEND_ONLY_EVIDENCE_INDEX_NO_PLAN_AUTHORITY",
+      "schema": "hepta_intelligence_evidence_index_v1"
+    },
+    {
+      "conflict_rule": "EARLIER_READ_ORDER_ENTRY_CONTROLS; ANY_SEMANTIC_MISMATCH_FAILS_CLOSED",
+      "content_sha256": "dd245e2879020d57dccbcd00f2e3de08899bcf19d9647b2fa5b02035eb281df5",
+      "current_plan_authority": false,
+      "digest_scope": "RAW_FILE_BYTES",
+      "mutation_policy": "UPDATE_ONLY_WITH_CANONICAL_CROSS_VERIFIER_AND_EXACT_HEAD_EVIDENCE",
+      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json",
+      "role": "CAPABILITY_LIFECYCLE_REGISTRY_NO_PROMOTION_AUTHORITY",
+      "schema": "hepta_intelligence_capability_registry_v1"
+    },
+    {
+      "conflict_rule": "EARLIER_READ_ORDER_ENTRY_CONTROLS; ANY_SEMANTIC_MISMATCH_FAILS_CLOSED",
+      "content_sha256": "b6084d656a85c000a43aa76a67f1bf9453026f3b8bee74a71b6d72ab6bf1a418",
+      "current_plan_authority": false,
+      "digest_scope": "RAW_FILE_BYTES",
+      "mutation_policy": "UPDATE_ONLY_WITH_CANONICAL_CROSS_VERIFIER_AND_EXACT_HEAD_EVIDENCE",
+      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json",
+      "role": "PR_STACK_PROVENANCE_REGISTRY_NO_MERGE_AUTHORITY",
+      "schema": "hepta_intelligence_pr_stack_registry_v1"
+    },
+    {
+      "conflict_rule": "EARLIER_READ_ORDER_ENTRY_CONTROLS; ANY_SEMANTIC_MISMATCH_FAILS_CLOSED",
+      "content_sha256": "09a5895df9417b18c54cc2ad9b8ef6c1f4c656ebfc42cc12eb1506c2d7b7a149",
+      "current_plan_authority": false,
+      "digest_scope": "RAW_FILE_BYTES",
+      "mutation_policy": "UPDATE_ONLY_WITH_CANONICAL_CROSS_VERIFIER_AND_EXACT_HEAD_EVIDENCE",
+      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json",
+      "role": "INTEGRATION_AND_GAP_REGISTRY_NO_SELECTION_AUTHORITY",
+      "schema": "hepta_intelligence_integration_candidate_v1"
+    },
+    {
+      "conflict_rule": "EARLIER_READ_ORDER_ENTRY_CONTROLS; ANY_SEMANTIC_MISMATCH_FAILS_CLOSED",
+      "content_sha256": "9d8cc6a8dfcbfa5d65c163ac72bbd445b26ddb19a535b4c586c169fe33d4bb2d",
+      "current_plan_authority": false,
+      "digest_scope": "RAW_FILE_BYTES",
+      "mutation_policy": "UPDATE_ONLY_WITH_CANONICAL_CROSS_VERIFIER_AND_EXACT_HEAD_EVIDENCE",
+      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
+      "role": "SOLE_CURRENT_HUMAN_PLAN",
+      "schema": "markdown/HEPTA_INTELLIGENCE_MASTER_PLAN_V4_5"
+    },
+    {
+      "conflict_rule": "EARLIER_READ_ORDER_ENTRY_CONTROLS; ANY_SEMANTIC_MISMATCH_FAILS_CLOSED",
+      "content_sha256": "1112e3ef27c19a0d1c833b0abbecf10cfe1d7541ce27034c7d2f31b1ca84b899",
+      "current_plan_authority": false,
+      "digest_scope": "RAW_FILE_BYTES",
+      "mutation_policy": "UPDATE_ONLY_WITH_CANONICAL_CROSS_VERIFIER_AND_EXACT_HEAD_EVIDENCE",
+      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md",
+      "role": "SUBORDINATE_EXECUTION_SPEC_NO_PLAN_AUTHORITY",
+      "schema": "markdown/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1_3"
+    }
+  ],
+  "repository": "ProfHepta/hepta-private-ci",
+  "rules": {
+    "breaking_registered_consumer_requires_migration_receipt": true,
+    "compatibility_contracts_are_current_authority": false,
+    "evidence_index_is_append_only": true,
+    "subordinate_spec_may_grant_plan_or_promotion_authority": false,
+    "unknown_document_or_consumer_fails_closed": true
+  },
+  "schema": "hepta_intelligence_document_authority_registry_v1",
+  "source_snapshot_policy": {
+    "checked_in_is_live_evidence": false,
+    "future_dated_source_timestamp_allowed": false,
+    "generated_at_policy": "COMMIT_BOUND_AT_EXTERNAL_EVIDENCE_RECEIPT",
+    "head_or_branch_change_invalidates_evidence": true,
+    "live_evidence_may_write_source": false
+  }
 }
