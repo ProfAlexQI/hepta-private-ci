@@ -228,10 +228,120 @@ if remaining_digest_display:
     raise SystemExit(
         "unrepaired Sha256Digest text conversions:\n" + "\n".join(remaining_digest_display)
     )
-if "format!(\"PRAGMA" in store or "sqlx::query(&statement)" in store:
+if 'format!("PRAGMA' in store or "sqlx::query(&statement)" in store:
     raise SystemExit("dynamic SQL remained after AuthBus P1.3 gap closure")
 write(store_path, store)
 
+# Keep the generated quota registry compatible with the repository's strict
+# Clippy posture. The default is part of the wire semantics, so derive it on
+# the enum and mark the fail-closed NotDeclared variant explicitly.
+quota_registry_path = "codex-rs/hepta-contracts/src/quota_registry.rs"
+quota_registry = read(quota_registry_path)
+quota_registry_repairs = 0
+derive_pattern = re.compile(
+    r"#\[derive\((?P<traits>[^)]*)\)\]\n"
+    r"(?P<attrs>(?:#\[[^\n]+\]\n)*)"
+    r"pub enum QuotaQuantity \{"
+)
+derive_matches = list(derive_pattern.finditer(quota_registry))
+if len(derive_matches) != 1:
+    raise SystemExit(
+        "derive QuotaQuantity Default: expected one enum anchor, "
+        f"found {len(derive_matches)}"
+    )
+traits = derive_matches[0].group("traits")
+if "Default" in {trait.strip() for trait in traits.split(",")}:
+    raise SystemExit("derive QuotaQuantity Default: Default already present")
+updated_traits = traits.replace("Debug,", "Debug, Default,", 1)
+quota_registry, count = derive_pattern.subn(
+    "#[derive("
+    + updated_traits
+    + ")]\n"
+    + derive_matches[0].group("attrs")
+    + "pub enum QuotaQuantity {",
+    quota_registry,
+    count=1,
+)
+quota_registry_repairs += count
+
+not_declared_pattern = re.compile(
+    r"(pub enum QuotaQuantity \{\n"
+    r"(?:    ///[^\n]*\n)+)"
+    r"(    NotDeclared,)"
+)
+quota_registry, count = not_declared_pattern.subn(
+    r"\1    #[default]\n\2",
+    quota_registry,
+    count=1,
+)
+if count != 1:
+    raise SystemExit(
+        "mark QuotaQuantity::NotDeclared default: expected one variant anchor, "
+        f"found {count}"
+    )
+quota_registry_repairs += count
+
+manual_default = '''
+impl Default for QuotaQuantity {
+    fn default() -> Self {
+        Self::NotDeclared
+    }
+}
+'''
+quota_registry, count = replace_exact(
+    quota_registry,
+    manual_default,
+    "\n",
+    1,
+    "remove derivable QuotaQuantity Default impl",
+)
+quota_registry_repairs += count
+
+# The semantic-completion pass appends production conversion impls after the
+# existing inline test module. Strict Clippy treats that as an error. Relocate
+# the complete conversion block before tests; never suppress the lint.
+conversion_marker = "\n\nimpl From<CanonicalQuotaVector> for UsageVector {"
+test_marker = "\n#[cfg(test)]\nmod tests {"
+conversion_count = quota_registry.count(conversion_marker)
+test_count = quota_registry.count(test_marker)
+if conversion_count != 1:
+    raise SystemExit(
+        "relocate quota conversion impls: expected one conversion block, "
+        f"found {conversion_count}"
+    )
+if test_count != 1:
+    raise SystemExit(
+        "relocate quota conversion impls: expected one test-module anchor, "
+        f"found {test_count}"
+    )
+conversion_start = quota_registry.index(conversion_marker)
+test_start = quota_registry.index(test_marker)
+if conversion_start < test_start:
+    raise SystemExit(
+        "relocate quota conversion impls: conversion block already precedes tests"
+    )
+conversion_block = quota_registry[conversion_start:].strip()
+quota_registry = quota_registry[:conversion_start].rstrip() + "\n"
+test_start = quota_registry.index(test_marker)
+quota_registry = (
+    quota_registry[:test_start].rstrip()
+    + "\n\n"
+    + conversion_block
+    + "\n\n"
+    + quota_registry[test_start:].lstrip()
+)
+if quota_registry.index("impl From<CanonicalQuotaVector> for UsageVector") > quota_registry.index(
+    "#[cfg(test)]\nmod tests {"
+):
+    raise SystemExit("quota conversion impls remained after tests")
+
+write(quota_registry_path, quota_registry)
+
 print(f"applied_authbus_p1_3_model_compile_repairs={model_repairs}")
 print(f"applied_authbus_p1_3_store_compile_repairs={store_repairs}")
+print(
+    "applied_authbus_p1_3_quota_registry_clippy_repairs="
+    f"{quota_registry_repairs}"
+)
+print("applied_authbus_p1_3_quota_registry_order_repairs=1")
 print("closed_authbus_p1_3_materialized_compile_gap=1")
