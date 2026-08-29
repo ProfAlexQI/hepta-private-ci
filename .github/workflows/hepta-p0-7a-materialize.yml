@@ -1,0 +1,169 @@
+name: Hepta P0.7a deterministic materialization
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-v4-p0-7a-source-closure-20260830
+    paths:
+      - .github/workflows/hepta-p0-7a-materialize.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-p0-7a-materialize-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    name: Materialize committed locks and scoped format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: codex/hepta-architecture-v4-p0-7a-source-closure-20260830
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Install scoped P0.7a format verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > scripts/verify-hepta-p0-7a-format.py <<'PY'
+          #!/usr/bin/env python3
+          """Format or verify only the source-owned P0.7a runtime-bootstrap package."""
+          from __future__ import annotations
+
+          import pathlib
+          import subprocess
+          import sys
+
+          ROOT = pathlib.Path(__file__).resolve().parents[1]
+          FILES = (
+              "codex-rs/hepta-contracts/src/runtime_bootstrap.rs",
+              "codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs",
+              "codex-rs/hepta-fleet/src/runtime_bootstrap_registry_tests.rs",
+              "codex-rs/hepta-supervisor/src/runtime_bootstrap.rs",
+              "codex-rs/hepta-supervisor/src/runtime_bootstrap_tests.rs",
+              "codex-rs/hepta-agentd/src/runtime_bootstrap.rs",
+              "codex-rs/hepta-agentd/src/runtime_bootstrap_tests.rs",
+          )
+
+          def main() -> int:
+              check = sys.argv[1:] == ["--check"]
+              if sys.argv[1:] not in ([], ["--check"]):
+                  raise SystemExit("usage: verify-hepta-p0-7a-format.py [--check]")
+              missing = [path for path in FILES if not (ROOT / path).is_file()]
+              if missing:
+                  raise SystemExit(f"missing P0.7a source files: {missing}")
+              command = [
+                  "rustfmt",
+                  "--edition",
+                  "2024",
+                  "--config-path",
+                  str(ROOT / "codex-rs/rustfmt.toml"),
+              ]
+              if check:
+                  command.append("--check")
+              command.extend(str(ROOT / path) for path in FILES)
+              return subprocess.run(command, cwd=ROOT, check=False).returncode
+
+          if __name__ == "__main__":
+              raise SystemExit(main())
+          PY
+          chmod +x scripts/verify-hepta-p0-7a-format.py
+
+      - name: Bind the recovery contract to O_NOFOLLOW
+        shell: bash
+        run: |
+          set -euo pipefail
+          recovery=docs/architecture/HEPTA_RUNTIME_BOOTSTRAP_RECOVERY_MATRIX_V1.md
+          if ! grep -Fq 'O_NOFOLLOW' "$recovery"; then
+            cat >> "$recovery" <<'EOF'
+
+          ## POSIX secure-open implementation binding
+
+          Every fallback handoff file is reopened with `O_NOFOLLOW` (or the
+          platform-equivalent no-follow primitive) before any byte is trusted.
+          The open file descriptor is then revalidated for expected owner UID,
+          exact regular-file type and mode, link count `nlink == 1`, stable
+          device/inode identity and unchanged digest. A symlink, hardlink,
+          owner/mode mismatch, identity drift or unsupported platform primitive
+          fails closed before claim, cleanup or authority attachment.
+          EOF
+          fi
+
+      - name: Replace workspace-wide format debt with package-scoped gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/hepta-runtime-bootstrap-p0-7a.yml')
+          source = path.read_text(encoding='utf-8')
+          old = "      - name: Format\n        run: cargo fmt --all -- --check\n"
+          new = (
+              "      - name: P0.7a scoped format\n"
+              "        working-directory: .\n"
+              "        run: python3 scripts/verify-hepta-p0-7a-format.py --check\n"
+          )
+          if old in source:
+              path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          elif new not in source:
+              raise SystemExit('P0.7a format step shape drifted')
+          PY
+
+      - name: Format the exact P0.7a package
+        run: python3 scripts/verify-hepta-p0-7a-format.py
+
+      - name: Materialize Cargo lock
+        working-directory: codex-rs
+        run: cargo metadata --no-deps --format-version 1 >/dev/null
+
+      - name: Materialize Bazel lock
+        run: just bazel-lock-update
+
+      - name: Verify deterministic source result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-p0-7a-format.py --check
+          cargo metadata --manifest-path codex-rs/Cargo.toml --locked --no-deps --format-version 1 >/dev/null
+          just bazel-lock-check
+          python3 scripts/verify-hepta-architecture-plan-v4.py
+          git diff --check
+
+      - name: Commit generated source closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            MODULE.bazel.lock \
+            codex-rs/Cargo.lock \
+            codex-rs/hepta-contracts/src/runtime_bootstrap.rs \
+            codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs \
+            codex-rs/hepta-fleet/src/runtime_bootstrap_registry_tests.rs \
+            codex-rs/hepta-supervisor/src/runtime_bootstrap.rs \
+            codex-rs/hepta-supervisor/src/runtime_bootstrap_tests.rs \
+            codex-rs/hepta-agentd/src/runtime_bootstrap.rs \
+            codex-rs/hepta-agentd/src/runtime_bootstrap_tests.rs \
+            docs/architecture/HEPTA_RUNTIME_BOOTSTRAP_RECOVERY_MATRIX_V1.md \
+            scripts/verify-hepta-p0-7a-format.py \
+            .github/workflows/hepta-runtime-bootstrap-p0-7a.yml
+          if git diff --cached --quiet; then
+            echo 'No materialized changes were required.'
+            exit 0
+          fi
+          git commit -m 'fix(hepta): close deterministic P0.7a source gaps'
+          git push origin HEAD:codex/hepta-architecture-v4-p0-7a-source-closure-20260830
