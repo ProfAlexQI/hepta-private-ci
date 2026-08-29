@@ -1,0 +1,166 @@
+name: Hepta operation diagnostic v2
+
+on:
+  push:
+    branches:
+      - codex/hepta-operation-diagnostic-v2-20260829
+
+permissions:
+  contents: read
+
+env:
+  TARGET_SOURCE: 106bcffc225ff58062228454d09f866fd82d0b36
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+
+jobs:
+  materialize:
+    name: Materialize deterministic repair artifact
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt
+      - run: python3 scripts/hepta-operation-safety-repair.py
+      - working-directory: codex-rs
+        run: cargo fmt -p codex-hepta-contracts -p codex-hepta-automation -p codex-hepta-agentd -p codex-hepta-matrix-store -p codex-hepta-matrixd
+      - name: Capture exact patch
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/hepta-operation-repair"
+          git diff --check
+          git diff --name-status > "$RUNNER_TEMP/hepta-operation-repair/changed-files.txt"
+          git diff --binary > "$RUNNER_TEMP/hepta-operation-repair/repair.patch"
+          git status --short > "$RUNNER_TEMP/hepta-operation-repair/status.txt"
+          printf 'source_head=%s\nsource_tree=%s\nsource_mutation=false\nproduction_authority=false\n' \
+            "$TARGET_SOURCE" "$(git rev-parse HEAD^{tree})" \
+            > "$RUNNER_TEMP/hepta-operation-repair/identity.txt"
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-operation-repair-${{ env.TARGET_SOURCE }}
+          path: ${{ runner.temp }}/hepta-operation-repair
+          if-no-files-found: error
+          retention-days: 30
+
+  source-ratchets:
+    name: Source ratchets after simulated retirement
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - run: python3 scripts/hepta-operation-safety-repair.py
+      - run: |
+          set -euo pipefail
+          rm -f .github/workflows/hepta-automation-operation-repair-once.yml
+          rm -f .github/workflows/hepta-operation-safety-repair-slim-once.yml
+          rm -f scripts/.hepta-automation-repair-trigger
+          rm -f scripts/hepta-operation-safety-repair.py
+          rm -f scripts/hepta-automation-operation-repair-once.py
+          rm -f scripts/hepta-automation-operation-repair-once.py.part-*
+          rm -f scripts/hepta-automation-model-v4.rs
+          python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+          python3 scripts/verify-hepta-cross-owner-operation-wiring.py
+          python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python3 scripts/verify-hepta-architecture-gap-ledger.py
+
+  contracts:
+    name: Contracts operation and fault matrix
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - run: python3 scripts/hepta-operation-safety-repair.py
+      - working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-contracts
+          cargo fmt -p codex-hepta-contracts -- --check
+          cargo test --locked -p codex-hepta-contracts provider_operation::tests -- --nocapture
+          cargo test --locked -p codex-hepta-contracts --test cross_owner_fault_matrix -- --nocapture
+          cargo clippy --locked -p codex-hepta-contracts --all-targets -- -D warnings
+
+  matrix:
+    name: Matrix operation and real SQLITE_FULL
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - run: python3 scripts/hepta-operation-safety-repair.py
+      - working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-matrix-store
+          cargo fmt -p codex-hepta-matrix-store -- --check
+          cargo test --locked -p codex-hepta-matrix-store operation::tests -- --nocapture
+          cargo test --locked -p codex-hepta-matrix-store --test sqlite_full -- --nocapture
+          cargo clippy --locked -p codex-hepta-matrix-store --all-targets -- -D warnings
+
+  automation:
+    name: Automation operation lifecycle
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - run: python3 scripts/hepta-operation-safety-repair.py
+      - working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-automation
+          cargo fmt -p codex-hepta-automation -- --check
+          cargo test --locked -p codex-hepta-automation --lib -- --nocapture
+          cargo clippy --locked -p codex-hepta-automation --all-targets -- -D warnings
+
+  memory-runtime:
+    name: Memory runtime and Agentd integration
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+      - run: test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - run: python3 scripts/hepta-operation-safety-repair.py
+      - working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-memory-runtime -p codex-hepta-agentd -p codex-hepta-matrixd
+          cargo fmt -p codex-hepta-memory-runtime -p codex-hepta-agentd -p codex-hepta-matrixd -- --check
+          cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
+          cargo check --locked -p codex-hepta-agentd -p codex-hepta-matrixd
+          cargo clippy --locked -p codex-hepta-memory-runtime -p codex-hepta-agentd -p codex-hepta-matrixd --all-targets -- -D warnings
