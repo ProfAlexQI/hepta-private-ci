@@ -1,0 +1,521 @@
+name: Hepta Intelligence A0 authority registry
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-a0-authority-gap-closure-*"
+  pull_request:
+    paths:
+      - ".github/workflows/hepta-intelligence-a0-authority.yml"
+      - "plans/hepta-intelligence/AGENTS.md"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json"
+      - "scripts/hepta-intelligence-current-truth.py"
+      - "scripts/verify-hepta-intelligence-a0-authority.py"
+      - "scripts/verify-hepta-intelligence-document-authority.py"
+      - "scripts/verify-hepta-intelligence-master-plan.py"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-a0-authority-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+  EXPECTED_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  EXPECTED_PARENT: c768bcbeb4c1168088d2499828c24da521a2a73a
+  EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  SOURCE_ARTIFACT_NAME: hepta-intelligence-a0-source-${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  source-authority:
+    name: A0 canonical authority source gate
+    runs-on: macos-15-arm64
+    timeout-minutes: 30
+    env:
+      ARTIFACT_DIR: artifacts/hepta-intelligence-a0
+    steps:
+      - name: Checkout exact source candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify repository, branch, head, tree and parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test -n "$(git rev-parse HEAD^{tree})"
+          observed_branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          test "$observed_branch" = "$EXPECTED_BRANCH"
+
+      - name: Compile A0 Python tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+
+      - name: Parse registered machine inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json; do
+            python3 -m json.tool "$path" >/dev/null
+          done
+
+      - name: Verify canonical master plan
+        run: python3 scripts/verify-hepta-intelligence-master-plan.py
+
+      - name: Verify document authority and compatibility
+        run: python3 scripts/verify-hepta-intelligence-document-authority.py
+
+      - name: Verify deterministic current truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          python3 scripts/hepta-intelligence-current-truth.py --compact \
+            >"$ARTIFACT_DIR/current-truth-1.json"
+          python3 scripts/hepta-intelligence-current-truth.py --compact \
+            >"$ARTIFACT_DIR/current-truth-2.json"
+          cmp "$ARTIFACT_DIR/current-truth-1.json" "$ARTIFACT_DIR/current-truth-2.json"
+          cp "$ARTIFACT_DIR/current-truth-1.json" "$ARTIFACT_DIR/current-truth.json"
+
+      - name: Run exact-parent A0 source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          GITHUB_SHA="$EXPECTED_HEAD_SHA" \
+            python3 scripts/verify-hepta-intelligence-a0-authority.py \
+            | tee "$ARTIFACT_DIR/a0-source-gate-receipt.json"
+
+      - name: Enforce negative authority source receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          receipt = json.loads(
+              Path("artifacts/hepta-intelligence-a0/a0-source-gate-receipt.json")
+              .read_text(encoding="utf-8")
+          )
+          assert receipt["status"] == "PASS_HEPTA_INTELLIGENCE_A0_SOURCE_ONLY"
+          assert receipt["q0_base"]["qualified_candidate"] is True
+          assert receipt["a0_candidate_qualified"] is False
+          assert receipt["full_repository_merge_green"] is False
+          assert receipt["runtime_source_changed"] is False
+          assert receipt["sql_migration_changed"] is False
+          assert receipt["product_caller_changed"] is False
+          assert receipt["source_writeback"] is False
+          assert receipt["authority"]
+          assert all(value is False for value in receipt["authority"].values())
+          PY
+
+      - name: Prove clean tracked source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check HEAD^ HEAD
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Upload exact-head A0 source evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ env.SOURCE_ARTIFACT_NAME }}
+          path: artifacts/hepta-intelligence-a0/**
+          if-no-files-found: error
+          retention-days: 30
+
+  executable-receipt:
+    name: A0 exact-head executable evidence receipt
+    needs: source-authority
+    if: ${{ always() && needs.source-authority.result == 'success' }}
+    runs-on: macos-15-arm64
+    timeout-minutes: 20
+    env:
+      API_DIR: artifacts/hepta-intelligence-a0-api
+      FINAL_DIR: artifacts/hepta-intelligence-a0-final
+      SOURCE_DIR: artifacts/hepta-intelligence-a0-source
+    steps:
+      - name: Checkout exact source candidate for finalization
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify finalizer identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          observed_branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          test "$observed_branch" = "$EXPECTED_BRANCH"
+
+      - name: Fetch completed source job and artifact metadata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$API_DIR" "$SOURCE_DIR"
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          headers=(
+            -H "Authorization: Bearer ${GH_TOKEN}"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+
+          ready=false
+          for _ in $(seq 1 20); do
+            curl -fsSL "${headers[@]}" \
+              "${api}/actions/runs/${GITHUB_RUN_ID}" \
+              >"$API_DIR/run.json"
+            curl -fsSL "${headers[@]}" \
+              "${api}/actions/runs/${GITHUB_RUN_ID}/jobs?filter=latest&per_page=100" \
+              >"$API_DIR/jobs.json"
+            curl -fsSL "${headers[@]}" \
+              "${api}/actions/runs/${GITHUB_RUN_ID}/artifacts?per_page=100" \
+              >"$API_DIR/artifacts.json"
+
+            if python3 - "$API_DIR/jobs.json" "$API_DIR/artifacts.json" <<'PY'
+          import json
+          import os
+          import sys
+
+          jobs = json.load(open(sys.argv[1], encoding="utf-8")).get("jobs", [])
+          artifacts = json.load(open(sys.argv[2], encoding="utf-8")).get("artifacts", [])
+          source_jobs = [
+              job for job in jobs
+              if job.get("name") == "A0 canonical authority source gate"
+          ]
+          source_artifacts = [
+              artifact for artifact in artifacts
+              if artifact.get("name") == os.environ["SOURCE_ARTIFACT_NAME"]
+          ]
+          ok = (
+              len(source_jobs) == 1
+              and source_jobs[0].get("status") == "completed"
+              and source_jobs[0].get("conclusion") == "success"
+              and int(source_jobs[0].get("runner_id") or 0) > 0
+              and bool(source_jobs[0].get("steps"))
+              and len(source_artifacts) == 1
+              and source_artifacts[0].get("expired") is False
+              and str(source_artifacts[0].get("digest", "")).startswith("sha256:")
+          )
+          raise SystemExit(0 if ok else 1)
+          PY
+            then
+              ready=true
+              break
+            fi
+            sleep 3
+          done
+          test "$ready" = true
+
+          artifact_url="$(
+            python3 - "$API_DIR/artifacts.json" <<'PY'
+          import json
+          import os
+          import sys
+
+          artifacts = json.load(open(sys.argv[1], encoding="utf-8")).get("artifacts", [])
+          matching = [
+              item for item in artifacts
+              if item.get("name") == os.environ["SOURCE_ARTIFACT_NAME"]
+          ]
+          assert len(matching) == 1
+          print(matching[0]["archive_download_url"])
+          PY
+          )"
+
+          curl -fsSL -L "${headers[@]}" "$artifact_url" \
+            -o "$API_DIR/source-artifact.zip"
+          unzip -q "$API_DIR/source-artifact.zip" -d "$SOURCE_DIR"
+
+      - name: Build fail-closed A0 executable receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$FINAL_DIR"
+          python3 - "$API_DIR" "$SOURCE_DIR" "$FINAL_DIR/a0-executable-receipt.json" <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import sys
+          from typing import Any
+
+          api_dir = Path(sys.argv[1])
+          source_dir = Path(sys.argv[2])
+          output = Path(sys.argv[3])
+
+          def require(condition: bool, message: str) -> None:
+              if not condition:
+                  raise SystemExit(f"FAIL_HEPTA_INTELLIGENCE_A0_EXECUTABLE: {message}")
+
+          def load(path: Path) -> dict[str, Any]:
+              value = json.loads(path.read_text(encoding="utf-8"))
+              require(isinstance(value, dict), f"{path} must contain an object")
+              return value
+
+          def canonical(value: Any) -> bytes:
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+              ).encode()
+
+          def sha256(path: Path) -> str:
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          def all_false(value: Any) -> bool:
+              return (
+                  isinstance(value, dict)
+                  and bool(value)
+                  and all(item is False for item in value.values())
+              )
+
+          run = load(api_dir / "run.json")
+          jobs_doc = load(api_dir / "jobs.json")
+          artifacts_doc = load(api_dir / "artifacts.json")
+
+          repository = os.environ["EXPECTED_REPOSITORY"]
+          branch = os.environ["EXPECTED_BRANCH"]
+          head = os.environ["EXPECTED_HEAD_SHA"]
+          parent = os.environ["EXPECTED_PARENT"]
+          run_id = int(os.environ["GITHUB_RUN_ID"])
+          run_attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
+          tree = subprocess.check_output(
+              ["git", "rev-parse", "HEAD^{tree}"],
+              text=True,
+          ).strip()
+
+          require(os.environ["GITHUB_REPOSITORY"] == repository, "repository mismatch")
+          require(subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() == head, "head mismatch")
+          require(subprocess.check_output(["git", "rev-parse", "HEAD^"], text=True).strip() == parent, "parent mismatch")
+          require(run.get("id") == run_id, "run id mismatch")
+          require(run.get("run_attempt") == run_attempt, "run attempt mismatch")
+          require(run.get("head_sha") == head, "workflow run head mismatch")
+          require(run.get("head_branch") == branch, "workflow run branch mismatch")
+          require(run.get("event") in {"push", "pull_request", "workflow_dispatch"}, "unexpected event")
+
+          jobs = jobs_doc.get("jobs")
+          require(isinstance(jobs, list), "jobs missing")
+          source_jobs = [
+              job for job in jobs
+              if job.get("name") == "A0 canonical authority source gate"
+          ]
+          require(len(source_jobs) == 1, "source job identity is not unique")
+          source_job = source_jobs[0]
+          require(source_job.get("run_id") == run_id, "source job run mismatch")
+          require(source_job.get("status") == "completed", "source job incomplete")
+          require(source_job.get("conclusion") == "success", "source job failed")
+          require(int(source_job.get("runner_id") or 0) > 0, "source job has no real runner")
+          require(bool(source_job.get("runner_name")), "source runner name missing")
+          require(isinstance(source_job.get("labels"), list) and source_job["labels"], "source runner labels missing")
+
+          steps = source_job.get("steps")
+          require(isinstance(steps, list) and steps, "source job steps are empty")
+          by_name = {
+              step.get("name"): step
+              for step in steps
+              if isinstance(step, dict)
+          }
+          required_steps = [
+              "Checkout exact source candidate",
+              "Verify repository, branch, head, tree and parent",
+              "Compile A0 Python tools",
+              "Parse registered machine inputs",
+              "Verify canonical master plan",
+              "Verify document authority and compatibility",
+              "Verify deterministic current truth",
+              "Run exact-parent A0 source gate",
+              "Enforce negative authority source receipt",
+              "Prove clean tracked source",
+              "Upload exact-head A0 source evidence",
+          ]
+          for step_name in required_steps:
+              step = by_name.get(step_name)
+              require(isinstance(step, dict), f"missing source step: {step_name}")
+              require(step.get("status") == "completed", f"incomplete source step: {step_name}")
+              require(step.get("conclusion") == "success", f"failed source step: {step_name}")
+
+          artifacts = artifacts_doc.get("artifacts")
+          require(isinstance(artifacts, list), "artifacts missing")
+          source_name = os.environ["SOURCE_ARTIFACT_NAME"]
+          source_artifacts = [
+              artifact for artifact in artifacts
+              if artifact.get("name") == source_name
+          ]
+          require(len(source_artifacts) == 1, "source artifact identity is not unique")
+          source_artifact = source_artifacts[0]
+          require(source_artifact.get("expired") is False, "source artifact expired")
+          require(
+              re.fullmatch(r"sha256:[0-9a-f]{64}", str(source_artifact.get("digest", ""))) is not None,
+              "source artifact digest invalid",
+          )
+          workflow_run = source_artifact.get("workflow_run")
+          require(isinstance(workflow_run, dict), "source artifact workflow binding missing")
+          require(workflow_run.get("id") == run_id, "source artifact run mismatch")
+          require(workflow_run.get("head_sha") == head, "source artifact head mismatch")
+          require(workflow_run.get("head_branch") == branch, "source artifact branch mismatch")
+
+          source_receipts = list(source_dir.rglob("a0-source-gate-receipt.json"))
+          truth_files = list(source_dir.rglob("current-truth.json"))
+          require(len(source_receipts) == 1, "source receipt missing or ambiguous")
+          require(len(truth_files) == 1, "current truth missing or ambiguous")
+          source_receipt_path = source_receipts[0]
+          truth_path = truth_files[0]
+          source_receipt = load(source_receipt_path)
+          truth = load(truth_path)
+
+          require(source_receipt.get("status") == "PASS_HEPTA_INTELLIGENCE_A0_SOURCE_ONLY", "source receipt status mismatch")
+          candidate = source_receipt.get("candidate")
+          require(isinstance(candidate, dict), "source candidate binding missing")
+          require(candidate.get("head") == head, "source receipt head mismatch")
+          require(candidate.get("tree") == tree, "source receipt tree mismatch")
+          require(candidate.get("parent") == parent, "source receipt parent mismatch")
+          require(candidate.get("branch") == branch, "source receipt branch mismatch")
+          require(source_receipt.get("a0_candidate_qualified") is False, "source receipt self-qualified")
+          require(source_receipt.get("full_repository_merge_green") is False, "source receipt fabricated merge-green")
+          require(all_false(source_receipt.get("authority")), "source receipt authority must remain false")
+
+          require(truth.get("schema") == "hepta_intelligence_current_truth_v1", "current truth schema mismatch")
+          require(truth.get("repository") == repository, "current truth repository mismatch")
+          require(truth.get("q0", {}).get("qualified_candidate") is True, "current truth lost Q0 qualification")
+          require(truth.get("q0", {}).get("runtime_capability_qualified") is False, "current truth crossed runtime boundary")
+          require(all_false(truth.get("authority")), "current truth authority must remain false")
+
+          authority = source_receipt["authority"]
+          receipt = {
+              "schema": "hepta_intelligence_a0_executable_evidence_receipt_v1",
+              "status": "PASS_HEPTA_INTELLIGENCE_A0_EXECUTABLE_QUALIFICATION",
+              "repository": repository,
+              "candidate": {
+                  "branch": branch,
+                  "head": head,
+                  "tree": tree,
+                  "parent": parent,
+              },
+              "workflow": {
+                  "workflow_id": run.get("workflow_id"),
+                  "workflow_name": run.get("name"),
+                  "workflow_path": ".github/workflows/hepta-intelligence-a0-authority.yml",
+                  "run_id": run_id,
+                  "run_attempt": run_attempt,
+                  "event": run.get("event"),
+                  "source_job_id": source_job.get("id"),
+                  "source_runner_id": source_job.get("runner_id"),
+                  "source_runner_name": source_job.get("runner_name"),
+                  "source_runner_labels": source_job.get("labels"),
+                  "required_steps": required_steps,
+                  "steps_non_empty": True,
+                  "source_artifact_id": source_artifact.get("id"),
+                  "source_artifact_name": source_artifact.get("name"),
+                  "source_artifact_digest": source_artifact.get("digest"),
+              },
+              "evidence": {
+                  "source_receipt_sha256": sha256(source_receipt_path),
+                  "current_truth_sha256": sha256(truth_path),
+                  "jobs_metadata_sha256": sha256(api_dir / "jobs.json"),
+                  "run_metadata_sha256": sha256(api_dir / "run.json"),
+                  "artifacts_metadata_sha256": sha256(api_dir / "artifacts.json"),
+              },
+              "conclusion": {
+                  "q0_base_qualified_candidate": True,
+                  "a0_source_implemented": True,
+                  "a0_candidate_qualified": True,
+                  "runtime_wired": False,
+                  "runtime_capability_qualified": False,
+                  "efficacy_proven": False,
+                  "operator_accepted": False,
+                  "promoted": False,
+                  "full_repository_merge_green": False,
+                  "b0_activation_requires_independent_review_and_canonical_selection": True,
+              },
+              "authority": authority,
+          }
+          receipt["receipt_binding_sha256"] = hashlib.sha256(canonical(receipt)).hexdigest()
+          output.write_text(
+              json.dumps(receipt, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Enforce executable receipt boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$FINAL_DIR/a0-executable-receipt.json" <<'PY'
+          import hashlib
+          import json
+          import sys
+
+          path = sys.argv[1]
+          receipt = json.load(open(path, encoding="utf-8"))
+          binding = receipt.pop("receipt_binding_sha256")
+          encoded = json.dumps(
+              receipt,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+          ).encode()
+          assert binding == hashlib.sha256(encoded).hexdigest()
+          assert receipt["status"] == "PASS_HEPTA_INTELLIGENCE_A0_EXECUTABLE_QUALIFICATION"
+          assert receipt["conclusion"]["a0_candidate_qualified"] is True
+          assert receipt["conclusion"]["runtime_capability_qualified"] is False
+          assert receipt["conclusion"]["full_repository_merge_green"] is False
+          assert receipt["authority"]
+          assert all(value is False for value in receipt["authority"].values())
+          PY
+          git diff --check HEAD^ HEAD
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Upload exact-head A0 executable receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-a0-executable-${{ env.EXPECTED_HEAD_SHA }}
+          path: |
+            artifacts/hepta-intelligence-a0-final/**
+            artifacts/hepta-intelligence-a0-api/run.json
+            artifacts/hepta-intelligence-a0-api/jobs.json
+            artifacts/hepta-intelligence-a0-api/artifacts.json
+          if-no-files-found: error
+          retention-days: 30

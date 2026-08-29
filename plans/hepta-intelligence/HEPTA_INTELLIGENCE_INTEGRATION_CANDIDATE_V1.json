@@ -1,0 +1,109 @@
+{
+  "allowed_changed_paths": [
+    ".github/workflows/hepta-intelligence-a0-authority.yml",
+    ".github/workflows/hepta-intelligence-master-plan.yml",
+    "plans/hepta-intelligence/AGENTS.md",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json",
+    "scripts/hepta-intelligence-current-truth.py",
+    "scripts/verify-hepta-intelligence-a0-authority.py",
+    "scripts/verify-hepta-intelligence-document-authority.py",
+    "scripts/verify-hepta-intelligence-master-plan.py"
+  ],
+  "authority": {
+    "callers_ratchet": false,
+    "default_open_wired": false,
+    "external_effects": false,
+    "learning_write_authority": false,
+    "memory_write_authority": false,
+    "model_runtime_authority": false,
+    "operator_acceptance": false,
+    "outbox_dispatch_authority": false,
+    "product_module_registered": false,
+    "production_authority": false,
+    "projection_write_authority": false,
+    "promotion": false,
+    "provider_dispatch_authority": false,
+    "release_authority": false,
+    "runtime_wired": false,
+    "tool_registered": false
+  },
+  "base": {
+    "branch": "codex/hepta-intelligence-plan-v3-20260828",
+    "head": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+    "parent": "aeb8ac0bfb30d570a16c4914b6e4b31ce035dd62",
+    "q0_candidate_qualified": true,
+    "tree": "ca455a9ef797cd95164c880c7b8faba80b305589"
+  },
+  "branch": "codex/hepta-intelligence-a0-authority-gap-closure-20260829",
+  "candidate_head_binding": "GITHUB_SHA_AT_EXECUTABLE_QUALIFICATION",
+  "candidate_id": "HEPTA_INTELLIGENCE_A0_AUTHORITY_GAP_CLOSURE_2026-08-29",
+  "classification": "SOURCE_ONLY_GOVERNANCE_CANDIDATE",
+  "excluded_side_stack_pr_numbers": [
+    28,
+    30,
+    34,
+    40,
+    45,
+    49,
+    54,
+    58,
+    64
+  ],
+  "expected_parent": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+  "external_unmerged_dependency_pr_numbers": [
+    53
+  ],
+  "included_pr_numbers": [
+    7,
+    13,
+    14,
+    16,
+    21,
+    23,
+    29
+  ],
+  "known_diagnostics": [
+    {
+      "blocking_for_a0_source_qualification": false,
+      "blocking_for_default_branch_merge": true,
+      "scope": "historical full-repository checks on Q0 head",
+      "status": "NOT_GREEN_OR_INCOMPLETE"
+    }
+  ],
+  "merge_policy": {
+    "auto_merge": false,
+    "draft_required": true,
+    "exact_head_executable_evidence_required": true,
+    "full_repository_required_checks_required_before_default_branch_merge": true,
+    "independent_review_required": true,
+    "self_merge_allowed": false
+  },
+  "repository": "ProfHepta/hepta-private-ci",
+  "required_checks": [
+    "python compile for all A0 scripts",
+    "JSON parse for all registered machine inputs",
+    "master plan verifier",
+    "document authority/compatibility verifier",
+    "A0 registry/integration verifier",
+    "deterministic current-truth byte equality",
+    "exact-parent and changed-path allowlist",
+    "authority-negative assertions",
+    "clean source tree"
+  ],
+  "rollback_base": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+  "schema": "hepta_intelligence_integration_candidate_v1",
+  "source_freeze": {
+    "documentation_registry_verifier_workflow_only": true,
+    "h5_h6_h7_runtime_source_allowed": false,
+    "product_callers_allowed": false,
+    "rust_runtime_changes_allowed": false,
+    "sql_migrations_allowed": false
+  }
+}
