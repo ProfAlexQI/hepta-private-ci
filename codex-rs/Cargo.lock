@@ -3629,6 +3629,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-infer-client"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-infer-core",
+ "codex-hepta-inferd",
+ "codex-uds",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "codex-hepta-infer-core"
 version = "0.0.0"
 

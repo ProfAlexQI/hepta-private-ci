@@ -1,0 +1,42 @@
+{
+  "schema": "hepta.inference.inf0c.runtime_closure_receipt.v1",
+  "candidate_receipt": "cd3344d767667b177d6d21c7198bade228d010bb",
+  "real_service_run_id": 33239546304,
+  "real_service_job_id": 99066422684,
+  "real_service_head": "e54aea1ccca3509b36dd3eda7850289025dded16",
+  "artifact_id": 9711096479,
+  "artifact_digest": "sha256:83f5346ee3d7107b794e6466a5aef007d3b087f30ff2850074a73d8a71e353ad",
+  "transport_disconnect": "QUALIFIED",
+  "controlled_restart": "QUALIFIED",
+  "post_restart_exact_semantic_inference": "QUALIFIED",
+  "direct_provider_cancel": {
+    "ollama": {
+      "classification": "UNSUPPORTED_FAIL_CLOSED",
+      "provider_cancel_acknowledged": false,
+      "observed_terminal_background_response": true,
+      "error_digest": "b07613b8d211f69a1bc507e39327a58bf1935d7c341c9ac93622b7f30e7e0105",
+      "dispatch_policy": "REJECT_BEFORE_BACKEND_DISPATCH"
+    },
+    "lmstudio": {
+      "classification": "UNSUPPORTED_FAIL_CLOSED",
+      "provider_cancel_acknowledged": false,
+      "observed_terminal_background_response": true,
+      "error_digest": "8aed81c0ac3c040234296e28ef00da3da8eda2856b7de8e9bfc56da24a62565d",
+      "dispatch_policy": "REJECT_BEFORE_BACKEND_DISPATCH"
+    }
+  },
+  "backend_cancellation_acknowledged": false,
+  "compensating_control": "CONTROLLED_WORKER_TERMINATION_AND_BACKEND_GENERATION_INCREMENT",
+  "technical_gap_closed_by_capability_classification": true,
+  "production_qualified": false,
+  "operator_accepted": false,
+  "promoted": false,
+  "authority": {
+    "production": false,
+    "effect": false,
+    "memory_write": false,
+    "kg_write": false,
+    "remote_inference": false,
+    "promotion": false
+  }
+}
