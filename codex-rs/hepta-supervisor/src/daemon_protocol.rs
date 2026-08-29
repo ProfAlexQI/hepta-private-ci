@@ -4,11 +4,11 @@ use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_fleet::ReleaseId;
 use codex_hepta_memory::H7SignedArtifactEnvelope;
-use serde::de::Error as _;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
+use serde::de::Error as _;
 
 use crate::H7H89ProductionGrant;
 use crate::ProductionMutationReceipt;
