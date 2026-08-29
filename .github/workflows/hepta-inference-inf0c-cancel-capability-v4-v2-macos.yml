@@ -1,0 +1,70 @@
+name: Hepta inference INF-0C cancel capability v4 receipt v2
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0c-cancel-v4-v2-qualification-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf0c-cancel-capability-v4-v2-macos.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    name: Cancel v4 exact receipt source and hermetic qualification
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      RECEIPT_HEAD: 8a1c6f71df68cae03a651d0e4eca7cd0ae06574d
+      SOURCE_HEAD: 1448c6293f9c2f2fed850338b10c81c156860b80
+      SOURCE_TREE: 3039a278f523e30fa077a3cc63d76c5689da9913
+      RECEIPT_PATH: docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_CANCEL_CAPABILITY_V4_SOURCE_RECEIPT_V2_2026-08-29.json
+      SELF: .github/workflows/hepta-inference-inf0c-cancel-capability-v4-v2-macos.yml
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 4
+
+      - name: Verify isolated workflow and exact append-only binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$RECEIPT_HEAD"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          test "$(git rev-parse "$RECEIPT_HEAD^")" = "$SOURCE_HEAD"
+          test "$(git show -s --format=%T "$SOURCE_HEAD")" = "$SOURCE_TREE"
+          test "$(git diff --name-only "$SOURCE_HEAD" "$RECEIPT_HEAD")" = "$RECEIPT_PATH"
+
+      - name: Execute corrected classifier gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-inference-inf0c-real-e2e.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v3.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v4.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v4-selftest.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v4-source-gate.py
+          python3 scripts/hepta-inference-inf0c-cancel-capability-v4-selftest.py \
+            | tee "$RUNNER_TEMP/hepta-inf0c-cancel-v4-v2-selftest.txt"
+          python3 scripts/hepta-inference-inf0c-cancel-capability-v4-source-gate.py \
+            | tee "$RUNNER_TEMP/hepta-inf0c-cancel-v4-v2-source.txt"
+          python3 -m json.tool "$RECEIPT_PATH" >/dev/null
+          {
+            echo "PASS_HEPTA_INFERENCE_INF0C_CANCEL_CAPABILITY_V4_RECEIPT_V2"
+            echo "provider_cancel_capability_classified=false"
+            echo "backend_cancellation_acknowledged=false"
+            echo "controlled_worker_termination_required=true"
+            echo "production_qualified=false"
+          } | tee "$RUNNER_TEMP/hepta-inf0c-cancel-v4-v2-receipt.txt"
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0c-cancel-v4-v2-${{ env.SOURCE_HEAD }}
+          path: ${{ runner.temp }}/hepta-inf0c-cancel-v4-v2-*.txt
+          if-no-files-found: error
+          retention-days: 14
