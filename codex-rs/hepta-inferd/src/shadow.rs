@@ -197,14 +197,17 @@ async fn handle_connection(
     let request = read_message(&mut stream, max_frame_bytes)
         .await
         .map_err(|_| ConnectionTaskError::Peer)?;
+    let creates_terminal_receipt = request.creates_terminal_receipt();
     let response = {
         let now_unix_ms = unix_time_ms().map_err(ConnectionTaskError::Infrastructure)?;
         let mut controller = controller.lock().await;
         dispatch(&mut controller, request, now_unix_ms)
     };
-    persist_terminal_responses(&receipt_store, &response)
-        .await
-        .map_err(ConnectionTaskError::Infrastructure)?;
+    if creates_terminal_receipt {
+        persist_terminal_responses(&receipt_store, &response)
+            .await
+            .map_err(ConnectionTaskError::Infrastructure)?;
+    }
     write_message(&mut stream, &response, max_frame_bytes)
         .await
         .map_err(|_| ConnectionTaskError::Peer)?;
@@ -290,6 +293,20 @@ fn dispatch(
                 backend_generation: controller.backend_generation(),
                 receipts,
             }),
+        ClientMessage::GetReceipt {
+            request_id,
+            request_generation,
+            backend_generation,
+            minimum_sequence,
+        } => controller
+            .terminal_receipt_fenced(
+                &request_id,
+                request_generation,
+                backend_generation,
+                minimum_sequence,
+            )
+            .cloned()
+            .map(ServerMessage::Receipt),
         ClientMessage::Snapshot => return ServerMessage::Snapshot(controller.snapshot()),
     };
     result.unwrap_or_else(|error| ServerMessage::Error {
@@ -756,7 +773,7 @@ mod tests {
         let receipt = must(
             client
                 .exchange(ClientMessage::Complete {
-                    request_id,
+                    request_id: request_id.clone(),
                     request_generation: 1,
                     backend_generation,
                     sequence: 3,
@@ -765,13 +782,39 @@ mod tests {
                 })
                 .await,
         );
-        assert!(matches!(receipt, ServerMessage::Receipt(_)));
-        let mut entries = must(fs::read_dir(&harness.config.receipt_dir).await);
-        let entry = match must(entries.next_entry().await) {
-            Some(entry) => entry,
-            None => panic!("shadow terminal receipt was not persisted"),
+        let terminal = match receipt {
+            ServerMessage::Receipt(receipt) => receipt,
+            other => panic!("unexpected completion response: {other:?}"),
         };
-        let bytes = must(fs::read(entry.path()).await);
+        let queried = must(
+            client
+                .exchange(ClientMessage::GetReceipt {
+                    request_id: request_id.clone(),
+                    request_generation: 1,
+                    backend_generation,
+                    minimum_sequence: terminal.last_sequence,
+                })
+                .await,
+        );
+        assert_eq!(queried, ServerMessage::Receipt(terminal.clone()));
+        let queried_again = must(
+            client
+                .exchange(ClientMessage::GetReceipt {
+                    request_id,
+                    request_generation: 1,
+                    backend_generation,
+                    minimum_sequence: terminal.last_sequence,
+                })
+                .await,
+        );
+        assert_eq!(queried_again, ServerMessage::Receipt(terminal));
+        let mut entries = must(fs::read_dir(&harness.config.receipt_dir).await);
+        let mut receipt_files = Vec::new();
+        while let Some(entry) = must(entries.next_entry().await) {
+            receipt_files.push(entry.path());
+        }
+        assert_eq!(receipt_files.len(), 1, "receipt query must be read-only");
+        let bytes = must(fs::read(&receipt_files[0]).await);
         assert!(bytes.len() <= MAX_FRAME_BYTES);
         assert!(!String::from_utf8_lossy(&bytes).contains("prompt"));
         harness.stop().await;

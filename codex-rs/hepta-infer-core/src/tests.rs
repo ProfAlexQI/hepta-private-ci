@@ -208,3 +208,67 @@ fn response_receipt_round_trip_preserves_generation_fence() {
     let encoded = must(message.encode_canonical());
     assert_eq!(must(ServerMessage::decode_canonical(&encoded)), message);
 }
+
+#[test]
+fn receipt_query_protocol_and_mutation_classification_are_exact() {
+    let request_id = must(RequestId::parse("request-query-protocol"));
+    let query = ClientMessage::GetReceipt {
+        request_id,
+        request_generation: 2,
+        backend_generation: 3,
+        minimum_sequence: 4,
+    };
+    let encoded = must(query.encode_canonical());
+    assert_eq!(must(ClientMessage::decode_canonical(&encoded)), query);
+    assert!(!query.creates_terminal_receipt());
+    assert!(
+        ClientMessage::Complete {
+            request_id: must(RequestId::parse("request-mutating")),
+            request_generation: 1,
+            backend_generation: 1,
+            sequence: 3,
+            result_digest: digest('d'),
+            output_tokens: 1,
+        }
+        .creates_terminal_receipt()
+    );
+}
+
+#[test]
+fn terminal_receipt_query_requires_exact_generations_and_sequence() {
+    let tuple = digest('a');
+    let mut controller = controller(tuple.clone());
+    let request_id = must(RequestId::parse("request-query"));
+    must(controller.admit(request(request_id.as_str(), "tenant-a", tuple), 1));
+    assert_eq!(
+        controller.terminal_receipt_fenced(&request_id, 1, 7, 1),
+        Err(InferError::RequestNotTerminal)
+    );
+    must(controller.start(&request_id, 1, 7));
+    let completed = must(controller.complete(
+        EventFence {
+            request_id: &request_id,
+            request_generation: 1,
+            backend_generation: 7,
+            sequence: 3,
+        },
+        digest('d'),
+        4,
+    ));
+    assert_eq!(
+        controller.terminal_receipt_fenced(&request_id, 2, 7, 3),
+        Err(InferError::StaleRequestGeneration)
+    );
+    assert_eq!(
+        controller.terminal_receipt_fenced(&request_id, 1, 8, 3),
+        Err(InferError::StaleBackendGeneration)
+    );
+    assert_eq!(
+        controller.terminal_receipt_fenced(&request_id, 1, 7, 4),
+        Err(InferError::ReceiptSequenceNotReached)
+    );
+    assert_eq!(
+        must(controller.terminal_receipt_fenced(&request_id, 1, 7, 3)),
+        &completed
+    );
+}

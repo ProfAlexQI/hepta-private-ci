@@ -392,6 +392,33 @@ impl Controller {
             .ok_or(InferError::RequestNotTerminal)
     }
 
+    pub fn terminal_receipt_fenced(
+        &self,
+        request_id: &RequestId,
+        request_generation: u64,
+        backend_generation: u64,
+        minimum_sequence: u64,
+    ) -> Result<&TerminalReceipt> {
+        let record = self
+            .records
+            .get(request_id)
+            .ok_or(InferError::UnknownRequest)?;
+        if record.request.request_generation != request_generation {
+            return Err(InferError::StaleRequestGeneration);
+        }
+        let receipt = record
+            .terminal_receipt
+            .as_ref()
+            .ok_or(InferError::RequestNotTerminal)?;
+        if receipt.backend_generation != backend_generation {
+            return Err(InferError::StaleBackendGeneration);
+        }
+        if receipt.last_sequence < minimum_sequence {
+            return Err(InferError::ReceiptSequenceNotReached);
+        }
+        Ok(receipt)
+    }
+
     pub fn snapshot(&self) -> ControllerSnapshot {
         let mut running_requests = 0usize;
         let mut terminal_receipts = 0usize;

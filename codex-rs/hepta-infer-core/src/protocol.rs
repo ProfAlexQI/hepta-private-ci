@@ -29,6 +29,7 @@ const REQUEST_COMPLETE: u64 = 4;
 const REQUEST_CANCEL: u64 = 5;
 const REQUEST_RESTART_BACKEND: u64 = 6;
 const REQUEST_SNAPSHOT: u64 = 7;
+const REQUEST_GET_RECEIPT: u64 = 8;
 
 const RESPONSE_PONG: u64 = 100;
 const RESPONSE_ACCEPTED: u64 = 101;
@@ -73,6 +74,12 @@ pub enum ClientMessage {
     },
     RestartBackend {
         expected_generation: u64,
+    },
+    GetReceipt {
+        request_id: RequestId,
+        request_generation: u64,
+        backend_generation: u64,
+        minimum_sequence: u64,
     },
     Snapshot,
 }
@@ -176,6 +183,20 @@ impl ClientMessage {
                 encoder.uint(REQUEST_RESTART_BACKEND);
                 encoder.uint(*expected_generation);
             }
+            Self::GetReceipt {
+                request_id,
+                request_generation,
+                backend_generation,
+                minimum_sequence,
+            } => {
+                encoder.array(6)?;
+                encoder.uint(PROTOCOL_VERSION);
+                encoder.uint(REQUEST_GET_RECEIPT);
+                encoder.text(request_id.as_str())?;
+                encoder.uint(*request_generation);
+                encoder.uint(*backend_generation);
+                encoder.uint(*minimum_sequence);
+            }
             Self::Snapshot => {
                 encoder.array(2)?;
                 encoder.uint(PROTOCOL_VERSION);
@@ -228,11 +249,26 @@ impl ClientMessage {
             REQUEST_RESTART_BACKEND if length == 3 => Self::RestartBackend {
                 expected_generation: decoder.uint()?,
             },
+            REQUEST_GET_RECEIPT if length == 6 => Self::GetReceipt {
+                request_id: RequestId::parse(&decoder.text(MAX_TEXT_BYTES)?)?,
+                request_generation: decoder.uint()?,
+                backend_generation: decoder.uint()?,
+                minimum_sequence: decoder.uint()?,
+            },
             REQUEST_SNAPSHOT if length == 2 => Self::Snapshot,
             _ => return Err(InferError::ProtocolShape),
         };
         decoder.finish()?;
         Ok(message)
+    }
+}
+
+impl ClientMessage {
+    pub const fn creates_terminal_receipt(&self) -> bool {
+        matches!(
+            self,
+            Self::Complete { .. } | Self::Cancel { .. } | Self::RestartBackend { .. }
+        )
     }
 }
 

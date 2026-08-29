@@ -403,6 +403,21 @@ impl QualifiedController {
         self.controller.terminal_receipt(request_id)
     }
 
+    pub fn terminal_receipt_fenced(
+        &self,
+        request_id: &RequestId,
+        request_generation: u64,
+        backend_generation: u64,
+        minimum_sequence: u64,
+    ) -> Result<&TerminalReceipt> {
+        self.controller.terminal_receipt_fenced(
+            request_id,
+            request_generation,
+            backend_generation,
+            minimum_sequence,
+        )
+    }
+
     pub fn snapshot(&self) -> ControllerSnapshot {
         self.controller.snapshot()
     }

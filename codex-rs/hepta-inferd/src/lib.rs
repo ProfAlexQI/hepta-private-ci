@@ -164,14 +164,17 @@ async fn handle_connection(
     let request = read_message(&mut stream, max_frame_bytes)
         .await
         .map_err(|_| ConnectionTaskError::Peer)?;
+    let creates_terminal_receipt = request.creates_terminal_receipt();
     let response = {
         let now_unix_ms = unix_time_ms().map_err(ConnectionTaskError::Infrastructure)?;
         let mut controller = controller.lock().await;
         dispatch(&mut controller, request, now_unix_ms)
     };
-    persist_terminal_responses(&receipt_store, &response)
-        .await
-        .map_err(ConnectionTaskError::Infrastructure)?;
+    if creates_terminal_receipt {
+        persist_terminal_responses(&receipt_store, &response)
+            .await
+            .map_err(ConnectionTaskError::Infrastructure)?;
+    }
     write_message(&mut stream, &response, max_frame_bytes)
         .await
         .map_err(|_| ConnectionTaskError::Peer)?;
@@ -257,6 +260,20 @@ fn dispatch(
                 backend_generation: controller.backend_generation(),
                 receipts,
             }),
+        ClientMessage::GetReceipt {
+            request_id,
+            request_generation,
+            backend_generation,
+            minimum_sequence,
+        } => controller
+            .terminal_receipt_fenced(
+                &request_id,
+                request_generation,
+                backend_generation,
+                minimum_sequence,
+            )
+            .cloned()
+            .map(ServerMessage::Receipt),
         ClientMessage::Snapshot => return ServerMessage::Snapshot(controller.snapshot()),
     };
     result.unwrap_or_else(|error| ServerMessage::Error {

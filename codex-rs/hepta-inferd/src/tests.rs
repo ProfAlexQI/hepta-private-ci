@@ -168,14 +168,14 @@ async fn same_user_uds_round_trip_and_terminal_receipt_are_bounded() {
     let cancelled = exchange(
         &harness.config.socket_path,
         ClientMessage::Cancel {
-            request_id,
+            request_id: request_id.clone(),
             request_generation: 1,
             cancel_generation: 1,
             backend_generation,
         },
     )
     .await;
-    match cancelled {
+    let cancelled_receipt = match cancelled {
         ServerMessage::Receipt(receipt) => {
             assert_eq!(receipt.cancel_generation, 1);
             assert!(receipt.result_digest.is_none());
@@ -183,16 +183,49 @@ async fn same_user_uds_round_trip_and_terminal_receipt_are_bounded() {
                 receipt.authority,
                 AuthoritySnapshot::qualification_only_closed()
             );
+            receipt
         }
         other => panic!("unexpected cancellation response: {other:?}"),
-    }
+    };
+
+    let queried = exchange(
+        &harness.config.socket_path,
+        ClientMessage::GetReceipt {
+            request_id: request_id.clone(),
+            request_generation: 1,
+            backend_generation,
+            minimum_sequence: cancelled_receipt.last_sequence,
+        },
+    )
+    .await;
+    assert_eq!(queried, ServerMessage::Receipt(cancelled_receipt.clone()));
+    assert_eq!(
+        exchange(
+            &harness.config.socket_path,
+            ClientMessage::GetReceipt {
+                request_id,
+                request_generation: 1,
+                backend_generation,
+                minimum_sequence: cancelled_receipt.last_sequence + 1,
+            },
+        )
+        .await,
+        ServerMessage::Error {
+            code: "INF_RECEIPT_SEQUENCE_NOT_REACHED".to_owned(),
+        }
+    );
 
     let mut entries = must(tokio::fs::read_dir(&harness.config.receipt_dir).await);
-    let entry = match must(entries.next_entry().await) {
-        Some(entry) => entry,
-        None => panic!("terminal receipt was not persisted"),
-    };
-    let bytes = must(tokio::fs::read(entry.path()).await);
+    let mut receipt_files = Vec::new();
+    while let Some(entry) = must(entries.next_entry().await) {
+        receipt_files.push(entry.path());
+    }
+    assert_eq!(
+        receipt_files.len(),
+        1,
+        "read-only query must not persist twice"
+    );
+    let bytes = must(tokio::fs::read(&receipt_files[0]).await);
     assert!(bytes.len() <= codex_hepta_infer_core::MAX_FRAME_BYTES);
     assert!(!String::from_utf8_lossy(&bytes).contains("prompt"));
     harness.stop().await;

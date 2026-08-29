@@ -16,11 +16,17 @@ use codex_hepta_infer_core::ControllerSnapshot;
 use codex_hepta_infer_core::Digest;
 use codex_hepta_infer_core::InferenceRequest;
 use codex_hepta_infer_core::MAX_FRAME_BYTES;
+use codex_hepta_infer_core::RequestId;
 use codex_hepta_infer_core::ServerMessage;
+use codex_hepta_infer_core::StateEvent;
+use codex_hepta_infer_core::TerminalReceipt;
 use codex_uds::UnixStream;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+use tokio::time::Instant;
+use tokio::time::sleep;
 use tokio::time::timeout;
+use tokio::time::timeout_at;
 
 pub type Result<T> = std::result::Result<T, ClientError>;
 
@@ -285,6 +291,139 @@ impl InferdClient {
         self.expect_non_error(ClientMessage::Admit(request)).await
     }
 
+    pub async fn start(
+        &self,
+        request_id: RequestId,
+        request_generation: u64,
+        backend_generation: u64,
+    ) -> Result<StateEvent> {
+        match self
+            .expect_non_error(ClientMessage::Start {
+                request_id,
+                request_generation,
+                backend_generation,
+            })
+            .await?
+        {
+            ServerMessage::State(event) => Ok(event),
+            _ => Err(ClientError::UnexpectedResponse(
+                "INF_CLIENT_START_RESPONSE_MISMATCH",
+            )),
+        }
+    }
+
+    pub async fn token(
+        &self,
+        request_id: RequestId,
+        request_generation: u64,
+        backend_generation: u64,
+        sequence: u64,
+        token_digest: Digest,
+        token_byte_length: u64,
+    ) -> Result<StateEvent> {
+        match self
+            .expect_non_error(ClientMessage::Token {
+                request_id,
+                request_generation,
+                backend_generation,
+                sequence,
+                token_digest,
+                token_byte_length,
+            })
+            .await?
+        {
+            ServerMessage::State(event) => Ok(event),
+            _ => Err(ClientError::UnexpectedResponse(
+                "INF_CLIENT_TOKEN_RESPONSE_MISMATCH",
+            )),
+        }
+    }
+
+    pub async fn complete(
+        &self,
+        request_id: RequestId,
+        request_generation: u64,
+        backend_generation: u64,
+        sequence: u64,
+        result_digest: Digest,
+        output_tokens: u32,
+    ) -> Result<TerminalReceipt> {
+        match self
+            .expect_non_error(ClientMessage::Complete {
+                request_id,
+                request_generation,
+                backend_generation,
+                sequence,
+                result_digest,
+                output_tokens,
+            })
+            .await?
+        {
+            ServerMessage::Receipt(receipt) => Ok(receipt),
+            _ => Err(ClientError::UnexpectedResponse(
+                "INF_CLIENT_COMPLETE_RESPONSE_MISMATCH",
+            )),
+        }
+    }
+
+    pub async fn receipt(
+        &self,
+        request_id: RequestId,
+        request_generation: u64,
+        backend_generation: u64,
+        minimum_sequence: u64,
+    ) -> Result<TerminalReceipt> {
+        match self
+            .expect_non_error(ClientMessage::GetReceipt {
+                request_id,
+                request_generation,
+                backend_generation,
+                minimum_sequence,
+            })
+            .await?
+        {
+            ServerMessage::Receipt(receipt) => Ok(receipt),
+            _ => Err(ClientError::UnexpectedResponse(
+                "INF_CLIENT_RECEIPT_RESPONSE_MISMATCH",
+            )),
+        }
+    }
+
+    pub async fn await_terminal_receipt(
+        &self,
+        request_id: RequestId,
+        request_generation: u64,
+        backend_generation: u64,
+        minimum_sequence: u64,
+        poll_interval: Duration,
+    ) -> Result<TerminalReceipt> {
+        if poll_interval.is_zero() {
+            return Err(ClientError::Config("INF_CLIENT_RECEIPT_POLL_INTERVAL_ZERO"));
+        }
+        let deadline = Instant::now() + self.config.exchange_timeout;
+        loop {
+            let query = self.receipt(
+                request_id.clone(),
+                request_generation,
+                backend_generation,
+                minimum_sequence,
+            );
+            match timeout_at(deadline, query).await {
+                Ok(Ok(receipt)) => return Ok(receipt),
+                Ok(Err(ClientError::Remote(code)))
+                    if code == "INF_REQUEST_NOT_TERMINAL"
+                        || code == "INF_RECEIPT_SEQUENCE_NOT_REACHED" => {}
+                Ok(Err(error)) => return Err(error),
+                Err(_) => return Err(ClientError::ExchangeTimeout),
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                return Err(ClientError::ExchangeTimeout);
+            }
+            sleep(poll_interval.min(deadline - now)).await;
+        }
+    }
+
     pub async fn cancel(
         &self,
         request_id: codex_hepta_infer_core::RequestId,
@@ -354,6 +493,95 @@ impl ShadowInferdClient {
 
     pub async fn snapshot(&self) -> Result<ControllerSnapshot> {
         self.transport.snapshot().await
+    }
+
+    pub async fn start(
+        &self,
+        request_id: RequestId,
+        request_generation: u64,
+        backend_generation: u64,
+    ) -> Result<StateEvent> {
+        self.transport
+            .start(request_id, request_generation, backend_generation)
+            .await
+    }
+
+    pub async fn token(
+        &self,
+        request_id: RequestId,
+        request_generation: u64,
+        backend_generation: u64,
+        sequence: u64,
+        token_digest: Digest,
+        token_byte_length: u64,
+    ) -> Result<StateEvent> {
+        self.transport
+            .token(
+                request_id,
+                request_generation,
+                backend_generation,
+                sequence,
+                token_digest,
+                token_byte_length,
+            )
+            .await
+    }
+
+    pub async fn complete(
+        &self,
+        request_id: RequestId,
+        request_generation: u64,
+        backend_generation: u64,
+        sequence: u64,
+        result_digest: Digest,
+        output_tokens: u32,
+    ) -> Result<TerminalReceipt> {
+        self.transport
+            .complete(
+                request_id,
+                request_generation,
+                backend_generation,
+                sequence,
+                result_digest,
+                output_tokens,
+            )
+            .await
+    }
+
+    pub async fn receipt(
+        &self,
+        request_id: RequestId,
+        request_generation: u64,
+        backend_generation: u64,
+        minimum_sequence: u64,
+    ) -> Result<TerminalReceipt> {
+        self.transport
+            .receipt(
+                request_id,
+                request_generation,
+                backend_generation,
+                minimum_sequence,
+            )
+            .await
+    }
+
+    pub async fn await_terminal_receipt(
+        &self,
+        request_id: RequestId,
+        request_generation: u64,
+        backend_generation: u64,
+        minimum_sequence: u64,
+        poll_interval: Duration,
+    ) -> Result<TerminalReceipt> {
+        self.transport
+            .await_terminal_receipt(
+                request_id,
+                request_generation,
+                backend_generation,
+                minimum_sequence,
+                poll_interval,
+            )
+            .await
     }
 
     pub async fn cancel_controller(

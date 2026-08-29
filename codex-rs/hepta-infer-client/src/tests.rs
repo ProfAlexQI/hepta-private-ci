@@ -286,6 +286,129 @@ async fn shadow_route_checks_capability_before_dispatch() {
 }
 
 #[tokio::test]
+async fn product_shadow_lifecycle_queries_one_fenced_terminal_receipt() {
+    let mut harness = Harness::start().await;
+    let tuple = digest('a');
+    let shadow = ShadowInferdClient::new(
+        harness.client(),
+        ExactCapabilityProfile::new(
+            tuple.clone(),
+            CapabilityDisposition::Qualified,
+            CapabilityDisposition::UnsupportedFailClosed,
+            CapabilityDisposition::UnsupportedFailClosed,
+            CapabilityDisposition::UnsupportedFailClosed,
+        ),
+    );
+    let request_id = must(RequestId::parse("request-shadow-complete"));
+    let admitted = must(
+        shadow
+            .admit(
+                InferenceCapability::SemanticText,
+                request(tuple, request_id.as_str()),
+            )
+            .await,
+    );
+    let backend_generation = match admitted {
+        ServerMessage::Accepted(event) => event.backend_generation,
+        other => panic!("unexpected admission response: {other:?}"),
+    };
+    let started = must(
+        shadow
+            .start(request_id.clone(), 1, backend_generation)
+            .await,
+    );
+    assert_eq!(started.sequence, 2);
+    let token = must(
+        shadow
+            .token(request_id.clone(), 1, backend_generation, 3, digest('d'), 2)
+            .await,
+    );
+    assert_eq!(token.sequence, 3);
+    let expected_result = digest('e');
+    let completed = must(
+        shadow
+            .complete(
+                request_id.clone(),
+                1,
+                backend_generation,
+                4,
+                expected_result.clone(),
+                4,
+            )
+            .await,
+    );
+    assert_eq!(completed.result_digest, Some(expected_result));
+    let queried = must(
+        shadow
+            .receipt(request_id.clone(), 1, backend_generation, 4)
+            .await,
+    );
+    assert_eq!(queried, completed);
+    let repeated = must(shadow.receipt(request_id, 1, backend_generation, 4).await);
+    assert_eq!(repeated, completed);
+
+    let mut entries = must(tokio::fs::read_dir(&harness.config.receipt_dir).await);
+    let mut count = 0usize;
+    while must(entries.next_entry().await).is_some() {
+        count += 1;
+    }
+    assert_eq!(count, 1, "receipt queries must remain read-only");
+    harness.stop().await;
+}
+
+#[tokio::test]
+async fn terminal_receipt_poll_uses_one_total_deadline() {
+    let mut harness = Harness::start().await;
+    let client = harness.client();
+    let request_id = must(RequestId::parse("request-poll"));
+    let admitted = must(
+        client
+            .admit(request(digest('a'), request_id.as_str()))
+            .await,
+    );
+    let backend_generation = match admitted {
+        ServerMessage::Accepted(event) => event.backend_generation,
+        other => panic!("unexpected admission response: {other:?}"),
+    };
+    let producer = client.clone();
+    let producer_request_id = request_id.clone();
+    let task = tokio::spawn(async move {
+        sleep(Duration::from_millis(30)).await;
+        must(
+            producer
+                .start(producer_request_id.clone(), 1, backend_generation)
+                .await,
+        );
+        must(
+            producer
+                .complete(
+                    producer_request_id,
+                    1,
+                    backend_generation,
+                    3,
+                    digest('d'),
+                    2,
+                )
+                .await,
+        )
+    });
+    let receipt = must(
+        client
+            .await_terminal_receipt(
+                request_id,
+                1,
+                backend_generation,
+                3,
+                Duration::from_millis(5),
+            )
+            .await,
+    );
+    assert_eq!(receipt.last_sequence, 3);
+    must(task.await);
+    harness.stop().await;
+}
+
+#[tokio::test]
 async fn unknown_tuple_and_stale_generation_errors_are_preserved() {
     let mut harness = Harness::start().await;
     let client = harness.client();
