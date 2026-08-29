@@ -66,6 +66,10 @@ run_test_case p0-4c-agentd-focused 5 \
 run_test_case memory-full 1 cargo test --locked -p codex-hepta-memory
 run_case memory-strict-clippy \
   cargo clippy --locked -p codex-hepta-memory --all-targets -- -D warnings
+run_case agent-protocol-strict-clippy \
+  cargo clippy --locked -p codex-hepta-agent-protocol --all-targets -- -D warnings
+run_case supervisor-strict-clippy \
+  cargo clippy --locked -p codex-hepta-supervisor --all-targets -- -D warnings
 run_test_case extension-full 1 cargo test --locked -p codex-hepta-memory-extension
 run_case extension-strict-clippy \
   cargo clippy --locked -p codex-hepta-memory-extension --all-targets -- -D warnings
