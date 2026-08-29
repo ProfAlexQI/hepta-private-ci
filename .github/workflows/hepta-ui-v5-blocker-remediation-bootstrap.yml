@@ -1,0 +1,811 @@
+name: Hepta UI v5 blocker remediation bootstrap
+
+on:
+  push:
+    branches:
+      - codex/ui-v5-plan-and-repo-gap-closure-20260829
+    paths:
+      - .github/workflows/hepta-ui-v5-blocker-remediation-bootstrap.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-blocker-remediation-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    if: >-
+      github.repository == 'ProfHepta/hepta-private-ci' &&
+      github.ref == 'refs/heads/codex/ui-v5-plan-and-repo-gap-closure-20260829'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_PARENT: 583ddd0bf691a272e875efaa137958a9fca89b83
+      BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-blocker-remediation-bootstrap.yml
+      UPSTREAM_URL: https://github.com/openai/codex.git
+      UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
+      UPSTREAM_ROLE: current_r12
+      UPSTREAM_FROZEN_REF: refs/remotes/upstream/hepta-intake-20260830-r12
+      UPSTREAM_INTAKE_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R12.json
+      UPSTREAM_RECORD_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+    steps:
+      - name: Check out exact bootstrap commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install deterministic remediation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes jq ripgrep ruby
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+
+      - name: Build and publish the fail-closed remediation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = "$BOOTSTRAP_PATH"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git config user.name "hepta-ui-v5-remediation-bot"
+          git config user.email "hepta-ui-v5-remediation-bot@users.noreply.github.com"
+
+          scripts/hepta-ci-materialize-upstream-intake materialize >/dev/null
+          upstream_head="$(git ls-remote --exit-code "$UPSTREAM_URL" refs/heads/main | awk 'NR == 1 { print $1 }')"
+          test "${#upstream_head}" = 40
+          test "$(printf '%s' "$upstream_head" | tr -d '0-9a-f')" = ""
+          git fetch --no-tags --filter=blob:none "$UPSTREAM_URL" "$upstream_head"
+          test "$(git rev-parse FETCH_HEAD)" = "$upstream_head"
+          git merge-base --is-ancestor "$UPSTREAM_PREVIOUS" "$upstream_head"
+          git update-ref "$UPSTREAM_FROZEN_REF" "$upstream_head"
+          export UPSTREAM_HEAD="$upstream_head"
+
+          python3 <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          import re
+          import subprocess
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          root = Path.cwd()
+          upstream_head = os.environ["UPSTREAM_HEAD"]
+          previous = os.environ["UPSTREAM_PREVIOUS"]
+          frozen_ref = os.environ["UPSTREAM_FROZEN_REF"]
+          intake_rel = os.environ["UPSTREAM_INTAKE_PATH"]
+          intake_path = root / intake_rel
+
+          def read(relative: str) -> str:
+              return (root / relative).read_text(encoding="utf-8")
+
+          def write(relative: str, value: str) -> None:
+              path = root / relative
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(value, encoding="utf-8")
+
+          def replace_exact(text: str, old: str, new: str, *, count: int = 1, label: str) -> str:
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(f"{label}: expected {count} exact matches, found {actual}")
+              return text.replace(old, new)
+
+          def sha256_path(path: Path) -> str:
+              digest = hashlib.sha256()
+              with path.open("rb") as source:
+                  for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          def git(*args: str) -> str:
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+          gate_path = "scripts/hepta-ui-v4-exact-candidate-materialization-gate"
+          gate = read(gate_path)
+          gate = replace_exact(
+              gate,
+              'require "json"\nrequire "pathname"\n',
+              'require "json"\nrequire "open3"\nrequire "pathname"\n',
+              label="exact gate Open3 import",
+          )
+          gate = replace_exact(
+              gate,
+              '  materializer: root.join("scripts/hepta-ui-v4-materialize-makepad-windows-hook"),\n'
+              '  wrapper: root.join("scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch"),\n',
+              '  materializer: root.join("scripts/hepta-ui-v4-materialize-makepad-windows-hook"),\n'
+              '  patcher: root.join("scripts/hepta-ui-v4-apply-makepad-windows-ack-patch"),\n'
+              '  wrapper: root.join("scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch"),\n',
+              label="exact gate patcher path",
+          )
+          gate = replace_exact(
+              gate,
+              'checks["wrapper.canonical_blob_bound"] =\n'
+              '  wrapper.include?("369e607f4f80d08d739d2f83778fb4e37aa50d4e")\n',
+              'canonical_patcher_blob = wrapper[/^EXPECTED_PATCHER_BLOB = "([0-9a-f]{40})"$/, 1]\n'
+              'actual_patcher_blob, patcher_blob_status = Open3.capture2(\n'
+              '  "git", "-C", root.to_s, "hash-object", files.fetch(:patcher).to_s\n'
+              ')\n'
+              'checks["wrapper.canonical_blob_bound"] =\n'
+              '  patcher_blob_status.success? &&\n'
+              '  !canonical_patcher_blob.nil? &&\n'
+              '  canonical_patcher_blob == actual_patcher_blob.strip\n',
+              label="exact gate canonical patcher digest",
+          )
+          write(gate_path, gate)
+
+          room_path = "apps/hepta-native/src/home/room_screen.rs"
+          room = read(room_path)
+          start = room.index("script_mod! {")
+          marker = "\n/// The main widget that displays a single Matrix room."
+          end = room.index(marker, start)
+          live_design = room[start:end].rstrip() + "\n"
+          if not live_design.startswith("script_mod! {") or not live_design.endswith("}\n"):
+              raise SystemExit("room live-design extraction boundaries are invalid")
+          if live_design.count("\n") < 500:
+              raise SystemExit("room live-design extraction was unexpectedly small")
+          if room.count("script_mod! {") != 1:
+              raise SystemExit("room screen must contain exactly one top-level script_mod block")
+          write("apps/hepta-native/src/home/room_screen/live_design.rs", live_design)
+          room = room[:start] + 'include!("room_screen/live_design.rs");\n' + room[end:]
+          write(room_path, room)
+
+          architecture_path = "scripts/hepta-architecture-budget"
+          architecture = read(architecture_path)
+          architecture = replace_exact(
+              architecture,
+              "  verify_file_max apps/hepta-native/src/home/room_screen.rs 4500\n",
+              "  verify_file_max apps/hepta-native/src/home/room_screen.rs 4500\n"
+              "  verify_file_max apps/hepta-native/src/home/room_screen/live_design.rs 900\n",
+              label="room live-design architecture budget",
+          )
+          write(architecture_path, architecture)
+
+          preflight_path = "codex-rs/tools/src/plugin_tool_manifest_schema_cutover_preflight.rs"
+          preflight = read(preflight_path)
+          preflight = replace_exact(
+              preflight,
+              "        })\n        .collect()\n}\n\nfn policy_complete_candidate_ids(",
+              "        })\n"
+              "        .collect::<BTreeSet<_>>()\n"
+              "        .into_iter()\n"
+              "        .collect()\n"
+              "}\n\n"
+              "fn policy_complete_candidate_ids(",
+              label="schema-complete candidate ordering",
+          )
+          policy_anchor = (
+              "        })\n"
+              "        .collect()\n"
+              "}\n\n"
+              "fn object_has_field"
+          )
+          preflight = replace_exact(
+              preflight,
+              policy_anchor,
+              "        })\n"
+              "        .collect::<BTreeSet<_>>()\n"
+              "        .into_iter()\n"
+              "        .collect()\n"
+              "}\n\n"
+              "fn object_has_field",
+              label="policy-complete candidate ordering",
+          )
+          write(preflight_path, preflight)
+
+          thread_path = "codex-rs/thread-store/src/local/read_thread.rs"
+          thread = read(thread_path)
+          thread = replace_exact(
+              thread,
+              "        for thread in [thread_by_path, thread_by_id] {\n"
+              "            assert_eq!(thread.rollout_path, Some(expected_rollout_path.clone()));\n",
+              "        for thread in [thread_by_path, thread_by_id] {\n"
+              "            let actual_rollout_path = thread\n"
+              "                .rollout_path\n"
+              "                .as_ref()\n"
+              "                .expect(\"paginated thread should retain its rollout path\");\n"
+              "            let actual_rollout_path = std::fs::canonicalize(actual_rollout_path)\n"
+              "                .expect(\"canonicalize returned active rollout path\");\n"
+              "            assert_eq!(actual_rollout_path, expected_rollout_path);\n",
+              label="thread-store canonical path assertion",
+          )
+          write(thread_path, thread)
+
+          manager_path = "codex-rs/core-plugins/src/manager_tests.rs"
+          manager = read(manager_path)
+          manager = replace_exact(
+              manager,
+              "    let outcome = manager.plugins_for_config(&config).await;\n"
+              "    assert_eq!(\n"
+              "        outcome.effective_skill_roots(),\n"
+              "        vec![AbsolutePathBuf::try_from(plugin_base.join(\"local/skills\")).unwrap()]\n"
+              "    );\n",
+              "    let outcome = manager.plugins_for_config(&config).await;\n"
+              "    let expected_skill_root = AbsolutePathBuf::try_from(\n"
+              "        std::fs::canonicalize(plugin_base.join(\"local/skills\"))\n"
+              "            .expect(\"canonicalize remote-installed plugin skill root\"),\n"
+              "    )\n"
+              "    .expect(\"canonical plugin skill root must be absolute\");\n"
+              "    assert_eq!(outcome.effective_skill_roots(), vec![expected_skill_root]);\n",
+              label="core-plugin canonical path assertion",
+          )
+          write(manager_path, manager)
+
+          workflow_path = ".github/workflows/hepta-ci.yml"
+          baseline_workflow = read(workflow_path)
+          plain_action = (
+              "      - name: Install Rust 1.95.0\n"
+              "        uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26\n"
+              "        with:\n"
+              "          toolchain: 1.95.0\n"
+          )
+          plain_shell = (
+              "      - name: Install Rust 1.95.0\n"
+              "        shell: bash\n"
+              "        run: |\n"
+              "          set -euo pipefail\n"
+              "          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update\n"
+              "          rustup default 1.95.0\n"
+              "          test \"$(rustc --version | awk '{print $2}')\" = \"1.95.0\"\n"
+          )
+          baseline_workflow = replace_exact(
+              baseline_workflow,
+              plain_action,
+              plain_shell,
+              count=2,
+              label="plain Rust 1.95 workflow installs",
+          )
+          mobile_action = (
+              "      - name: Install Rust 1.95.0 with pinned mobile targets\n"
+              "        uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26\n"
+              "        with:\n"
+              "          toolchain: 1.95.0\n"
+              "          targets: aarch64-apple-ios,aarch64-apple-ios-sim,aarch64-linux-android\n"
+          )
+          mobile_shell = (
+              "      - name: Install Rust 1.95.0 with pinned mobile targets\n"
+              "        shell: bash\n"
+              "        run: |\n"
+              "          set -euo pipefail\n"
+              "          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update\n"
+              "          rustup target add --toolchain 1.95.0 aarch64-apple-ios aarch64-apple-ios-sim aarch64-linux-android\n"
+              "          rustup default 1.95.0\n"
+              "          test \"$(rustc --version | awk '{print $2}')\" = \"1.95.0\"\n"
+          )
+          baseline_workflow = replace_exact(
+              baseline_workflow,
+              mobile_action,
+              mobile_shell,
+              label="mobile Rust 1.95 workflow install",
+          )
+          backend_action = (
+              "      - name: Install Rust 1.95.0\n"
+              "        uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26\n"
+              "        with:\n"
+              "          toolchain: 1.95.0\n"
+              "          components: rustfmt, clippy\n"
+          )
+          backend_shell = (
+              "      - name: Install Rust 1.95.0\n"
+              "        shell: bash\n"
+              "        run: |\n"
+              "          set -euo pipefail\n"
+              "          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update\n"
+              "          rustup default 1.95.0\n"
+              "          test \"$(rustc --version | awk '{print $2}')\" = \"1.95.0\"\n"
+          )
+          baseline_workflow = replace_exact(
+              baseline_workflow,
+              backend_action,
+              backend_shell,
+              label="backend Rust 1.95 workflow install",
+          )
+          if "dtolnay/rust-toolchain@" in baseline_workflow:
+              raise SystemExit("baseline workflow still contains inferred rust-toolchain action")
+          write(workflow_path, baseline_workflow)
+
+          contract_gate_path = "scripts/hepta-ci-baseline-contract"
+          contract_gate = read(contract_gate_path)
+          contract_gate = replace_exact(
+              contract_gate,
+              '  require_literal "$baseline" "uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26" "pinned Rust toolchain action"\n'
+              '  require_literal "$baseline" "components: rustfmt, clippy" "bounded backend Clippy component"\n',
+              '  reject_literal "$baseline" "uses: dtolnay/rust-toolchain@"\n'
+              '  require_literal "$baseline" "rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update" "pinned explicit Rust toolchain install"\n'
+              '  require_literal "$baseline" "rustup target add --toolchain 1.95.0 aarch64-apple-ios aarch64-apple-ios-sim aarch64-linux-android" "pinned mobile Rust targets"\n',
+              label="baseline explicit Rust toolchain contract",
+          )
+
+          r11_block = (
+              '        {\n'
+              '          role:"current_r11",\n'
+              '          ref:"refs/remotes/upstream/hepta-intake-20260726-r11",\n'
+              '          sha:"61a44880a85d2fd0d8770908dea5733495e571c8"\n'
+              '        }\n'
+          )
+          r12_block = (
+              r11_block.rstrip("\n")
+              + ",\n"
+              + '        {\n'
+              + '          role:"current_r12",\n'
+              + f'          ref:"{frozen_ref}",\n'
+              + f'          sha:"{upstream_head}"\n'
+              + '        }\n'
+          )
+          contract_gate = replace_exact(
+              contract_gate,
+              r11_block,
+              r12_block,
+              label="baseline R12 upstream contract",
+          )
+          write(contract_gate_path, contract_gate)
+
+          materializer_path = "scripts/hepta-ci-materialize-upstream-intake"
+          materializer = read(materializer_path)
+          materializer = replace_exact(
+              materializer,
+              'EXPECTED_R11_SHA="61a44880a85d2fd0d8770908dea5733495e571c8"\n',
+              'EXPECTED_R11_SHA="61a44880a85d2fd0d8770908dea5733495e571c8"\n'
+              f'EXPECTED_R12_REF="{frozen_ref}"\n'
+              f'EXPECTED_R12_SHA="{upstream_head}"\n',
+              label="materializer R12 constants",
+          )
+          materializer = replace_exact(
+              materializer,
+              '    --arg r11_ref "$EXPECTED_R11_REF" \\\n'
+              '    --arg r11_sha "$EXPECTED_R11_SHA" \\\n',
+              '    --arg r11_ref "$EXPECTED_R11_REF" \\\n'
+              '    --arg r11_sha "$EXPECTED_R11_SHA" \\\n'
+              '    --arg r12_ref "$EXPECTED_R12_REF" \\\n'
+              '    --arg r12_sha "$EXPECTED_R12_SHA" \\\n',
+              label="materializer R12 jq args",
+          )
+          materializer = replace_exact(
+              materializer,
+              '          {role:"current_r11",ref:$r11_ref,sha:$r11_sha}\n'
+              '        ]\n',
+              '          {role:"current_r11",ref:$r11_ref,sha:$r11_sha},\n'
+              '          {role:"current_r12",ref:$r12_ref,sha:$r12_sha}\n'
+              '        ]\n',
+              label="materializer R12 exact contract",
+          )
+          materializer = replace_exact(
+              materializer,
+              '--arg schema hepta_ci_upstream_intake_v9 \\\n',
+              '--arg schema hepta_ci_upstream_intake_v10 \\\n',
+              label="materializer receipt schema",
+          )
+          materializer = replace_exact(
+              materializer,
+              'current_r10_ref_materialized:true,current_r11_ref_materialized:true,merge_performed:false',
+              'current_r10_ref_materialized:true,current_r11_ref_materialized:true,current_r12_ref_materialized:true,merge_performed:false',
+              label="materializer R12 receipt",
+          )
+          write(materializer_path, materializer)
+
+          dep_contract_path = root / "scripts/hepta-dependency-security-v1.json"
+          dep_contract = json.loads(dep_contract_path.read_text(encoding="utf-8"))
+          lock_entries = dep_contract["inputs"]["cargo_locks"]
+          for entry in lock_entries:
+              entry["sha256"] = sha256_path(root / entry["path"])
+          dep_contract_path.write_text(
+              json.dumps(dep_contract, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+
+          commits = git("rev-list", "--reverse", f"{previous}..{upstream_head}").splitlines()
+          if not commits:
+              raise SystemExit("R12 upstream range unexpectedly contains no commits")
+          inventory = []
+          for commit in commits:
+              title = git("show", "-s", "--format=%s", commit)
+              inventory.append(
+                  {
+                      "upstream_commit": commit,
+                      "title": title,
+                      "status": "deferred",
+                      "hepta_v2_priority": "P2",
+                  }
+              )
+          merge_count = int(git("rev-list", "--count", "--merges", f"{previous}..{upstream_head}"))
+          changed_files = [
+              value for value in git("diff", "--name-only", previous, upstream_head).splitlines()
+              if value
+          ]
+          insertions = 0
+          deletions = 0
+          for row in git("diff", "--numstat", previous, upstream_head).splitlines():
+              fields = row.split("\t", 2)
+              if len(fields) >= 2 and fields[0].isdigit() and fields[1].isdigit():
+                  insertions += int(fields[0])
+                  deletions += int(fields[1])
+
+          intake = {
+              "schema_version": "hepta_upstream_codex_current_intake_v12",
+              "observation": {
+                  "state": "observed_and_classified",
+                  "observed_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                  "upstream_repository": os.environ["UPSTREAM_URL"],
+                  "target_branch": "main",
+                  "target_ref": "refs/remotes/upstream/main",
+                  "observed_upstream_head": upstream_head,
+                  "range_start_exclusive": previous,
+                  "range_end_inclusive": upstream_head,
+                  "commit_count": len(commits),
+                  "merge_commit_count": merge_count,
+                  "net_changed_file_count": len(changed_files),
+                  "net_insertions": insertions,
+                  "net_deletions": deletions,
+                  "predecessor_relationship": "linear_ancestor",
+                  "ordinary_merge_allowed": False,
+                  "ordinary_rebase_allowed": False,
+                  "direct_cherry_pick_default": False,
+                  "required_integration_mode": "selective_semantic_transplant_with_behavioral_evidence",
+                  "fetch_command": f"git fetch --no-tags {os.environ['UPSTREAM_URL']} {upstream_head}:{frozen_ref}",
+              },
+              "claims": {
+                  "upstream_fully_consumed": False,
+                  "source_imported_at_observation": False,
+                  "merge_performed": False,
+                  "rebase_performed": False,
+                  "cherry_pick_performed": False,
+                  "deployment_performed": False,
+                  "live_enablement_performed": False,
+              },
+          }
+
+          shard_size = 250
+          if len(inventory) <= shard_size:
+              intake["commit_inventory"] = inventory
+          else:
+              descriptors = []
+              for index in range(0, len(inventory), shard_size):
+                  shard_number = index // shard_size + 1
+                  shard_rel = (
+                      "docs/architecture/upstream-intake-r12/"
+                      f"commit-inventory-{shard_number:04d}.json"
+                  )
+                  shard_path = root / shard_rel
+                  shard_path.parent.mkdir(parents=True, exist_ok=True)
+                  shard = {
+                      "schema_version": "hepta_upstream_codex_current_intake_inventory_shard_v1",
+                      "record_id": "r12",
+                      "commit_inventory": inventory[index : index + shard_size],
+                  }
+                  shard_path.write_text(
+                      json.dumps(shard, indent=2, ensure_ascii=False) + "\n",
+                      encoding="utf-8",
+                  )
+                  descriptors.append(
+                      {
+                          "path": shard_rel,
+                          "sha256": sha256_path(shard_path),
+                          "commit_count": len(shard["commit_inventory"]),
+                      }
+                  )
+              intake["storage_layout"] = {
+                  "inventory_shards": descriptors,
+                  "shard_size": shard_size,
+                  "commit_count": len(inventory),
+              }
+
+          intake_path.parent.mkdir(parents=True, exist_ok=True)
+          intake_path.write_text(
+              json.dumps(intake, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          ruby -c scripts/hepta-ui-v4-exact-candidate-materialization-gate
+          bash -n scripts/hepta-architecture-budget
+          bash -n scripts/hepta-ci-baseline-contract
+          bash -n scripts/hepta-ci-materialize-upstream-intake
+          ruby scripts/hepta-ui-v4-exact-candidate-materialization-gate >/dev/null
+          test "$(wc -l < apps/hepta-native/src/home/room_screen.rs)" -le 4500
+          test "$(wc -l < apps/hepta-native/src/home/room_screen/live_design.rs)" -le 900
+          python3 -m json.tool scripts/hepta-dependency-security-v1.json >/dev/null
+          cargo +1.95.0 fmt --manifest-path codex-rs/Cargo.toml --all -- --check
+          cargo +1.95.0 fmt --manifest-path apps/hepta-native/Cargo.toml --all -- --check
+          git diff --check
+
+          git add -A
+          git commit -m "fix(ui): remediate exact-head repository blockers"
+          implementation_commit="$(git rev-parse HEAD)"
+          implementation_tree="$(git rev-parse HEAD^{tree})"
+          export IMPLEMENTATION_COMMIT="$implementation_commit"
+          export IMPLEMENTATION_TREE="$implementation_tree"
+
+          python3 <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path.cwd()
+          implementation_commit = os.environ["IMPLEMENTATION_COMMIT"]
+          implementation_tree = os.environ["IMPLEMENTATION_TREE"]
+          upstream_head = os.environ["UPSTREAM_HEAD"]
+          previous = os.environ["UPSTREAM_PREVIOUS"]
+          frozen_ref = os.environ["UPSTREAM_FROZEN_REF"]
+          intake_rel = os.environ["UPSTREAM_INTAKE_PATH"]
+          record_rel = os.environ["UPSTREAM_RECORD_PATH"]
+          intake_path = root / intake_rel
+          record_path = root / record_rel
+          registry_rel = "docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json"
+          registry_path = root / registry_rel
+          ci_contract_path = root / ".github/hepta-ci-contract-v1.json"
+          baseline_contract_path = root / "scripts/hepta-ci-baseline-contract"
+
+          def sha256_path(path: Path) -> str:
+              digest = hashlib.sha256()
+              with path.open("rb") as source:
+                  for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          def write_json(path: Path, value: object) -> None:
+              path.write_text(
+                  json.dumps(value, indent=2, ensure_ascii=False) + "\n",
+                  encoding="utf-8",
+              )
+
+          def replace_exact(text: str, old: str, new: str, *, count: int = 1, label: str) -> str:
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(f"{label}: expected {count} exact matches, found {actual}")
+              return text.replace(old, new)
+
+          intake = json.loads(intake_path.read_text(encoding="utf-8"))
+          entries = intake.get("commit_inventory")
+          if entries is None:
+              entries = []
+              for descriptor in intake["storage_layout"]["inventory_shards"]:
+                  shard = json.loads((root / descriptor["path"]).read_text(encoding="utf-8"))
+                  entries.extend(shard["commit_inventory"])
+          if len(entries) != intake["observation"]["commit_count"]:
+              raise SystemExit("R12 inventory count drifted")
+
+          intake_sha = sha256_path(intake_path)
+          deferrals = []
+          bindings = []
+          for entry in entries:
+              commit = entry["upstream_commit"]
+              title = entry["title"]
+              scope = f"upstream_r12_pending_semantic_review_{commit[:12]}"
+              non_claims = [
+                  "Classification as deferred does not claim semantic equivalence, source import, product enablement, or behavioral validation."
+              ]
+              deferrals.append(
+                  {
+                      "upstream_commit": commit,
+                      "upstream_title": title,
+                      "disposition": "deferred_pending_commit_specific_semantic_review",
+                      "scope": scope,
+                      "reason": (
+                          "The upstream change has been observed and inventory-bound, but no "
+                          "commit-specific Hepta ownership decision, semantic transplant, and "
+                          "bounded behavioral evidence have been completed."
+                      ),
+                      "missing_prerequisites": [
+                          "commit-specific semantic review",
+                          "explicit Hepta product and authority ownership decision",
+                          "bounded behavioral evidence for any accepted transplant",
+                      ],
+                      "tests_run": False,
+                      "hepta_commit": None,
+                      "non_claims": non_claims,
+                  }
+              )
+              bindings.append(
+                  {
+                      "kind": "deferral",
+                      "upstream_commit": commit,
+                      "local_commit": None,
+                      "scope": scope,
+                      "non_claims": non_claims,
+                  }
+              )
+
+          record = {
+              "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+              "source_intake": {
+                  "path": intake_rel,
+                  "manifest_sha256": intake_sha,
+                  "commit": implementation_commit,
+                  "range_start_exclusive": previous,
+                  "range_end_inclusive": upstream_head,
+                  "ordinary_merge_performed": False,
+                  "ordinary_rebase_performed": False,
+                  "cherry_pick_performed": False,
+              },
+              "absorptions": [],
+              "deferrals": deferrals,
+              "claims": {
+                  "absorbed_commit_count": 0,
+                  "existing_semantic_equivalent_count": 0,
+                  "deferred_commit_count": len(deferrals),
+                  "upstream_fully_consumed": False,
+                  "merge_performed": False,
+                  "rebase_performed": False,
+                  "cherry_pick_performed": False,
+                  "live_enablement": False,
+                  "deployment": False,
+                  "publication": False,
+              },
+          }
+          record_path.parent.mkdir(parents=True, exist_ok=True)
+          write_json(record_path, record)
+          record_sha = sha256_path(record_path)
+
+          registry = json.loads(registry_path.read_text(encoding="utf-8"))
+          if any(value.get("id") == "r12" for value in registry["records"]):
+              raise SystemExit("R12 semantic registry entry already exists")
+          registry["upstream"]["frozen_ref"] = frozen_ref
+          registry["upstream"]["expected_head"] = upstream_head
+          registry["records"].append(
+              {
+                  "id": "r12",
+                  "source_intake": {
+                      "path": intake_rel,
+                      "sha256": intake_sha,
+                      "range_start_exclusive": previous,
+                      "range_end_inclusive": upstream_head,
+                      "frozen_ref": frozen_ref,
+                  },
+                  "record": {
+                      "path": record_rel,
+                      "sha256": record_sha,
+                      "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+                  },
+                  "disposition_bindings": bindings,
+              }
+          )
+          write_json(registry_path, registry)
+          registry_sha = sha256_path(registry_path)
+
+          ci_contract = json.loads(ci_contract_path.read_text(encoding="utf-8"))
+          refs = ci_contract["upstream_intake"]["refs"]
+          if any(value.get("role") == "current_r12" for value in refs):
+              raise SystemExit("R12 CI intake ref already exists")
+          refs.append(
+              {
+                  "role": "current_r12",
+                  "ref": frozen_ref,
+                  "sha": upstream_head,
+              }
+          )
+          ci_contract["upstream_truth"]["registry_sha256"] = registry_sha
+          write_json(ci_contract_path, ci_contract)
+
+          baseline_contract = baseline_contract_path.read_text(encoding="utf-8")
+          baseline_contract = replace_exact(
+              baseline_contract,
+              '      registry_sha256:"40a6391f27ef2c58ca174c0d48481031687bcbe3458340eee5c5d83c811a4569",\n',
+              f'      registry_sha256:"{registry_sha}",\n',
+              label="baseline semantic registry digest",
+          )
+          baseline_contract_path.write_text(baseline_contract, encoding="utf-8")
+
+          active_plan_path = root / "docs/ui/HEPTA_UI_ACTIVE_PLAN_V5.json"
+          active_plan = json.loads(active_plan_path.read_text(encoding="utf-8"))
+          active_plan["status"] = "REMEDIATION_ROUND_2_COMMITTED_HOSTED_QUALIFICATION_REQUIRED"
+          active_plan["implementationCandidate"] = {
+              "commit": implementation_commit,
+              "tree": implementation_tree,
+              "branch": os.environ["BRANCH"],
+          }
+          active_plan["remediationRound2"] = {
+              "repositoryControlled": True,
+              "exactMaterialProfileBlobTruthUnified": True,
+              "roomScreenLiveDesignSplit": True,
+              "rustToolchainExplicitlyPinned": True,
+              "dependencyLockHashesRebound": True,
+              "upstreamR12ObservedAndClassified": True,
+              "windowsBazelPortabilityRepairs": True,
+              "upstreamHead": upstream_head,
+              "hostedQualificationComplete": False,
+          }
+          active_plan["hostedQualificationComplete"] = False
+          active_plan["sourceControllableGapsClosed"] = False
+          active_plan["externalEvidenceComplete"] = False
+          active_plan["allGapsClosed"] = False
+          write_json(active_plan_path, active_plan)
+
+          ledger_path = root / "docs/ui/HEPTA_UI_REPOSITORY_GAP_LEDGER_V1.json"
+          ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+          ledger["candidate"] = {
+              "commit": implementation_commit,
+              "tree": implementation_tree,
+              "branch": os.environ["BRANCH"],
+          }
+          ledger["status"] = "REMEDIATION_ROUND_2_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION"
+          for gap in ledger.get("gaps", []):
+              gap["state"] = "REMEDIATION_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION"
+          known_ids = {gap["id"] for gap in ledger.get("gaps", [])}
+          additions = [
+              ("REPO-UI-008", "exact material-profile gate duplicated a stale Makepad patcher digest"),
+              ("REPO-UI-009", "room_screen live-design block exceeded the maintainability budget"),
+              ("REPO-UI-010", "SHA-pinned rust-toolchain action inferred Rust 1.93 instead of required 1.95"),
+              ("REPO-UI-011", "dependency-security lockfile hash binding drifted"),
+              ("REPO-UI-012", "upstream network and semantic registry lagged the observed main head"),
+              ("REPO-UI-013", "Windows Bazel tests relied on map iteration and lexical path spelling"),
+          ]
+          for gap_id, title in additions:
+              if gap_id not in known_ids:
+                  ledger.setdefault("gaps", []).append(
+                      {
+                          "id": gap_id,
+                          "title": title,
+                          "state": "REMEDIATION_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
+                          "paths": [],
+                      }
+                  )
+          ledger["sourceControllableGapsClosed"] = False
+          write_json(ledger_path, ledger)
+
+          plan_path = root / "docs/ui/HEPTA_UI_DEVELOPMENT_PLAN_V5_2026-08-29.md"
+          plan = plan_path.read_text(encoding="utf-8")
+          appendix = f"""
+
+          ## Remediation round 2 — exact-head failures observed on PR #78
+
+          Implementation commit `{implementation_commit}` / tree `{implementation_tree}` closes the
+          deterministic repository-controlled failures exposed by assigned-runner execution:
+
+          - one canonical Makepad patcher blob truth, verified against the actual Git object;
+          - a no-semantic-change live-design split that keeps `room_screen.rs` under its 4,500-line ceiling;
+          - explicit Rust 1.95.0 installation and pinned mobile targets;
+          - exact dependency lockfile byte hashes;
+          - complete R12 upstream observation and fail-closed per-commit deferral classification at `{upstream_head}`;
+          - deterministic plugin-manifest candidate ordering and canonical Windows path identity assertions.
+
+          These changes remain unqualified until the final exact PR head receives nonempty successful
+          assigned-runner jobs. Physical-device evidence, browser-human acceptance, Ed25519 operator
+          acceptance, product binding, production, promotion, and release authority remain false.
+          """
+          if "## Remediation round 2 — exact-head failures observed on PR #78" in plan:
+              raise SystemExit("remediation round 2 appendix already exists")
+          plan_path.write_text(plan.rstrip() + appendix + "\n", encoding="utf-8")
+          PY
+
+          python3 -m json.tool .github/hepta-ci-contract-v1.json >/dev/null
+          python3 -m json.tool "$UPSTREAM_INTAKE_PATH" >/dev/null
+          python3 -m json.tool "$UPSTREAM_RECORD_PATH" >/dev/null
+          python3 -m json.tool docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json >/dev/null
+          python3 -m json.tool docs/ui/HEPTA_UI_ACTIVE_PLAN_V5.json >/dev/null
+          python3 -m json.tool docs/ui/HEPTA_UI_REPOSITORY_GAP_LEDGER_V1.json >/dev/null
+          bash -n scripts/hepta-ci-baseline-contract
+          scripts/hepta-ci-materialize-upstream-intake verify >/dev/null
+          scripts/hepta-upstream-truth-gate verify-semantic >/dev/null
+          scripts/hepta-ci-baseline contract >/dev/null
+          scripts/hepta-ci-baseline contract-self-test >/dev/null
+          scripts/hepta-dependency-security verify >/dev/null
+          scripts/hepta-architecture-budget verify >/dev/null
+          cargo +1.95.0 fmt --manifest-path codex-rs/Cargo.toml --all -- --check
+          cargo +1.95.0 fmt --manifest-path apps/hepta-native/Cargo.toml --all -- --check
+          git diff --check
+
+          git rm "$BOOTSTRAP_PATH"
+          git add \
+            .github/hepta-ci-contract-v1.json \
+            "$UPSTREAM_RECORD_PATH" \
+            docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json \
+            docs/ui/HEPTA_UI_ACTIVE_PLAN_V5.json \
+            docs/ui/HEPTA_UI_DEVELOPMENT_PLAN_V5_2026-08-29.md \
+            docs/ui/HEPTA_UI_REPOSITORY_GAP_LEDGER_V1.json \
+            scripts/hepta-ci-baseline-contract
+          git commit -m "docs(ui): bind remediation round 2 qualification truth"
+
+          git merge-base --is-ancestor "$GITHUB_SHA" HEAD
+          git push origin "HEAD:refs/heads/$BRANCH"
