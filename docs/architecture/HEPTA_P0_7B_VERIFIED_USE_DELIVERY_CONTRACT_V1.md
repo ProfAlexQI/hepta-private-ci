@@ -8,9 +8,9 @@
 
 ## 1. Purpose
 
-The current authority kernel admits typed capability classes and revalidates a broad capability before selected uses. That is necessary but insufficient at an irreversible boundary because the value is not tied to the final operation payload and is reusable. B0 adds the common final-payload gate consumed by all later model, provider, tool, network, filesystem, secret, Matrix, fleet, operator and release adapters.
+The current authority kernel admits typed capability classes and revalidates a broad capability before selected uses. That is necessary but insufficient at an irreversible boundary because the value is not tied to the final operation payload and is reusable. B0 adds the common final-payload gate consumed by all later cognitive writer, model, provider, tool, network, filesystem, secret, Matrix, fleet, operator and release adapters.
 
-B0 does not register a caller, open a listener, dispatch a provider, invoke a model, execute a tool, connect a network destination, mutate a filesystem, read a secret, send Matrix traffic, mutate fleet state, accept an operator or promote a release.
+B0 does not register a caller, open a listener, write cognitive state, dispatch a provider, invoke a model, execute a tool, connect a network destination, mutate a filesystem, read a secret, send Matrix traffic, mutate fleet state, accept an operator or promote a release.
 
 ## 2. Terms
 
@@ -48,6 +48,7 @@ The verifier must not trust issuer-supplied “current” facts without checking
 
 | Kind | Required broad action | Boundary-specific final facts added by later slices |
 |---|---|---|
+| `CognitiveStateWrite` | `WriteCognitiveState` | schema owner, durable intent, store identity, transaction and outbox binding |
 | `ModelInvocation` | `InvokeModel` | model artifact, policy, prompt/request digest, provider route |
 | `ProviderDispatch` | `DispatchProvider` | provider namespace, operation key, request digest |
 | `ExternalEffect` | `ExternalEffect` | canonical effect intent and idempotency contract |
