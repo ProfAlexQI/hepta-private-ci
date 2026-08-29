@@ -85,7 +85,7 @@ WHEN ((NEW.operation_id IS NULL) != (NEW.operation_binding_sha256 IS NULL))
   OR (NEW.operation_binding_sha256 IS NOT NULL
       AND (length(NEW.operation_binding_sha256) != 64
            OR NEW.operation_binding_sha256 GLOB '*[^0-9a-f]*'))
-BEGIM
+BEGIN
     SELECT RAISE(ABORT, 'invalid automation operation identity');
 END;
 
