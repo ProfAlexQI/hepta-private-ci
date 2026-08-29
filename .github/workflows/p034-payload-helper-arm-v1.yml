@@ -1,4 +1,4 @@
-name: p034-payload-inspect-arm-v4
+name: p034-qualified-publisher-arm-v5
 
 on:
   push:
@@ -6,121 +6,166 @@ on:
       - codex/p034-payload-helper-arm-v1-20260829
     paths:
       - .github/workflows/p034-payload-helper-arm-v1.yml
-      - ci/p034-payload/part-00.b64
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: p034-payload-inspect-arm-v4-${{ github.sha }}
+  group: p034-qualified-publisher-arm-v5
   cancel-in-progress: false
 
 jobs:
-  inspect:
+  qualify-and-publish:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
+    timeout-minutes: 180
     env:
+      TARGET_BRANCH: codex/hepta-intelligence-legacy-governance-v2-20260829
+      EXPECTED_TARGET: 6d225487d4b42370800e676ca8309f86848f8c36
+      P033_HEAD: eddcb59ca43a76ac83b64507983bd908f406ff48
+      PAYLOAD_BRANCH: codex/p034-payload-helper-arm-v1-20260829
       PAYLOAD_SHA256: 0a3c110310edaf463bd7fd4a31148e3cb8dcbdbebc9f38700d94bfcdd5059373
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact P0.3.4 staging candidate
+        uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
-          fetch-depth: 1
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
 
-      - name: Decode, verify, and safely extract payload
+      - name: Bind exact parent and obtain immutable payload
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_TARGET"
+          test "$(git rev-parse HEAD^)" = "$P033_HEAD"
+          git fetch --no-tags origin \
+            "+refs/heads/${PAYLOAD_BRANCH}:refs/remotes/origin/${PAYLOAD_BRANCH}"
+          mkdir -p /tmp/p034-payload
+          git show \
+            "refs/remotes/origin/${PAYLOAD_BRANCH}:ci/p034-payload/part-00.b64" \
+            > /tmp/p034-payload.b64
           python3 - <<'PY'
           from __future__ import annotations
 
           import base64
           import hashlib
-          import json
           import os
           import tarfile
           from pathlib import Path, PurePosixPath
 
-          root = Path.cwd()
-          out = root / "artifacts/p034-payload"
-          tree = out / "tree"
-          out.mkdir(parents=True, exist_ok=True)
-          tree.mkdir(parents=True, exist_ok=True)
-
-          encoded = (root / "ci/p034-payload/part-00.b64").read_text(
-              encoding="ascii"
-          )
-          payload = base64.b64decode("".join(encoded.split()), validate=True)
+          encoded = Path('/tmp/p034-payload.b64').read_text(encoding='ascii')
+          payload = base64.b64decode(''.join(encoded.split()), validate=True)
           actual = hashlib.sha256(payload).hexdigest()
-          expected = os.environ["PAYLOAD_SHA256"]
+          expected = os.environ['PAYLOAD_SHA256']
           if actual != expected:
               raise SystemExit(
-                  f"P0.3.4 payload digest mismatch: expected {expected}, got {actual}"
+                  f'P0.3.4 payload digest mismatch: expected {expected}, got {actual}'
               )
-
-          archive = out / "payload.tar.gz"
+          archive = Path('/tmp/p034-payload.tar.gz')
           archive.write_bytes(payload)
-          members = []
-          with tarfile.open(archive, mode="r:gz") as tar:
+          destination = Path('/tmp/p034-payload')
+          with tarfile.open(archive, mode='r:gz') as tar:
               for member in tar.getmembers():
                   path = PurePosixPath(member.name)
                   if (
                       path.is_absolute()
-                      or ".." in path.parts
+                      or '..' in path.parts
                       or member.issym()
                       or member.islnk()
                       or member.isdev()
                   ):
-                      raise SystemExit(f"unsafe P0.3.4 payload entry: {member.name}")
-                  members.append(
-                      {
-                          "name": member.name,
-                          "size": member.size,
-                          "type": member.type.decode("latin1")
-                          if isinstance(member.type, bytes)
-                          else str(member.type),
-                      }
-                  )
-              tar.extractall(tree)
-
-          files = []
-          for path in sorted(tree.rglob("*")):
-              if path.is_file():
-                  data = path.read_bytes()
-                  files.append(
-                      {
-                          "path": path.relative_to(tree).as_posix(),
-                          "bytes": len(data),
-                          "sha256": hashlib.sha256(data).hexdigest(),
-                      }
-                  )
-          receipt = {
-              "schema": "hepta_intelligence_p0_3_4_payload_inspection_v4",
-              "payload_sha256": actual,
-              "member_count": len(members),
-              "file_count": len(files),
-              "members": members,
-              "files": files,
-              "target_branch_written": False,
-              "wired": False,
-              "production_projection_gate": False,
-              "production_authority": False,
-              "external_effects": False,
-          }
-          (out / "inspection-receipt.json").write_text(
-              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
-          (out / "file-list.txt").write_text(
-              "\n".join(item["path"] for item in files) + "\n",
-              encoding="utf-8",
-          )
+                      raise SystemExit(f'unsafe P0.3.4 payload entry: {member.name}')
+              tar.extractall(destination)
           PY
 
-      - name: Upload exact P0.3.4 payload evidence
+      - name: Apply source-only P0.3.4 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/p034-payload/p034_apply_patch.py
+          git diff --check
+
+      - name: Format exact governed Rust files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd codex-rs
+          rustfmt --edition 2024 --config skip_children=true \
+            hepta-memory/src/fact_grounding/legacy_governance.rs \
+            hepta-memory/src/fact_grounding/durable/backfill.rs \
+            hepta-memory/src/fact_grounding/durable.rs \
+            hepta-memory/src/framing.rs \
+            hepta-memory/src/lib.rs
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Execute P0.3.4 source, SQLite, test, and Clippy gates
+        shell: bash
+        run: |
+          set +e
+          python3 scripts/run-hepta-intelligence-legacy-grounding-governance-v1.py
+          RUNNER=$?
+          set -e
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          receipt_path = Path(
+              'artifacts/hepta-intelligence-legacy-grounding-governance-v1/'
+              'qualification-receipt.json'
+          )
+          if not receipt_path.exists():
+              raise SystemExit('P0.3.4 qualification receipt was not produced')
+          receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
+          failed = [check['id'] for check in receipt['checks'] if not check['passed']]
+          if failed:
+              raise SystemExit(f'P0.3.4 source candidate gates failed: {failed}')
+          assert receipt['source_receipt']['status'] == (
+              'PASS_P0_3_4_LEGACY_GOVERNANCE_SOURCE_ONLY'
+          )
+          for key in (
+              'wired',
+              'production_projection_gate',
+              'production_authority',
+              'external_effects',
+              'operator_accepted',
+              'promoted',
+              'callers_ratchet',
+          ):
+              assert receipt[key] is False, key
+          PY
+          exit "$RUNNER"
+
+      - name: Upload P0.3.4 development evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-p0-3-4-payload-${{ github.sha }}
-          path: artifacts/p034-payload
-          if-no-files-found: error
-          retention-days: 7
+          name: p034-development-${{ github.sha }}
+          path: artifacts/hepta-intelligence-legacy-grounding-governance-v1
+          if-no-files-found: warn
+          retention-days: 21
+
+      - name: Publish one governed source candidate only when every gate is green
+        shell: bash
+        run: |
+          set -euo pipefail
+          STAGED_HEAD=$(git rev-parse HEAD)
+          test "$STAGED_HEAD" = "$EXPECTED_TARGET"
+          rm -rf artifacts/hepta-intelligence-legacy-grounding-governance-v1
+          git reset --soft "$P033_HEAD"
+          git add -A
+          git diff --cached --check
+          test "$(git diff --cached --name-only | wc -l | tr -d ' ')" -gt 1
+          git config user.name "Qian QI"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git commit --no-gpg-sign \
+            -m "feat(memory): qualify legacy grounding governance P0.3.4"
+          FINAL_HEAD=$(git rev-parse HEAD)
+          test "$(git rev-list --count "$P033_HEAD..$FINAL_HEAD")" = 1
+          git push \
+            --force-with-lease="refs/heads/${TARGET_BRANCH}:${STAGED_HEAD}" \
+            origin "HEAD:refs/heads/${TARGET_BRANCH}"
+          printf '%s\n' "$FINAL_HEAD"
