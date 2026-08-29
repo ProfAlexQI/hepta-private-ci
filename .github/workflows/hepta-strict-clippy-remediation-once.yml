@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
-      EXPECTED_PARENT: 16e8a21dde5713fc6cc3b316ead6abdee6a21510
+      EXPECTED_PARENT: a8b9a3175e3adb0f2288c1bfc1ab1e4e8b46624e
       BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
       WORKFLOW_PATH: .github/workflows/hepta-strict-clippy-remediation-once.yml
     steps:
@@ -158,12 +158,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 .github/scripts/verify_cargo_workspace_manifests.py
-          python3 scripts/verify-hepta-architecture-convergence-p0-2.py
-          python3 scripts/verify-hepta-authority-callers-p0-1.py
-          python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
-          python3 scripts/verify-hepta-cross-owner-operation-wiring.py
-          python3 scripts/verify-hepta-architecture-gap-ledger.py
+          command -v python3.11
+          python3.11 --version
+          python3.11 .github/scripts/verify_cargo_workspace_manifests.py
+          python3.11 scripts/verify-hepta-architecture-convergence-p0-2.py
+          python3.11 scripts/verify-hepta-authority-callers-p0-1.py
+          python3.11 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python3.11 scripts/verify-hepta-cross-owner-operation-wiring.py
+          python3.11 scripts/verify-hepta-architecture-gap-ledger.py
 
       - name: Run formatting, checks, and strict Clippy
         shell: bash
@@ -205,13 +207,14 @@ jobs:
         shell: bash
         run: |
           {
-            echo "schema=hepta_strict_clippy_remediation_once_v3"
+            echo "schema=hepta_strict_clippy_remediation_once_v4"
             echo "bootstrap_head=$GITHUB_SHA"
             echo "expected_parent=$EXPECTED_PARENT"
             echo "job_status=${{ job.status }}"
             echo "changed_paths=hepta-agentd/app_runtime.rs,hepta-memory/local_lease_outbox.rs"
             echo "bootstrap_retired=true"
             echo "bootstrap_runner=ubuntu-22.04"
+            echo "bootstrap_python=python3.11"
             echo "canonical_qualification_runner=ubuntu-24.04"
             echo "production_authority=false"
             echo "effect_authority=false"
