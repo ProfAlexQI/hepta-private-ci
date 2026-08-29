@@ -1,0 +1,114 @@
+name: Hepta P0.7a direct qualification ARM
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "codex-rs/hepta-contracts/**"
+      - "codex-rs/hepta-fleet/**"
+      - "codex-rs/hepta-supervisor/**"
+      - "codex-rs/hepta-agentd/**"
+      - "codex-rs/Cargo.lock"
+      - "MODULE.bazel.lock"
+      - "docs/architecture/**"
+      - "scripts/verify-hepta-architecture-plan-v4.py"
+      - "scripts/verify-hepta-p0-7a-format.py"
+      - ".github/workflows/hepta-p0-7a-direct-arm.yml"
+  push:
+    branches:
+      - "codex/hepta-architecture-v4-p0-7a-*"
+    paths:
+      - "codex-rs/hepta-contracts/**"
+      - "codex-rs/hepta-fleet/**"
+      - "codex-rs/hepta-supervisor/**"
+      - "codex-rs/hepta-agentd/**"
+      - "codex-rs/Cargo.lock"
+      - "MODULE.bazel.lock"
+      - "docs/architecture/**"
+      - "scripts/verify-hepta-architecture-plan-v4.py"
+      - "scripts/verify-hepta-p0-7a-format.py"
+      - ".github/workflows/hepta-p0-7a-direct-arm.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    name: P0.7a exact candidate direct qualification
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact event identity
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Verify exact identity and clean input
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code
+          git diff --cached --exit-code
+          printf 'commit=%s\ntree=%s\n' \
+            "$(git rev-parse HEAD)" \
+            "$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify committed locks and package format
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --manifest-path codex-rs/Cargo.toml --locked --no-deps --format-version 1 >/dev/null
+          python3 scripts/verify-hepta-p0-7a-format.py --check
+          just bazel-lock-check
+
+      - name: Run P0.7a package tests
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          just test -p codex-hepta-contracts
+          just test -p codex-hepta-fleet
+          just test -p codex-hepta-supervisor
+          just test -p codex-hepta-agentd
+
+      - name: Check all P0.7a targets
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd
+
+      - name: Run strict P0.7a Clippy
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd \
+            -- -D warnings
+
+      - name: Verify V4 source truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-architecture-plan-v4.py
+          git diff --check
+
+      - name: Require clean output
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
