@@ -1,4 +1,4 @@
-name: Hepta Q0 E1 residue repair
+name: Hepta Q0 E1 blocker closure
 
 on:
   push:
@@ -16,9 +16,9 @@ concurrency:
 
 jobs:
   repair:
-    name: Close exact E1 verifier and agentd lint residue
+    name: Close E1 module-boundary and strict-lint blockers
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 360
     steps:
       - name: Checkout exact repair carrier
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -32,7 +32,7 @@ jobs:
         env:
           EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
           EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-          EXPECTED_PARENT: 2c3ef8fadef5f991fd512eea3263b331d72b50e1
+          EXPECTED_PARENT: a64b136f16c6f71af695f2024d626618d959d4ce
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
@@ -63,6 +63,18 @@ jobs:
                   )
               file.write_text(text.replace(old, new, 1), encoding="utf-8")
 
+          def replace_all_exact(
+              path: str, old: str, new: str, expected_count: int
+          ) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != expected_count:
+                  raise AssertionError(
+                      f"{path}: expected {expected_count} matches, found {count}: {old!r}"
+                  )
+              file.write_text(text.replace(old, new), encoding="utf-8")
+
           replace_exact(
               "codex-rs/hepta-agentd/src/app_runtime.rs",
               '''#[expect(
@@ -87,77 +99,167 @@ jobs:
               "scripts/verify-hepta-intelligence-mutation-journal.py",
           ):
               replace_exact(path, old_clippy, new_clippy)
+
+          prepare = (
+              "codex-rs/hepta-memory/src/fact_grounding/"
+              "durable/grounding/prepare.rs"
+          )
+          for function in (
+              "validate_source_binding",
+              "require_groundable_revision",
+              "bind_exact_citation",
+              "prepare",
+              "validate_canonical_identity_binding",
+          ):
+              replace_exact(
+                  prepare,
+                  f"pub(super) fn {function}(",
+                  f"pub(in super::super) fn {function}(",
+              )
+
+          insert = (
+              "codex-rs/hepta-memory/src/fact_grounding/"
+              "durable/grounding/ledger/insert.rs"
+          )
+          replace_exact(
+              insert,
+              "use super::*;\n",
+              "use super::*;\n"
+              "use super::support::durable_receipt_digest;\n"
+              "use super::support::to_i64_len;\n",
+          )
+          replace_exact(
+              insert,
+              "pub(super) async fn insert_tx(",
+              "pub(in super::super::super) async fn insert_tx(",
+          )
+
+          verify = (
+              "codex-rs/hepta-memory/src/fact_grounding/"
+              "durable/grounding/ledger/verify.rs"
+          )
+          replace_exact(
+              verify,
+              "use super::*;\n",
+              "use super::*;\n"
+              "use super::support::durable_receipt_digest;\n"
+              "use super::support::limit_plus_one;\n"
+              "use super::support::parse_fact_kind;\n"
+              "use super::support::stored_fact_supports;\n"
+              "use super::support::validate_span_range_corrupt;\n",
+          )
+          replace_exact(
+              verify,
+              "pub(super) async fn verify_receipts(",
+              "pub(in super::super::super) async fn verify_receipts(",
+          )
+
+          ledger = (
+              "codex-rs/hepta-memory/src/fact_grounding/"
+              "durable/grounding/ledger.rs"
+          )
+          replace_exact(
+              ledger,
+              "pub(super) use insert::insert_tx;",
+              "pub(in super::super) use insert::insert_tx;",
+          )
+          replace_exact(
+              ledger,
+              "pub(super) use verify::verify_receipts;",
+              "pub(in super::super) use verify::verify_receipts;",
+          )
+
+          support = (
+              "codex-rs/hepta-memory/src/fact_grounding/"
+              "durable/grounding/ledger/support.rs"
+          )
+          replace_exact(
+              support,
+              "use super::*;\n",
+              "use super::*;\nuse crate::framing::frame_part;\n",
+          )
+          replace_exact(
+              support,
+              "async fn stored_fact_supports(",
+              "pub(super) async fn stored_fact_supports(",
+          )
+          for function in (
+              "durable_receipt_digest",
+              "parse_fact_kind",
+              "validate_span_range_corrupt",
+              "to_i64_len",
+              "limit_plus_one",
+          ):
+              replace_exact(
+                  support,
+                  f"fn {function}(",
+                  f"pub(super) fn {function}(",
+              )
+          replace_all_exact(
+              support,
+              "super::super::frame_part",
+              "frame_part",
+              16,
+          )
+
+          replace_exact(
+              "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
+              "use sqlx::Executor;\n",
+              "",
+          )
+          replace_exact(
+              "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
+              "use super::intelligence_mutation_state::IntelligenceMutationState;\n",
+              "",
+          )
           PY
 
+          (cd codex-rs && cargo fmt --all)
           (cd codex-rs && cargo fmt --all -- --check)
           git diff --check
 
-      - name: Verify source gates and both agentd profiles
+      - name: Verify all source gates and the complete Q0 Rust matrix
         shell: bash
         run: |
           set -euo pipefail
-          artifact_dir="$RUNNER_TEMP/hepta-q0-e1-residue"
-          rm -rf "$artifact_dir"
-          mkdir -p "$artifact_dir/gates"
-          ARTIFACT_DIR="$artifact_dir" bash scripts/q0-qualification/10-source-gates.sh
+          carrier=.github/workflows/hepta-q0-e1-residue-repair.yml
+          rm "$carrier"
 
-          python3 - "$artifact_dir/gates" <<'PY'
+          artifact_dir="$RUNNER_TEMP/hepta-q0-e1-blocker-closure"
+          rm -rf "$artifact_dir"
+          mkdir -p "$artifact_dir/gates" "$artifact_dir/rust"
+
+          ARTIFACT_DIR="$artifact_dir" \
+            bash scripts/q0-qualification/10-source-gates.sh
+          ARTIFACT_DIR="$artifact_dir" \
+            bash scripts/q0-qualification/20-rust-matrix.sh
+
+          python3 - "$artifact_dir" <<'PY'
           from pathlib import Path
           import sys
 
           root = Path(sys.argv[1])
-          exits = sorted(root.glob("*.exit"))
+          exits = sorted(root.glob("*/*.exit"))
           if not exits:
-              raise AssertionError("source gate emitted no exit records")
+              raise AssertionError("qualification emitted no exit records")
           failed = {
-              path.name: path.read_text(encoding="utf-8").strip()
+              str(path.relative_to(root)): path.read_text(encoding="utf-8").strip()
               for path in exits
               if path.read_text(encoding="utf-8").strip() != "0"
           }
-          expected_carrier_failure = {"workflow-consolidation.exit": "1"}
-          if failed != expected_carrier_failure:
-              raise AssertionError(
-                  f"unexpected source gate failures: actual={failed} "
-                  f"expected={expected_carrier_failure}"
-              )
-          print(f"verified_source_gate_count={len(exits)}")
+          if failed:
+              raise AssertionError(f"qualification failures: {failed}")
+          print(f"verified_exit_count={len(exits)}")
           PY
 
-          carrier=.github/workflows/hepta-q0-e1-residue-repair.yml
-          saved_carrier="$RUNNER_TEMP/hepta-q0-e1-residue-repair.yml"
-          mv "$carrier" "$saved_carrier"
-          set +e
-          consolidation_output="$(
-            python3 scripts/verify-hepta-intelligence-q0-workflow-consolidation.py 2>&1
-          )"
-          consolidation_code=$?
-          set -e
-          mv "$saved_carrier" "$carrier"
-          printf '%s\n' "$consolidation_output"
-          test "$consolidation_code" = "0"
-          test "$consolidation_output" = \
-            "PASS_HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V2"
-
-          (
-            cd codex-rs
-            cargo test --locked -p codex-hepta-agentd
-            cargo test --locked -p codex-hepta-agentd \
-              --features qualification-intelligence-mutation-shadow
-            cargo clippy --locked -p codex-hepta-agentd \
-              --all-targets --no-deps -- -D warnings
-            cargo clippy --locked -p codex-hepta-agentd \
-              --features qualification-intelligence-mutation-shadow \
-              --all-targets --no-deps -- -D warnings
-          )
-
           rm -rf scripts/__pycache__ .github/scripts/__pycache__
+          (cd codex-rs && cargo fmt --all -- --check)
           git diff --check
 
       - name: Commit verified repair, bind final candidate, and retire carrier
         shell: bash
         run: |
           set -euo pipefail
-          rm .github/workflows/hepta-q0-e1-residue-repair.yml
           rm -rf scripts/__pycache__ .github/scripts/__pycache__
 
           python3 - <<'PY'
@@ -170,6 +272,13 @@ jobs:
               [
                   ".github/workflows/hepta-q0-e1-residue-repair.yml",
                   "codex-rs/hepta-agentd/src/app_runtime.rs",
+                  "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
+                  "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
+                  "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs",
+                  "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs",
+                  "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs",
+                  "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
+                  "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
                   "scripts/verify-hepta-intelligence-mutation-journal.py",
                   "scripts/verify-hepta-intelligence-mutation-state.py",
               ]
@@ -180,14 +289,16 @@ jobs:
               )
           PY
 
-          remote_head="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1)"
+          remote_head="$(
+            git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1
+          )"
           test "$remote_head" = "$GITHUB_SHA"
 
           git config user.name "hepta-q0-bot"
           git config user.email "hepta-q0-bot@users.noreply.github.com"
           git add -A
           git diff --cached --check
-          git commit -m "fix(intelligence): close exact E1 verifier and agentd lint residue"
+          git commit -m "fix(intelligence): close Q0 E1 module and lint blockers"
           repair_sha="$(git rev-parse HEAD)"
 
           REPAIR_SHA="$repair_sha" python3 - <<'PY'
@@ -205,14 +316,18 @@ jobs:
           path.write_text(text.replace(old, new, 1), encoding="utf-8")
           PY
 
-          test "$(git diff --name-only)" = ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml"
+          test "$(
+            git diff --name-only
+          )" = ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml"
           git diff --check
           python3 scripts/verify-hepta-intelligence-q0-workflow-consolidation.py
           git add .github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml
           git diff --cached --check
-          git commit -m "ci(q0): bind paired candidate to E1 residue repair"
+          git commit -m "ci(q0): bind candidate to E1 blocker closure"
 
           test "$(git rev-parse HEAD^)" = "$repair_sha"
-          remote_head="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1)"
+          remote_head="$(
+            git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1
+          )"
           test "$remote_head" = "$GITHUB_SHA"
           git push origin "HEAD:${GITHUB_REF_NAME}"
