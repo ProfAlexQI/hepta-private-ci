@@ -1,0 +1,90 @@
+name: Hepta inference INF-2A adapter contract qualification
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf2a-adapter-contract-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf2a-adapter-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    name: Adapter contract source, fmt, test and strict Clippy
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    env:
+      EXPECTED_PARENT: 0f7f3a90a9fb50866f74f167dcecaaddf0e8189b
+      SELF: .github/workflows/hepta-inference-inf2a-adapter-contract.yml
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+
+      - name: Verify isolated workflow commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Verify source and negative authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/hepta-inference-inf2a-adapter-contract-source-gate.py
+          python3 scripts/hepta-inference-inf2a-adapter-contract-source-gate.py \
+            | tee "$RUNNER_TEMP/hepta-inference-inf2a-adapter-contract-source.txt"
+          python3 -m json.tool \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_INF2A_ADAPTER_CONTRACT_STATUS_V1.json \
+            >/dev/null
+
+      - name: Format adapter contract
+        shell: bash
+        run: cargo fmt --manifest-path codex-rs/hepta-infer-adapter/Cargo.toml -- --check
+
+      - name: Test adapter contract
+        shell: bash
+        run: cargo test --manifest-path codex-rs/hepta-infer-adapter/Cargo.toml --locked
+
+      - name: Strict adapter contract Clippy
+        shell: bash
+        run: |
+          cargo clippy --manifest-path codex-rs/hepta-infer-adapter/Cargo.toml \
+            --all-targets --locked -- -D warnings
+
+      - name: Record qualification-only receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "source_commit=$EXPECTED_PARENT"
+            echo "source_tree=$(git show -s --format=%T "$EXPECTED_PARENT")"
+            echo "source_gate=PASS"
+            echo "cargo_fmt=PASS"
+            echo "cargo_test=PASS"
+            echo "strict_clippy=PASS"
+            echo "real_ollama_adapter=false"
+            echo "real_lmstudio_adapter=false"
+            echo "daemon_uds_fixture_route=false"
+            echo "product_caller_wiring=false"
+            echo "production_qualified=false"
+          } | tee "$RUNNER_TEMP/hepta-inference-inf2a-adapter-contract-receipt.txt"
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf2a-adapter-contract-${{ env.EXPECTED_PARENT }}
+          path: |
+            ${{ runner.temp }}/hepta-inference-inf2a-adapter-contract-source.txt
+            ${{ runner.temp }}/hepta-inference-inf2a-adapter-contract-receipt.txt
+          if-no-files-found: error
+          retention-days: 14
