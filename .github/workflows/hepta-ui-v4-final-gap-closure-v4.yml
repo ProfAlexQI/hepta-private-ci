@@ -1,3 +1,4 @@
+# Isolated child-PR execution authority for the exact inherited candidate.
 name: hepta-ui-v4-final-gap-closure-v4
 
 on:
