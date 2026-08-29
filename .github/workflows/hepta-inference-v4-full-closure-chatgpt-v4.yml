@@ -38,7 +38,7 @@ jobs:
           test "$GITHUB_REF_NAME" = codex/hepta-inference-v4-full-closure-chatgpt-20260830
           test "$(git branch --show-current)" = "$GITHUB_REF_NAME"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = 705c0916098c39ddd0ef9e6b069e1efe072f410b
+          test "$(git rev-parse HEAD^)" = 9d39dd7acc6557ef1f259f7005b970b594ed156f
           test -z "$(git status --porcelain)"
 
       - name: Repair V4 source truth toolchain binding
