@@ -1,0 +1,182 @@
+name: Hepta inference V4 normalized x64 diagnostic
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-v4-normalized-x64-20260830
+    paths:
+      - .github/workflows/hepta-inference-v4-normalized-x64-diagnostic.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-v4-normalized-x64-diagnostic
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  materialize-and-qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact diagnostic head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: codex/hepta-inference-v4-normalized-x64-20260830
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Guard exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = codex/hepta-inference-v4-normalized-x64-20260830
+          test "$(git branch --show-current)" = "$GITHUB_REF_NAME"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = aed2fc3475fbd3b5883688d38d9b40d1af94a22e
+          test -z "$(git status --porcelain)"
+
+      - name: Repair and prove baseline source truth locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("scripts/hepta-inference-v4-source-truth.py")
+          source = path.read_text(encoding="utf-8")
+          count = source.count("rust-toolchain.toml")
+          if count < 3:
+              raise SystemExit(f"unexpected toolchain marker count: {count}")
+          path.write_text(
+              source.replace("rust-toolchain.toml", "codex-rs/rust-toolchain.toml"),
+              encoding="utf-8",
+          )
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add scripts/hepta-inference-v4-source-truth.py
+          git commit -m "fix(inference): bind diagnostic source truth to workspace toolchain"
+          python3 scripts/hepta-inference-v4-source-truth.py \
+            > "$RUNNER_TEMP/hepta-inference-v4-baseline-source-truth.json"
+          test -z "$(git status --porcelain)"
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Normalize and materialize all repository-source packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            tools/hepta-inference-v4-payloads/normalize_payloads.py \
+            tools/hepta-inference-v4-payloads/apply_payload_steps.py \
+            tools/hepta-inference-v4-payloads/post_materialize_hardening.py
+          python3 tools/hepta-inference-v4-payloads/normalize_payloads.py
+          python3 tools/hepta-inference-v4-payloads/apply_payload_steps.py
+          python3 tools/hepta-inference-v4-payloads/post_materialize_hardening.py
+          find tools/hepta-inference-v4-payloads -type d -name __pycache__ -prune -exec rm -rf {} +
+          git restore --source=HEAD -- \
+            tools/hepta-inference-v4-payloads/inf-s3.yml \
+            tools/hepta-inference-v4-payloads/inf-r2-chain.yml \
+            tools/hepta-inference-v4-payloads/post_materialize_hardening.py
+
+      - name: Repair exact-head helper shadowing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("codex-rs/hepta-infer-core/src/tests.rs")
+          source = path.read_text(encoding="utf-8")
+          for name in (
+              "queued_cancel_releases_accounting_and_terminal_can_be_forgotten",
+              "active_deadline_expiry_is_terminal_and_releases_capacity",
+          ):
+              marker = f"fn {name}() {{"
+              start = source.find(marker)
+              if start < 0:
+                  raise SystemExit(f"test marker missing: {name}")
+              end = source.find("\n#[test]", start + len(marker))
+              if end < 0:
+                  end = len(source)
+              block = source[start:end]
+              if "let candidate = request(" in block:
+                  continue
+              replacements = (
+                  ("    let request = request(", "    let candidate = request("),
+                  ("    let request_id = request.identity.request_id.clone();", "    let request_id = candidate.identity.request_id.clone();"),
+                  ("    must(controller.admit(request, 1));", "    must(controller.admit(candidate, 1));"),
+              )
+              for old, new in replacements:
+                  if block.count(old) != 1:
+                      raise SystemExit(f"{name}: expected one marker {old!r}")
+                  block = block.replace(old, new, 1)
+              source = source[:start] + block + source[end:]
+          path.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Materialize and verify Cargo and Bazel locks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --manifest-path codex-rs/Cargo.toml --format-version 1 \
+            > "$RUNNER_TEMP/hepta-inference-v4-metadata-unlocked.json"
+          just bazel-lock-update
+          cargo metadata --locked --manifest-path codex-rs/Cargo.toml --no-deps --format-version 1 \
+            > "$RUNNER_TEMP/hepta-inference-v4-metadata-locked.json"
+          just bazel-lock-check
+
+      - name: Rust 1.95 format, compile, tests, and strict Clippy
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          packages=(
+            -p codex-hepta-infer-core
+            -p codex-hepta-infer-client
+            -p codex-hepta-inferd
+            -p codex-hepta-infer-worker-host
+          )
+          cargo fmt "${packages[@]}"
+          cargo fmt "${packages[@]}" -- --check
+          cargo check --locked --all-targets "${packages[@]}"
+          cargo test --locked --all-targets "${packages[@]}" -- --test-threads=1
+          cargo clippy --locked --all-targets --no-deps "${packages[@]}" -- -D warnings
+
+      - name: Package exact diagnostic source
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --porcelain=v1 > "$RUNNER_TEMP/hepta-inference-v4-status.txt"
+          git diff --check || true
+          tar -czf "$RUNNER_TEMP/hepta-inference-v4-normalized-x64-source.tar.gz" \
+            MODULE.bazel.lock \
+            codex-rs/Cargo.toml \
+            codex-rs/Cargo.lock \
+            codex-rs/hepta-infer-core \
+            codex-rs/hepta-infer-client \
+            codex-rs/hepta-inferd \
+            codex-rs/hepta-infer-worker-host \
+            scripts/hepta-inference-v4-source-truth.py
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-v4-normalized-x64-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/hepta-inference-v4-baseline-source-truth.json
+            ${{ runner.temp }}/hepta-inference-v4-metadata-unlocked.json
+            ${{ runner.temp }}/hepta-inference-v4-metadata-locked.json
+            ${{ runner.temp }}/hepta-inference-v4-status.txt
+            ${{ runner.temp }}/hepta-inference-v4-normalized-x64-source.tar.gz
+          if-no-files-found: warn
+          retention-days: 30
