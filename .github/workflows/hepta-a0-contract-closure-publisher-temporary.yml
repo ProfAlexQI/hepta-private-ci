@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: hepta-intelligence-a0-contract-closure-publisher
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
@@ -25,7 +25,7 @@ env:
 jobs:
   publish:
     name: Publish one exact-parent A0 contract-closure replacement
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - name: Checkout exact publisher source
@@ -43,17 +43,23 @@ jobs:
           test "${GITHUB_REF_NAME}" = "$PUBLISHER_BRANCH"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           mkdir -p publisher-work/archive publisher-work/payload
-          cat publisher-payload/payload.part* | tr -d '\r\n' \
-            | base64 --decode > publisher-work/archive/payload.tar.gz
-          printf '%s  %s\n' "$PAYLOAD_SHA256" publisher-work/archive/payload.tar.gz \
-            | sha256sum --check --strict
           python3 - <<'PY'
           from pathlib import Path, PurePosixPath
+          import base64
           import hashlib
           import os
           import tarfile
 
+          encoded = "".join(
+              part.read_text(encoding="ascii").replace("\r", "").replace("\n", "")
+              for part in sorted(Path("publisher-payload").glob("payload.part*"))
+          )
+          data = base64.b64decode(encoded, validate=True)
+          observed = hashlib.sha256(data).hexdigest()
+          if observed != os.environ["PAYLOAD_SHA256"]:
+              raise SystemExit(f"payload digest mismatch: {observed}")
           archive = Path("publisher-work/archive/payload.tar.gz")
+          archive.write_bytes(data)
           output = Path("publisher-work/payload").resolve()
           expected = {
               ".github/workflows/hepta-intelligence-a0-authority.yml",
@@ -124,7 +130,9 @@ jobs:
           git worktree add --detach publisher-work/candidate "$SOURCE_TREE_HEAD"
           while IFS= read -r source; do
             rel="${source#publisher-work/payload/}"
-            install -D -m 0644 "$source" "publisher-work/candidate/$rel"
+            mkdir -p "publisher-work/candidate/$(dirname "$rel")"
+            cp "$source" "publisher-work/candidate/$rel"
+            chmod 0644 "publisher-work/candidate/$rel"
           done < <(find publisher-work/payload -type f | sort)
           cd publisher-work/candidate
           git config user.name "Hepta A0 contract-closure publisher"
@@ -169,7 +177,6 @@ jobs:
           scripts/verify-hepta-intelligence-document-authority.py
           scripts/verify-hepta-intelligence-master-plan.py
           EOF
-          sed -i 's/^          //' /tmp/expected-paths
           git diff --name-only HEAD^ HEAD | sort > /tmp/actual-paths
           diff -u /tmp/expected-paths /tmp/actual-paths
           git diff --check HEAD^ HEAD
