@@ -1,0 +1,147 @@
+name: Hepta inference exact Rust formatting publisher
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-gap-closure-scratch-check-20260829
+    paths:
+      - ".github/workflows/hepta-inference-gap-closure-format-publish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-gap-closure-format-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Qualify and fast-forward formatting-only source
+    runs-on: macos-latest
+    timeout-minutes: 75
+    env:
+      TARGET_BRANCH: codex/hepta-inference-gap-closure-20260829
+      EXPECTED_PARENT: 83f675720bee198f7e2524a447ab1177fcb99ef6
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          ref: ${{ env.EXPECTED_PARENT }}
+          fetch-depth: 0
+
+      - name: Verify exact immutable parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_PARENT"
+          test -z "$(git status --porcelain)"
+          git fetch --no-tags origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_PARENT"
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply exact Rust 1.95 formatting
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
+          cargo fmt \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd -- --check
+
+      - name: Enforce formatting-only allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+
+          changed = set(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
+          allowed = {
+              "codex-rs/hepta-infer-core/src/adapter.rs",
+              "codex-rs/hepta-infer-core/src/worker.rs",
+              "codex-rs/hepta-inferd/src/bin/hepta-infer-admission-shadow.rs",
+          }
+          if not changed:
+              raise SystemExit("formatter produced no candidate changes")
+          unexpected = sorted(changed - allowed)
+          if unexpected:
+              raise SystemExit(f"unexpected formatter paths: {unexpected}")
+          PY
+          git diff --check
+
+      - name: Locked check
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo check --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
+
+      - name: All-target tests
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo test --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
+
+      - name: Strict Clippy
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo clippy --locked --all-targets --no-deps \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd -- -D warnings
+
+      - name: Create bounded formatting commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            codex-rs/hepta-infer-core/src/adapter.rs \
+            codex-rs/hepta-infer-core/src/worker.rs \
+            codex-rs/hepta-inferd/src/bin/hepta-infer-admission-shadow.rs
+          test -z "$(git diff --name-only)"
+          git commit -m "style(inference): apply Rust 1.95 formatting"
+          echo "CANDIDATE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "CANDIDATE_TREE=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_ENV"
+
+      - name: Revalidate and fast-forward target branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_PARENT"
+          git push origin HEAD:"$TARGET_BRANCH"
+
+      - name: Record bounded publisher result
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Hepta inference formatting publisher"
+            echo
+            echo "- expected parent: $EXPECTED_PARENT"
+            echo "- candidate: ${CANDIDATE_SHA:-not-created}"
+            echo "- candidate tree: ${CANDIDATE_TREE:-not-created}"
+            echo "- qualification_only: true"
+            echo "- production authority: false"
+            echo "- operator acceptance: false"
+            echo "- promotion: false"
+            echo "- release: false"
+          } >> "$GITHUB_STEP_SUMMARY"
