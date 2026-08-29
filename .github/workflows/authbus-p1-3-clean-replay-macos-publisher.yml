@@ -1,0 +1,212 @@
+name: AuthBus P1.3 clean-replay macOS publisher
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/authbus-p1-3-clean-replay-macos-publisher-20260830
+    paths:
+      - .github/workflows/authbus-p1-3-clean-replay-macos-publisher.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: authbus-p1-3-clean-replay-publisher
+  cancel-in-progress: false
+
+env:
+  BASE_BRANCH: integration/vnext-main-full-ci-authbus-p1-3-20260829
+  BASE_SHA: 6b7aa91d7702a92a50297b1b1bd8170ffb7cb184
+  BASE_TREE: f46fa8c6d541742eaea62d70ea62c0fe316dbaf9
+  SEED_SHA: dc9b2e4f784426da4dd06a70b2b88ed92878c421
+  TARGET_BRANCH: codex/authbus-p1-3-clean-replay-20260830
+  STAGE_BRANCH: codex/authbus-p1-3-clean-replay-staged-20260830
+  P02: codex-rs/hepta-authbus-qualification/Cargo.toml
+  P03: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
+  P11: codex-rs/hepta-authbus-p1-qualification/Cargo.toml
+  P12: codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
+  P13: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
+  CARGO_INCREMENTAL: "0"
+  CARGO_BUILD_JOBS: "1"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_NET_RETRY: "10"
+  CARGO_HTTP_TIMEOUT: "120"
+  CARGO_TARGET_DIR: /tmp/authbus-p1-3-publisher-target
+
+jobs:
+  publish:
+    name: Materialize exact canonical-parent source
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Rebase one-shot materializer onto canonical base
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git rev-parse HEAD^)" = "${SEED_SHA}"
+          cp .github/workflows/authbus-p1-3-materialize.yml /tmp/materialize.yml
+          mkdir -p /tmp/authbus-seed
+          for f in scripts/authbus-p1-3-finalize.py scripts/authbus-p1-3-semantic-completion.py scripts/authbus-p1-3-gap-closure.py; do
+            cp "$f" "/tmp/authbus-seed/${f##*/}"
+          done
+          git fetch --no-tags --depth=1 origin "${BASE_SHA}"
+          git checkout --detach "${BASE_SHA}"
+          test "$(git rev-parse HEAD)" = "${BASE_SHA}"
+          test "$(git rev-parse 'HEAD^{tree}')" = "${BASE_TREE}"
+          for f in scripts/authbus-p1-3-finalize.py scripts/authbus-p1-3-semantic-completion.py scripts/authbus-p1-3-gap-closure.py; do
+            cp "/tmp/authbus-seed/${f##*/}" "$f"
+          done
+          python3 scripts/authbus-p1-3-finalize.py | tee /tmp/finalize.txt
+          grep -q 'applied_authbus_p1_3_registry_files=9' /tmp/finalize.txt
+          grep -q 'applied_authbus_p1_3_existing_file_patches=5' /tmp/finalize.txt
+          grep -q 'removed_p0_3_canonical_type_copies=2' /tmp/finalize.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs')
+          s=p.read_text()
+          a='request_sha256.to_string()'
+          assert s.count(a)==1, s.count(a)
+          p.write_text(s.replace(a,'request_sha256.as_str().to_owned()'))
+          PY
+          python3 scripts/authbus-p1-3-semantic-completion.py | tee /tmp/semantic.txt
+          grep -q 'applied_authbus_p1_3_semantic_completion=1' /tmp/semantic.txt
+          python3 scripts/authbus-p1-3-gap-closure.py | tee /tmp/gap.txt
+          grep -q 'closed_authbus_p1_3_materialized_compile_gap=1' /tmp/gap.txt
+
+      - name: Close stable hosted strict-lint diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          p=Path('codex-rs/hepta-authbus-qualification/src/store.rs')
+          s=p.read_text()
+          reps={
+            'if existing.intent_sha256 == admission_sha256.as_str().to_owned() {':'if existing.intent_sha256 == admission_sha256.as_str() {',
+            'if existing == marker_sha256.as_str().to_owned() {':'if existing == marker_sha256.as_str() {',
+            'if existing_sha256 == observation_sha256.as_str().to_owned() {':'if existing_sha256 == observation_sha256.as_str() {',
+            'if observation.digest()?.as_str().to_owned() != stored {':'if observation.digest()?.as_str() != stored {',
+            '|| row.digest()?.as_str().to_owned() != row.row_sha256':'|| row.digest()?.as_str() != row.row_sha256',
+            'if admission.intent_sha256()?.as_str().to_owned() != row.intent_sha256':'if admission.intent_sha256()?.as_str() != row.intent_sha256',
+            '|| row.digest()?.as_str().to_owned() != row.witness_sha256':'|| row.digest()?.as_str() != row.witness_sha256',
+          }
+          for before,after in reps.items():
+              expected=4 if 'row.row_sha256' in before else 1
+              assert s.count(before)==expected,(before,s.count(before))
+              s=s.replace(before,after)
+          before=('        if let Some((existing_operation, active)) = load_claim(&mut transaction, &claim_key).await?\n'
+                  '        {\n'
+                  '            if active && existing_operation != admission.intent.operation_id {\n'
+                  '                return Err(QualificationError::ActiveClaim);\n'
+                  '            }\n'
+                  '        }')
+          after=('        if let Some((existing_operation, active)) = load_claim(&mut transaction, &claim_key).await?\n'
+                 '            && active\n'
+                 '            && existing_operation != admission.intent.operation_id\n'
+                 '        {\n'
+                 '            return Err(QualificationError::ActiveClaim);\n'
+                 '        }')
+          assert s.count(before)==1
+          p.write_text(s.replace(before,after))
+          q=Path('.github/workflows/authbus-p1-3-qualification.yml')
+          w=q.read_text()
+          assert w.count('runs-on: ubuntu-slim')==4,w.count('runs-on: ubuntu-slim')
+          q.write_text(w.replace('runs-on: ubuntu-slim','runs-on: ubuntu-24.04'))
+          add='''\n\n### Stable hosted strict-lint closure — 2026-08-30\n\nRun `33268776920`, job `99143403947`, on `dc9b2e4f784426da4dd06a70b2b88ed92878c421` passed formatting, metadata and the complete inherited P0.2/P0.3/P1.1/P1.2/P1.3 executable test matrix. Its only failure was ten `clippy::cmp_owned` findings and one `clippy::collapsible_if` in the P0.2 store. This clean replay uses borrowed comparisons and an equivalent combined guard, adds no lint suppression, and keeps every production/effect/provider/listener/OpenBao authority switch false. All four final qualification jobs are pinned to `ubuntu-24.04`.\n'''
+          for rel in ('docs/hepta-vnext/authbus/AUTHBUS_P1_3_DEVELOPMENT_PLAN_2026-08-29.md','docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.md'):
+              x=Path(rel); t=x.read_text()
+              if 'Stable hosted strict-lint closure — 2026-08-30' not in t:
+                  x.write_text(t.rstrip()+add)
+          x=Path('docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.json')
+          d=json.loads(x.read_text())
+          d.update({'clippy_cmp_owned_gap_closed':True,'clippy_collapsible_if_gap_closed':True,'last_diagnostic_blocker':'10x clippy::cmp_owned; 1x clippy::collapsible_if in P0.2 store','last_diagnostic_conclusion':'failure','last_diagnostic_head':'dc9b2e4f784426da4dd06a70b2b88ed92878c421','last_diagnostic_job_id':99143403947,'last_diagnostic_run_id':33268776920,'qualification_runner':'ubuntu-24.04'})
+          x.write_text(json.dumps(d,indent=2,sort_keys=True)+'\n')
+          PY
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+
+      - name: Generate deterministic lockfile and format source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(rustc -V | awk '{print $2}')" = "1.95.0"
+          cargo generate-lockfile --manifest-path "${P13}"
+          cargo fmt --manifest-path codex-rs/Cargo.toml --package codex-hepta-contracts
+          for manifest in "${P02}" "${P03}" "${P11}" "${P12}" "${P13}"; do cargo fmt --manifest-path "${manifest}" --all; done
+          cargo fmt --manifest-path codex-rs/Cargo.toml --package codex-hepta-contracts -- --check
+          for manifest in "${P02}" "${P03}" "${P11}" "${P12}" "${P13}"; do cargo fmt --manifest-path "${manifest}" --all -- --check; done
+          test -s codex-rs/hepta-authbus-p1-3-qualification/Cargo.lock
+          cargo metadata --manifest-path "${P13}" --locked --format-version 1 --no-deps >/dev/null
+
+      - name: Verify exact 28-path source and publish staging ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf scripts/__pycache__
+          rm -f .github/workflows/authbus-p1-3-gap-diagnostic.yml .github/workflows/authbus-p1-3-gap-closure.yml .github/workflows/authbus-p1-3-materialize.yml scripts/authbus-p1-3-finalize.py scripts/authbus-p1-3-gap-closure.py scripts/authbus-p1-3-semantic-completion.py
+          python3 scripts/verify-authbus-p1-2.py | tee /tmp/p1-2.json
+          grep -q PASS_AUTHBUS_P1_2_SOURCE_ONLY /tmp/p1-2.json
+          python3 scripts/verify-authbus-p1-3.py | tee /tmp/p1-3.json
+          grep -q PASS_AUTHBUS_P1_3_SOURCE_ONLY /tmp/p1-3.json
+          test "$(grep -c 'runs-on: ubuntu-24.04' .github/workflows/authbus-p1-3-qualification.yml)" = 4
+          git add -A
+          python3 - <<'PY'
+          import subprocess
+          expected=set('''
+          .github/workflows/authbus-p1-3-gap-diagnostic.yml
+          .github/workflows/authbus-p1-3-materialize.yml
+          .github/workflows/authbus-p1-3-qualification.yml
+          codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
+          codex-rs/hepta-authbus-p0-3-qualification/tests/p0_3.rs
+          codex-rs/hepta-authbus-p1-3-qualification/Cargo.lock
+          codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
+          codex-rs/hepta-authbus-p1-3-qualification/README.md
+          codex-rs/hepta-authbus-p1-3-qualification/src/lib.rs
+          codex-rs/hepta-authbus-p1-3-qualification/tests/p1_3.rs
+          codex-rs/hepta-authbus-qualification/src/model.rs
+          codex-rs/hepta-authbus-qualification/src/store.rs
+          codex-rs/hepta-contracts/src/authbus_b1.rs
+          codex-rs/hepta-contracts/src/authbus_b1_tests.rs
+          codex-rs/hepta-contracts/src/authbus_b2.rs
+          codex-rs/hepta-contracts/src/authbus_b3.rs
+          codex-rs/hepta-contracts/src/authbus_b3_adapter.rs
+          codex-rs/hepta-contracts/src/authbus_b4.rs
+          codex-rs/hepta-contracts/src/authbus_tests.rs
+          codex-rs/hepta-contracts/src/lib.rs
+          codex-rs/hepta-contracts/src/quota_registry.rs
+          codex-rs/hepta-contracts/tests/authbus_b3_p0_1.rs
+          docs/hepta-vnext/authbus/AUTHBUS_P1_3_DEVELOPMENT_PLAN_2026-08-29.md
+          docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.json
+          docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.md
+          scripts/authbus-p1-3-finalize.py
+          scripts/authbus-p1-3-semantic-completion.py
+          scripts/verify-authbus-p1-3.py
+          '''.split())
+          actual=set(subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines())
+          assert actual==expected,(sorted(expected-actual),sorted(actual-expected),len(actual))
+          PY
+          git diff --cached --check
+          test "$(git rev-parse HEAD)" = "${BASE_SHA}"
+          test "$(git rev-parse 'HEAD^{tree}')" = "${BASE_TREE}"
+          test "$(git ls-remote --heads origin "refs/heads/${BASE_BRANCH}" | awk 'NR==1 {print $1}')" = "${BASE_SHA}"
+          test -z "$(git ls-remote --heads origin "refs/heads/${TARGET_BRANCH}")"
+          test -z "$(git ls-remote --heads origin "refs/heads/${STAGE_BRANCH}")"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat(authbus): close P1.3 clean-replay source blockers'
+          test "$(git rev-parse HEAD^)" = "${BASE_SHA}"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          git push origin "HEAD:refs/heads/${STAGE_BRANCH}"
+          echo "AUTHBUS_P1_3_STAGED_SOURCE=$(git rev-parse HEAD)"
