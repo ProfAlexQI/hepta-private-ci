@@ -65,6 +65,7 @@ jobs:
             hepta-automation/src/store.rs
             hepta-agentd/src/automation.rs
             hepta-matrix-store/src/operation.rs
+            hepta-matrix-store/src/store.rs
             hepta-matrix-store/tests/sqlite_full.rs
             hepta-contracts/src/provider_operation.rs
             hepta-contracts/tests/cross_owner_fault_matrix.rs
@@ -80,7 +81,7 @@ jobs:
           cargo test --locked -p codex-hepta-contracts provider_operation::tests -- --nocapture
           cargo test --locked -p codex-hepta-contracts --test cross_owner_fault_matrix -- --nocapture
           cargo test --locked -p codex-hepta-matrix-store operation::tests -- --nocapture
-          cargo test --locked -p codex-hepta-matrix-store --test sqlite_full -- --nocapture
+          cargo test --locked -p codex-hepta-matrix-store --features qualification-fault-injection --test sqlite_full -- --nocapture
           cargo test --locked -p codex-hepta-automation --lib -- --nocapture
           cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
           cargo check --locked -p codex-hepta-agentd -p codex-hepta-matrixd
@@ -92,6 +93,8 @@ jobs:
             -p codex-hepta-matrixd \
             -p codex-hepta-memory-runtime \
             -- -D warnings
+          cargo clippy --locked -p codex-hepta-matrix-store --all-targets \
+            --features qualification-fault-injection -- -D warnings
 
       - name: Enforce exact generated mutation set
         shell: bash
@@ -118,6 +121,7 @@ jobs:
               "codex-rs/hepta-automation/migrations/0004_operation_identity.sql",
               "codex-rs/hepta-agentd/src/automation.rs",
               "codex-rs/hepta-matrix-store/src/operation.rs",
+              "codex-rs/hepta-matrix-store/src/store.rs",
               "codex-rs/hepta-matrix-store/tests/sqlite_full.rs",
               "codex-rs/hepta-contracts/src/provider_operation.rs",
               "codex-rs/hepta-contracts/tests/cross_owner_fault_matrix.rs",
@@ -146,6 +150,7 @@ jobs:
               "codex-rs/hepta-automation/migrations/0004_operation_identity.sql",
               "codex-rs/hepta-agentd/src/automation.rs",
               "codex-rs/hepta-matrix-store/src/operation.rs",
+              "codex-rs/hepta-matrix-store/src/store.rs",
               "codex-rs/hepta-contracts/src/provider_operation.rs",
               "scripts/verify-hepta-cross-owner-operation-wiring.py",
           }
@@ -188,6 +193,7 @@ jobs:
             codex-rs/hepta-automation/migrations/0004_operation_identity.sql \
             codex-rs/hepta-agentd/src/automation.rs \
             codex-rs/hepta-matrix-store/src/operation.rs \
+            codex-rs/hepta-matrix-store/src/store.rs \
             codex-rs/hepta-matrix-store/tests/sqlite_full.rs \
             codex-rs/hepta-contracts/src/provider_operation.rs \
             codex-rs/hepta-contracts/tests/cross_owner_fault_matrix.rs \
