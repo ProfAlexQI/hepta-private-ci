@@ -8,8 +8,23 @@ on:
       - "codex-rs/hepta-fleet/**"
       - "codex-rs/hepta-supervisor/**"
       - "codex-rs/hepta-agentd/**"
+      - "codex-rs/Cargo.lock"
+      - "MODULE.bazel.lock"
       - "docs/architecture/**"
-      - "scripts/verify-hepta-architecture-plan-v3.py"
+      - "scripts/verify-hepta-architecture-plan-v4.py"
+      - ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml"
+  push:
+    branches:
+      - "codex/hepta-architecture-v4-p0-7a-*"
+    paths:
+      - "codex-rs/hepta-contracts/**"
+      - "codex-rs/hepta-fleet/**"
+      - "codex-rs/hepta-supervisor/**"
+      - "codex-rs/hepta-agentd/**"
+      - "codex-rs/Cargo.lock"
+      - "MODULE.bazel.lock"
+      - "docs/architecture/**"
+      - "scripts/verify-hepta-architecture-plan-v4.py"
       - ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml"
 
 permissions:
@@ -28,15 +43,26 @@ jobs:
       run:
         working-directory: codex-rs
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Checkout exact event identity
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - uses: ./.github/actions/setup-ci
 
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
           components: rustfmt, clippy
+
+      - name: Verify checked-out identity
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code
+          git diff --cached --exit-code
 
       - name: Locked metadata
         run: cargo metadata --locked --no-deps --format-version 1 >/dev/null
@@ -47,11 +73,10 @@ jobs:
       - name: Runtime bootstrap tests
         run: |
           set -euo pipefail
-          cargo test --locked \
-            -p codex-hepta-contracts \
-            -p codex-hepta-fleet \
-            -p codex-hepta-supervisor \
-            -p codex-hepta-agentd
+          just test -p codex-hepta-contracts
+          just test -p codex-hepta-fleet
+          just test -p codex-hepta-supervisor
+          just test -p codex-hepta-agentd
 
       - name: Runtime bootstrap check
         run: |
@@ -72,38 +97,48 @@ jobs:
             -p codex-hepta-agentd \
             -- -D warnings
 
-      - name: V3 architecture source verifier
+      - name: Verify committed Bazel lock
         working-directory: .
-        run: python3 scripts/verify-hepta-architecture-plan-v3.py
+        run: just bazel-lock-check
+
+      - name: V4 architecture source verifier
+        working-directory: .
+        run: python3 scripts/verify-hepta-architecture-plan-v4.py
 
       - name: Clean worktree
         if: always() && !cancelled()
         uses: ./.github/actions/check-clean-worktree
 
-  lock-refresh-artifact:
-    name: P0.7a lock refresh artifact
+  lock-coherence:
+    name: P0.7a committed lock coherence
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Checkout exact event identity
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - uses: ./.github/actions/setup-ci
 
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
 
-      - name: Refresh Cargo and Bazel locks without publishing source
+      - name: Regenerate Cargo and Bazel locks
+        id: regenerate
+        shell: bash
         run: |
           set -euo pipefail
           cargo metadata --manifest-path codex-rs/Cargo.toml --format-version 1 >/dev/null
           just bazel-lock-update
           git diff -- codex-rs/Cargo.lock MODULE.bazel.lock > "$RUNNER_TEMP/hepta-p0-7a-locks.patch"
+          git diff --exit-code -- codex-rs/Cargo.lock MODULE.bazel.lock
 
-      - name: Upload generated locks for reviewed application
+      - name: Upload diagnostic lock output
+        if: ${{ always() }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-p0-7a-lock-refresh
+          name: hepta-p0-7a-lock-diagnostic
           path: |
             codex-rs/Cargo.lock
             MODULE.bazel.lock
@@ -116,13 +151,13 @@ jobs:
     if: ${{ always() }}
     needs:
       - source-qualification
-      - lock-refresh-artifact
+      - lock-coherence
     runs-on: ubuntu-24.04
     steps:
       - name: Require successful P0.7a dependencies
         env:
           SOURCE_RESULT: ${{ needs.source-qualification.result }}
-          LOCK_RESULT: ${{ needs.lock-refresh-artifact.result }}
+          LOCK_RESULT: ${{ needs.lock-coherence.result }}
         run: |
           set -euo pipefail
           [[ "$SOURCE_RESULT" == success ]]

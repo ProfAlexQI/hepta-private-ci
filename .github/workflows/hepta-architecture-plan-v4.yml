@@ -1,0 +1,130 @@
+name: Hepta V4 architecture plan
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "README.md"
+      - "ARCHITECTURE.md"
+      - "docs/architecture/**"
+      - "docs/governance/**"
+      - "scripts/generate-hepta-architecture-projections.py"
+      - "scripts/verify-hepta-*.py"
+      - ".github/workflows/hepta-architecture-plan-v3.yml"
+      - ".github/workflows/hepta-architecture-plan-v4.yml"
+      - ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml"
+  push:
+    branches:
+      - "codex/hepta-architecture-v4-*"
+    paths:
+      - "README.md"
+      - "ARCHITECTURE.md"
+      - "docs/architecture/**"
+      - "docs/governance/**"
+      - "scripts/generate-hepta-architecture-projections.py"
+      - "scripts/verify-hepta-*.py"
+      - ".github/workflows/hepta-architecture-plan-v3.yml"
+      - ".github/workflows/hepta-architecture-plan-v4.yml"
+      - ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-v4-plan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: V4 source contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact event identity
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify checked-out identity and clean source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Verify generated architecture projections
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/generate-hepta-architecture-projections.py --check
+
+      - name: Verify selected V4 plan and gap contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-architecture-plan-v4.py
+
+      - name: Verify inherited source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-p0-5-gap-closure.py
+          python3 scripts/verify-hepta-cross-owner-operation-wiring.py
+          python3 scripts/verify-hepta-p0-6-runtime-authority.py
+
+      - name: Parse architecture JSON with duplicate-key rejection
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import pathlib
+
+          def hook(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON key: {key}")
+                  result[key] = value
+              return result
+
+          for path in sorted(pathlib.Path("docs/architecture").glob("*.json")):
+              json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=hook)
+              print(path)
+          PY
+
+      - name: Compile source verifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/generate-hepta-architecture-projections.py \
+            scripts/verify-hepta-architecture-plan-v4.py \
+            scripts/verify-hepta-p0-5-gap-closure.py \
+            scripts/verify-hepta-cross-owner-operation-wiring.py \
+            scripts/verify-hepta-p0-6-runtime-authority.py
+
+      - name: Confirm qualification did not rewrite the candidate
+        if: ${{ always() && !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          git diff --cached --exit-code
+
+  required:
+    name: Hepta V4 architecture plan required
+    if: ${{ always() && !cancelled() }}
+    needs:
+      - source-contract
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require successful source contract
+        shell: bash
+        env:
+          SOURCE_RESULT: ${{ needs.source-contract.result }}
+        run: |
+          set -euo pipefail
+          test "$SOURCE_RESULT" = "success"
