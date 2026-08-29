@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   repair:
-    name: Close E1 module-boundary and strict-lint blockers
+    name: Close every remaining Q0 repository blocker
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
@@ -32,7 +32,7 @@ jobs:
         env:
           EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
           EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-          EXPECTED_PARENT: 6fec513775a8a4fbabf2b3800775a87ac5c1e029
+          EXPECTED_PARENT: cf71c9b0316992d07fdad630b7965305c92c4ca1
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
@@ -46,208 +46,25 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt,clippy
 
-      - name: Apply exact fail-closed repairs
+      - name: Apply exact qualification-only source repairs
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          def replace_once(path: str, old: str, new: str) -> None:
-              file = Path(path)
-              text = file.read_text(encoding="utf-8")
-              count = text.count(old)
-              if count != 1:
-                  raise AssertionError(
-                      f"{path}: expected exactly one match, found {count}: {old!r}"
-                  )
-              file.write_text(text.replace(old, new, 1), encoding="utf-8")
-
-          def replace_count(
-              path: str, old: str, new: str, expected_count: int
-          ) -> None:
-              file = Path(path)
-              text = file.read_text(encoding="utf-8")
-              count = text.count(old)
-              if count != expected_count:
-                  raise AssertionError(
-                      f"{path}: expected {expected_count} matches, found {count}: {old!r}"
-                  )
-              file.write_text(text.replace(old, new), encoding="utf-8")
-
-          replace_once(
-              "codex-rs/hepta-agentd/src/app_runtime.rs",
-              '''#[expect(
-              dead_code,
-              reason = "the read-only constructor remains a qualification and regression seam"
-          )]
-          ''',
-              '''#[allow(dead_code)]
-          ''',
-          )
-
-          old_clippy = (
-              '"cargo clippy --locked -p codex-hepta-memory '
-              '--all-targets -- -D warnings",'
-          )
-          new_clippy = (
-              '"cargo clippy --locked -p codex-hepta-memory '
-              '--all-targets --no-deps -- -D warnings",'
-          )
-          for path in (
-              "scripts/verify-hepta-intelligence-mutation-state.py",
-              "scripts/verify-hepta-intelligence-mutation-journal.py",
-          ):
-              replace_once(path, old_clippy, new_clippy)
-
-          prepare = (
-              "codex-rs/hepta-memory/src/fact_grounding/"
-              "durable/grounding/prepare.rs"
-          )
-          for function in (
-              "validate_source_binding",
-              "require_groundable_revision",
-              "bind_exact_citation",
-              "prepare",
-              "validate_canonical_identity_binding",
-          ):
-              replace_once(
-                  prepare,
-                  f"pub(super) fn {function}(",
-                  f"pub(in super::super) fn {function}(",
-              )
-
-          insert = (
-              "codex-rs/hepta-memory/src/fact_grounding/"
-              "durable/grounding/ledger/insert.rs"
-          )
-          replace_once(
-              insert,
-              "use super::*;\n",
-              "use super::*;\n"
-              "use super::support::durable_receipt_digest;\n"
-              "use super::support::to_i64_len;\n",
-          )
-          replace_once(
-              insert,
-              "pub(super) async fn insert_tx(",
-              "pub(in super::super::super) async fn insert_tx(",
-          )
-
-          verify = (
-              "codex-rs/hepta-memory/src/fact_grounding/"
-              "durable/grounding/ledger/verify.rs"
-          )
-          replace_once(
-              verify,
-              "use super::*;\n",
-              "use super::*;\n"
-              "use super::support::durable_receipt_digest;\n"
-              "use super::support::limit_plus_one;\n"
-              "use super::support::parse_fact_kind;\n"
-              "use super::support::stored_fact_supports;\n"
-              "use super::support::validate_span_range_corrupt;\n",
-          )
-          replace_once(
-              verify,
-              "pub(super) async fn verify_receipts(",
-              "pub(in super::super::super) async fn verify_receipts(",
-          )
-
-          ledger = (
-              "codex-rs/hepta-memory/src/fact_grounding/"
-              "durable/grounding/ledger.rs"
-          )
-          replace_once(
-              ledger,
-              "pub(super) use insert::insert_tx;",
-              "pub(in super::super) use insert::insert_tx;",
-          )
-          replace_once(
-              ledger,
-              "pub(super) use verify::verify_receipts;",
-              "pub(in super::super) use verify::verify_receipts;",
-          )
-
-          support = (
-              "codex-rs/hepta-memory/src/fact_grounding/"
-              "durable/grounding/ledger/support.rs"
-          )
-          replace_once(
-              support,
-              "use super::*;\n",
-              "use super::*;\nuse crate::framing::frame_part;\n",
-          )
-          replace_once(
-              support,
-              "async fn stored_fact_supports(",
-              "pub(super) async fn stored_fact_supports(",
-          )
-          for function in (
-              "durable_receipt_digest",
-              "parse_fact_kind",
-              "validate_span_range_corrupt",
-              "to_i64_len",
-              "limit_plus_one",
-          ):
-              replace_once(
-                  support,
-                  f"fn {function}(",
-                  f"pub(super) fn {function}(",
-              )
-          replace_count(
-              support,
-              "super::super::frame_part",
-              "frame_part",
-              16,
-          )
-
-          replace_once(
-              "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
-              "use sqlx::Executor;\n",
-              "",
-          )
-          replace_once(
-              "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
-              "use super::intelligence_mutation_state::IntelligenceMutationState;\n",
-              "",
-          )
-
-          state = "codex-rs/hepta-memory/src/intelligence_mutation_state.rs"
-          replace_once(
-              state,
-              "        let request = IntelligenceMutationTransitionRequest {\n"
-              "            binding: drifted,",
-              "        let drifted_request = IntelligenceMutationTransitionRequest {\n"
-              "            binding: drifted,",
-          )
-          replace_once(
-              state,
-              "            state.apply(request),\n"
-              "            Err(IntelligenceMutationStateError::BindingDrift)",
-              "            state.apply(drifted_request),\n"
-              "            Err(IntelligenceMutationStateError::BindingDrift)",
-          )
-          PY
-
+          python3 scripts/q0-qualification/close-final-gaps.py
           (cd codex-rs && cargo fmt --all)
           (cd codex-rs && cargo fmt --all -- --check)
           git diff --check
 
-      - name: Apply machine-applicable strict Clippy repairs
+      - name: Apply machine-applicable canonical Clippy repairs
         shell: bash
         run: |
           set -euo pipefail
-
           run_fix() {
             local label="$1"
             shift
             echo "::group::clippy-fix ${label}"
             set +e
-            (
-              cd codex-rs
-              cargo clippy --fix --locked --allow-dirty --allow-staged "$@"
-            )
+            (cd codex-rs && cargo clippy --fix --locked --allow-dirty --allow-staged "$@")
             local code=$?
             set -e
             echo "clippy_fix_${label//-/_}_exit=${code}"
@@ -256,12 +73,8 @@ jobs:
 
           run_fix memory \
             -p codex-hepta-memory --all-targets --no-deps -- -D warnings
-          run_fix extension-default \
+          run_fix extension \
             -p codex-hepta-memory-extension --all-targets --no-deps -- -D warnings
-          run_fix extension-shadow \
-            -p codex-hepta-memory-extension \
-            --features qualification-intelligence-mutation-shadow \
-            --all-targets --no-deps -- -D warnings
           run_fix agentd-default \
             -p codex-hepta-agentd --all-targets --no-deps -- -D warnings
           run_fix agentd-shadow \
@@ -273,7 +86,7 @@ jobs:
           (cd codex-rs && cargo fmt --all -- --check)
           git diff --check
 
-      - name: Require every strict Clippy profile to converge
+      - name: Require every canonical strict Clippy profile to pass
         shell: bash
         run: |
           set -euo pipefail
@@ -287,10 +100,8 @@ jobs:
             shift
             echo "::group::strict-clippy ${label}"
             set +e
-            (
-              cd codex-rs
-              cargo clippy --locked "$@"
-            ) 2>&1 | tee "$output_dir/${label}.log"
+            (cd codex-rs && cargo clippy --locked "$@") \
+              2>&1 | tee "$output_dir/${label}.log"
             local code=${PIPESTATUS[0]}
             set -e
             printf '%s\n' "$code" > "$output_dir/${label}.exit"
@@ -303,12 +114,12 @@ jobs:
 
           run_strict memory \
             -p codex-hepta-memory --all-targets --no-deps -- -D warnings
-          run_strict extension-default \
+          run_strict agent-protocol \
+            -p codex-hepta-agent-protocol --all-targets --no-deps -- -D warnings
+          run_strict supervisor \
+            -p codex-hepta-supervisor --all-targets --no-deps -- -D warnings
+          run_strict extension \
             -p codex-hepta-memory-extension --all-targets --no-deps -- -D warnings
-          run_strict extension-shadow \
-            -p codex-hepta-memory-extension \
-            --features qualification-intelligence-mutation-shadow \
-            --all-targets --no-deps -- -D warnings
           run_strict agentd-default \
             -p codex-hepta-agentd --all-targets --no-deps -- -D warnings
           run_strict agentd-shadow \
@@ -325,9 +136,10 @@ jobs:
         run: |
           set -euo pipefail
           carrier=.github/workflows/hepta-q0-e1-residue-repair.yml
-          rm "$carrier"
+          payload=scripts/q0-qualification/close-final-gaps.py
+          rm "$carrier" "$payload"
 
-          artifact_dir="$RUNNER_TEMP/hepta-q0-e1-blocker-closure"
+          artifact_dir="$RUNNER_TEMP/hepta-q0-final-gap-closure"
           rm -rf "$artifact_dir"
           mkdir -p "$artifact_dir/gates" "$artifact_dir/rust"
 
@@ -372,6 +184,7 @@ jobs:
           ).splitlines()
           required = {
               ".github/workflows/hepta-q0-e1-residue-repair.yml",
+              "scripts/q0-qualification/close-final-gaps.py",
               "codex-rs/hepta-agentd/src/app_runtime.rs",
               "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
               "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
@@ -390,6 +203,7 @@ jobs:
 
           exact_allowed = {
               ".github/workflows/hepta-q0-e1-residue-repair.yml",
+              "scripts/q0-qualification/close-final-gaps.py",
               "scripts/verify-hepta-intelligence-mutation-journal.py",
               "scripts/verify-hepta-intelligence-mutation-state.py",
           }
@@ -418,7 +232,7 @@ jobs:
           git config user.email "hepta-q0-bot@users.noreply.github.com"
           git add -A
           git diff --cached --check
-          git commit -m "fix(intelligence): close Q0 E1 module and lint blockers"
+          git commit -m "fix(intelligence): close remaining Q0 repository blockers"
           repair_sha="$(git rev-parse HEAD)"
 
           REPAIR_SHA="$repair_sha" python3 - <<'PY'
@@ -436,14 +250,14 @@ jobs:
           path.write_text(text.replace(old, new, 1), encoding="utf-8")
           PY
 
-          test "$(
-            git diff --name-only
-          )" = ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml"
+          test "$(git diff --name-only | wc -l)" = "1"
+          test "$(git diff --name-only)" = \
+            ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml"
           git diff --check
           python3 scripts/verify-hepta-intelligence-q0-workflow-consolidation.py
           git add .github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml
           git diff --cached --check
-          git commit -m "ci(q0): bind candidate to E1 blocker closure"
+          git commit -m "ci(q0): bind candidate to final blocker closure"
 
           test "$(git rev-parse HEAD^)" = "$repair_sha"
           remote_head="$(
