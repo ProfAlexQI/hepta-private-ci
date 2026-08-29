@@ -20,8 +20,8 @@ jobs:
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
-      PROTECTED_HEAD_SHA: e6ba0945cfd7f7ea760c341d93babfd2c8283ac0
-      GRACE_SECONDS: "600"
+      PROTECTED_HEAD_SHA: 3f97c81bbec634484a037f77ff5bcf86fd6184ed
+      GRACE_SECONDS: "180"
     steps:
       - name: Build and execute bounded cancellation plan
         shell: bash
