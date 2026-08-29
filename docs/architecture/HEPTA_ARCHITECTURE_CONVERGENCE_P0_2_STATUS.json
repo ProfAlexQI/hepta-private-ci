@@ -1,8 +1,24 @@
 {
   "schema": "hepta.architecture-convergence.p0-2.status.v1",
-  "status": "IMPLEMENTED_SOURCE_EXECUTABLE_QUALIFICATION_PENDING",
+  "status": "IMPLEMENTED_SOURCE_REQUALIFICATION_PENDING",
   "branch": "codex/hepta-architecture-convergence-p0-2-20260828",
-  "baseCommit": "aede59d40236e07a454c9a51e6f26c2618a679d4",
+  "baseCommit": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+  "lastMechanicalFormatting": {
+    "commit": "7f4d2ca43c4baf69a9b01efe0a34dde9d03eae17",
+    "tree": "d0fc636cb28cc1871c0944c1d6aeb96c9e7382c7",
+    "scope": "rustfmt_only",
+    "countsAsQualification": false
+  },
+  "lastHostedObservation": {
+    "head": "7f4d2ca43c4baf69a9b01efe0a34dde9d03eae17",
+    "workflowRuns": [
+      33269010120,
+      33269010128,
+      33269010247
+    ],
+    "conclusion": "action_required_no_jobs",
+    "countsAsQualification": false
+  },
   "implemented": {
     "canonicalArchitectureEntryPoint": true,
     "closedAuthorityProfiles": true,
