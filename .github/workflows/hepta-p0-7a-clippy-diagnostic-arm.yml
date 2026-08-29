@@ -1,0 +1,75 @@
+name: Hepta P0.7a Clippy diagnostic ARM (temporary)
+
+on:
+  push:
+    branches:
+      - "agent/hepta-v4-source-export-arm-20260830"
+    paths:
+      - ".github/workflows/hepta-p0-7a-clippy-diagnostic-arm.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-p0-7a-clippy-diagnostic-arm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    if: >-
+      github.repository == 'ProfHepta/hepta-private-ci' &&
+      github.ref == 'refs/heads/agent/hepta-v4-source-export-arm-20260830'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact source identity
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: clippy
+
+      - name: Capture complete strict Clippy output
+        id: clippy
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/hepta-p0-7a-clippy.log"
+          set +e
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd \
+            -- -D warnings 2>&1 | tee "$log"
+          rc=${PIPESTATUS[0]}
+          printf '%s\n' "$rc" > "$RUNNER_TEMP/hepta-p0-7a-clippy.exit"
+          printf 'exit_code=%s\n' "$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload complete diagnostic
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-p0-7a-clippy-diagnostic-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/hepta-p0-7a-clippy.log
+            ${{ runner.temp }}/hepta-p0-7a-clippy.exit
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Preserve strict failure status
+        if: always()
+        shell: bash
+        env:
+          CLIPPY_EXIT: ${{ steps.clippy.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          test -n "$CLIPPY_EXIT"
+          exit "$CLIPPY_EXIT"
