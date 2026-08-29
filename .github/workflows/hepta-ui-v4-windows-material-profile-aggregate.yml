@@ -142,6 +142,7 @@ jobs:
           cargo check --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features
 
       - name: Focused host and aggregate tests
+        shell: bash
         run: |
           cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
             shared::hepta_windows_transient_material_host::tests -- --nocapture

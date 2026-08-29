@@ -176,6 +176,7 @@ jobs:
         run: cargo check --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features
 
       - name: Run scoped acknowledgement tests
+        shell: bash
         env:
           CARGO_TERM_COLOR: always
         run: |
@@ -183,6 +184,7 @@ jobs:
             shared::hepta_window_visual_ack::tests -- --nocapture
 
       - name: Run Windows backdrop mapping and full-profile adapter tests
+        shell: bash
         env:
           CARGO_TERM_COLOR: always
         run: |
@@ -190,6 +192,7 @@ jobs:
             shared::hepta_windows_material_adapter::tests -- --nocapture
 
       - name: Run Windows backdrop-only producer tests
+        shell: bash
         env:
           CARGO_TERM_COLOR: always
         run: |

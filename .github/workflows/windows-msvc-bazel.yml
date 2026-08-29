@@ -108,10 +108,19 @@ jobs:
               "--",
               "//...",
               "-//third_party/v8:all",
-              "-//codex-rs/v8-poc:v8-poc-unit-tests"
+              "-//codex-rs/v8-poc:v8-poc-unit-tests",
+              "-//codex-rs/code-mode:all"
           )
 
           & bazelisk @bazelArguments @environmentArguments @targets
+          if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+          }
+
+      - name: Run V8-backed code-mode through Cargo on Windows
+        shell: pwsh
+        run: |
+          cargo test --locked --manifest-path codex-rs/Cargo.toml -p codex-code-mode
           if ($LASTEXITCODE -ne 0) {
               exit $LASTEXITCODE
           }
