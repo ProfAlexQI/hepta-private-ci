@@ -1,0 +1,5 @@
+trigger=p034-rebuild-v2-publisher-v5-x64
+payload_sha256=f66d0ccfe03fd2dac66786e02077110ca7c5c1d251c445737fe528ca9061e621
+repair=h7-expiry-dead-fields-v5
+expected_target=35de548b07d3957679800f694ecf1a6f3e001c36
+requested_at=2026-08-29T07:03:00Z
