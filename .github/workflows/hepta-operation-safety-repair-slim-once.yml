@@ -55,23 +55,23 @@ jobs:
       - name: Apply audited operation repair
         run: python3 scripts/hepta-operation-safety-repair.py
 
-      - name: Normalize owned Rust sources
+      - name: Normalize only the audited Rust mutation surface
         working-directory: codex-rs
+        shell: bash
         run: |
           set -euo pipefail
-          cargo fmt \
-            -p codex-hepta-contracts \
-            -p codex-hepta-automation \
-            -p codex-hepta-agentd \
-            -p codex-hepta-matrix-store \
-            -p codex-hepta-matrixd
-          cargo fmt \
-            -p codex-hepta-contracts \
-            -p codex-hepta-automation \
-            -p codex-hepta-agentd \
-            -p codex-hepta-matrix-store \
-            -p codex-hepta-matrixd \
-            -- --check
+          files=(
+            hepta-automation/src/model.rs
+            hepta-automation/src/store.rs
+            hepta-agentd/src/automation.rs
+            hepta-matrix-store/src/operation.rs
+            hepta-matrix-store/tests/sqlite_full.rs
+            hepta-contracts/src/provider_operation.rs
+            hepta-contracts/tests/cross_owner_fault_matrix.rs
+            hepta-memory-runtime/src/production_writer.rs
+          )
+          rustfmt --edition 2024 --config skip_children=true "${files[@]}"
+          rustfmt --edition 2024 --check --config skip_children=true "${files[@]}"
 
       - name: Execute operation and product gates
         working-directory: codex-rs
@@ -82,6 +82,7 @@ jobs:
           cargo test --locked -p codex-hepta-matrix-store operation::tests -- --nocapture
           cargo test --locked -p codex-hepta-matrix-store --test sqlite_full -- --nocapture
           cargo test --locked -p codex-hepta-automation --lib -- --nocapture
+          cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
           cargo check --locked -p codex-hepta-agentd -p codex-hepta-matrixd
           cargo clippy --locked --all-targets \
             -p codex-hepta-contracts \
@@ -89,6 +90,7 @@ jobs:
             -p codex-hepta-agentd \
             -p codex-hepta-matrix-store \
             -p codex-hepta-matrixd \
+            -p codex-hepta-memory-runtime \
             -- -D warnings
 
       - name: Enforce exact generated mutation set
@@ -119,6 +121,7 @@ jobs:
               "codex-rs/hepta-matrix-store/tests/sqlite_full.rs",
               "codex-rs/hepta-contracts/src/provider_operation.rs",
               "codex-rs/hepta-contracts/tests/cross_owner_fault_matrix.rs",
+              "codex-rs/hepta-memory-runtime/src/production_writer.rs",
           }
           tracked = set(
               subprocess.check_output(
@@ -187,7 +190,8 @@ jobs:
             codex-rs/hepta-matrix-store/src/operation.rs \
             codex-rs/hepta-matrix-store/tests/sqlite_full.rs \
             codex-rs/hepta-contracts/src/provider_operation.rs \
-            codex-rs/hepta-contracts/tests/cross_owner_fault_matrix.rs
+            codex-rs/hepta-contracts/tests/cross_owner_fault_matrix.rs \
+            codex-rs/hepta-memory-runtime/src/production_writer.rs
           git diff --cached --check
           git fetch --no-tags origin "refs/heads/$BRANCH_NAME:refs/remotes/origin/$BRANCH_NAME"
           test "$(git rev-parse refs/remotes/origin/$BRANCH_NAME)" = "$SOURCE_HEAD"
