@@ -2,12 +2,15 @@ name: Hepta Intelligence A0 V4.5 repair generator ARM
 
 on:
   push:
-    branches:
-      - "codex/hepta-intelligence-a0-v45-repair-generator-20260830"
+    branches: ["codex/hepta-intelligence-a0-v45-repair-generator-20260830"]
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: a0-v45-repair-generator-arm
+  cancel-in-progress: true
 
 env:
   Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
@@ -15,121 +18,78 @@ env:
   GENERATOR_SHA256: 50909f010ca32cd513e94c6088b861ea61bad6c17a2417cce1e44d647a37ace2
 
 jobs:
-  generate-and-validate-arm:
-    name: Generate and validate exact-parent V4.5 replacement tree on ARM
+  validate:
+    name: Validate V4.5 exact-parent replacement on ARM64
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
-      - name: Checkout scratch generator branch
+      - name: Checkout scratch source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Reconstruct and authenticate generator
+      - name: Reconstruct authenticated generator
         shell: bash
         run: |
           set -euo pipefail
-          cat scripts/a0-v45-generator/payload.* \
-            | base64 --decode \
-            | gzip --decompress \
-            > /tmp/a0_v45_repair_generator.py
-          printf '%s  %s\n' "$GENERATOR_SHA256" /tmp/a0_v45_repair_generator.py \
-            | sha256sum --check --strict
-          python3 -m py_compile /tmp/a0_v45_repair_generator.py
-
-      - name: Generate replacement overlay
+          python3 - <<'PY'
+          import base64, gzip, hashlib
+          from pathlib import Path
+          payload=''.join(p.read_text() for p in sorted(Path('scripts/a0-v45-generator').glob('payload.*')))
+          code=gzip.decompress(base64.b64decode(payload))
+          assert hashlib.sha256(code).hexdigest() == '50909f010ca32cd513e94c6088b861ea61bad6c17a2417cce1e44d647a37ace2'
+          Path('/tmp/a0_v45_generator.py').write_bytes(code)
+          PY
+          python3 -m py_compile /tmp/a0_v45_generator.py
+      - name: Generate and validate replacement
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/a0-v45-repair
-          python3 /tmp/a0_v45_repair_generator.py \
-            --root "$GITHUB_WORKSPACE" \
-            --output /tmp/a0-v45-repair
-          python3 -m json.tool /tmp/a0-v45-repair/repair-manifest.json >/dev/null
-
-      - name: Validate one-child replacement locally
-        shell: bash
-        run: |
-          set -euo pipefail
+          rm -rf /tmp/a0-v45
+          python3 /tmp/a0_v45_generator.py --root "$GITHUB_WORKSPACE" --output /tmp/a0-v45
           git checkout --detach "$Q0_HEAD"
-          cp -a /tmp/a0-v45-repair/generated/. "$GITHUB_WORKSPACE"/
-          chmod +x \
-            scripts/hepta-intelligence-current-truth.py \
-            scripts/verify-hepta-intelligence-a0-authority.py \
-            scripts/verify-hepta-intelligence-document-authority.py \
-            scripts/verify-hepta-intelligence-master-plan.py
+          cp -a /tmp/a0-v45/generated/. "$GITHUB_WORKSPACE"/
+          chmod +x scripts/hepta-intelligence-current-truth.py scripts/verify-hepta-intelligence-a0-authority.py scripts/verify-hepta-intelligence-document-authority.py scripts/verify-hepta-intelligence-master-plan.py
           git add -A
           git diff --cached --check
           python3 - <<'PY'
           import json, subprocess
           from pathlib import Path
-          manifest=json.loads(Path('/tmp/a0-v45-repair/repair-manifest.json').read_text())
-          expected=[entry['path'] for entry in manifest['files']]
+          m=json.loads(Path('/tmp/a0-v45/repair-manifest.json').read_text())
           observed=sorted(x for x in subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines() if x)
-          assert observed == expected
-          assert len(observed) == 17
-          assert manifest['source_writeback'] is False
-          assert manifest['a0_candidate_qualified'] is False
-          assert manifest['authority'] and all(v is False for v in manifest['authority'].values())
+          assert observed == [x['path'] for x in m['files']]
+          assert len(observed)==17 and m['source_writeback'] is False and m['a0_candidate_qualified'] is False
+          assert m['authority'] and all(v is False for v in m['authority'].values())
           PY
-          git -c user.name='A0 V4.5 ARM validation' \
-              -c user.email='a0-v45-arm-validation@invalid.example' \
-              commit -m 'test(intelligence): validate V4.5 exact-parent replacement on ARM'
+          git -c user.name='A0 V4.5 ARM validation' -c user.email='a0-v45-arm@invalid.example' commit -m 'test(intelligence): validate V4.5 exact-parent replacement on ARM'
           test "$(git rev-parse HEAD^)" = "$Q0_HEAD"
           test "$(git rev-list --count "$Q0_HEAD"..HEAD)" = 1
-
-      - name: Run strict source and compatibility gates
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m py_compile \
-            scripts/hepta-intelligence-current-truth.py \
-            scripts/verify-hepta-intelligence-a0-authority.py \
-            scripts/verify-hepta-intelligence-document-authority.py \
-            scripts/verify-hepta-intelligence-master-plan.py
+          python3 -m py_compile scripts/hepta-intelligence-current-truth.py scripts/verify-hepta-intelligence-a0-authority.py scripts/verify-hepta-intelligence-document-authority.py scripts/verify-hepta-intelligence-master-plan.py
           python3 scripts/verify-hepta-intelligence-master-plan.py
           python3 scripts/verify-hepta-intelligence-document-authority.py
           python3 scripts/hepta-intelligence-current-truth.py --verify
-          python3 scripts/hepta-intelligence-current-truth.py --compact >/tmp/current-1.json
-          python3 scripts/hepta-intelligence-current-truth.py --compact >/tmp/current-2.json
-          cmp /tmp/current-1.json /tmp/current-2.json
-          GITHUB_SHA="$(git rev-parse HEAD)" \
-          GITHUB_REPOSITORY="ProfHepta/hepta-private-ci" \
-          GITHUB_REF_NAME="$CANONICAL_A0_BRANCH" \
-            python3 scripts/verify-hepta-intelligence-a0-authority.py \
-            >/tmp/a0-v45-repair/a0-source-evidence-receipt.json
-          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
-            python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
-          done
-          git diff --binary "$Q0_HEAD" HEAD >/tmp/a0-v45-repair/a0-v45-replacement.patch
+          python3 scripts/hepta-intelligence-current-truth.py --compact >/tmp/truth-a.json
+          python3 scripts/hepta-intelligence-current-truth.py --compact >/tmp/truth-b.json
+          cmp /tmp/truth-a.json /tmp/truth-b.json
+          GITHUB_SHA="$(git rev-parse HEAD)" GITHUB_REPOSITORY="ProfHepta/hepta-private-ci" GITHUB_REF_NAME="$CANONICAL_A0_BRANCH" python3 scripts/verify-hepta-intelligence-a0-authority.py >/tmp/a0-v45/a0-source-evidence-receipt.json
+          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only; done
+          git diff --binary "$Q0_HEAD" HEAD >/tmp/a0-v45/a0-v45-replacement.patch
           test -z "$(git status --porcelain --untracked-files=no)"
-
-      - name: Finalize ARM validation receipt
+      - name: Finalize receipt
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import hashlib, json, subprocess
+          import hashlib,json,subprocess
           from pathlib import Path
-          out=Path('/tmp/a0-v45-repair')
-          manifest=json.loads((out/'repair-manifest.json').read_text())
-          manifest.update({
-            'validation_architecture':'aarch64',
-            'validation_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
-            'validation_tree':subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip(),
-            'validation_parent':subprocess.check_output(['git','rev-parse','HEAD^'],text=True).strip(),
-            'generator_sha256':'50909f010ca32cd513e94c6088b861ea61bad6c17a2417cce1e44d647a37ace2',
-            'patch_sha256':hashlib.sha256((out/'a0-v45-replacement.patch').read_bytes()).hexdigest(),
-            'status':'PASS_LOCAL_EXACT_PARENT_V4_5_REPLACEMENT_VALIDATION_ARM',
-          })
-          (out/'repair-manifest.json').write_text(json.dumps(manifest,indent=2,sort_keys=True)+'\n')
+          out=Path('/tmp/a0-v45'); m=json.loads((out/'repair-manifest.json').read_text())
+          m.update({'validation_architecture':'aarch64-unknown-linux-gnu','validation_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'validation_tree':subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip(),'validation_parent':subprocess.check_output(['git','rev-parse','HEAD^'],text=True).strip(),'generator_sha256':'50909f010ca32cd513e94c6088b861ea61bad6c17a2417cce1e44d647a37ace2','patch_sha256':hashlib.sha256((out/'a0-v45-replacement.patch').read_bytes()).hexdigest(),'status':'PASS_LOCAL_EXACT_PARENT_V4_5_REPLACEMENT_VALIDATION_ARM'})
+          (out/'repair-manifest.json').write_text(json.dumps(m,indent=2,sort_keys=True)+'\n')
           PY
-
-      - name: Upload ARM V4.5 replacement tree
+      - name: Upload replacement artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: hepta-intelligence-a0-v45-repair-arm-${{ github.sha }}
-          path: /tmp/a0-v45-repair/**
+          path: /tmp/a0-v45/**
           if-no-files-found: error
           retention-days: 30
