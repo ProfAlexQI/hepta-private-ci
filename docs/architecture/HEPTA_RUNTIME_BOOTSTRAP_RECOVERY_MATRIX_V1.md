@@ -231,3 +231,13 @@ operator acceptance
 promotion
 release
 ```
+
+## POSIX secure-open implementation binding
+
+Every fallback handoff file is reopened with `O_NOFOLLOW` (or the
+platform-equivalent no-follow primitive) before any byte is trusted.
+The open file descriptor is then revalidated for expected owner UID,
+exact regular-file type and mode, link count `nlink == 1`, stable
+device/inode identity and unchanged digest. A symlink, hardlink,
+owner/mode mismatch, identity drift or unsupported platform primitive
+fails closed before claim, cleanup or authority attachment.

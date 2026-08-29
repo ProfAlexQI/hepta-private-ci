@@ -67,8 +67,9 @@ jobs:
       - name: Locked metadata
         run: cargo metadata --locked --no-deps --format-version 1 >/dev/null
 
-      - name: Format
-        run: cargo fmt --all -- --check
+      - name: P0.7a scoped format
+        working-directory: .
+        run: python3 scripts/verify-hepta-p0-7a-format.py --check
 
       - name: Runtime bootstrap tests
         run: |

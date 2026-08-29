@@ -102,3 +102,7 @@ lock artifacts are not executable qualification.
 Hepta retains the upstream Codex source, licenses and notices. Upstream Codex
 installation and product documentation are not Hepta release or authority
 instructions.
+
+## Authority activation boundary
+
+The governing invariant is: **neither source presence nor qualification activates authority**. Runtime, production caller, writer, model, provider, tool, network, fleet, operator, promotion and release authority remain false until their separately bound acceptance receipts exist.

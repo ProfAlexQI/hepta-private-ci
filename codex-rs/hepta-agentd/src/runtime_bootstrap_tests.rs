@@ -44,8 +44,7 @@ fn fixture(provenance: bool) -> Fixture {
         .register(
             AgentManifest::new(
                 agent_id.clone(),
-                WorkspaceBinding::new(workspace.clone(), &fleet_root)
-                    .expect("workspace binding"),
+                WorkspaceBinding::new(workspace.clone(), &fleet_root).expect("workspace binding"),
                 ResourceBudget::local_default(),
             )
             .expect("manifest"),
@@ -62,12 +61,7 @@ fn fixture(provenance: bool) -> Fixture {
         .expect("allow release");
     if provenance {
         registry
-            .install_runtime_release_provenance(
-                &agent_id,
-                &release_id,
-                SOURCE_COMMIT,
-                SOURCE_TREE,
-            )
+            .install_runtime_release_provenance(&agent_id, &release_id, SOURCE_COMMIT, SOURCE_TREE)
             .expect("provenance");
     }
     let starting = registry
@@ -142,13 +136,9 @@ fn valid_bootstrap_is_claimed_once_before_service_start() {
         .issuer
         .prepare_spawn(&fixture.registry, &fixture.spec, 100)
         .expect("prepare bootstrap");
-    let admission = consume_runtime_bootstrap(
-        &fixture.registry,
-        &fixture.record,
-        &fixture.program,
-        150,
-    )
-    .expect("consume bootstrap");
+    let admission =
+        consume_runtime_bootstrap(&fixture.registry, &fixture.record, &fixture.program, 150)
+            .expect("consume bootstrap");
     assert!(matches!(
         admission,
         RuntimeBootstrapAdmission::Verified {
@@ -161,38 +151,27 @@ fn valid_bootstrap_is_claimed_once_before_service_start() {
     assert!(claim_path(&fixture, generation).is_file());
     assert!(!document_path(&fixture, generation).exists());
     assert!(!reservation_path(&fixture, generation).exists());
-    assert!(consume_runtime_bootstrap(
-        &fixture.registry,
-        &fixture.record,
-        &fixture.program,
-        151
-    )
-    .is_err());
+    assert!(
+        consume_runtime_bootstrap(&fixture.registry, &fixture.record, &fixture.program, 151)
+            .is_err()
+    );
 }
 
 #[test]
 fn provenance_bound_release_without_handoff_fails_closed() {
     let fixture = fixture(true);
-    assert!(consume_runtime_bootstrap(
-        &fixture.registry,
-        &fixture.record,
-        &fixture.program,
-        150
-    )
-    .is_err());
+    assert!(
+        consume_runtime_bootstrap(&fixture.registry, &fixture.record, &fixture.program, 150)
+            .is_err()
+    );
 }
 
 #[test]
 fn unprovenanced_legacy_release_remains_closed_world_without_handoff() {
     let fixture = fixture(false);
     assert_eq!(
-        consume_runtime_bootstrap(
-            &fixture.registry,
-            &fixture.record,
-            &fixture.program,
-            150
-        )
-        .expect("legacy admission"),
+        consume_runtime_bootstrap(&fixture.registry, &fixture.record, &fixture.program, 150)
+            .expect("legacy admission"),
         RuntimeBootstrapAdmission::LocalClosedWorld
     );
 }
@@ -219,13 +198,15 @@ fn expired_or_tampered_handoff_never_creates_a_claim() {
             make_owner_read_only(&document_path);
         }
         let observed = if tamper { 150 } else { 220 };
-        assert!(consume_runtime_bootstrap(
-            &fixture.registry,
-            &fixture.record,
-            &fixture.program,
-            observed
-        )
-        .is_err());
+        assert!(
+            consume_runtime_bootstrap(
+                &fixture.registry,
+                &fixture.record,
+                &fixture.program,
+                observed
+            )
+            .is_err()
+        );
         assert!(!claim_path(&fixture, generation).exists());
     }
 }
@@ -239,13 +220,10 @@ fn published_handoff_with_wrong_mode_is_recovery_required_before_claim() {
         .expect("published handoff");
     let generation = fixture.record.lifecycle.generation;
     make_writable(&document_path(&fixture, generation));
-    assert!(consume_runtime_bootstrap(
-        &fixture.registry,
-        &fixture.record,
-        &fixture.program,
-        150
-    )
-    .is_err());
+    assert!(
+        consume_runtime_bootstrap(&fixture.registry, &fixture.record, &fixture.program, 150)
+            .is_err()
+    );
     assert!(!claim_path(&fixture, generation).exists());
 }
 
@@ -258,13 +236,10 @@ fn partial_reservation_without_document_is_recovery_required() {
         .expect("published handoff");
     let generation = fixture.record.lifecycle.generation;
     std::fs::remove_file(document_path(&fixture, generation)).expect("remove document");
-    assert!(consume_runtime_bootstrap(
-        &fixture.registry,
-        &fixture.record,
-        &fixture.program,
-        150
-    )
-    .is_err());
+    assert!(
+        consume_runtime_bootstrap(&fixture.registry, &fixture.record, &fixture.program, 150)
+            .is_err()
+    );
     assert!(reservation_path(&fixture, generation).exists());
     assert!(!claim_path(&fixture, generation).exists());
 }
@@ -288,13 +263,10 @@ fn symlink_handoff_is_rejected_before_claim() {
         .join("runtime-bootstrap-symlink-target");
     std::fs::rename(&document, &target).expect("retain document target");
     symlink(&target, &document).expect("install symlink");
-    assert!(consume_runtime_bootstrap(
-        &fixture.registry,
-        &fixture.record,
-        &fixture.program,
-        150
-    )
-    .is_err());
+    assert!(
+        consume_runtime_bootstrap(&fixture.registry, &fixture.record, &fixture.program, 150)
+            .is_err()
+    );
     assert!(!claim_path(&fixture, generation).exists());
 }
 
@@ -314,13 +286,10 @@ fn hardlink_handoff_is_rejected_before_claim() {
         .run_root()
         .join("runtime-bootstrap-hardlink-alias");
     std::fs::hard_link(&document, alias).expect("install hardlink");
-    assert!(consume_runtime_bootstrap(
-        &fixture.registry,
-        &fixture.record,
-        &fixture.program,
-        150
-    )
-    .is_err());
+    assert!(
+        consume_runtime_bootstrap(&fixture.registry, &fixture.record, &fixture.program, 150)
+            .is_err()
+    );
     assert!(!claim_path(&fixture, generation).exists());
 }
 
@@ -337,13 +306,10 @@ fn claimed_handoff_crash_is_recovery_required_and_never_replayed() {
         claim_path(&fixture, generation),
     )
     .expect("simulate durable claim before cleanup");
-    assert!(consume_runtime_bootstrap(
-        &fixture.registry,
-        &fixture.record,
-        &fixture.program,
-        150
-    )
-    .is_err());
+    assert!(
+        consume_runtime_bootstrap(&fixture.registry, &fixture.record, &fixture.program, 150)
+            .is_err()
+    );
     assert!(document_path(&fixture, generation).exists());
     assert!(reservation_path(&fixture, generation).exists());
     assert!(claim_path(&fixture, generation).exists());
@@ -356,13 +322,8 @@ fn retained_old_claim_does_not_authorize_but_does_not_block_a_fresh_generation()
         .issuer
         .prepare_spawn(&fixture.registry, &fixture.spec, 100)
         .expect("first generation handoff");
-    consume_runtime_bootstrap(
-        &fixture.registry,
-        &fixture.record,
-        &fixture.program,
-        150,
-    )
-    .expect("first generation claim");
+    consume_runtime_bootstrap(&fixture.registry, &fixture.record, &fixture.program, 150)
+        .expect("first generation claim");
     let old_generation = fixture.record.lifecycle.generation;
 
     let failed = fixture
@@ -394,13 +355,9 @@ fn retained_old_claim_does_not_authorize_but_does_not_block_a_fresh_generation()
         .issuer
         .prepare_spawn(&fixture.registry, &fresh_spec, 200)
         .expect("fresh generation handoff");
-    let admission = consume_runtime_bootstrap(
-        &fixture.registry,
-        &fresh_record,
-        &fixture.program,
-        250,
-    )
-    .expect("fresh generation claim");
+    let admission =
+        consume_runtime_bootstrap(&fixture.registry, &fresh_record, &fixture.program, 250)
+            .expect("fresh generation claim");
     assert!(admission.is_verified());
     assert!(claim_path(&fixture, old_generation).exists());
     assert!(claim_path(&fixture, starting.generation).exists());
@@ -409,8 +366,7 @@ fn retained_old_claim_does_not_authorize_but_does_not_block_a_fresh_generation()
 #[cfg(unix)]
 fn make_writable(path: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt as _;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-        .expect("writable mode");
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).expect("writable mode");
 }
 
 #[cfg(not(unix))]
@@ -423,8 +379,7 @@ fn make_writable(path: &std::path::Path) {
 #[cfg(unix)]
 fn make_owner_read_only(path: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt as _;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o400))
-        .expect("read-only mode");
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o400)).expect("read-only mode");
 }
 
 #[cfg(not(unix))]

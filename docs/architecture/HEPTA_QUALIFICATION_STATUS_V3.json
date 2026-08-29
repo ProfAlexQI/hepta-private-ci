@@ -36,12 +36,11 @@
       "p0.6"
     ],
     "currentTranche": "p0.7a_closure",
-    "currentBlockers": [
-      "A-LOCK-01"
-    ],
+    "currentBlockers": [],
     "implementedPendingQualification": [
       "A-TRANSPORT-01",
-      "A-RECOVERY-01"
+      "A-RECOVERY-01",
+      "A-LOCK-01"
     ],
     "externalEvidenceRequired": [
       "A-CI-01"

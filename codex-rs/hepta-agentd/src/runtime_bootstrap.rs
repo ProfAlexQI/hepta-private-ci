@@ -97,11 +97,8 @@ pub(crate) fn consume_runtime_bootstrap(
         )));
     }
 
-    let allowed = allowed_runtime_release_for_program(
-        registry,
-        &record.manifest.agent_id,
-        executable,
-    )?;
+    let allowed =
+        allowed_runtime_release_for_program(registry, &record.manifest.agent_id, executable)?;
     let Some(allowed) = allowed else {
         if document_exists || reservation_exists {
             return Err(AgentdError::GenerationFenced(
@@ -112,10 +109,9 @@ pub(crate) fn consume_runtime_bootstrap(
         return Ok(RuntimeBootstrapAdmission::LocalClosedWorld);
     };
 
-    let provenance = match registry.resolve_runtime_release_provenance(
-        &record.manifest.agent_id,
-        &allowed.release_id,
-    ) {
+    let provenance = match registry
+        .resolve_runtime_release_provenance(&record.manifest.agent_id, &allowed.release_id)
+    {
         Ok(provenance) => provenance,
         Err(FleetRegistryError::Io(error)) if error.kind() == ErrorKind::NotFound => {
             if document_exists || reservation_exists {
@@ -146,8 +142,8 @@ pub(crate) fn consume_runtime_bootstrap(
         record.layout.run_root(),
         LinkCountPolicy::Single,
     )?;
-    let reservation: RuntimeBootstrapReservation =
-        serde_json::from_slice(&reservation_bytes).map_err(|error| {
+    let reservation: RuntimeBootstrapReservation = serde_json::from_slice(&reservation_bytes)
+        .map_err(|error| {
             AgentdError::GenerationFenced(format!(
                 "runtime bootstrap reservation decode failed: {error}"
             ))
@@ -170,12 +166,8 @@ pub(crate) fn consume_runtime_bootstrap(
         .map_err(|error| AgentdError::GenerationFenced(error.to_string()))?;
     let graph = ProductGraph::agent_local(&authority)
         .map_err(|error| AgentdError::GenerationFenced(error.to_string()))?;
-    let launch = RuntimeLaunchBinding::for_starting(
-        record,
-        allowed.release_id.clone(),
-        &authority,
-    )
-    .map_err(|error| AgentdError::GenerationFenced(error.to_string()))?;
+    let launch = RuntimeLaunchBinding::for_starting(record, allowed.release_id.clone(), &authority)
+        .map_err(|error| AgentdError::GenerationFenced(error.to_string()))?;
     let expected = bootstrap_expectation(
         record,
         &allowed.release_id,
@@ -210,11 +202,11 @@ pub(crate) fn consume_runtime_bootstrap(
         .load()?
         .agent(&record.manifest.agent_id)
         .cloned()
-        .ok_or_else(|| AgentdError::GenerationFenced("agent disappeared after claim".to_string()))?;
-    let current_provenance = registry.resolve_runtime_release_provenance(
-        &record.manifest.agent_id,
-        &allowed.release_id,
-    )?;
+        .ok_or_else(|| {
+            AgentdError::GenerationFenced("agent disappeared after claim".to_string())
+        })?;
+    let current_provenance = registry
+        .resolve_runtime_release_provenance(&record.manifest.agent_id, &allowed.release_id)?;
     if current.lifecycle != record.lifecycle
         || current.release_state != record.release_state
         || current.manifest != record.manifest
@@ -262,10 +254,7 @@ fn bootstrap_expectation(
         authority_epoch: launch.runtime_authority().authority_epoch(),
         owner_epoch: launch.runtime_authority().owner_epoch(),
         generation: launch.runtime_authority().generation(),
-        fencing_token_sha256: launch
-            .runtime_authority()
-            .fencing_token_sha256()
-            .clone(),
+        fencing_token_sha256: launch.runtime_authority().fencing_token_sha256().clone(),
         signer_key_id: signer_key_id.to_string(),
         signer_epoch,
     }
@@ -316,11 +305,7 @@ fn claim_reservation(
         expected_owner_uid,
         LinkCountPolicy::ClaimedPair,
     )?;
-    let claim = secure_metadata(
-        claim_path,
-        expected_owner_uid,
-        LinkCountPolicy::ClaimedPair,
-    )?;
+    let claim = secure_metadata(claim_path, expected_owner_uid, LinkCountPolicy::ClaimedPair)?;
     if physical_identity(&before) != physical_identity(&reservation)
         || physical_identity(&reservation) != physical_identity(&claim)
     {
@@ -328,11 +313,7 @@ fn claim_reservation(
             "runtime bootstrap claim does not bind the verified reservation inode".to_string(),
         ));
     }
-    let claimed_bytes = read_owner_only(
-        claim_path,
-        run_root,
-        LinkCountPolicy::ClaimedPair,
-    )?;
+    let claimed_bytes = read_owner_only(claim_path, run_root, LinkCountPolicy::ClaimedPair)?;
     if claimed_bytes != expected_reservation {
         return Err(AgentdError::GenerationFenced(
             "runtime bootstrap claim bytes drifted from the verified reservation".to_string(),

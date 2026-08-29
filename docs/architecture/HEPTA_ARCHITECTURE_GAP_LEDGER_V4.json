@@ -43,13 +43,17 @@
   ],
   "sourceControlledBlockers": {
     "A-LOCK-01": {
-      "state": "open",
+      "state": "source_implemented",
       "owner": "build_lock_owners",
       "problem": "P0.7a Cargo dependency changes are not represented in codex-rs/Cargo.lock and MODULE.bazel.lock",
       "closureCriteria": [
         "generated Cargo and Bazel locks are committed on the candidate",
         "cargo metadata --locked succeeds",
         "lock regeneration produces no diff"
+      ],
+      "sourceEvidence": [
+        "codex-rs/Cargo.lock",
+        "MODULE.bazel.lock"
       ]
     },
     "A-TRANSPORT-01": {
@@ -113,14 +117,13 @@
   ],
   "sourcePackages": {
     "P0.7a_signedRuntimeBootstrapClosure": {
-      "state": "source_in_progress",
+      "state": "source_implemented",
       "owner": "supervisor_agentd_contracts_fleet",
-      "blockedBy": [
-        "A-LOCK-01"
-      ],
+      "blockedBy": [],
       "implementedPendingQualification": [
         "A-TRANSPORT-01",
-        "A-RECOVERY-01"
+        "A-RECOVERY-01",
+        "A-LOCK-01"
       ],
       "externalEvidence": [
         "A-CI-01"
