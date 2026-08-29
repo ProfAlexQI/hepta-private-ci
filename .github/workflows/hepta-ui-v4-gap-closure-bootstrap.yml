@@ -64,5 +64,17 @@ jobs:
           source = gzip.decompress(compressed)
           assert len(source) == manifest["sourceBytes"]
           assert hashlib.sha256(source).hexdigest() == manifest["sourceSha256"]
+          payload_source_sha256 = hashlib.sha256(source).hexdigest()
+          source_text = source.decode("utf-8")
+          old_marker = '    marker = "    if digest != SHA256_ABC {\\n"\n'
+          new_marker = '    marker = \'    if sha256_hex(b"abc") != SHA256_ABC {\\n\'\n'
+          assert source_text.count(old_marker) == 1
+          source_text = source_text.replace(old_marker, new_marker, 1)
+          source = source_text.encode("utf-8")
+          print(json.dumps({
+              "payloadSourceSha256": payload_source_sha256,
+              "executionSourceSha256": hashlib.sha256(source).hexdigest(),
+              "hotfix": "build-rs-known-answer-marker-v2",
+          }, sort_keys=True))
           exec(compile(source, "hepta-ui-v4-gap-closure-bootstrap", "exec"))
           PY
