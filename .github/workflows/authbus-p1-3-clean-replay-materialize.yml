@@ -13,7 +13,7 @@ permissions:
   actions: read
 
 env:
-  EXPECTED_PARENT: ddcf9cfa7fe4128adddda073e8da64d133de98da
+  EXPECTED_PARENT: da76cc77e79e2c8f0eaa070ca10390b2c570929d
   BASE_BRANCH: integration/vnext-main-full-ci-authbus-p1-3-20260829
   BASE_SHA: 6b7aa91d7702a92a50297b1b1bd8170ffb7cb184
   BASE_TREE: f46fa8c6d541742eaea62d70ea62c0fe316dbaf9
@@ -104,6 +104,10 @@ jobs:
           python3 scripts/authbus-p1-3-clippy-completion.py \
             | tee /tmp/authbus-p1-3-clippy-completion.txt
           grep -q 'applied_authbus_p1_3_strict_clippy_repairs=11' \
+            /tmp/authbus-p1-3-clippy-completion.txt
+          grep -q 'applied_authbus_p0_3_constant_assertion_repairs=1' \
+            /tmp/authbus-p1-3-clippy-completion.txt
+          grep -q 'closed_authbus_p0_3_constant_assertions_clippy_gap=1' \
             /tmp/authbus-p1-3-clippy-completion.txt
           grep -q 'closed_authbus_p1_3_strict_clippy_gap=1' \
             /tmp/authbus-p1-3-clippy-completion.txt
@@ -269,10 +273,16 @@ jobs:
           PY
 
           final_paths=(
+            codex-rs/hepta-contracts/src/authbus_b1.rs
+            codex-rs/hepta-contracts/src/authbus_b1_tests.rs
             codex-rs/hepta-contracts/src/authbus_b2.rs
+            codex-rs/hepta-contracts/src/authbus_b3.rs
+            codex-rs/hepta-contracts/src/authbus_b3_adapter.rs
             codex-rs/hepta-contracts/src/authbus_b4.rs
+            codex-rs/hepta-contracts/src/authbus_tests.rs
             codex-rs/hepta-contracts/src/lib.rs
             codex-rs/hepta-contracts/src/quota_registry.rs
+            codex-rs/hepta-contracts/tests/authbus_b3_p0_1.rs
             codex-rs/hepta-authbus-qualification/src/model.rs
             codex-rs/hepta-authbus-qualification/src/store.rs
             codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
@@ -301,6 +311,7 @@ jobs:
           tar -xf /tmp/authbus-p1-3-final.tar
 
           git rm -f \
+            .github/workflows/authbus-p1-3-gap-diagnostic.yml \
             .github/workflows/authbus-p1-3-materialize.yml \
             scripts/authbus-p1-3-finalize.py \
             scripts/authbus-p1-3-semantic-completion.py
@@ -309,6 +320,7 @@ jobs:
             "${final_paths[@]}"
 
           cat > /tmp/authbus-p1-3-expected-paths.txt <<'EOF'
+          .github/workflows/authbus-p1-3-gap-diagnostic.yml
           .github/workflows/authbus-p1-3-materialize.yml
           .github/workflows/authbus-p1-3-qualification.yml
           codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
@@ -320,10 +332,16 @@ jobs:
           codex-rs/hepta-authbus-p1-3-qualification/tests/p1_3.rs
           codex-rs/hepta-authbus-qualification/src/model.rs
           codex-rs/hepta-authbus-qualification/src/store.rs
+          codex-rs/hepta-contracts/src/authbus_b1.rs
+          codex-rs/hepta-contracts/src/authbus_b1_tests.rs
           codex-rs/hepta-contracts/src/authbus_b2.rs
+          codex-rs/hepta-contracts/src/authbus_b3.rs
+          codex-rs/hepta-contracts/src/authbus_b3_adapter.rs
           codex-rs/hepta-contracts/src/authbus_b4.rs
+          codex-rs/hepta-contracts/src/authbus_tests.rs
           codex-rs/hepta-contracts/src/lib.rs
           codex-rs/hepta-contracts/src/quota_registry.rs
+          codex-rs/hepta-contracts/tests/authbus_b3_p0_1.rs
           docs/hepta-vnext/authbus/AUTHBUS_P1_3_DEVELOPMENT_PLAN_2026-08-29.md
           docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.json
           docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.md
@@ -339,6 +357,7 @@ jobs:
           diff -u /tmp/authbus-p1-3-expected-paths.txt \
             /tmp/authbus-p1-3-actual-paths.txt
 
+          test ! -e .github/workflows/authbus-p1-3-gap-diagnostic.yml
           test ! -e .github/workflows/authbus-p1-3-materialize.yml
           test ! -e .github/workflows/authbus-p1-3-clean-replay-materialize.yml
           test ! -e scripts/authbus-p1-3-finalize.py
