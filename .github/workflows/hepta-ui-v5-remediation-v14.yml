@@ -12,16 +12,16 @@ permissions:
 
 concurrency:
   group: hepta-ui-v5-remediation-v14
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   remediate:
     if: github.repository == 'ProfHepta/hepta-private-ci'
-    runs-on: ubuntu-24.04-arm
+    runs-on: macos-15
     timeout-minutes: 60
     env:
       BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
-      EXPECTED_PARENT: 3e0cf14de1d3a441295d1825a0299e48c8bbfb14
+      EXPECTED_PARENT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
       BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-remediation-v14.yml
       UPSTREAM_URL: https://github.com/openai/codex.git
       UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
@@ -42,8 +42,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes jq ripgrep ruby patch
+          brew install jq ripgrep gnu-sed
+          printf '%s\n' "$(brew --prefix gnu-sed)/libexec/gnubin" >> "$GITHUB_PATH"
           rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
 
       - name: Execute v12 remediation with canonical route regeneration
