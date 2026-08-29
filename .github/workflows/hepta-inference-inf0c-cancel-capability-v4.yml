@@ -1,0 +1,93 @@
+name: Hepta inference INF-0C cancel capability v4 qualification
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0c-cancel-v4-qualification-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf0c-cancel-capability-v4.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    name: Corrected cancel classification source and hermetic tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RECEIPT_HEAD: b252fcc22f45f4151ecec7a82e5f5fb99a28d0fb
+      SOURCE_HEAD: 8ff6dcf797309ca9966bc6bf2f8fa84c9784fee0
+      SOURCE_TREE: 935fb228042ad3f86db31b6c71841fc03a71ab8f
+      RECEIPT_PATH: docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_CANCEL_CAPABILITY_V4_SOURCE_RECEIPT_2026-08-29.json
+      SELF: .github/workflows/hepta-inference-inf0c-cancel-capability-v4.yml
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 4
+
+      - name: Verify isolated workflow and append-only receipt binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$RECEIPT_HEAD"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          test "$(git rev-parse "$RECEIPT_HEAD^")" = "$SOURCE_HEAD"
+          test "$(git show -s --format=%T "$SOURCE_HEAD")" = "$SOURCE_TREE"
+          test "$(git diff --name-only "$SOURCE_HEAD" "$RECEIPT_HEAD")" = "$RECEIPT_PATH"
+
+      - name: Verify Python syntax and status JSON
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-inference-inf0c-real-e2e.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v3.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v4.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v4-selftest.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v4-source-gate.py
+          python3 -m json.tool \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_CANCEL_CAPABILITY_V4_STATUS_2026-08-29.json \
+            >/dev/null
+          python3 -m json.tool "$RECEIPT_PATH" >/dev/null
+
+      - name: Run non-JSON unsupported HTTP classification regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-cancel-capability-v4-selftest.py \
+            | tee "$RUNNER_TEMP/hepta-inference-inf0c-cancel-v4-selftest.txt"
+
+      - name: Verify corrected source and negative authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-cancel-capability-v4-source-gate.py \
+            | tee "$RUNNER_TEMP/hepta-inference-inf0c-cancel-v4-source.txt"
+
+      - name: Record source qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "receipt_head=$RECEIPT_HEAD"
+            echo "source_head=$SOURCE_HEAD"
+            echo "source_tree=$SOURCE_TREE"
+            echo "known_unsupported_non_json_http_classification=PASS"
+            echo "successful_non_json_fail_closed=PASS"
+            echo "unexpected_error_media_type_fail_closed=PASS"
+            echo "provider_cancel_capability_classified=false"
+            echo "backend_cancellation_acknowledged=false"
+            echo "controlled_worker_termination_required=true"
+            echo "production_qualified=false"
+          } | tee "$RUNNER_TEMP/hepta-inference-inf0c-cancel-v4-source-receipt.txt"
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0c-cancel-v4-source-${{ env.SOURCE_HEAD }}
+          path: ${{ runner.temp }}/hepta-inference-inf0c-cancel-v4-*.txt
+          if-no-files-found: error
+          retention-days: 14
