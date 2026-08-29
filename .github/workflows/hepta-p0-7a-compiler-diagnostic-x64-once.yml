@@ -28,24 +28,30 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Verify exact source blob
+      - name: Verify exact source blobs
         shell: bash
         run: |
           set -euo pipefail
           test "$(git hash-object codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs)" = \
             "74abd3aa3ece1fc63f36a09acfe719b5a6f9528f"
+          test "$(git hash-object codex-rs/hepta-agentd/src/lib.rs)" = \
+            "c534860e75ec422d05da4f6d553b3e80c3ed6904"
           git diff --exit-code
           git diff --cached --exit-code
 
-      - name: Apply candidate inode identity repair
+      - name: Apply candidate source repairs
         shell: bash
+        env:
+          AGENTD_LIB_BASE64: IyFbZm9yYmlkKHVuc2FmZV9jb2RlKV0KCiNbY2ZnKG5vdCh1bml4KSldCmNvbXBpbGVfZXJyb3IhKCJjb2RleC1oZXB0YS1hZ2VudGQgcmVxdWlyZXMgVW5peCBkb21haW4gc29ja2V0cyIpOwoKLy8hIE9uZS1wcm9jZXNzLXBlci13b3Jrc3BhY2UgSGVwdGEgYWdlbnQgaG9zdC4KLy8hCi8vISBgYWdlbnRkYCBiaW5kcyBleGFjdGx5IG9uZSBmbGVldCBgQWdlbnRJZGAsIGVtYmVkcyB0aGUgZXhpc3RpbmcgQ29kZXggQXBwCi8vISBTZXJ2ZXIgZXhlY3V0aW9uIHBhdGgsIGFuZCBleHBvc2VzIGEgc21hbGwgbG9jYWwgbGlmZWN5Y2xlL2NvbnRyb2wgc29ja2V0LgovLyEgSXQgZG9lcyBub3QgaW1wbGVtZW50IGEgc2Vjb25kIHJ1bnRpbWUga2VybmVsIG9yIGEgZmxlZXQtd2lkZSBtZXNzYWdlIGJ1cy4KCm1vZCBhcHBfcnVudGltZTsKbW9kIGF1dG9tYXRpb247Cm1vZCBhdXRvbWF0aW9uX3NlcnZpY2U7Cm1vZCBjbGllbnQ7Cm1vZCBjb21wb3NpdGlvbjsKbW9kIGNvbmZpZzsKbW9kIGNvbnRyb2w7Cm1vZCBlcnJvcjsKbW9kIGV2ZW50X2J1ZmZlcjsKbW9kIG1lbW9yeV9zZXJ2aWNlOwptb2QgcHJvZHVjdGlvbl9hdXRob3JpdHlfYWRhcHRlcjsKbW9kIHByb2R1Y3Rpb25fd3JpdGVyX2hvc3Q7Cm1vZCBxdWFsaWZpY2F0aW9uX3dyaXRlcjsKbW9kIHJ1bnRpbWU7Cm1vZCBydW50aW1lX2Jvb3RzdHJhcDsKbW9kIHJ1bnRpbWVfcHJvZmlsZTsKbW9kIHN0YXRlOwoKcHViIHVzZSBjbGllbnQ6OkFnZW50ZENsaWVudDsKcHViIHVzZSBjb2RleF9oZXB0YV9hZ2VudF9wcm90b2NvbDo6QUdFTlREX0NPTlRST0xfU0NIRU1BX1ZFUlNJT047CnB1YiB1c2UgY29kZXhfaGVwdGFfYWdlbnRfcHJvdG9jb2w6OkFnZW50ZEV2ZW50OwpwdWIgdXNlIGNvZGV4X2hlcHRhX2FnZW50X3Byb3RvY29sOjpBZ2VudGRFdmVudEtpbmQ7CnB1YiB1c2UgY29kZXhfaGVwdGFfYWdlbnRfcHJvdG9jb2w6OkFnZW50ZE1ldGhvZDsKcHViIHVzZSBjb2RleF9oZXB0YV9hZ2VudF9wcm90b2NvbDo6QWdlbnRkUGF5bG9hZDsKcHViIHVzZSBjb2RleF9oZXB0YV9hZ2VudF9wcm90b2NvbDo6QWdlbnRkUmVxdWVzdDsKcHViIHVzZSBjb2RleF9oZXB0YV9hZ2VudF9wcm90b2NvbDo6QWdlbnRkUmVzcG9uc2U7CnB1YiB1c2UgY29kZXhfaGVwdGFfYWdlbnRfcHJvdG9jb2w6OkV2ZW50QmF0Y2g7CnB1YiB1c2UgY29kZXhfaGVwdGFfYWdlbnRfcHJvdG9jb2w6OkhlYWx0aFNuYXBzaG90OwpwdWIgdXNlIGNvZGV4X2hlcHRhX2FnZW50X3Byb3RvY29sOjpMaWZlY3ljbGVTbmFwc2hvdDsKcHViIHVzZSBjb2RleF9oZXB0YV9hZ2VudF9wcm90b2NvbDo6TUFYX0NPTlRST0xfRlJBTUVfQllURVM7CnB1YiB1c2UgY29kZXhfaGVwdGFfYWdlbnRfcHJvdG9jb2w6Ok1BWF9FVkVOVF9CQVRDSDsKcHViIHVzZSBjb2RleF9oZXB0YV9hZ2VudF9wcm90b2NvbDo6TUFYX0ZFREVSQVRJT05fQ09OVFJPTF9MSVNUOwpwdWIgdXNlIGNvZGV4X2hlcHRhX2FnZW50X3Byb3RvY29sOjpNZW1vcnlGZWRlcmF0aW9uQ2FwYWJpbGl0eUlkOwpwdWIgdXNlIGNvZGV4X2hlcHRhX2FnZW50X3Byb3RvY29sOjpNZW1vcnlGZWRlcmF0aW9uQ2FwYWJpbGl0eVNuYXBzaG90OwpwdWIgdXNlIGNvZGV4X2hlcHRhX2FnZW50X3Byb3RvY29sOjpNZW1vcnlGZWRlcmF0aW9uQ2FwYWJpbGl0eVN0YXRlOwpwdWIgdXNlIGNvZGV4X2hlcHRhX2FnZW50X3Byb3RvY29sOjpNZW1vcnlGZWRlcmF0aW9uU2NvcGVLaW5kOwpwdWIgdXNlIGNvZGV4X2hlcHRhX2FnZW50X3Byb3RvY29sOjpTZXNzaW9uSW5ncmVzczsKcHViIHVzZSBjb2RleF9oZXB0YV9hZ2VudF9wcm90b2NvbDo6U2Vzc2lvblRyYW5zcG9ydDsKcHViIHVzZSBjb2RleF9oZXB0YV9hdXRvbWF0aW9uOjpBdXRvbWF0aW9uU2NoZWR1bGU7CnB1YiB1c2UgY29kZXhfaGVwdGFfYXV0b21hdGlvbjo6QXV0b21hdGlvblRhc2s7CnB1YiB1c2UgY29kZXhfaGVwdGFfYXV0b21hdGlvbjo6QXV0b21hdGlvblRhc2tEcmFmdDsKcHViIHVzZSBjb2RleF9oZXB0YV9hdXRvbWF0aW9uOjpBdXRvbWF0aW9uVGFza0lkOwpwdWIgdXNlIGNvbmZpZzo6QWdlbnRkQ29uZmlnOwpwdWIgdXNlIGNvbmZpZzo6QWdlbnRkSWRlbnRpdHk7CnB1YiB1c2UgY29uZmlnOjpIRVBUQV9BR0VOVF9HRU5FUkFUSU9OX0VOVjsKcHViIHVzZSBjb25maWc6OkhFUFRBX0FHRU5UX0hPTUVfRU5WOwpwdWIgdXNlIGNvbmZpZzo6SEVQVEFfQUdFTlRfSURfRU5WOwpwdWIgdXNlIGNvbmZpZzo6SEVQVEFfQUdFTlRfUlVOX1JPT1RfRU5WOwpwdWIgdXNlIGVycm9yOjpBZ2VudGRFcnJvcjsKcHViIHVzZSBwcm9kdWN0aW9uX3dyaXRlcl9ob3N0OjpBZ2VudGRQcm9kdWN0aW9uV3JpdGVySG9zdDsKcHViIHVzZSBydW50aW1lOjpydW47CnB1YiB1c2UgcnVudGltZV9ib290c3RyYXA6OlJ1bnRpbWVCb290c3RyYXBBZG1pc3Npb247Cgp1c2UgY29udHJvbDo6QWdlbnRkQ29udHJvbFNlcnZlcjsKdXNlIGV2ZW50X2J1ZmZlcjo6RXZlbnRCdWZmZXI7CnVzZSBzdGF0ZTo6QWdlbnRkU3RhdGU7Cg==
         run: |
           set -euo pipefail
           python3 - <<'PY'
+          import base64
+          import os
           from pathlib import Path
 
-          path = Path("codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs")
-          text = path.read_text()
+          registry = Path("codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs")
+          text = registry.read_text()
           replacements = (
               (
                   "    let linked = std::fs::symlink_metadata(path)?;\n",
@@ -70,9 +76,12 @@ jobs:
           )
           for old, new in replacements:
               if text.count(old) != 1:
-                  raise SystemExit(f"expected diagnostic anchor exactly once: {old!r}")
+                  raise SystemExit(f"expected registry repair anchor exactly once: {old!r}")
               text = text.replace(old, new, 1)
-          path.write_text(text)
+          registry.write_text(text)
+
+          agentd = Path("codex-rs/hepta-agentd/src/lib.rs")
+          agentd.write_bytes(base64.b64decode(os.environ["AGENTD_LIB_BASE64"], validate=True))
           PY
 
       - uses: ./.github/actions/setup-ci
@@ -86,23 +95,43 @@ jobs:
         with:
           tool: cargo-nextest@0.9.143
 
-      - name: Format candidate repair
+      - name: Format candidate repairs
         working-directory: codex-rs
         shell: bash
         run: |
           set -euo pipefail
           cargo fmt --package codex-hepta-fleet
-          cargo fmt --package codex-hepta-fleet -- --check
+          cargo fmt --package codex-hepta-agentd
+          cargo fmt --package codex-hepta-fleet --package codex-hepta-agentd -- --check
 
-      - name: Run repaired fleet tests
+      - name: Capture P0.7a package tests
+        id: tests
         working-directory: codex-rs
         shell: bash
         run: |
-          set -euo pipefail
-          just test -p codex-hepta-fleet
+          set -uo pipefail
+          overall=0
+          for package in \
+            codex-hepta-contracts \
+            codex-hepta-fleet \
+            codex-hepta-supervisor \
+            codex-hepta-agentd
+          do
+            log="$RUNNER_TEMP/${package}.test.log"
+            set +e
+            just test -p "$package" 2>&1 | tee "$log"
+            rc=${PIPESTATUS[0]}
+            set -e
+            if [[ "$rc" != "0" && "$overall" == "0" ]]; then
+              overall="$rc"
+            fi
+          done
+          printf 'exit_code=%s\n' "$overall" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Capture all-target check
         id: check
+        if: steps.tests.outputs.exit_code == '0'
         working-directory: codex-rs
         shell: bash
         run: |
@@ -139,57 +168,44 @@ jobs:
           printf 'exit_code=%s\n' "$rc" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Build compact diagnostics
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import re
-          from pathlib import Path
-
-          ansi = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-          for name in ("hepta-p0-7a-check", "hepta-p0-7a-clippy"):
-              source = Path("${{ runner.temp }}") / f"{name}.log"
-              target = Path("${{ runner.temp }}") / f"{name}.compact.log"
-              if not source.exists():
-                  continue
-              clean = [ansi.sub("", line) for line in source.read_text(errors="replace").splitlines()]
-              selected = set()
-              for index, line in enumerate(clean):
-                  if (
-                      line.startswith("error")
-                      or "error[" in line
-                      or line.lstrip().startswith("-->")
-                      or "could not compile" in line
-                  ):
-                      selected.update(range(max(0, index - 4), min(len(clean), index + 14)))
-              if not selected:
-                  selected.update(range(max(0, len(clean) - 200), len(clean)))
-              target.write_text("\n".join(clean[index] for index in sorted(selected)) + "\n")
-          PY
-
-      - name: Upload compiler diagnostics
+      - name: Upload gate diagnostics
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-p0-7a-compiler-diagnostic-${{ github.sha }}
+          name: hepta-p0-7a-gate-diagnostic-${{ github.sha }}
           path: |
+            ${{ runner.temp }}/*.test.log
             ${{ runner.temp }}/hepta-p0-7a-check.log
-            ${{ runner.temp }}/hepta-p0-7a-check.compact.log
             ${{ runner.temp }}/hepta-p0-7a-clippy.log
-            ${{ runner.temp }}/hepta-p0-7a-clippy.compact.log
           if-no-files-found: error
           retention-days: 3
 
-      - name: Preserve compiler failure status
+      - name: Verify minimal candidate diff
+        if: >-
+          steps.tests.outputs.exit_code == '0' &&
+          steps.check.outputs.exit_code == '0' &&
+          steps.clippy.outputs.exit_code == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          expected=$'codex-rs/hepta-agentd/src/lib.rs\ncodex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs'
+          test "$(git diff --name-only)" = "$expected"
+          test -z "$(git ls-files --others --exclude-standard)"
+
+      - name: Preserve gate failure status
         if: always()
         shell: bash
         env:
+          TEST_EXIT: ${{ steps.tests.outputs.exit_code }}
           CHECK_EXIT: ${{ steps.check.outputs.exit_code }}
           CLIPPY_EXIT: ${{ steps.clippy.outputs.exit_code }}
         run: |
           set -euo pipefail
+          test -n "$TEST_EXIT"
+          if [[ "$TEST_EXIT" != "0" ]]; then
+            exit "$TEST_EXIT"
+          fi
           test -n "$CHECK_EXIT"
           if [[ "$CHECK_EXIT" != "0" ]]; then
             exit "$CHECK_EXIT"
