@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  EXPECTED_PARENT: 7509f461546330ecba1d99114df211ff283f910a
+  EXPECTED_PARENT: 26e2828b3f88a99c4feadb46321da14bbcf5d96a
   BRANCH: integration/vnext-main-full-ci-authbus-p1-2-20260828
   P12_MANIFEST: codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
   P12_PACKAGE: codex-hepta-authbus-p1-2-qualification
@@ -137,12 +137,15 @@ jobs:
               "codex-rs/hepta-authbus-p1-2-qualification/tests/p1_2.rs",
               "scripts/verify-authbus-p1-2.py",
           }
-          actual = set(
-              subprocess.check_output(
-                  ["git", "status", "--porcelain=v1", "--untracked-files=all"],
-                  text=True,
-              )[3:].splitlines()
-          )
+          actual = set()
+          for line in subprocess.check_output(
+              ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+              text=True,
+          ).splitlines():
+              path = line[3:]
+              if " -> " in path:
+                  path = path.split(" -> ", 1)[1]
+              actual.add(path)
           if actual != expected:
               raise SystemExit({"missing": sorted(expected - actual), "unexpected": sorted(actual - expected)})
           PY
