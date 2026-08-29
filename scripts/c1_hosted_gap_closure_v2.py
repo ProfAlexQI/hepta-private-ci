@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Epoch-6 wrapper for the exact-head WEB-C1 hosted gap closure.
+"""Epoch-9 wrapper for the exact-head WEB-C1 hosted gap closure.
 
-The v1 producer already owns the bounded Rust 1.95 formatting, Cargo.lock
-regeneration, contract validation, CAS commit, and no-force push. This wrapper
-adds the repository-migration binding and stages a private single-link copy of
-the qualification executable before the artifact-to-browser handshake. It does
-not weaken the artifact gate and does not grant source, build, runtime,
-operator, promotion, or release authority.
+The v1 producer owns bounded Rust 1.95 formatting, Cargo.lock regeneration,
+contract validation, CAS commit, and no-force push. This wrapper makes the
+repair transformations idempotent after partial predecessor commits, binds the
+repository migration, and stages a private single-link copy of the
+qualification executable before the artifact-to-browser handshake. It does not
+weaken the artifact gate and grants no source, build, runtime, operator,
+promotion, or release authority.
 """
 
 from __future__ import annotations
@@ -45,7 +46,42 @@ ORIGINAL_PATH_ALLOWED = BASE.path_allowed
 ORIGINAL_COMMIT_AND_PUSH = BASE.commit_and_push
 
 
+def replace_once_idempotent(path: str, old: str, new: str) -> None:
+    target = ROOT / path
+    text = target.read_text(encoding="utf-8")
+    old_count = text.count(old)
+    new_count = text.count(new)
+    if old_count == 1 and new_count == 0:
+        target.write_text(text.replace(old, new, 1), encoding="utf-8")
+        return
+    if old_count == 0 and new_count == 1:
+        return
+    BASE.fail(
+        f"{path}: ambiguous idempotent replacement; "
+        f"old_count={old_count}, new_count={new_count}"
+    )
+
+
+def replace_all_idempotent(path: str, old: str, new: str) -> None:
+    target = ROOT / path
+    text = target.read_text(encoding="utf-8")
+    if old in text:
+        updated = text.replace(old, new)
+        if old in updated:
+            BASE.fail(f"{path}: replacement incomplete for {old!r}")
+        target.write_text(updated, encoding="utf-8")
+        return
+    if new in text:
+        return
+    BASE.fail(f"{path}: neither old nor accepted replacement is present")
+
+
 def patch_contracts() -> None:
+    # The predecessor commit may already contain any subset of the v1 repairs.
+    # Rebind its helpers before calling it so partial progress is a verified
+    # no-op rather than a fatal missing-preimage error.
+    BASE.replace_once = replace_once_idempotent
+    BASE.replace_all = replace_all_idempotent
     ORIGINAL_PATCH_CONTRACTS()
     BASE.replace_once(
         COMMON_PATH,
