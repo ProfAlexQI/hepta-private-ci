@@ -1,0 +1,159 @@
+name: hepta-ui-v5-repository-gap-closure-bootstrap
+
+on:
+  push:
+    branches:
+      - codex/ui-v5-plan-and-repo-gap-closure-20260829
+    paths:
+      - .github/workflows/hepta-ui-v5-repository-gap-closure-bootstrap.yml
+      - scripts/.hepta-ui-v5-gap-closure-parts/**
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  HEPTA_V5_BASE_COMMIT: 304143bf362e6cc8369158309b7b9c7c9c3d3868
+  HEPTA_V5_BASE_TREE: a28c7808e64e2cfa21a8ed3fcbc5525cbbfbac3f
+  HEPTA_V5_BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+  HEPTA_V5_BOOTSTRAP_WORKFLOW: .github/workflows/hepta-ui-v5-repository-gap-closure-bootstrap.yml
+  HEPTA_V5_BOOTSTRAP_PARTS: scripts/.hepta-ui-v5-gap-closure-parts
+
+concurrency:
+  group: hepta-ui-v5-repository-gap-closure-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  apply-and-bind:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact bootstrap candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify exact bootstrap identity and authority boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse "$HEPTA_V5_BASE_COMMIT^{tree}")" = "$HEPTA_V5_BASE_TREE"
+          git merge-base --is-ancestor "$HEPTA_V5_BASE_COMMIT" HEAD
+          test "$GITHUB_REF_NAME" = "$HEPTA_V5_BRANCH"
+          while IFS= read -r path; do
+            test "$path" = "$HEPTA_V5_BOOTSTRAP_WORKFLOW" || [[ "$path" == "$HEPTA_V5_BOOTSTRAP_PARTS/"* ]]
+          done < <(git diff --name-only "$HEPTA_V5_BASE_COMMIT..HEAD")
+          test "$(git diff --name-only "$HEPTA_V5_BASE_COMMIT..HEAD" | wc -l | tr -d ' ')" -ge 2
+
+      - name: Reconstruct and apply exact-base repository gap closure
+        id: apply
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/ui-v5-gap-closure
+          cat "$HEPTA_V5_BOOTSTRAP_PARTS"/part-* | base64 --decode > "$RUNNER_TEMP/apply-hepta-ui-v5-gap-closure.py"
+          python3 -m py_compile "$RUNNER_TEMP/apply-hepta-ui-v5-gap-closure.py"
+          set +e
+          python3 "$RUNNER_TEMP/apply-hepta-ui-v5-gap-closure.py" "$GITHUB_WORKSPACE" \
+            > artifacts/ui-v5-gap-closure/bootstrap.log 2>&1
+          rc=$?
+          set -e
+          cat artifacts/ui-v5-gap-closure/bootstrap.log
+          exit "$rc"
+
+      - name: Remove one-shot bootstrap transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "$HEPTA_V5_BOOTSTRAP_WORKFLOW"
+          rm -rf "$HEPTA_V5_BOOTSTRAP_PARTS"
+
+      - name: Commit implementation candidate
+        id: implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "hepta-gap-closure-bot"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          test -n "$(git diff --cached --name-only)"
+          git commit -m "fix(ui): close executable repository blockers for v5"
+          printf 'sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          printf 'tree=%s\n' "$(git rev-parse HEAD^{tree})" >> "$GITHUB_OUTPUT"
+
+      - name: Bind plan and ledgers to implementation candidate
+        shell: bash
+        env:
+          IMPLEMENTATION_SHA: ${{ steps.implementation.outputs.sha }}
+          IMPLEMENTATION_TREE: ${{ steps.implementation.outputs.tree }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          sha = os.environ["IMPLEMENTATION_SHA"]
+          tree = os.environ["IMPLEMENTATION_TREE"]
+          root = Path("docs/ui")
+          candidate = {
+              "commit": sha,
+              "tree": tree,
+              "branch": os.environ["HEPTA_V5_BRANCH"],
+          }
+
+          active_path = root / "HEPTA_UI_ACTIVE_PLAN_V5.json"
+          active = json.loads(active_path.read_text(encoding="utf-8"))
+          active["implementationCandidate"] = candidate
+          active["repositoryPatchCommitted"] = True
+          active["status"] = "IMPLEMENTATION_COMMITTED_HOSTED_QUALIFICATION_REQUIRED"
+          active_path.write_text(json.dumps(active, indent=2) + "\n", encoding="utf-8")
+
+          gap_path = root / "HEPTA_UI_REPOSITORY_GAP_LEDGER_V1.json"
+          gaps = json.loads(gap_path.read_text(encoding="utf-8"))
+          gaps["candidate"] = candidate
+          gaps["status"] = "IMPLEMENTATION_COMMITTED_HOSTED_QUALIFICATION_REQUIRED"
+          for gap in gaps["gaps"]:
+              gap["state"] = "COMMITTED_AWAITING_HOSTED_QUALIFICATION"
+          gap_path.write_text(json.dumps(gaps, indent=2) + "\n", encoding="utf-8")
+
+          external_path = root / "HEPTA_UI_EXTERNAL_EVIDENCE_LEDGER_V1.json"
+          external = json.loads(external_path.read_text(encoding="utf-8"))
+          external["candidate"] = candidate
+          external_path.write_text(json.dumps(external, indent=2) + "\n", encoding="utf-8")
+
+          plan_path = root / "HEPTA_UI_DEVELOPMENT_PLAN_V5_2026-08-29.md"
+          with plan_path.open("a", encoding="utf-8", newline="\n") as handle:
+              handle.write("\n## Implementation candidate binding\n\n")
+              handle.write(f"- Commit: `{sha}`\n")
+              handle.write(f"- Tree: `{tree}`\n")
+              handle.write("- State: `IMPLEMENTATION_COMMITTED_HOSTED_QUALIFICATION_REQUIRED`\n")
+              handle.write("- This binding does not claim physical-device, human, production, promotion, or release evidence.\n")
+          PY
+          git add docs/ui/HEPTA_UI_ACTIVE_PLAN_V5.json \
+            docs/ui/HEPTA_UI_REPOSITORY_GAP_LEDGER_V1.json \
+            docs/ui/HEPTA_UI_EXTERNAL_EVIDENCE_LEDGER_V1.json \
+            docs/ui/HEPTA_UI_DEVELOPMENT_PLAN_V5_2026-08-29.md
+          git diff --cached --check
+          git commit -m "docs(ui): bind v5 gap closure implementation candidate"
+
+      - name: Push linear successor commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$GITHUB_SHA" HEAD
+          git push origin "HEAD:refs/heads/$HEPTA_V5_BRANCH"
+
+      - name: Upload bootstrap validation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hepta-ui-v5-repository-gap-closure-bootstrap-${{ github.sha }}
+          path: artifacts/ui-v5-gap-closure/
+          if-no-files-found: error
+          retention-days: 30
