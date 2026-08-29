@@ -4,16 +4,21 @@ use std::time::Duration;
 use codex_hepta_automation::AutomationAdmission;
 use codex_hepta_automation::AutomationError;
 use codex_hepta_automation::AutomationFuture;
+use codex_hepta_automation::AutomationLease;
+use codex_hepta_automation::AutomationOperationContext;
 use codex_hepta_automation::AutomationQueueReceipt;
 use codex_hepta_automation::AutomationSchedule;
 use codex_hepta_automation::AutomationScheduler;
 use codex_hepta_automation::AutomationStore;
+use codex_hepta_automation::AutomationTask;
 use codex_hepta_automation::AutomationTaskDraft;
 use codex_hepta_automation::AutomationTaskId;
 use codex_hepta_automation::AutomationTaskState;
 use codex_hepta_automation::AutomationTick;
 use codex_hepta_automation::AutomationTurnQueue;
 use codex_hepta_contracts::AgentId;
+use codex_hepta_contracts::DestinationAcknowledgement;
+use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_fleet::AgentManifest;
 use codex_hepta_fleet::FleetRegistry;
 use codex_hepta_fleet::ResourceBudget;
@@ -103,13 +108,10 @@ impl AutomationTurnQueue for RecordingQueue {
                 release.notified().await;
             }
             self.admissions.lock().await.push(admission.clone());
-            Ok(AutomationQueueReceipt {
-                queued_submission_id: format!(
-                    "queue-{}-{}",
-                    admission.task_id, admission.occurrence
-                ),
-                client_user_message_id: admission.client_user_message_id,
-            })
+            queue_receipt(
+                &admission,
+                format!("queue-{}-{}", admission.task_id, admission.occurrence),
+            )
         })
     }
 }
@@ -168,13 +170,10 @@ impl AutomationTurnQueue for AcceptedThenBlockedQueue {
             self.admissions.lock().await.push(admission.clone());
             self.entered.notify_one();
             self.release.notified().await;
-            Ok(AutomationQueueReceipt {
-                queued_submission_id: format!(
-                    "accepted-{}-{}",
-                    admission.task_id, admission.occurrence
-                ),
-                client_user_message_id: admission.client_user_message_id,
-            })
+            queue_receipt(
+                &admission,
+                format!("accepted-{}-{}", admission.task_id, admission.occurrence),
+            )
         })
     }
 }
@@ -234,13 +233,10 @@ impl AutomationTurnQueue for RetryOnceQueue {
                 *attempts = 1;
                 return Err(AutomationError::Dispatch);
             }
-            Ok(AutomationQueueReceipt {
-                queued_submission_id: format!(
-                    "queue-{}-{}",
-                    admission.task_id, admission.occurrence
-                ),
-                client_user_message_id: admission.client_user_message_id,
-            })
+            queue_receipt(
+                &admission,
+                format!("queue-{}-{}", admission.task_id, admission.occurrence),
+            )
         })
     }
 }
@@ -255,6 +251,78 @@ fn draft(id: &str, schedule: AutomationSchedule, due: u64) -> AutomationTaskDraf
     draft
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "operation-bound integration fixtures must fail loudly"
+)]
+fn operation_context(generation: u64) -> AutomationOperationContext {
+    let fence = format!("hepta:test:automation-operation-fence:v1:{generation}");
+    AutomationOperationContext::new(
+        1,
+        generation,
+        generation,
+        Sha256Digest::for_bytes(fence.as_bytes()),
+    )
+    .expect("valid operation context")
+}
+
+fn queue_receipt(
+    admission: &AutomationAdmission,
+    queued_submission_id: String,
+) -> Result<AutomationQueueReceipt, AutomationError> {
+    let destination_receipt_sha256 = Sha256Digest::for_bytes(
+        format!(
+            "hepta:app-server-queue-receipt:v1\0{}\0{}",
+            queued_submission_id, admission.client_user_message_id
+        )
+        .as_bytes(),
+    );
+    let acknowledgement =
+        DestinationAcknowledgement::committed(&admission.operation, destination_receipt_sha256)
+            .map_err(|_| AutomationError::Conflict)?;
+    Ok(AutomationQueueReceipt {
+        queued_submission_id,
+        client_user_message_id: admission.client_user_message_id.clone(),
+        acknowledgement,
+    })
+}
+
+fn test_scheduler<Q>(
+    store: AutomationStore,
+    queue: Arc<Q>,
+    generation: u64,
+    lease_duration: Duration,
+    dispatch_timeout: Duration,
+) -> Result<AutomationScheduler<Q>, AutomationError>
+where
+    Q: AutomationTurnQueue,
+{
+    AutomationScheduler::new(
+        store,
+        queue,
+        generation,
+        operation_context(generation),
+        lease_duration,
+        dispatch_timeout,
+    )
+}
+
+async fn persist_submitted(
+    store: &AutomationStore,
+    lease: &AutomationLease,
+    queued_submission_id: &str,
+    submitted_at_ms: u64,
+) -> Result<AutomationTask, AutomationError> {
+    let admission = lease.admission(&operation_context(lease.lease_generation))?;
+    store
+        .record_dispatch_uncertain(lease, &admission.operation, submitted_at_ms)
+        .await?;
+    let receipt = queue_receipt(&admission, queued_submission_id.to_string())?;
+    store
+        .mark_submitted(lease, &admission.operation, &receipt, submitted_at_ms)
+        .await
+}
+
 #[tokio::test]
 async fn one_shot_periodic_disable_and_cancel_are_durable() {
     let fixture = FleetFixture::new(1);
@@ -262,7 +330,7 @@ async fn one_shot_periodic_disable_and_cancel_are_durable() {
         .await
         .expect("open store");
     let queue = Arc::new(RecordingQueue::default());
-    let scheduler = AutomationScheduler::new(
+    let scheduler = test_scheduler(
         store.clone(),
         Arc::clone(&queue),
         7,
@@ -343,7 +411,7 @@ async fn owner_or_generation_fence_is_not_downgraded_to_a_dispatch_retry() {
         100,
     );
     store.create_task(&task).await.expect("create task");
-    let scheduler = AutomationScheduler::new(
+    let scheduler = test_scheduler(
         store,
         Arc::new(FencedQueue),
         1,
@@ -370,7 +438,7 @@ async fn pre_admission_dispatch_error_clears_intent_and_allows_next_generation_r
         100,
     );
     store.create_task(&task).await.expect("create task");
-    let scheduler = AutomationScheduler::new(
+    let scheduler = test_scheduler(
         store.clone(),
         Arc::new(DispatchRejectQueue),
         1,
@@ -410,15 +478,7 @@ async fn pre_admission_dispatch_error_clears_intent_and_allows_next_generation_r
         .await
         .expect("claim retry")
         .expect("retry remains due");
-    restarted
-        .mark_submitted(
-            &lease,
-            &AutomationQueueReceipt {
-                queued_submission_id: "retry-after-abort".to_string(),
-                client_user_message_id: lease.client_user_message_id.clone(),
-            },
-            102,
-        )
+    persist_submitted(&restarted, &lease, "retry-after-abort", 102)
         .await
         .expect("complete retry");
 }
@@ -436,7 +496,7 @@ async fn successful_dispatch_upgrades_pre_admission_intent_atomically() {
     );
     store.create_task(&task).await.expect("create task");
     let queue = Arc::new(RecordingQueue::default());
-    let scheduler = AutomationScheduler::new(
+    let scheduler = test_scheduler(
         store.clone(),
         Arc::clone(&queue),
         1,
@@ -487,7 +547,7 @@ async fn crash_after_external_acceptance_keeps_unknown_intent_across_reopen() {
     let release = Arc::new(Notify::new());
     let queue = Arc::new(AcceptedThenBlockedQueue::new(Arc::clone(&release)));
     let scheduler = Arc::new(
-        AutomationScheduler::new(
+        test_scheduler(
             store.clone(),
             Arc::clone(&queue),
             1,
@@ -556,7 +616,7 @@ async fn in_flight_unknown_intent_fences_stale_generation_and_second_claim() {
     let release = Arc::new(Notify::new());
     let queue = Arc::new(AcceptedThenBlockedQueue::new(Arc::clone(&release)));
     let scheduler = Arc::new(
-        AutomationScheduler::new(
+        test_scheduler(
             store.clone(),
             Arc::clone(&queue),
             1,
@@ -616,7 +676,7 @@ async fn unknown_provider_outcome_is_quarantined_across_store_recovery_until_rec
     );
     store.create_task(&task).await.expect("create task");
     let queue = Arc::new(UnknownQueue::default());
-    let scheduler = AutomationScheduler::new(
+    let scheduler = test_scheduler(
         store.clone(),
         Arc::clone(&queue),
         1,
@@ -666,10 +726,14 @@ async fn unknown_provider_outcome_is_quarantined_across_store_recovery_until_rec
         "quarantined occurrence must remain blocked until reconciliation"
     );
 
-    let receipt = AutomationQueueReceipt {
-        queued_submission_id: "provider-receipt-unknown-recovered".to_string(),
-        client_user_message_id: uncertain[0].client_user_message_id.clone(),
-    };
+    let admission = queue
+        .admissions()
+        .await
+        .into_iter()
+        .next()
+        .expect("captured uncertain admission");
+    let receipt = queue_receipt(&admission, "provider-receipt-unknown-recovered".to_string())
+        .expect("operation-bound reconciliation receipt");
     let completed = reopened
         .reconcile_dispatch(task.task_id, 1, &receipt, 200)
         .await
@@ -790,7 +854,7 @@ async fn uncertain_dispatch_requires_explicit_negative_provider_proof_before_ret
     );
     store.create_task(&task).await.expect("create task");
     let queue = Arc::new(UnknownQueue::default());
-    let scheduler = AutomationScheduler::new(
+    let scheduler = test_scheduler(
         store.clone(),
         Arc::clone(&queue),
         1,
@@ -836,15 +900,7 @@ async fn uncertain_dispatch_requires_explicit_negative_provider_proof_before_ret
         lease.client_user_message_id,
         uncertain.client_user_message_id
     );
-    store
-        .mark_submitted(
-            &lease,
-            &AutomationQueueReceipt {
-                queued_submission_id: "negative-proof-retry-receipt".to_string(),
-                client_user_message_id: lease.client_user_message_id.clone(),
-            },
-            101,
-        )
+    persist_submitted(&store, &lease, "negative-proof-retry-receipt", 101)
         .await
         .expect("retry submission");
     assert_eq!(
@@ -962,15 +1018,7 @@ async fn v1_store_migrates_atomically_to_dispatch_outcome_schema() {
         .await
         .expect("claim migrated task")
         .expect("migrated task due");
-    migrated
-        .mark_submitted(
-            &lease,
-            &AutomationQueueReceipt {
-                queued_submission_id: "migration-receipt".to_string(),
-                client_user_message_id: lease.client_user_message_id.clone(),
-            },
-            101,
-        )
+    persist_submitted(&migrated, &lease, "migration-receipt", 101)
         .await
         .expect("write migrated outcome");
     migrated.close().await;
@@ -986,7 +1034,7 @@ async fn v1_store_migrates_atomically_to_dispatch_outcome_schema() {
             .fetch_one(&pool)
             .await
             .expect("read migrated schema version");
-    assert_eq!(schema, 3);
+    assert_eq!(schema, 4);
     let outcomes: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM automation_dispatch_outcomes WHERE task_id = ?")
             .bind(task.task_id.to_string())
@@ -1017,7 +1065,7 @@ async fn explicit_dispatch_failure_retries_same_occurrence_and_client_id() {
     );
     store.create_task(&task).await.expect("create task");
     let queue = Arc::new(RetryOnceQueue::default());
-    let scheduler = AutomationScheduler::new(
+    let scheduler = test_scheduler(
         store.clone(),
         Arc::clone(&queue),
         1,
@@ -1087,18 +1135,11 @@ async fn duplicate_provider_receipt_is_rejected_by_local_outcome_fence() {
         .await
         .expect("second claim")
         .expect("second lease");
-    let receipt = |lease: &codex_hepta_automation::AutomationLease| AutomationQueueReceipt {
-        queued_submission_id: "provider-receipt-shared".to_string(),
-        client_user_message_id: lease.client_user_message_id.clone(),
-    };
-    store
-        .mark_submitted(&first_lease, &receipt(&first_lease), 101)
+    persist_submitted(&store, &first_lease, "provider-receipt-shared", 101)
         .await
         .expect("first receipt");
     assert_eq!(
-        store
-            .mark_submitted(&second_lease, &receipt(&second_lease), 102)
-            .await,
+        persist_submitted(&store, &second_lease, "provider-receipt-shared", 102).await,
         Err(AutomationError::Conflict)
     );
     assert_eq!(
@@ -1203,15 +1244,7 @@ async fn disabling_an_inflight_lease_never_resurrects_the_task() {
         Err(AutomationError::Conflict)
     ));
 
-    let submitted = store
-        .mark_submitted(
-            &lease,
-            &AutomationQueueReceipt {
-                queued_submission_id: "queue-in-flight".to_string(),
-                client_user_message_id: lease.client_user_message_id.clone(),
-            },
-            103,
-        )
+    let submitted = persist_submitted(&store, &lease, "queue-in-flight", 103)
         .await
         .expect("finish admitted occurrence");
     assert_eq!(submitted.state, AutomationTaskState::Disabled);
@@ -1288,7 +1321,7 @@ async fn five_real_agent_identities_are_isolated_and_one_blocked_backlog_cannot_
     let release_a = Arc::new(Notify::new());
     let queue_a = Arc::new(RecordingQueue::blocked(Arc::clone(&release_a)));
     let scheduler_a = Arc::new(
-        AutomationScheduler::new(
+        test_scheduler(
             stores[0].clone(),
             Arc::clone(&queue_a),
             1,
@@ -1305,7 +1338,7 @@ async fn five_real_agent_identities_are_isolated_and_one_blocked_backlog_cannot_
 
     for (index, store) in stores.iter().enumerate().skip(1) {
         let queue = Arc::new(RecordingQueue::default());
-        let scheduler = AutomationScheduler::new(
+        let scheduler = test_scheduler(
             store.clone(),
             Arc::clone(&queue),
             u64::try_from(index + 1).expect("generation"),
@@ -1320,7 +1353,7 @@ async fn five_real_agent_identities_are_isolated_and_one_blocked_backlog_cannot_
         assert!(matches!(outcome, AutomationTick::Submitted { .. }));
         let admissions = queue.admissions().await;
         assert_eq!(admissions.len(), 1);
-        assert_eq!(admissions[0].agent_id, *store.owner_agent_id());
+        assert_eq!(admissions[0].owner_agent_id, *store.owner_agent_id());
     }
 
     assert!(!a_task.is_finished(), "A remains deliberately blocked");
