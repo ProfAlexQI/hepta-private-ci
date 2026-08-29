@@ -1,0 +1,108 @@
+name: Hepta Intelligence Q0 repair preflight Windows
+
+on:
+  push:
+    branches:
+      - qualification/q0-repair-preflight-win-830a26b-20260829
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-q0-repair-preflight-win-830a26b
+  cancel-in-progress: true
+
+env:
+  EXPECTED_SOURCE: 830a26b9b086ba22d0ad45b1edca74221d8b5b74
+  ARTIFACT_DIR: artifacts/hepta-intelligence-q0-repair-preflight-win
+
+jobs:
+  preflight:
+    name: Replay the complete Q0 repair tail
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout exact preflight wrapper
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.13"
+
+      - name: Verify wrapper-only commit
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_SOURCE"
+          test "$(git rev-list --count "$EXPECTED_SOURCE"..HEAD)" = "1"
+          test "$(git diff --name-only "$EXPECTED_SOURCE"..HEAD)" = ".github/workflows/hepta-intelligence-q0-repair-preflight-win.yml"
+
+      - name: Normalize and replay the complete frozen repair tail
+        run: |
+          set -euo pipefail
+          python scripts/q0-qualification/normalize-hepta-intelligence-q0-repair-state.py \
+            2>&1 | tee "$ARTIFACT_DIR/normalizer.log"
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          needle = r"        rf'(?:async[ \t]+)?fn[ \t]+{re.escape(name)}[ \t]*\('"
+          assert lines.count(needle) == 1, lines.count(needle)
+          index = lines.index(needle)
+          assert lines[index + 1] == '    )', lines[index + 1]
+          lines.insert(index + 1, "        r')'")
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+          python -m py_compile \
+            scripts/q0-qualification/normalize-hepta-intelligence-q0-repair-state.py \
+            .github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py \
+            .github/scripts/hepta-intelligence-q0-reconstruct-v7.py \
+            .github/scripts/hepta-intelligence-q0-supplemental-repair-v1.py
+          python .github/scripts/hepta-intelligence-q0-reconstruct-v7.py \
+            2>&1 | tee "$ARTIFACT_DIR/reconstruct.log"
+          python .github/scripts/hepta-intelligence-q0-supplemental-repair-v1.py \
+            2>&1 | tee "$ARTIFACT_DIR/supplemental.log"
+          grep -F "PASS_Q0_FULL_REPAIR_PRECONDITION" "$ARTIFACT_DIR/normalizer.log"
+          grep -F "PASS_Q0_SUPPLEMENTAL_REPAIR_V1" "$ARTIFACT_DIR/supplemental.log"
+          git restore --source=HEAD -- .github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py
+          git diff --check
+          git diff --name-only | LC_ALL=C sort > "$ARTIFACT_DIR/changed-files.txt"
+          test -s "$ARTIFACT_DIR/changed-files.txt"
+
+      - name: Write preflight receipt
+        if: success()
+        shell: pwsh
+        run: |
+          $receipt = [ordered]@{
+            schema = "hepta.intelligence.q0.repair_preflight.v1"
+            status = "PASS_Q0_COMPLETE_REPAIR_REPLAY_PREFLIGHT"
+            source_commit = "$env:EXPECTED_SOURCE"
+            wrapper_commit = "$env:GITHUB_SHA"
+            runner_os = "$env:RUNNER_OS"
+            runner_arch = "$env:RUNNER_ARCH"
+            source_writeback = $false
+            runtime_wired = $false
+            production_authority = $false
+            operator_acceptance = $false
+            promotion = $false
+            callers_ratchet = $false
+          }
+          $receipt | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 "$env:ARTIFACT_DIR/receipt.json"
+
+      - name: Upload preflight evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: q0-repair-preflight-win-${{ github.sha }}
+          path: artifacts/hepta-intelligence-q0-repair-preflight-win/**
+          if-no-files-found: warn
+          retention-days: 7
