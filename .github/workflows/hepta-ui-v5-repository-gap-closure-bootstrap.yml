@@ -24,7 +24,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  apply-and-bind:
+  apply-and-stage:
     if: github.repository == 'ProfHepta/hepta-private-ci'
     runs-on: macos-15
     timeout-minutes: 45
@@ -54,7 +54,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p artifacts/ui-v5-gap-closure
+          mkdir -p artifacts/ui-v5-gap-closure/patched-workflows
           python3 - <<'PY'
           import base64
           import os
@@ -115,93 +115,54 @@ jobs:
           rc=$?
           set -e
           cat artifacts/ui-v5-gap-closure/bootstrap.log
-          exit "$rc"
+          if [[ "$rc" -ne 0 ]]; then
+            exit "$rc"
+          fi
 
-      - name: Remove one-shot bootstrap transport
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -f "$HEPTA_V5_BOOTSTRAP_WORKFLOW"
-          rm -rf "$HEPTA_V5_BOOTSTRAP_PARTS"
+          workflow_paths=(
+            .github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml
+            .github/workflows/hepta-ui-v4-windows-material-profile-aggregate.yml
+            .github/workflows/windows-msvc-bazel.yml
+          )
+          for path in "${workflow_paths[@]}"; do
+            cp "$path" "artifacts/ui-v5-gap-closure/patched-workflows/$(basename "$path")"
+          done
+          shasum -a 256 "${workflow_paths[@]}" \
+            > artifacts/ui-v5-gap-closure/patched-workflows/SHA256SUMS
 
-      - name: Commit implementation candidate
-        id: implementation
+          # The Actions token cannot publish workflow changes. Restore every workflow
+          # byte before staging; the workflow-capable GitHub connector publishes the
+          # three retained files atomically after this source/docs commit succeeds.
+          git checkout "$GITHUB_SHA" -- .github/workflows
+          test -z "$(git diff --name-only -- .github/workflows)"
+
+      - name: Commit non-workflow implementation staging
+        id: staging
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "hepta-gap-closure-bot"
           git config user.email "102159240+ProfHepta@users.noreply.github.com"
-          git add -A
+          test -z "$(git diff --name-only -- .github/workflows)"
+          git add -A -- ':!.github/workflows/**'
           git diff --cached --check
           test -n "$(git diff --cached --name-only)"
-          git commit -m "fix(ui): close executable repository blockers for v5"
+          if git diff --cached --name-only | grep -q '^\.github/workflows/'; then
+            echo "workflow path escaped into the non-workflow staging commit" >&2
+            exit 1
+          fi
+          git commit -m "fix(ui): stage non-workflow repository blockers for v5"
           printf 'sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           printf 'tree=%s\n' "$(git rev-parse HEAD^{tree})" >> "$GITHUB_OUTPUT"
 
-      - name: Bind plan and ledgers to implementation candidate
-        shell: bash
-        env:
-          IMPLEMENTATION_SHA: ${{ steps.implementation.outputs.sha }}
-          IMPLEMENTATION_TREE: ${{ steps.implementation.outputs.tree }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          sha = os.environ["IMPLEMENTATION_SHA"]
-          tree = os.environ["IMPLEMENTATION_TREE"]
-          root = Path("docs/ui")
-          candidate = {
-              "commit": sha,
-              "tree": tree,
-              "branch": os.environ["HEPTA_V5_BRANCH"],
-          }
-
-          active_path = root / "HEPTA_UI_ACTIVE_PLAN_V5.json"
-          active = json.loads(active_path.read_text(encoding="utf-8"))
-          active["implementationCandidate"] = candidate
-          active["repositoryPatchCommitted"] = True
-          active["status"] = "IMPLEMENTATION_COMMITTED_HOSTED_QUALIFICATION_REQUIRED"
-          active_path.write_text(json.dumps(active, indent=2) + "\n", encoding="utf-8")
-
-          gap_path = root / "HEPTA_UI_REPOSITORY_GAP_LEDGER_V1.json"
-          gaps = json.loads(gap_path.read_text(encoding="utf-8"))
-          gaps["candidate"] = candidate
-          gaps["status"] = "IMPLEMENTATION_COMMITTED_HOSTED_QUALIFICATION_REQUIRED"
-          for gap in gaps["gaps"]:
-              gap["state"] = "COMMITTED_AWAITING_HOSTED_QUALIFICATION"
-          gap_path.write_text(json.dumps(gaps, indent=2) + "\n", encoding="utf-8")
-
-          external_path = root / "HEPTA_UI_EXTERNAL_EVIDENCE_LEDGER_V1.json"
-          external = json.loads(external_path.read_text(encoding="utf-8"))
-          external["candidate"] = candidate
-          external_path.write_text(json.dumps(external, indent=2) + "\n", encoding="utf-8")
-
-          plan_path = root / "HEPTA_UI_DEVELOPMENT_PLAN_V5_2026-08-29.md"
-          with plan_path.open("a", encoding="utf-8", newline="\n") as handle:
-              handle.write("\n## Implementation candidate binding\n\n")
-              handle.write(f"- Commit: `{sha}`\n")
-              handle.write(f"- Tree: `{tree}`\n")
-              handle.write("- State: `IMPLEMENTATION_COMMITTED_HOSTED_QUALIFICATION_REQUIRED`\n")
-              handle.write("- This binding does not claim physical-device, human, production, promotion, or release evidence.\n")
-          PY
-          git add docs/ui/HEPTA_UI_ACTIVE_PLAN_V5.json \
-            docs/ui/HEPTA_UI_REPOSITORY_GAP_LEDGER_V1.json \
-            docs/ui/HEPTA_UI_EXTERNAL_EVIDENCE_LEDGER_V1.json \
-            docs/ui/HEPTA_UI_DEVELOPMENT_PLAN_V5_2026-08-29.md
-          git diff --cached --check
-          git commit -m "docs(ui): bind v5 gap closure implementation candidate"
-
-      - name: Push linear successor commits
+      - name: Push linear non-workflow staging commit
         shell: bash
         run: |
           set -euo pipefail
           git merge-base --is-ancestor "$GITHUB_SHA" HEAD
           git push origin "HEAD:refs/heads/$HEPTA_V5_BRANCH"
 
-      - name: Upload bootstrap validation evidence
+      - name: Upload bootstrap validation and patched workflows
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
