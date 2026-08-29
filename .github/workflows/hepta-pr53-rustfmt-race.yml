@@ -10,7 +10,7 @@ permissions:
 
 env:
   TARGET_BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
-  TARGET_HEAD: 795f76da9ca777c380e303ee9e985c556a1a14ec
+  TARGET_HEAD: 4fe930eaab44f4a7bd2388427638be940dd68e63
 
 jobs:
   format:
