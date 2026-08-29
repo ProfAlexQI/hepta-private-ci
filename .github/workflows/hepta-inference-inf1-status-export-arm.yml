@@ -1,0 +1,40 @@
+name: Hepta inference INF-1 status export ARM
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf1-source-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf1-status-export-arm.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Materialize and export status
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-materialize.py
+          status=docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_STATUS_V1.json
+          test -s "$status"
+          python3 -m json.tool "$status" >/dev/null
+          mkdir -p "$RUNNER_TEMP/hepta-inf1-status"
+          cp "$status" "$RUNNER_TEMP/hepta-inf1-status/"
+          sha256sum "$status" > "$RUNNER_TEMP/hepta-inf1-status/SHA256SUMS"
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf1-status-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-inf1-status
+          if-no-files-found: error
+          retention-days: 7
