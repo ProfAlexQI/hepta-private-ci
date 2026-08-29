@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
-      EXPECTED_PARENT: a8b9a3175e3adb0f2288c1bfc1ab1e4e8b46624e
+      EXPECTED_PARENT: 04c4d66d208af6a9ae4f5653da2c31931260f34b
       BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
       WORKFLOW_PATH: .github/workflows/hepta-strict-clippy-remediation-once.yml
     steps:
@@ -168,6 +168,7 @@ jobs:
           python3.11 scripts/verify-hepta-architecture-gap-ledger.py
 
       - name: Run formatting, checks, and strict Clippy
+        working-directory: codex-rs
         shell: bash
         run: |
           set -euo pipefail
@@ -207,12 +208,12 @@ jobs:
         shell: bash
         run: |
           {
-            echo "schema=hepta_strict_clippy_remediation_once_v4"
+            echo "schema=hepta_strict_clippy_remediation_once_v5"
             echo "bootstrap_head=$GITHUB_SHA"
             echo "expected_parent=$EXPECTED_PARENT"
             echo "job_status=${{ job.status }}"
             echo "changed_paths=hepta-agentd/app_runtime.rs,hepta-memory/local_lease_outbox.rs"
-            echo "bootstrap_retired=true"
+            echo "bootstrap_retired=${{ job.status == 'success' }}"
             echo "bootstrap_runner=ubuntu-22.04"
             echo "bootstrap_python=python3.11"
             echo "canonical_qualification_runner=ubuntu-24.04"
