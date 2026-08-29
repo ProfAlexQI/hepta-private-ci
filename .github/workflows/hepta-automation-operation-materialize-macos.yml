@@ -12,13 +12,13 @@ permissions:
 
 concurrency:
   group: hepta-automation-operation-materialize-linux-fallback
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   materialize:
     name: Materialize operation-bound Automation fixtures
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
     env:
       BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
       TRANSFORM_SOURCE: b52dba0e4e131dd6005bdc0303f26caf818877b9
