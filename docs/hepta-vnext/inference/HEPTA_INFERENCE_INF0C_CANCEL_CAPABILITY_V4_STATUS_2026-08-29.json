@@ -1,0 +1,35 @@
+{
+  "schema": "hepta.inference.inf0c.cancel_capability_v4_status.v1",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
+  "stage": "INF-0C",
+  "status": "SOURCE_PRESENT_NOT_RUN",
+  "qualified": false,
+  "provider_cancel_capability_classified": false,
+  "backend_cancellation_acknowledged": false,
+  "controlled_worker_termination_required": true,
+  "implemented": {
+    "known_unsupported_non_json_http_classification": true,
+    "bounded_error_body": true,
+    "unsupported_media_type_allowlist": true,
+    "successful_response_json_only": true,
+    "unexpected_error_media_type_fail_closed": true,
+    "transport_disconnect_not_promoted_to_ack": true,
+    "raw_error_body_persisted": false
+  },
+  "authority": {
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
