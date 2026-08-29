@@ -1,0 +1,128 @@
+name: hepta-ui-v4-executable-diagnostic
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-executable-gap-remediation-20260829"
+
+permissions:
+  contents: read
+
+env:
+  HEPTA_CANDIDATE_SHA: ${{ github.sha }}
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.longpaths
+  GIT_CONFIG_VALUE_0: "true"
+
+concurrency:
+  group: hepta-ui-v4-executable-diagnostic-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host:
+    name: Diagnostic host compile (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Checkout exact sparse candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /apps/hepta-native/src/shared/
+            /tools/hepta-ui-global-platform-source-closure/
+            /tools/hepta-ui-windows-product-host-safety/
+            /tools/hepta-ui-windows-product-host-device-drill/
+      - name: Verify exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+      - name: Apply diagnostic-only scoped FFI policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("tools/hepta-ui-global-platform-source-closure/src/lib.rs")
+          text = path.read_text().replace("#![forbid(unsafe_code)]", "#![deny(unsafe_code)]", 1)
+          marker = '#[path = "../../../apps/hepta-native/src/shared/hepta_system_preferences.rs"]'
+          if '#[allow(unsafe_code)]\n' + marker not in text:
+              text = text.replace(marker, '#[allow(unsafe_code)]\n' + marker, 1)
+          path.write_text(text)
+          PY
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+      - name: Compile beyond formatting gate
+        shell: bash
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          set -euo pipefail
+          cargo check --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml --all-targets
+          cargo test --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml -- --nocapture
+          cargo check --manifest-path tools/hepta-ui-windows-product-host-safety/Cargo.toml --all-targets --no-default-features
+          cargo test --manifest-path tools/hepta-ui-windows-product-host-safety/Cargo.toml --no-default-features -- --nocapture
+          cargo check --manifest-path tools/hepta-ui-windows-product-host-safety/Cargo.toml --all-targets --no-default-features --features hepta_ui_windows_system_material_v4
+          cargo test --manifest-path tools/hepta-ui-windows-product-host-safety/Cargo.toml --no-default-features --features hepta_ui_windows_system_material_v4 -- --nocapture
+          cargo check --manifest-path tools/hepta-ui-windows-product-host-device-drill/Cargo.toml --all-targets --no-default-features
+          cargo check --manifest-path tools/hepta-ui-windows-product-host-device-drill/Cargo.toml --all-targets --no-default-features --features hepta_ui_windows_system_material_v4
+
+  target:
+    name: Diagnostic target compile (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: macos-latest, target: aarch64-apple-ios}
+          - {os: ubuntu-latest, target: aarch64-linux-android}
+    steps:
+      - name: Checkout exact sparse candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /apps/hepta-native/src/shared/
+            /tools/hepta-ui-global-platform-source-closure/
+      - name: Verify exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+      - name: Apply diagnostic-only scoped FFI policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("tools/hepta-ui-global-platform-source-closure/src/lib.rs")
+          text = path.read_text().replace("#![forbid(unsafe_code)]", "#![deny(unsafe_code)]", 1)
+          marker = '#[path = "../../../apps/hepta-native/src/shared/hepta_system_preferences.rs"]'
+          if '#[allow(unsafe_code)]\n' + marker not in text:
+              text = text.replace(marker, '#[allow(unsafe_code)]\n' + marker, 1)
+          path.write_text(text)
+          PY
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          targets: ${{ matrix.target }}
+      - name: Compile target beyond formatting gate
+        shell: bash
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          set -euo pipefail
+          cargo check --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml --lib --target "${{ matrix.target }}"
