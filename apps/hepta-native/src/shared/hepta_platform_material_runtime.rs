@@ -269,10 +269,22 @@ mod tests {
         );
         assert!(!high_contrast.profile.transparency_enabled);
 
+        let current_profile = platform_material_profile_with_capabilities(
+            current_platform(),
+            true,
+            HeptaPlatformMaterialCapabilities {
+                dynamic_color_available: true,
+            },
+        );
+        let expected_error = if current_profile.transparency_enabled {
+            HeptaSystemMaterialError::SystemApiUnavailable
+        } else {
+            HeptaSystemMaterialError::UnsupportedPlatform
+        };
         let mut unbound = HeptaUnboundSystemMaterialAdapter;
         assert_eq!(
             bind_material_runtime(&mut unbound, transparent_preferences()),
-            Err(HeptaSystemMaterialError::SystemApiUnavailable),
+            Err(expected_error),
         );
     }
 
