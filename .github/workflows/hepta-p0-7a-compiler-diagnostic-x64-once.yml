@@ -1,0 +1,198 @@
+name: Hepta P0.7a compiler diagnostic x64 (temporary)
+
+on:
+  push:
+    branches:
+      - "tmp/hepta-p0-7a-compiler-diagnostic-x64-20260830"
+    paths:
+      - ".github/workflows/hepta-p0-7a-compiler-diagnostic-x64-once.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-p0-7a-compiler-diagnostic-x64-once
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    if: >-
+      github.repository == 'ProfHepta/hepta-private-ci' &&
+      github.ref == 'refs/heads/tmp/hepta-p0-7a-compiler-diagnostic-x64-20260830'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact diagnostic input
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact source blob
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs)" = \
+            "74abd3aa3ece1fc63f36a09acfe719b5a6f9528f"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Apply candidate inode identity repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs")
+          text = path.read_text()
+          replacements = (
+              (
+                  "    let linked = std::fs::symlink_metadata(path)?;\n",
+                  "    let held_linked = file.metadata()?;\n"
+                  "    validate_registry_metadata(&temp, &held_linked, &parent_metadata, 2)?;\n"
+                  "    let linked = std::fs::symlink_metadata(path)?;\n",
+              ),
+              (
+                  "    if metadata_identity(&held) != metadata_identity(&linked) {\n",
+                  "    if metadata_identity(&held_linked) != metadata_identity(&linked) {\n",
+              ),
+              (
+                  "    let published = std::fs::symlink_metadata(path)?;\n",
+                  "    let held_published = file.metadata()?;\n"
+                  "    validate_registry_metadata(path, &held_published, &parent_metadata, 1)?;\n"
+                  "    let published = std::fs::symlink_metadata(path)?;\n",
+              ),
+              (
+                  "    if metadata_identity(&held) != metadata_identity(&published) {\n",
+                  "    if metadata_identity(&held_published) != metadata_identity(&published) {\n",
+              ),
+          )
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected diagnostic anchor exactly once: {old!r}")
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: cargo-nextest@0.9.143
+
+      - name: Format candidate repair
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --package codex-hepta-fleet
+          cargo fmt --package codex-hepta-fleet -- --check
+
+      - name: Run repaired fleet tests
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          just test -p codex-hepta-fleet
+
+      - name: Capture all-target check
+        id: check
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/hepta-p0-7a-check.log"
+          set +e
+          cargo check --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd \
+            2>&1 | tee "$log"
+          rc=${PIPESTATUS[0]}
+          printf 'exit_code=%s\n' "$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Capture strict Clippy
+        id: clippy
+        if: steps.check.outputs.exit_code == '0'
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/hepta-p0-7a-clippy.log"
+          set +e
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd \
+            -- -D warnings \
+            2>&1 | tee "$log"
+          rc=${PIPESTATUS[0]}
+          printf 'exit_code=%s\n' "$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Build compact diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          ansi = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+          for name in ("hepta-p0-7a-check", "hepta-p0-7a-clippy"):
+              source = Path("${{ runner.temp }}") / f"{name}.log"
+              target = Path("${{ runner.temp }}") / f"{name}.compact.log"
+              if not source.exists():
+                  continue
+              clean = [ansi.sub("", line) for line in source.read_text(errors="replace").splitlines()]
+              selected = set()
+              for index, line in enumerate(clean):
+                  if (
+                      line.startswith("error")
+                      or "error[" in line
+                      or line.lstrip().startswith("-->")
+                      or "could not compile" in line
+                  ):
+                      selected.update(range(max(0, index - 4), min(len(clean), index + 14)))
+              if not selected:
+                  selected.update(range(max(0, len(clean) - 200), len(clean)))
+              target.write_text("\n".join(clean[index] for index in sorted(selected)) + "\n")
+          PY
+
+      - name: Upload compiler diagnostics
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-p0-7a-compiler-diagnostic-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/hepta-p0-7a-check.log
+            ${{ runner.temp }}/hepta-p0-7a-check.compact.log
+            ${{ runner.temp }}/hepta-p0-7a-clippy.log
+            ${{ runner.temp }}/hepta-p0-7a-clippy.compact.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Preserve compiler failure status
+        if: always()
+        shell: bash
+        env:
+          CHECK_EXIT: ${{ steps.check.outputs.exit_code }}
+          CLIPPY_EXIT: ${{ steps.clippy.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          test -n "$CHECK_EXIT"
+          if [[ "$CHECK_EXIT" != "0" ]]; then
+            exit "$CHECK_EXIT"
+          fi
+          test -n "$CLIPPY_EXIT"
+          exit "$CLIPPY_EXIT"
