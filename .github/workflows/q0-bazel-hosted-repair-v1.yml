@@ -1,0 +1,117 @@
+name: Q0 Bazel hosted Windows repair v1
+
+on:
+  push:
+    branches:
+      - codex/q0-bazel-hosted-repair-v1-20260829
+    paths:
+      - .github/workflows/q0-bazel-hosted-repair-v1.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: q0-bazel-hosted-repair-v1
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET_BRANCH: codex/hepta-intelligence-plan-v3-20260828
+      EXPECTED_TARGET: 166af47311117594de7ed5d18a3fc373db0e643e
+    steps:
+      - name: Checkout exact Q0 target
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 2
+
+      - name: Replace all private Windows runner bindings
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${EXPECTED_TARGET}"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/bazel.yml')
+          text = path.read_text(encoding='utf-8')
+
+          standalone = """    runs-on:
+                group: ${{ github.event.repository.name }}-runners
+                labels: ${{ github.event.repository.name }}-windows-x64
+          """.replace('        ', '')
+          if text.count(standalone) != 2:
+              raise SystemExit(f'expected 2 standalone private Windows bindings, got {text.count(standalone)}')
+          text = text.replace(standalone, "    runs-on: windows-2025\n", 2)
+
+          matrix = """          - os: windows-latest
+                target: x86_64-pc-windows-gnullvm
+                runs_on:
+                  group: ${{ github.event.repository.name }}-runners
+                  labels: ${{ github.event.repository.name }}-windows-x64
+          """.replace('        ', '')
+          if text.count(matrix) != 2:
+              raise SystemExit(f'expected 2 matrix private Windows bindings, got {text.count(matrix)}')
+          text = text.replace(
+              matrix,
+              "          - os: windows-2025\n            target: x86_64-pc-windows-gnullvm\n",
+              2,
+          )
+
+          dynamic = '    runs-on: ${{ matrix.runs_on || matrix.os }}\n'
+          if text.count(dynamic) != 2:
+              raise SystemExit(f'expected 2 dynamic runs_on expressions, got {text.count(dynamic)}')
+          text = text.replace(dynamic, '    runs-on: ${{ matrix.os }}\n', 2)
+
+          checkout = """    steps:
+                - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+          """.replace('        ', '')
+          if text.count(checkout) != 5:
+              raise SystemExit(f'expected 5 Bazel checkout anchors, got {text.count(checkout)}')
+          guarded = """    steps:
+                - name: Enable long paths on hosted Windows
+                  if: runner.os == 'Windows'
+                  shell: pwsh
+                  run: git config --global core.longpaths true
+
+                - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+          """.replace('        ', '')
+          text = text.replace(checkout, guarded, 5)
+
+          forbidden = (
+              '${{ github.event.repository.name }}-runners',
+              '${{ github.event.repository.name }}-windows-x64',
+              'runs_on:',
+              'matrix.runs_on',
+          )
+          remaining = [marker for marker in forbidden if marker in text]
+          if remaining:
+              raise SystemExit(f'private Windows runner bindings remain: {remaining}')
+          if text.count('runs-on: windows-2025') != 2:
+              raise SystemExit('standalone hosted Windows job count drifted')
+          if text.count('- os: windows-2025') != 2:
+              raise SystemExit('matrix hosted Windows lane count drifted')
+          if text.count('Enable long paths on hosted Windows') != 5:
+              raise SystemExit('pre-checkout long-path guards are incomplete')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          ! grep -F -- '-runners' .github/workflows/bazel.yml
+          ! grep -F -- '-windows-x64' .github/workflows/bazel.yml
+          test "$(grep -c 'Enable long paths on hosted Windows' .github/workflows/bazel.yml)" = 5
+
+      - name: Commit exact hosted-runner repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Qian QI"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git add .github/workflows/bazel.yml
+          git diff --cached --check
+          test "$(git diff --cached --name-only)" = ".github/workflows/bazel.yml"
+          git commit --no-gpg-sign -m "ci(bazel): move Windows qualification to hosted runners"
+          git push --force-with-lease="refs/heads/${TARGET_BRANCH}:${EXPECTED_TARGET}" origin "HEAD:refs/heads/${TARGET_BRANCH}"
