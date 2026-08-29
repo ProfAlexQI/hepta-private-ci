@@ -1,0 +1,144 @@
+name: Hepta UI v5 scripts budget diagnostic v17 macOS
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-remediation-v17-macos-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-scripts-budget-diagnostic-v17-macos.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v5-scripts-budget-diagnostic-v17-macos
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact diagnostic head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Measure exact scripts physical debt and contributors
+        shell: bash
+        env:
+          BASE_SHA: 304143bf362e6cc8369158309b7b9c7c9c3d3868
+          BUDGET: '408307'
+        run: |
+          set -euo pipefail
+          head_sha="$(git rev-parse HEAD)"
+          base_root="$RUNNER_TEMP/hepta-ui-v5-base"
+          git worktree add --detach "$base_root" "$BASE_SHA" >/dev/null
+
+          count_scripts() {
+            local root="$1"
+            find "$root/scripts" -type f \
+              ! -path "$root/scripts/lib/hepta-gate-pair-compat-v2/payloads.bundle.gz" \
+              ! -path "$root/scripts/lib/hepta-gate-pair-compat-v2/templates.jsonl" \
+              ! -path "$root/scripts/lib/hepta-gate-pair-compat-v2/parameters.jsonl" \
+              ! -path "$root/scripts/lib/hepta-gate-pair-compat-v2/family-state-v1/*" \
+              -exec wc -l {} + \
+              | awk '$2 != "total" { total += $1 } END { print total + 0 }'
+          }
+
+          base_total="$(count_scripts "$base_root")"
+          head_total="$(count_scripts "$GITHUB_WORKSPACE")"
+          printf 'BASE_SHA=%s\n' "$BASE_SHA"
+          printf 'HEAD_SHA=%s\n' "$head_sha"
+          printf 'BASE_SCRIPTS_PHYSICAL_LINES=%s\n' "$base_total"
+          printf 'HEAD_SCRIPTS_PHYSICAL_LINES=%s\n' "$head_total"
+          printf 'PR_DELTA=%s\n' "$((head_total - base_total))"
+          printf 'BUDGET=%s\n' "$BUDGET"
+          printf 'BASE_OVERAGE=%s\n' "$((base_total - BUDGET))"
+          printf 'HEAD_OVERAGE=%s\n' "$((head_total - BUDGET))"
+
+          printf '\n=== Git numstat for scripts: base..head ===\n'
+          git diff --numstat "$BASE_SHA" "$head_sha" -- scripts \
+            | awk -F '\t' '{ a=($1=="-"?0:$1); d=($2=="-"?0:$2); printf "%9d %9d %9d  %s\n", a-d, a, d, $3 }' \
+            | sort -nr \
+            | head -120
+
+          printf '\n=== Largest current scripts files by physical lines ===\n'
+          find scripts -type f \
+            ! -path 'scripts/lib/hepta-gate-pair-compat-v2/payloads.bundle.gz' \
+            ! -path 'scripts/lib/hepta-gate-pair-compat-v2/templates.jsonl' \
+            ! -path 'scripts/lib/hepta-gate-pair-compat-v2/parameters.jsonl' \
+            ! -path 'scripts/lib/hepta-gate-pair-compat-v2/family-state-v1/*' \
+            -exec wc -l {} + \
+            | awk '$2 != "total" { printf "%9d  %s\n", $1, $2 }' \
+            | sort -nr \
+            | head -120
+
+          printf '\n=== Current scripts lines aggregated by first two path components ===\n'
+          python3 <<'PY'
+          from collections import defaultdict
+          from pathlib import Path
+
+          root = Path('scripts')
+          excluded = {
+              Path('scripts/lib/hepta-gate-pair-compat-v2/payloads.bundle.gz'),
+              Path('scripts/lib/hepta-gate-pair-compat-v2/templates.jsonl'),
+              Path('scripts/lib/hepta-gate-pair-compat-v2/parameters.jsonl'),
+          }
+          totals = defaultdict(int)
+          for path in root.rglob('*'):
+              if not path.is_file() or path in excluded:
+                  continue
+              if path.as_posix().startswith('scripts/lib/hepta-gate-pair-compat-v2/family-state-v1/'):
+                  continue
+              lines = path.read_bytes().count(b'\n')
+              parts = path.parts
+              key = '/'.join(parts[: min(3, len(parts))])
+              totals[key] += lines
+          for key, lines in sorted(totals.items(), key=lambda item: (-item[1], item[0]))[:100]:
+              print(f'{lines:9d}  {key}')
+          PY
+
+          printf '\n=== Duplicate-content groups with physical-line redundancy ===\n'
+          python3 <<'PY'
+          from collections import defaultdict
+          from hashlib import sha256
+          from pathlib import Path
+
+          groups = defaultdict(list)
+          for path in Path('scripts').rglob('*'):
+              if not path.is_file():
+                  continue
+              posix = path.as_posix()
+              if posix in {
+                  'scripts/lib/hepta-gate-pair-compat-v2/payloads.bundle.gz',
+                  'scripts/lib/hepta-gate-pair-compat-v2/templates.jsonl',
+                  'scripts/lib/hepta-gate-pair-compat-v2/parameters.jsonl',
+              } or posix.startswith('scripts/lib/hepta-gate-pair-compat-v2/family-state-v1/'):
+                  continue
+              data = path.read_bytes()
+              groups[sha256(data).hexdigest()].append((path, data.count(b'\n')))
+          duplicates = []
+          for members in groups.values():
+              if len(members) < 2:
+                  continue
+              lines = max(value for _, value in members)
+              duplicates.append((lines * (len(members) - 1), lines, members))
+          for redundant, lines, members in sorted(duplicates, reverse=True)[:80]:
+              print(f'redundant={redundant:7d} each={lines:6d} copies={len(members):3d}')
+              for path, _ in members[:12]:
+                  print(f'  {path}')
+              if len(members) > 12:
+                  print(f'  ... {len(members) - 12} more')
+          PY
+
+          printf '\n=== Architecture gate first failure on unmodified PR head ===\n'
+          set +e
+          scripts/hepta-architecture-budget verify
+          status=$?
+          set -e
+          printf 'ARCHITECTURE_GATE_EXIT=%s\n' "$status"
+          test "$status" -ne 0
