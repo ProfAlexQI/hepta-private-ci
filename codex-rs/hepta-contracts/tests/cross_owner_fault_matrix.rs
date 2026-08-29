@@ -143,7 +143,6 @@ impl JournalRecord {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CommitFailpoint {
-    None,
     BeforeWrite,
     AfterSyncBeforeRename,
     AfterRenameBeforeReturn,
