@@ -65,7 +65,7 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
         with:
-          tool: cargo-nextest@0.9.143
+          tool: nextest@0.9.143
 
       - name: Verify checked-out identity
         working-directory: .
