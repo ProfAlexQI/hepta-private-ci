@@ -1,0 +1,93 @@
+name: Hepta PR71 isolated rustfmt maintenance
+
+on:
+  push:
+    branches:
+      - codex/maintenance-pr71-rustfmt-20260829
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-pr71-isolated-rustfmt
+  cancel-in-progress: false
+
+jobs:
+  rustfmt:
+    name: Format exact PR71 head
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET_BRANCH: codex/hepta-gap-closure-p0-6-20260829
+      EXPECTED_HEAD: 955761a3bed991382e200c3ba44c34c9740b6d84
+    steps:
+      - name: Checkout exact target branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Verify immutable starting identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$(git branch --show-current)" = "$TARGET_BRANCH"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Install pinned Rust formatter
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+
+      - name: Apply deterministic rustfmt
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-agentd
+          cargo fmt -p codex-hepta-agentd -- --check
+
+      - name: Enforce exact formatting-only path boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -gt 0
+          for path in "${changed[@]}"; do
+            case "$path" in
+              codex-rs/hepta-agentd/src/automation.rs|\
+              codex-rs/hepta-agentd/src/automation_service.rs|\
+              codex-rs/hepta-agentd/src/composition.rs|\
+              codex-rs/hepta-agentd/src/memory_service.rs|\
+              codex-rs/hepta-agentd/src/production_writer_host.rs|\
+              codex-rs/hepta-agentd/src/runtime_profile.rs)
+                ;;
+              *)
+                echo "forbidden rustfmt path: $path" >&2
+                exit 1
+                ;;
+            esac
+          done
+          printf '%s\n' "${changed[@]}"
+          test "$(git diff --diff-filter=ACMRTUXB --numstat | wc -l)" -eq "${#changed[@]}"
+
+      - name: Commit and fast-forward exact target branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git config user.name "hepta-maintenance-bot"
+          git config user.email "hepta-maintenance-bot@users.noreply.github.com"
+          git add \
+            codex-rs/hepta-agentd/src/automation.rs \
+            codex-rs/hepta-agentd/src/automation_service.rs \
+            codex-rs/hepta-agentd/src/composition.rs \
+            codex-rs/hepta-agentd/src/memory_service.rs \
+            codex-rs/hepta-agentd/src/production_writer_host.rs \
+            codex-rs/hepta-agentd/src/runtime_profile.rs
+          git diff --cached --check
+          git commit -m "style(hepta-agentd): apply deterministic rustfmt"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
