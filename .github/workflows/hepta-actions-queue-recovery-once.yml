@@ -1,0 +1,93 @@
+name: hepta-actions-queue-recovery-once
+
+on:
+  push:
+    branches:
+      - "ops/hepta-actions-queue-recovery-20260829"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: hepta-actions-queue-recovery-once
+  cancel-in-progress: false
+
+jobs:
+  prune-stale-ui-queue:
+    name: Cancel superseded queued UI runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PROTECTED_HEAD_SHA: e6ba0945cfd7f7ea760c341d93babfd2c8283ac0
+      GRACE_SECONDS: "600"
+    steps:
+      - name: Build and execute bounded cancellation plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?status=queued&per_page=100" \
+            > artifacts/queued.json
+          ruby -rjson -rtime -rdigest -e '
+            payload = JSON.parse(File.read("artifacts/queued.json"))
+            now = Time.now.to_i
+            cutoff = now - Integer(ENV.fetch("GRACE_SECONDS"))
+            protected_sha = ENV.fetch("PROTECTED_HEAD_SHA")
+            candidates = payload.fetch("workflow_runs").select do |run|
+              branch = run["head_branch"].to_s
+              created = Time.parse(run.fetch("created_at")).to_i
+              branch.start_with?("codex/ui-v4-") &&
+                run["head_sha"] != protected_sha &&
+                created <= cutoff
+            end
+            plan = {
+              "schema" => "hepta.actions.queue-recovery.once.v1",
+              "repository" => ENV.fetch("GITHUB_REPOSITORY"),
+              "protectedHeadSha" => protected_sha,
+              "cutoffUnix" => cutoff,
+              "queuedObserved" => payload.fetch("total_count"),
+              "cancelRunIds" => candidates.map { |run| run.fetch("id") }.sort,
+              "cancelled" => [],
+              "failures" => []
+            }
+            canonical = JSON.generate(plan.reject { |key, _| key == "cancelled" || key == "failures" })
+            plan["planSha256"] = Digest::SHA256.hexdigest(canonical)
+            File.write("artifacts/plan.json", JSON.pretty_generate(plan) + "\n")
+          '
+          ruby -rjson -e '
+            plan = JSON.parse(File.read("artifacts/plan.json"))
+            File.write("artifacts/run-ids.txt", plan.fetch("cancelRunIds").join("\n") + (plan.fetch("cancelRunIds").empty? ? "" : "\n"))
+          '
+          while IFS= read -r run_id; do
+            [[ -n "$run_id" ]] || continue
+            code="$(curl --silent --show-error --output "artifacts/cancel-$run_id.json" --write-out '%{http_code}' \
+              -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/cancel")"
+            if [[ "$code" == 202 || "$code" == 409 ]]; then
+              echo "$run_id" >> artifacts/cancelled.txt
+            else
+              printf '%s %s\n' "$run_id" "$code" >> artifacts/failures.txt
+            fi
+          done < artifacts/run-ids.txt
+          ruby -rjson -e '
+            plan = JSON.parse(File.read("artifacts/plan.json"))
+            plan["cancelled"] = File.exist?("artifacts/cancelled.txt") ? File.readlines("artifacts/cancelled.txt", chomp: true).reject(&:empty?).map(&:to_i) : []
+            plan["failures"] = File.exist?("artifacts/failures.txt") ? File.readlines("artifacts/failures.txt", chomp: true).reject(&:empty?) : []
+            File.write("artifacts/result.json", JSON.pretty_generate(plan) + "\n")
+            abort "queue recovery failures" unless plan.fetch("failures").empty?
+          '
+      - name: Upload queue recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-actions-queue-recovery-${{ github.run_id }}
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 7
