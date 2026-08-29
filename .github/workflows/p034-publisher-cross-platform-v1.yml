@@ -1,4 +1,4 @@
-name: p034-qualified-publisher-cross-platform-v6
+name: p034-qualified-publisher-cross-platform-v7
 
 on:
   push:
@@ -36,6 +36,7 @@ jobs:
       EXPECTED_TARGET: 35de548b07d3957679800f694ecf1a6f3e001c36
       P033_HEAD: eddcb59ca43a76ac83b64507983bd908f406ff48
       PAYLOAD_SHA256: bd21ef335c14fa2c78f6a2bb87b4c39d1a8937361c62ca80a92b5907a43617cd
+      PAYLOAD_SOURCE: 4b3b78c7a059b335bcabb36d80958adfbe131078
     steps:
       - name: Enable Windows long paths
         if: runner.os == 'Windows'
@@ -57,6 +58,15 @@ jobs:
             ci/p034-payload/part-00.b64
           sparse-checkout-cone-mode: false
 
+      - name: Checkout immutable payload source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PAYLOAD_SOURCE }}
+          fetch-depth: 1
+          path: s
+          sparse-checkout: .github/workflows/p034-payload-helper-arm-v1.yml
+          sparse-checkout-cone-mode: false
+
       - name: Checkout exact P0.3.4 staging branch
         uses: actions/checkout@v4
         with:
@@ -69,8 +79,11 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Validate immutable complete payload
-        run: python h/ci/p034-extract-full-payload.py h/ci/p034-payload/part-00.b64
+      - name: Recover and validate immutable complete payload
+        run: >-
+          python h/ci/p034-extract-full-payload.py
+          s/.github/workflows/p034-payload-helper-arm-v1.yml
+          h/ci/p034-payload/part-00.b64
 
       - name: Install repository Rust toolchain
         uses: dtolnay/rust-toolchain@stable
