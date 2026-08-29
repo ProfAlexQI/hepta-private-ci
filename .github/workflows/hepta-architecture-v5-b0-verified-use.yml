@@ -14,7 +14,12 @@ on:
       - "docs/architecture/HEPTA_QUALIFICATION_STATUS_V4.json"
       - "docs/architecture/HEPTA_P0_7B_VERIFIED_USE_DELIVERY_CONTRACT_V1.md"
       - "docs/architecture/HEPTA_PHYSICAL_CAPABILITY_BOUNDARY_MATRIX_V1.md"
+      - "scripts/verify-hepta-selected-architecture-plan.py"
       - "scripts/verify-hepta-architecture-plan-v5.py"
+      - "scripts/verify-hepta-v5-b0-format.py"
+      - ".github/workflows/hepta-architecture-plan-v4.yml"
+      - ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml"
+      - ".github/workflows/hepta-p0-7a-direct-arm.yml"
       - ".github/workflows/hepta-architecture-v5-b0-verified-use.yml"
   push:
     branches:
@@ -30,7 +35,12 @@ on:
       - "docs/architecture/HEPTA_QUALIFICATION_STATUS_V4.json"
       - "docs/architecture/HEPTA_P0_7B_VERIFIED_USE_DELIVERY_CONTRACT_V1.md"
       - "docs/architecture/HEPTA_PHYSICAL_CAPABILITY_BOUNDARY_MATRIX_V1.md"
+      - "scripts/verify-hepta-selected-architecture-plan.py"
       - "scripts/verify-hepta-architecture-plan-v5.py"
+      - "scripts/verify-hepta-v5-b0-format.py"
+      - ".github/workflows/hepta-architecture-plan-v4.yml"
+      - ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml"
+      - ".github/workflows/hepta-p0-7a-direct-arm.yml"
       - ".github/workflows/hepta-architecture-v5-b0-verified-use.yml"
 
 permissions:
@@ -82,6 +92,11 @@ jobs:
             echo "production_writer=false"
             echo "model_invocation=false"
             echo "provider_dispatch=false"
+            echo "tool_execution=false"
+            echo "network_connect=false"
+            echo "external_filesystem_mutation=false"
+            echo "secret_operation=false"
+            echo "matrix_send=false"
             echo "external_effect=false"
             echo "fleet_mutation=false"
             echo "operator_acceptance=false"
@@ -92,20 +107,24 @@ jobs:
           git diff --exit-code
           git diff --cached --exit-code
 
-      - name: Compile-check V5 verifier
+      - name: Compile-check selected-plan and B0 verifiers
         working-directory: .
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile scripts/verify-hepta-architecture-plan-v5.py
+          python3 -m py_compile \
+            scripts/verify-hepta-selected-architecture-plan.py \
+            scripts/verify-hepta-architecture-plan-v5.py \
+            scripts/verify-hepta-v5-b0-format.py
 
-      - name: V5 B0 source verifier
+      - name: Verify selected V5 B0 source contract
         working-directory: .
         shell: bash
         run: |
           set -euo pipefail
           evidence_dir="$RUNNER_TEMP/hepta-v5-b0"
-          python3 scripts/verify-hepta-architecture-plan-v5.py 2>&1 | tee "$evidence_dir/source-verifier.log"
+          python3 scripts/verify-hepta-selected-architecture-plan.py 2>&1 | tee "$evidence_dir/source-verifier.log"
+          git diff --check
           echo "source_verifier=passed" >> "$evidence_dir/posture.txt"
 
       - name: Locked workspace metadata
@@ -116,12 +135,13 @@ jobs:
           cargo metadata --locked --no-deps --format-version 1 2>&1 | tee "$evidence_dir/metadata.log" >/dev/null
           echo "locked_metadata=passed" >> "$evidence_dir/posture.txt"
 
-      - name: Rust 1.95 format
+      - name: Rust 1.95 scoped format
+        working-directory: .
         shell: bash
         run: |
           set -euo pipefail
           evidence_dir="$RUNNER_TEMP/hepta-v5-b0"
-          cargo fmt --all -- --check 2>&1 | tee "$evidence_dir/format.log"
+          python3 scripts/verify-hepta-v5-b0-format.py --check 2>&1 | tee "$evidence_dir/format.log"
           echo "format=passed" >> "$evidence_dir/posture.txt"
 
       - name: Focused verified-use tests
