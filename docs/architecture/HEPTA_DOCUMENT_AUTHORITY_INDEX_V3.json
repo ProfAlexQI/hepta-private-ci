@@ -73,6 +73,12 @@
       "editable": true
     },
     {
+      "id": "runtime_bootstrap_recovery_matrix",
+      "path": "docs/architecture/HEPTA_RUNTIME_BOOTSTRAP_RECOVERY_MATRIX_V1.md",
+      "class": "normative_component_contract",
+      "editable": true
+    },
+    {
       "id": "physical_capability_boundaries",
       "path": "docs/architecture/HEPTA_PHYSICAL_CAPABILITY_BOUNDARY_MATRIX_V1.md",
       "class": "normative_boundary_matrix",

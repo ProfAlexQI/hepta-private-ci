@@ -53,30 +53,45 @@
       ]
     },
     "A-TRANSPORT-01": {
-      "state": "source_in_progress",
+      "state": "source_implemented",
       "owner": "supervisor_agentd_fleet",
-      "problem": "fallback handoff checks require explicit no-follow open and owner identity closure",
+      "problem": "fallback handoff and immutable registry objects require no-follow, owner-bound, link-exact and metadata-stable transport",
+      "sourceEvidence": [
+        "codex-rs/hepta-supervisor/src/runtime_bootstrap.rs",
+        "codex-rs/hepta-agentd/src/runtime_bootstrap.rs",
+        "codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs",
+        "codex-rs/hepta-supervisor/src/runtime_bootstrap_tests.rs",
+        "codex-rs/hepta-agentd/src/runtime_bootstrap_tests.rs",
+        "codex-rs/hepta-fleet/src/runtime_bootstrap_registry_tests.rs",
+        "docs/architecture/HEPTA_RUNTIME_BOOTSTRAP_RECOVERY_MATRIX_V1.md"
+      ],
       "closureCriteria": [
         "document, reservation, claim and trust/provenance objects reject symlink and unsafe hardlink states",
-        "Unix owner UID is verified against the owning run/state root or effective UID",
-        "metadata and content identity are stable across open/read/use"
+        "Unix owner UID is verified against the owning run or registry directory",
+        "mode, link count, opened inode, path inode and content identity remain stable across publish, read and claim",
+        "physical tests cover wrong mode, symlink, hardlink and exact publication metadata"
       ]
     },
     "A-RECOVERY-01": {
-      "state": "source_in_progress",
+      "state": "source_implemented",
       "owner": "supervisor_agentd",
-      "problem": "all durable publication/claim crash windows need explicit tests and recovery classification",
+      "problem": "all durable publication and claim crash windows require explicit fail-closed classification and fresh-generation recovery",
+      "sourceEvidence": [
+        "docs/architecture/HEPTA_RUNTIME_BOOTSTRAP_RECOVERY_MATRIX_V1.md",
+        "codex-rs/hepta-supervisor/src/runtime_bootstrap_tests.rs",
+        "codex-rs/hepta-agentd/src/runtime_bootstrap_tests.rs"
+      ],
       "closureCriteria": [
         "partial reservation blocks reinterpretation",
         "published unclaimed handoff can only be consumed by its exact generation",
-        "claimed handoff cannot replay after restart",
+        "claimed handoff cannot replay after restart or partial cleanup",
         "a later generation can issue a fresh nonce without deleting historical claim evidence"
       ]
     },
     "A-CI-01": {
       "state": "not_run",
       "owner": "hosted_runner",
-      "problem": "current P0.7a run is pending with jobs=[]",
+      "problem": "observed P0.7a jobs have runner_id=0 and steps=[]",
       "closureCriteria": [
         "runner is assigned",
         "steps are non-empty",
@@ -100,21 +115,39 @@
     "P0.7a_signedRuntimeBootstrapClosure": {
       "state": "source_in_progress",
       "owner": "supervisor_agentd_contracts_fleet",
-      "blockedBy": ["A-LOCK-01", "A-TRANSPORT-01", "A-RECOVERY-01"],
-      "externalEvidence": ["A-CI-01"],
+      "blockedBy": [
+        "A-LOCK-01"
+      ],
+      "implementedPendingQualification": [
+        "A-TRANSPORT-01",
+        "A-RECOVERY-01"
+      ],
+      "externalEvidence": [
+        "A-CI-01"
+      ],
       "authorityDelta": "none"
     },
     "P0.7b_allPhysicalBoundariesCheckedPerUse": {
       "state": "open",
       "owner": "model_provider_tool_network_secret_matrix_fleet_adapters",
-      "blockedBy": ["P0.7a_signedRuntimeBootstrapClosure"],
-      "subpackages": ["B0_verified_use_kernel", "B1_model_provider", "B2_tool_network_filesystem", "B3_secret_matrix_fleet", "B4_negative_callsite_proof"],
+      "blockedBy": [
+        "P0.7a_signedRuntimeBootstrapClosure"
+      ],
+      "subpackages": [
+        "B0_verified_use_kernel",
+        "B1_model_provider",
+        "B2_tool_network_filesystem",
+        "B3_secret_matrix_fleet",
+        "B4_negative_callsite_proof"
+      ],
       "authorityDelta": "none"
     },
     "P0.7c_memoryBoundedContextExtraction": {
       "state": "open",
       "owner": "memory_architecture",
-      "blockedBy": ["B0_verified_use_kernel"],
+      "blockedBy": [
+        "B0_verified_use_kernel"
+      ],
       "closureCriteria": [
         "pure types, store, retrieval, federation, compact, trajectory, shadow learning and production writer are physical crates",
         "one migration owner exists per schema",
@@ -126,7 +159,9 @@
     "P0.7d_commonDurableFaultMatrix": {
       "state": "open",
       "owner": "all_durable_store_owners",
-      "blockedBy": ["B0_verified_use_kernel"],
+      "blockedBy": [
+        "B0_verified_use_kernel"
+      ],
       "closureCriteria": [
         "Memory, Automation, TaskFlow, Matrix, Evidence and Fleet execute every applicable F01-F18 row",
         "aggregate result contains no omitted row",
@@ -137,7 +172,9 @@
     "P0.7e_dependencyInversionAndWireIsolation": {
       "state": "open",
       "owner": "architecture_ports_and_protocol",
-      "blockedBy": ["P0.7c_memoryBoundedContextExtraction"],
+      "blockedBy": [
+        "P0.7c_memoryBoundedContextExtraction"
+      ],
       "closureCriteria": [
         "generic Codex owners do not depend on concrete Hepta implementations",
         "wire crates do not depend on Automation, Fleet registry, SQL, daemon or binary implementations",
@@ -149,36 +186,70 @@
     "P0.8a_astAuthorityCallerRatchet": {
       "state": "open",
       "owner": "contracts_ci",
-      "blockedBy": ["P0.7b_allPhysicalBoundariesCheckedPerUse", "P0.7e_dependencyInversionAndWireIsolation"],
+      "blockedBy": [
+        "P0.7b_allPhysicalBoundariesCheckedPerUse",
+        "P0.7e_dependencyInversionAndWireIsolation"
+      ],
       "authorityDelta": "none"
     },
     "P0.8b_fleetRuntimeInstanceProjection": {
       "state": "open",
       "owner": "agentd_supervisor",
-      "blockedBy": ["P0.7a_signedRuntimeBootstrapClosure"],
+      "blockedBy": [
+        "P0.7a_signedRuntimeBootstrapClosure"
+      ],
       "authorityDelta": "none"
     },
     "P0.8c_runtimeResourceBudgetEnforcement": {
       "state": "open",
       "owner": "agentd_and_domain_services",
-      "blockedBy": ["P0.7c_memoryBoundedContextExtraction", "P0.7d_commonDurableFaultMatrix", "P0.8b_fleetRuntimeInstanceProjection"],
+      "blockedBy": [
+        "P0.7c_memoryBoundedContextExtraction",
+        "P0.7d_commonDurableFaultMatrix",
+        "P0.8b_fleetRuntimeInstanceProjection"
+      ],
       "authorityDelta": "none"
     },
     "P0.8d_realProcessVerticalSlice": {
       "state": "open",
       "owner": "product_qualification",
-      "blockedBy": ["P0.8a_astAuthorityCallerRatchet", "P0.8b_fleetRuntimeInstanceProjection", "P0.8c_runtimeResourceBudgetEnforcement"],
+      "blockedBy": [
+        "P0.8a_astAuthorityCallerRatchet",
+        "P0.8b_fleetRuntimeInstanceProjection",
+        "P0.8c_runtimeResourceBudgetEnforcement"
+      ],
       "authorityDelta": "none"
     }
   },
   "externalGates": {
-    "liveRepositoryRuleset": {"state": "blocked_external", "closureCriteria": "live GitHub administration equals the checked-in contract"},
-    "exactSourceHeadExecution": {"state": "not_run", "closureCriteria": "assigned runner, non-empty successful steps and exact commit/tree"},
-    "mergeCandidateExecution": {"state": "not_run", "closureCriteria": "assigned runner, non-empty successful steps and exact merge identity"},
-    "independentCodeOwnerReview": {"state": "blocked_external", "closureCriteria": "distinct current-head reviewer approval and resolved conversations"},
-    "operatorAcceptance": {"state": "blocked_external", "closureCriteria": "candidate-bound signed independent operator acceptance"},
-    "promotion": {"state": "blocked_external", "closureCriteria": "candidate-bound signed promotion receipt"},
-    "release": {"state": "blocked_external", "closureCriteria": "signed release manifest, provenance, SBOM and rollback evidence"}
+    "liveRepositoryRuleset": {
+      "state": "blocked_external",
+      "closureCriteria": "live GitHub administration equals the checked-in contract"
+    },
+    "exactSourceHeadExecution": {
+      "state": "not_run",
+      "closureCriteria": "assigned runner, non-empty successful steps and exact commit/tree"
+    },
+    "mergeCandidateExecution": {
+      "state": "not_run",
+      "closureCriteria": "assigned runner, non-empty successful steps and exact merge identity"
+    },
+    "independentCodeOwnerReview": {
+      "state": "blocked_external",
+      "closureCriteria": "distinct current-head reviewer approval and resolved conversations"
+    },
+    "operatorAcceptance": {
+      "state": "blocked_external",
+      "closureCriteria": "candidate-bound signed independent operator acceptance"
+    },
+    "promotion": {
+      "state": "blocked_external",
+      "closureCriteria": "candidate-bound signed promotion receipt"
+    },
+    "release": {
+      "state": "blocked_external",
+      "closureCriteria": "signed release manifest, provenance, SBOM and rollback evidence"
+    }
   },
   "completion": {
     "allSourceGapsClosed": false,

@@ -26,6 +26,22 @@ use crate::AgentdError;
 
 const MAX_BOOTSTRAP_FILE_BYTES: u64 = 64 * 1024;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LinkCountPolicy {
+    Single,
+    ClaimedPair,
+}
+
+impl LinkCountPolicy {
+    #[cfg(unix)]
+    const fn expected(self) -> u64 {
+        match self {
+            Self::Single => 1,
+            Self::ClaimedPair => 2,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RuntimeBootstrapAdmission {
     /// Direct/unversioned or legacy catalog startup with no installed
@@ -118,10 +134,20 @@ pub(crate) fn consume_runtime_bootstrap(
         )));
     }
 
-    let document = RuntimeBootstrapDocument::decode(&read_owner_only(&document_path)?)
+    let document_bytes = read_owner_only(
+        &document_path,
+        record.layout.run_root(),
+        LinkCountPolicy::Single,
+    )?;
+    let document = RuntimeBootstrapDocument::decode(&document_bytes)
         .map_err(|error| AgentdError::GenerationFenced(error.to_string()))?;
+    let reservation_bytes = read_owner_only(
+        &reservation_path,
+        record.layout.run_root(),
+        LinkCountPolicy::Single,
+    )?;
     let reservation: RuntimeBootstrapReservation =
-        serde_json::from_slice(&read_owner_only(&reservation_path)?).map_err(|error| {
+        serde_json::from_slice(&reservation_bytes).map_err(|error| {
             AgentdError::GenerationFenced(format!(
                 "runtime bootstrap reservation decode failed: {error}"
             ))
@@ -171,7 +197,12 @@ pub(crate) fn consume_runtime_bootstrap(
     )
     .map_err(|error| AgentdError::GenerationFenced(error.to_string()))?;
 
-    claim_reservation(&reservation_path, &claim_path, record.layout.run_root())?;
+    claim_reservation(
+        &reservation_path,
+        &claim_path,
+        record.layout.run_root(),
+        &reservation_bytes,
+    )?;
 
     // The claim is durable before this second read. Any drift after the claim
     // is retained as consumed/recovery-required rather than retried.
@@ -261,16 +292,53 @@ fn claim_reservation(
     reservation_path: &Path,
     claim_path: &Path,
     run_root: &Path,
+    expected_reservation: &[u8],
 ) -> Result<(), AgentdError> {
+    let expected_owner_uid = owner_uid(run_root)?;
+    let before = secure_metadata(
+        reservation_path,
+        expected_owner_uid,
+        LinkCountPolicy::Single,
+    )?;
     match std::fs::hard_link(reservation_path, claim_path) {
-        Ok(()) => sync_directory(run_root),
+        Ok(()) => {}
         Err(error) if error.kind() == ErrorKind::AlreadyExists => {
-            Err(AgentdError::GenerationFenced(
+            return Err(AgentdError::GenerationFenced(
                 "runtime bootstrap nonce was already claimed".to_string(),
-            ))
+            ));
         }
-        Err(error) => Err(error.into()),
+        Err(error) => return Err(error.into()),
     }
+    sync_directory(run_root)?;
+
+    let reservation = secure_metadata(
+        reservation_path,
+        expected_owner_uid,
+        LinkCountPolicy::ClaimedPair,
+    )?;
+    let claim = secure_metadata(
+        claim_path,
+        expected_owner_uid,
+        LinkCountPolicy::ClaimedPair,
+    )?;
+    if physical_identity(&before) != physical_identity(&reservation)
+        || physical_identity(&reservation) != physical_identity(&claim)
+    {
+        return Err(AgentdError::GenerationFenced(
+            "runtime bootstrap claim does not bind the verified reservation inode".to_string(),
+        ));
+    }
+    let claimed_bytes = read_owner_only(
+        claim_path,
+        run_root,
+        LinkCountPolicy::ClaimedPair,
+    )?;
+    if claimed_bytes != expected_reservation {
+        return Err(AgentdError::GenerationFenced(
+            "runtime bootstrap claim bytes drifted from the verified reservation".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn physical_path_exists(path: &Path) -> Result<bool, AgentdError> {
@@ -281,8 +349,13 @@ fn physical_path_exists(path: &Path) -> Result<bool, AgentdError> {
     }
 }
 
-fn read_owner_only(path: &Path) -> Result<Vec<u8>, AgentdError> {
-    let before = secure_metadata(path)?;
+fn read_owner_only(
+    path: &Path,
+    owner_root: &Path,
+    link_policy: LinkCountPolicy,
+) -> Result<Vec<u8>, AgentdError> {
+    let expected_owner_uid = owner_uid(owner_root)?;
+    let before = secure_metadata(path, expected_owner_uid, link_policy)?;
     if before.len() == 0 || before.len() > MAX_BOOTSTRAP_FILE_BYTES {
         return Err(AgentdError::GenerationFenced(format!(
             "runtime bootstrap object is outside its byte bound: {}",
@@ -291,17 +364,23 @@ fn read_owner_only(path: &Path) -> Result<Vec<u8>, AgentdError> {
     }
     let mut options = OpenOptions::new();
     options.read(true);
-    let mut file = options.open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    let file = options.open(path)?;
     let opened = file.metadata()?;
+    validate_secure_metadata(path, &opened, expected_owner_uid, link_policy)?;
     if metadata_identity(&before) != metadata_identity(&opened) {
         return Err(AgentdError::GenerationFenced(
-            "runtime bootstrap path changed before open".to_string(),
+            "runtime bootstrap path changed before no-follow open".to_string(),
         ));
     }
     let mut bytes = Vec::with_capacity(before.len() as usize);
     file.take(MAX_BOOTSTRAP_FILE_BYTES + 1)
         .read_to_end(&mut bytes)?;
-    let after = secure_metadata(path)?;
+    let after = secure_metadata(path, expected_owner_uid, link_policy)?;
     if metadata_identity(&before) != metadata_identity(&after)
         || bytes.len() as u64 > MAX_BOOTSTRAP_FILE_BYTES
     {
@@ -312,8 +391,22 @@ fn read_owner_only(path: &Path) -> Result<Vec<u8>, AgentdError> {
     Ok(bytes)
 }
 
-fn secure_metadata(path: &Path) -> Result<std::fs::Metadata, AgentdError> {
+fn secure_metadata(
+    path: &Path,
+    expected_owner_uid: Option<u32>,
+    link_policy: LinkCountPolicy,
+) -> Result<std::fs::Metadata, AgentdError> {
     let metadata = std::fs::symlink_metadata(path)?;
+    validate_secure_metadata(path, &metadata, expected_owner_uid, link_policy)?;
+    Ok(metadata)
+}
+
+fn validate_secure_metadata(
+    path: &Path,
+    metadata: &std::fs::Metadata,
+    expected_owner_uid: Option<u32>,
+    link_policy: LinkCountPolicy,
+) -> Result<(), AgentdError> {
     if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
         return Err(AgentdError::GenerationFenced(format!(
             "runtime bootstrap object is not a physical regular file: {}",
@@ -324,21 +417,66 @@ fn secure_metadata(path: &Path) -> Result<std::fs::Metadata, AgentdError> {
     {
         use std::os::unix::fs::MetadataExt as _;
         use std::os::unix::fs::PermissionsExt as _;
-        if metadata.nlink() != 1 || metadata.permissions().mode() & 0o777 != 0o400 {
+        if metadata.nlink() != link_policy.expected()
+            || metadata.permissions().mode() & 0o777 != 0o400
+        {
             return Err(AgentdError::GenerationFenced(format!(
-                "runtime bootstrap object is not single-link owner-read-only: {}",
+                "runtime bootstrap object has a wrong mode or link count: {}",
+                path.display()
+            )));
+        }
+        if expected_owner_uid.is_some_and(|expected| metadata.uid() != expected) {
+            return Err(AgentdError::GenerationFenced(format!(
+                "runtime bootstrap object owner differs from the Agent run root: {}",
                 path.display()
             )));
         }
     }
     #[cfg(not(unix))]
-    if !metadata.permissions().readonly() {
+    {
+        let _ = expected_owner_uid;
+        let _ = link_policy;
+        if !metadata.permissions().readonly() {
+            return Err(AgentdError::GenerationFenced(format!(
+                "runtime bootstrap object is not read-only: {}",
+                path.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn owner_uid(path: &Path) -> Result<Option<u32>, AgentdError> {
+    use std::os::unix::fs::MetadataExt as _;
+    use std::os::unix::fs::PermissionsExt as _;
+    let metadata = std::fs::symlink_metadata(path)?;
+    if !metadata.file_type().is_dir()
+        || metadata.file_type().is_symlink()
+        || metadata.permissions().mode() & 0o077 != 0
+    {
         return Err(AgentdError::GenerationFenced(format!(
-            "runtime bootstrap object is not read-only: {}",
+            "Agent run root is not a physical owner-only directory: {}",
             path.display()
         )));
     }
-    Ok(metadata)
+    Ok(Some(metadata.uid()))
+}
+
+#[cfg(not(unix))]
+fn owner_uid(_path: &Path) -> Result<Option<u32>, AgentdError> {
+    Ok(None)
+}
+
+#[cfg(unix)]
+fn physical_identity(metadata: &std::fs::Metadata) -> (u64, u64, u64) {
+    use std::os::unix::fs::MetadataExt as _;
+    (metadata.dev(), metadata.ino(), metadata.len())
+}
+
+#[cfg(not(unix))]
+fn physical_identity(metadata: &std::fs::Metadata) -> (u64,) {
+    (metadata.len(),)
 }
 
 #[cfg(unix)]

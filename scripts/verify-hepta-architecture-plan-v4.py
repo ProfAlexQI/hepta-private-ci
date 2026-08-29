@@ -17,6 +17,7 @@ PLAN = "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V4.md"
 LEDGER = "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V4.json"
 STATUS = "docs/architecture/HEPTA_QUALIFICATION_STATUS_V3.json"
 BOOTSTRAP = "docs/architecture/HEPTA_RUNTIME_GRANT_BOOTSTRAP_V1.md"
+RECOVERY = "docs/architecture/HEPTA_RUNTIME_BOOTSTRAP_RECOVERY_MATRIX_V1.md"
 BOUNDARY = "docs/architecture/HEPTA_PHYSICAL_CAPABILITY_BOUNDARY_MATRIX_V1.md"
 FAULTS = "docs/architecture/HEPTA_COMMON_DURABLE_FAULT_MATRIX_V1.md"
 BUDGETS = "docs/architecture/HEPTA_RESOURCE_BUDGETS_V1.md"
@@ -142,6 +143,7 @@ def verify_document_index() -> None:
         LEDGER,
         STATUS,
         BOOTSTRAP,
+        RECOVERY,
         BOUNDARY,
         FAULTS,
         BUDGETS,
@@ -303,8 +305,13 @@ def verify_status() -> None:
     observed = status.get("observedExternalExecution")
     if not isinstance(observed, dict):
         fail("observed external execution is missing")
-    if observed.get("jobCount") == 0 and observed.get("qualificationClaim") != "not_run":
-        fail("zero-job Actions evidence must remain not_run")
+    no_executable_jobs = (
+        observed.get("jobCount", 0) == 0
+        or observed.get("assignedRunnerCount", 0) == 0
+        or observed.get("nonEmptyStepJobCount", 0) == 0
+    )
+    if no_executable_jobs and observed.get("qualificationClaim") != "not_run":
+        fail("zero-runner or empty-step Actions evidence must remain not_run")
     qualification = status.get("qualification")
     if not isinstance(qualification, dict) or not qualification:
         fail("qualification matrix is missing")
@@ -354,7 +361,7 @@ def verify_lock_alignment(ledger: dict[str, Any]) -> None:
     expected = {
         "codex-hepta-contracts": {"base64", "ed25519-dalek"},
         "codex-hepta-fleet": {"libc"},
-        "codex-hepta-agentd": {"ed25519-dalek"},
+        "codex-hepta-agentd": {"ed25519-dalek", "libc"},
     }
     missing: list[str] = []
     for package, dependencies in expected.items():
@@ -375,25 +382,47 @@ def verify_conditional_source(ledger: dict[str, Any]) -> None:
     recovery_state = blockers["A-RECOVERY-01"]["state"]
     agentd_source = text("codex-rs/hepta-agentd/src/runtime_bootstrap.rs")
     fleet_source = text("codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs")
+    supervisor_source = text("codex-rs/hepta-supervisor/src/runtime_bootstrap.rs")
     agentd_tests = text("codex-rs/hepta-agentd/src/runtime_bootstrap_tests.rs")
+    fleet_tests = text("codex-rs/hepta-fleet/src/runtime_bootstrap_registry_tests.rs")
     supervisor_tests = text("codex-rs/hepta-supervisor/src/runtime_bootstrap_tests.rs")
     if transport_state in ADVANCED_SOURCE_STATES:
-        for marker in ("O_NOFOLLOW", ".uid()", ".nlink()", "symlink", "hardlink", "wrong mode"):
-            haystack = "\n".join((agentd_source, fleet_source, agentd_tests, supervisor_tests))
+        haystack = "\n".join(
+            (
+                agentd_source,
+                fleet_source,
+                supervisor_source,
+                agentd_tests,
+                fleet_tests,
+                supervisor_tests,
+            )
+        )
+        for marker in (
+            "O_NOFOLLOW",
+            ".uid()",
+            ".nlink()",
+            "symlink",
+            "hardlink",
+            "wrong mode",
+            "owner-read-only",
+            "no-follow open",
+        ):
             if marker not in haystack:
                 fail(f"A-TRANSPORT-01 advanced without source marker {marker!r}")
     if recovery_state in ADVANCED_SOURCE_STATES:
+        haystack = "\n".join((agentd_tests, supervisor_tests, text(RECOVERY)))
         for marker in (
             "claim",
             "fresh generation",
             "partial reservation",
             "published handoff",
             "replay",
+            "crash after claim",
+            "RECOVERY_REQUIRED",
+            "CONSUMED",
         ):
-            haystack = "\n".join((agentd_tests, supervisor_tests))
             if marker not in haystack:
-                fail(f"A-RECOVERY-01 advanced without test marker {marker!r}")
-
+                fail(f"A-RECOVERY-01 advanced without test/contract marker {marker!r}")
 
 def verify_component_contracts() -> None:
     require_markers(
@@ -403,6 +432,21 @@ def verify_component_contracts() -> None:
             "Owner-only bootstrap file",
             "durable nonce compare-and-claim",
             "P0.7a never self-issues operator acceptance, promotion or release",
+        ),
+    )
+    require_markers(
+        RECOVERY,
+        (
+            "Physical transport invariant",
+            "Publication protocol",
+            "Claim protocol",
+            "Durable state matrix",
+            "Crash-window requirements",
+            "Fresh-generation recovery",
+            "RECOVERY_REQUIRED",
+            "CONSUMED",
+            "O_NOFOLLOW",
+            "No cleanup, repair tool or operator action may rewrite old files",
         ),
     )
     require_markers(

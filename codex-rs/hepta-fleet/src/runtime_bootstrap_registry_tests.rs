@@ -8,6 +8,10 @@ use crate::ReleaseId;
 use crate::ResourceBudget;
 use crate::WorkspaceBinding;
 
+use super::RELEASE_PROVENANCE_DIRECTORY;
+use super::TRUST_ROOT_DIRECTORY;
+use super::trust_root_file_name;
+
 const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 const SOURCE_COMMIT: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const SOURCE_TREE: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -52,17 +56,42 @@ fn setup() -> (
     (temp, registry, agent_id, release_id, release.program)
 }
 
+fn trust_path(registry: &FleetRegistry) -> std::path::PathBuf {
+    registry
+        .layout()
+        .state_root()
+        .join(TRUST_ROOT_DIRECTORY)
+        .join(trust_root_file_name("runtime-key", 7))
+}
+
+fn provenance_path(
+    registry: &FleetRegistry,
+    agent_id: &AgentId,
+    release_id: &ReleaseId,
+) -> std::path::PathBuf {
+    registry
+        .layout()
+        .state_root()
+        .join(RELEASE_PROVENANCE_DIRECTORY)
+        .join(agent_id.as_str())
+        .join(format!("{}.json", release_id.as_str()))
+}
+
+fn trust_root() -> RuntimeBootstrapTrustRoot {
+    RuntimeBootstrapTrustRoot::new("runtime-key", 7, PUBLIC_KEY).expect("trust root")
+}
+
 #[test]
-fn trust_root_is_immutable_and_selector_bound() {
+fn trust_root_is_immutable_selector_bound_and_physically_sealed() {
     let (_temp, registry, _agent_id, _release_id, _program) = setup();
-    let trust = RuntimeBootstrapTrustRoot::new("runtime-key", 7, PUBLIC_KEY)
-        .expect("trust root");
+    let trust = trust_root();
     registry
         .install_runtime_bootstrap_trust_root(&trust)
         .expect("install trust root");
     registry
         .install_runtime_bootstrap_trust_root(&trust)
         .expect("idempotent identical trust root");
+    assert_registry_object(&trust_path(&registry));
     let resolved = registry
         .resolve_runtime_bootstrap_trust_root("runtime-key", 7)
         .expect("resolve trust root");
@@ -73,7 +102,7 @@ fn trust_root_is_immutable_and_selector_bound() {
 }
 
 #[test]
-fn release_provenance_binds_source_manifest_and_binary() {
+fn release_provenance_binds_source_manifest_binary_and_physical_identity() {
     let (_temp, registry, agent_id, release_id, program) = setup();
     let installed = registry
         .install_runtime_release_provenance(
@@ -83,6 +112,7 @@ fn release_provenance_binds_source_manifest_and_binary() {
             SOURCE_TREE,
         )
         .expect("install provenance");
+    assert_registry_object(&provenance_path(&registry, &agent_id, &release_id));
     let resolved = registry
         .resolve_runtime_release_for_program(&agent_id, &program)
         .expect("resolve by exact program");
@@ -107,4 +137,77 @@ fn unknown_program_and_noncanonical_source_identity_fail_closed() {
     assert!(registry
         .resolve_runtime_release_for_program(&agent_id, &unknown)
         .is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn trust_root_wrong_mode_and_unsafe_hardlink_fail_closed() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let (_temp, registry, _agent_id, _release_id, _program) = setup();
+    registry
+        .install_runtime_bootstrap_trust_root(&trust_root())
+        .expect("install trust root");
+    let path = trust_path(&registry);
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+        .expect("wrong mode");
+    assert!(registry
+        .resolve_runtime_bootstrap_trust_root("runtime-key", 7)
+        .is_err());
+
+    let (_temp, registry, _agent_id, _release_id, _program) = setup();
+    registry
+        .install_runtime_bootstrap_trust_root(&trust_root())
+        .expect("install trust root");
+    let path = trust_path(&registry);
+    std::fs::hard_link(&path, path.with_extension("alias")).expect("hardlink alias");
+    assert!(registry
+        .resolve_runtime_bootstrap_trust_root("runtime-key", 7)
+        .is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn provenance_symlink_is_rejected_without_following_target() {
+    use std::os::unix::fs::symlink;
+
+    let (_temp, registry, agent_id, release_id, _program) = setup();
+    registry
+        .install_runtime_release_provenance(
+            &agent_id,
+            &release_id,
+            SOURCE_COMMIT,
+            SOURCE_TREE,
+        )
+        .expect("install provenance");
+    let path = provenance_path(&registry, &agent_id, &release_id);
+    let target = path.with_extension("retained");
+    std::fs::rename(&path, &target).expect("retain target");
+    symlink(&target, &path).expect("install symlink");
+    assert!(registry
+        .resolve_runtime_release_provenance(&agent_id, &release_id)
+        .is_err());
+}
+
+#[cfg(unix)]
+fn assert_registry_object(path: &std::path::Path) {
+    use std::os::unix::fs::MetadataExt as _;
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let parent = path.parent().expect("parent");
+    let parent_metadata = std::fs::symlink_metadata(parent).expect("parent metadata");
+    let metadata = std::fs::symlink_metadata(path).expect("registry object metadata");
+    assert!(metadata.file_type().is_file());
+    assert!(!metadata.file_type().is_symlink());
+    assert_eq!(metadata.uid(), parent_metadata.uid());
+    assert_eq!(metadata.nlink(), 1);
+    assert_eq!(metadata.permissions().mode() & 0o777, 0o400);
+}
+
+#[cfg(not(unix))]
+fn assert_registry_object(path: &std::path::Path) {
+    assert!(std::fs::metadata(path)
+        .expect("registry object metadata")
+        .permissions()
+        .readonly());
 }

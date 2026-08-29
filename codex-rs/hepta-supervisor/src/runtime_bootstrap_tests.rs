@@ -122,6 +122,8 @@ fn issuer_publishes_reservation_then_signed_handoff_for_exact_generation() {
     assert!(reservation_path.is_file());
     assert!(document_path.is_file());
     assert!(!claim_path.exists());
+    assert_owner_bound_single_link_read_only(&fixture.spec.run_root, &reservation_path);
+    assert_owner_bound_single_link_read_only(&fixture.spec.run_root, &document_path);
     let on_disk = RuntimeBootstrapDocument::decode(
         &std::fs::read(document_path).expect("read handoff"),
     )
@@ -173,4 +175,56 @@ fn partial_reservation_is_retained_and_blocks_reinterpretation() {
         .run_root
         .join(runtime_bootstrap_document_file_name(fixture.spec.generation))
         .exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn broken_symlink_state_blocks_reservation_and_document_publication() {
+    use std::os::unix::fs::symlink;
+
+    let fixture = fixture(true, true);
+    let document_path = fixture
+        .spec
+        .run_root
+        .join(runtime_bootstrap_document_file_name(fixture.spec.generation));
+    symlink(
+        fixture.spec.run_root.join("missing-bootstrap-target"),
+        &document_path,
+    )
+    .expect("install broken symlink");
+    assert!(fixture
+        .issuer
+        .prepare_spawn(&fixture.registry, &fixture.spec, 100)
+        .is_err());
+    assert!(std::fs::symlink_metadata(&document_path)
+        .expect("symlink retained")
+        .file_type()
+        .is_symlink());
+    assert!(!fixture
+        .spec
+        .run_root
+        .join(runtime_bootstrap_reservation_file_name(fixture.spec.generation))
+        .exists());
+}
+
+#[cfg(unix)]
+fn assert_owner_bound_single_link_read_only(parent: &std::path::Path, path: &std::path::Path) {
+    use std::os::unix::fs::MetadataExt as _;
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let parent_metadata = std::fs::symlink_metadata(parent).expect("parent metadata");
+    let metadata = std::fs::symlink_metadata(path).expect("object metadata");
+    assert!(metadata.file_type().is_file());
+    assert!(!metadata.file_type().is_symlink());
+    assert_eq!(metadata.uid(), parent_metadata.uid());
+    assert_eq!(metadata.nlink(), 1);
+    assert_eq!(metadata.permissions().mode() & 0o777, 0o400);
+}
+
+#[cfg(not(unix))]
+fn assert_owner_bound_single_link_read_only(_parent: &std::path::Path, path: &std::path::Path) {
+    assert!(std::fs::metadata(path)
+        .expect("object metadata")
+        .permissions()
+        .readonly());
 }

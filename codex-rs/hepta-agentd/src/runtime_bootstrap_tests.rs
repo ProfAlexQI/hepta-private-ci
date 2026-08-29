@@ -111,6 +111,30 @@ fn fixture(provenance: bool) -> Fixture {
     }
 }
 
+fn document_path(fixture: &Fixture, generation: u64) -> std::path::PathBuf {
+    fixture
+        .record
+        .layout
+        .run_root()
+        .join(runtime_bootstrap_document_file_name(generation))
+}
+
+fn reservation_path(fixture: &Fixture, generation: u64) -> std::path::PathBuf {
+    fixture
+        .record
+        .layout
+        .run_root()
+        .join(runtime_bootstrap_reservation_file_name(generation))
+}
+
+fn claim_path(fixture: &Fixture, generation: u64) -> std::path::PathBuf {
+    fixture
+        .record
+        .layout
+        .run_root()
+        .join(runtime_bootstrap_claim_file_name(generation))
+}
+
 #[test]
 fn valid_bootstrap_is_claimed_once_before_service_start() {
     let fixture = fixture(true);
@@ -134,24 +158,9 @@ fn valid_bootstrap_is_claimed_once_before_service_start() {
         } if release_id == "release-v1"
     ));
     let generation = fixture.record.lifecycle.generation;
-    assert!(fixture
-        .record
-        .layout
-        .run_root()
-        .join(runtime_bootstrap_claim_file_name(generation))
-        .is_file());
-    assert!(!fixture
-        .record
-        .layout
-        .run_root()
-        .join(runtime_bootstrap_document_file_name(generation))
-        .exists());
-    assert!(!fixture
-        .record
-        .layout
-        .run_root()
-        .join(runtime_bootstrap_reservation_file_name(generation))
-        .exists());
+    assert!(claim_path(&fixture, generation).is_file());
+    assert!(!document_path(&fixture, generation).exists());
+    assert!(!reservation_path(&fixture, generation).exists());
     assert!(consume_runtime_bootstrap(
         &fixture.registry,
         &fixture.record,
@@ -197,11 +206,7 @@ fn expired_or_tampered_handoff_never_creates_a_claim() {
             .prepare_spawn(&fixture.registry, &fixture.spec, 100)
             .expect("prepare bootstrap");
         let generation = fixture.record.lifecycle.generation;
-        let document_path = fixture
-            .record
-            .layout
-            .run_root()
-            .join(runtime_bootstrap_document_file_name(generation));
+        let document_path = document_path(&fixture, generation);
         if tamper {
             make_writable(&document_path);
             let mut bytes = std::fs::read(&document_path).expect("read document");
@@ -221,13 +226,184 @@ fn expired_or_tampered_handoff_never_creates_a_claim() {
             observed
         )
         .is_err());
-        assert!(!fixture
-            .record
-            .layout
-            .run_root()
-            .join(runtime_bootstrap_claim_file_name(generation))
-            .exists());
+        assert!(!claim_path(&fixture, generation).exists());
     }
+}
+
+#[test]
+fn published_handoff_with_wrong_mode_is_recovery_required_before_claim() {
+    let fixture = fixture(true);
+    fixture
+        .issuer
+        .prepare_spawn(&fixture.registry, &fixture.spec, 100)
+        .expect("published handoff");
+    let generation = fixture.record.lifecycle.generation;
+    make_writable(&document_path(&fixture, generation));
+    assert!(consume_runtime_bootstrap(
+        &fixture.registry,
+        &fixture.record,
+        &fixture.program,
+        150
+    )
+    .is_err());
+    assert!(!claim_path(&fixture, generation).exists());
+}
+
+#[test]
+fn partial_reservation_without_document_is_recovery_required() {
+    let fixture = fixture(true);
+    fixture
+        .issuer
+        .prepare_spawn(&fixture.registry, &fixture.spec, 100)
+        .expect("published handoff");
+    let generation = fixture.record.lifecycle.generation;
+    std::fs::remove_file(document_path(&fixture, generation)).expect("remove document");
+    assert!(consume_runtime_bootstrap(
+        &fixture.registry,
+        &fixture.record,
+        &fixture.program,
+        150
+    )
+    .is_err());
+    assert!(reservation_path(&fixture, generation).exists());
+    assert!(!claim_path(&fixture, generation).exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_handoff_is_rejected_before_claim() {
+    use std::os::unix::fs::symlink;
+
+    let fixture = fixture(true);
+    fixture
+        .issuer
+        .prepare_spawn(&fixture.registry, &fixture.spec, 100)
+        .expect("published handoff");
+    let generation = fixture.record.lifecycle.generation;
+    let document = document_path(&fixture, generation);
+    let target = fixture
+        .record
+        .layout
+        .run_root()
+        .join("runtime-bootstrap-symlink-target");
+    std::fs::rename(&document, &target).expect("retain document target");
+    symlink(&target, &document).expect("install symlink");
+    assert!(consume_runtime_bootstrap(
+        &fixture.registry,
+        &fixture.record,
+        &fixture.program,
+        150
+    )
+    .is_err());
+    assert!(!claim_path(&fixture, generation).exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn hardlink_handoff_is_rejected_before_claim() {
+    let fixture = fixture(true);
+    fixture
+        .issuer
+        .prepare_spawn(&fixture.registry, &fixture.spec, 100)
+        .expect("published handoff");
+    let generation = fixture.record.lifecycle.generation;
+    let document = document_path(&fixture, generation);
+    let alias = fixture
+        .record
+        .layout
+        .run_root()
+        .join("runtime-bootstrap-hardlink-alias");
+    std::fs::hard_link(&document, alias).expect("install hardlink");
+    assert!(consume_runtime_bootstrap(
+        &fixture.registry,
+        &fixture.record,
+        &fixture.program,
+        150
+    )
+    .is_err());
+    assert!(!claim_path(&fixture, generation).exists());
+}
+
+#[test]
+fn claimed_handoff_crash_is_recovery_required_and_never_replayed() {
+    let fixture = fixture(true);
+    fixture
+        .issuer
+        .prepare_spawn(&fixture.registry, &fixture.spec, 100)
+        .expect("published handoff");
+    let generation = fixture.record.lifecycle.generation;
+    std::fs::hard_link(
+        reservation_path(&fixture, generation),
+        claim_path(&fixture, generation),
+    )
+    .expect("simulate durable claim before cleanup");
+    assert!(consume_runtime_bootstrap(
+        &fixture.registry,
+        &fixture.record,
+        &fixture.program,
+        150
+    )
+    .is_err());
+    assert!(document_path(&fixture, generation).exists());
+    assert!(reservation_path(&fixture, generation).exists());
+    assert!(claim_path(&fixture, generation).exists());
+}
+
+#[test]
+fn retained_old_claim_does_not_authorize_but_does_not_block_a_fresh_generation() {
+    let fixture = fixture(true);
+    fixture
+        .issuer
+        .prepare_spawn(&fixture.registry, &fixture.spec, 100)
+        .expect("first generation handoff");
+    consume_runtime_bootstrap(
+        &fixture.registry,
+        &fixture.record,
+        &fixture.program,
+        150,
+    )
+    .expect("first generation claim");
+    let old_generation = fixture.record.lifecycle.generation;
+
+    let failed = fixture
+        .registry
+        .compare_and_transition(
+            &fixture.spec.agent_id,
+            old_generation,
+            AgentLifecycle::Failed,
+        )
+        .expect("fence old generation");
+    let starting = fixture
+        .registry
+        .compare_and_transition(
+            &fixture.spec.agent_id,
+            failed.generation,
+            AgentLifecycle::Starting,
+        )
+        .expect("fresh generation");
+    let mut fresh_spec = fixture.spec.clone();
+    fresh_spec.generation = starting.generation;
+    let fresh_record = fixture
+        .registry
+        .load()
+        .expect("fresh snapshot")
+        .agent(&fixture.spec.agent_id)
+        .cloned()
+        .expect("fresh record");
+    fixture
+        .issuer
+        .prepare_spawn(&fixture.registry, &fresh_spec, 200)
+        .expect("fresh generation handoff");
+    let admission = consume_runtime_bootstrap(
+        &fixture.registry,
+        &fresh_record,
+        &fixture.program,
+        250,
+    )
+    .expect("fresh generation claim");
+    assert!(admission.is_verified());
+    assert!(claim_path(&fixture, old_generation).exists());
+    assert!(claim_path(&fixture, starting.generation).exists());
 }
 
 #[cfg(unix)]

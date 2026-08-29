@@ -31,42 +31,128 @@
   },
   "sourceClosure": {
     "state": "source_present_unqualified",
-    "completedTranches": ["p0.5", "p0.6"],
+    "completedTranches": [
+      "p0.5",
+      "p0.6"
+    ],
     "currentTranche": "p0.7a_closure",
-    "currentBlockers": ["A-LOCK-01", "A-TRANSPORT-01", "A-RECOVERY-01"],
+    "currentBlockers": [
+      "A-LOCK-01"
+    ],
+    "implementedPendingQualification": [
+      "A-TRANSPORT-01",
+      "A-RECOVERY-01"
+    ],
+    "externalEvidenceRequired": [
+      "A-CI-01"
+    ],
     "artifacts": [
       "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V4.md",
       "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V4.json",
       "docs/architecture/HEPTA_DOCUMENT_AUTHORITY_INDEX_V3.json",
       "docs/architecture/HEPTA_RUNTIME_GRANT_BOOTSTRAP_V1.md",
+      "docs/architecture/HEPTA_RUNTIME_BOOTSTRAP_RECOVERY_MATRIX_V1.md",
       "codex-rs/hepta-contracts/src/runtime_bootstrap.rs",
       "codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs",
+      "codex-rs/hepta-fleet/src/runtime_bootstrap_registry_tests.rs",
       "codex-rs/hepta-supervisor/src/runtime_bootstrap.rs",
-      "codex-rs/hepta-agentd/src/runtime_bootstrap.rs"
+      "codex-rs/hepta-supervisor/src/runtime_bootstrap_tests.rs",
+      "codex-rs/hepta-agentd/src/runtime_bootstrap.rs",
+      "codex-rs/hepta-agentd/src/runtime_bootstrap_tests.rs"
     ]
   },
   "qualification": {
-    "v4SourceVerifier": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
-    "p07aLockedMetadata": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
-    "p07aFormat": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
-    "p07aTests": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
-    "p07aCargoCheck": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
-    "p07aStrictClippy": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
-    "p07aExactSourceHead": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
-    "p07aMergeCandidate": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null}
+    "v4SourceVerifier": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "p07aLockedMetadata": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "p07aFormat": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "p07aTests": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "p07aCargoCheck": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "p07aStrictClippy": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "p07aExactSourceHead": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    },
+    "p07aMergeCandidate": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null
+    }
   },
   "observedExternalExecution": {
-    "baseP07aRunId": 33264682593,
-    "state": "queued",
-    "jobCount": 0,
-    "qualificationClaim": "not_run"
+    "state": "not_run",
+    "jobCount": 2,
+    "assignedRunnerCount": 0,
+    "nonEmptyStepJobCount": 0,
+    "qualificationClaim": "not_run",
+    "observation": {
+      "p07aRunId": 33265821333,
+      "observedHead": "334c746b530d8f2580f3534f6f797a3e5de69769",
+      "rawState": "queued",
+      "reason": "both observed jobs had runner_id=0 and steps=[]"
+    }
   },
   "externalDecisions": {
-    "repositoryRulesetEnforcement": {"state": "not_issued", "receipt": null},
-    "independentCodeOwnerReview": {"state": "not_issued", "receipt": null},
-    "operatorAcceptance": {"state": "not_issued", "receipt": null},
-    "promotion": {"state": "not_issued", "receipt": null},
-    "release": {"state": "not_issued", "receipt": null}
+    "repositoryRulesetEnforcement": {
+      "state": "not_issued",
+      "receipt": null
+    },
+    "independentCodeOwnerReview": {
+      "state": "not_issued",
+      "receipt": null
+    },
+    "operatorAcceptance": {
+      "state": "not_issued",
+      "receipt": null
+    },
+    "promotion": {
+      "state": "not_issued",
+      "receipt": null
+    },
+    "release": {
+      "state": "not_issued",
+      "receipt": null
+    }
   },
   "authorityBoundary": {
     "productionCaller": false,

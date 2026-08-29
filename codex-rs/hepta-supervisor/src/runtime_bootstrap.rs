@@ -234,12 +234,13 @@ fn publish_bootstrap_handoff(
     run_root: &Path,
     document: &RuntimeBootstrapDocument,
 ) -> Result<(), ProcessDriverError> {
+    validate_physical_directory(run_root)?;
     let generation = document.envelope.generation();
     let document_path = run_root.join(runtime_bootstrap_document_file_name(generation));
     let reservation_path = run_root.join(runtime_bootstrap_reservation_file_name(generation));
     let claim_path = run_root.join(runtime_bootstrap_claim_file_name(generation));
     for path in [&document_path, &reservation_path, &claim_path] {
-        if path.exists() {
+        if physical_path_exists(path)? {
             return Err(ProcessDriverError::new(format!(
                 "runtime bootstrap generation already has durable state: {}",
                 path.display()
@@ -273,6 +274,7 @@ fn publish_owner_only(
             "runtime bootstrap durable object exceeds its byte bound",
         ));
     }
+    let parent_metadata = validate_physical_directory(parent)?;
     let temp_path = parent.join(format!(
         ".runtime-bootstrap-{}-{}.tmp",
         std::process::id(),
@@ -288,8 +290,16 @@ fn publish_owner_only(
     let mut file = options.open(&temp_path)?;
     file.write_all(bytes)?;
     file.sync_all()?;
-    set_owner_read_only(&temp_path)?;
-    File::open(&temp_path)?.sync_all()?;
+    set_file_owner_read_only(&file)?;
+    file.sync_all()?;
+    let held = file.metadata()?;
+    validate_owner_only_metadata(&temp_path, &held, &parent_metadata, 1)?;
+    let path_metadata = std::fs::symlink_metadata(&temp_path)?;
+    if physical_identity(&held) != physical_identity(&path_metadata) {
+        return Err(ProcessDriverError::new(
+            "runtime bootstrap temporary path drifted before publication",
+        ));
+    }
     match std::fs::hard_link(&temp_path, final_path) {
         Ok(()) => {}
         Err(error) if error.kind() == ErrorKind::AlreadyExists => {
@@ -304,8 +314,31 @@ fn publish_owner_only(
             return Err(error.into());
         }
     }
-    let _ = std::fs::remove_file(temp_path);
-    sync_directory(parent)
+    let linked = std::fs::symlink_metadata(final_path)?;
+    validate_owner_only_metadata(final_path, &linked, &parent_metadata, 2)?;
+    if physical_identity(&held) != physical_identity(&linked) {
+        return Err(ProcessDriverError::new(
+            "runtime bootstrap published path does not bind the fsynced inode",
+        ));
+    }
+    std::fs::remove_file(&temp_path)?;
+    sync_directory(parent)?;
+    let published = std::fs::symlink_metadata(final_path)?;
+    validate_owner_only_metadata(final_path, &published, &parent_metadata, 1)?;
+    if physical_identity(&held) != physical_identity(&published) {
+        return Err(ProcessDriverError::new(
+            "runtime bootstrap published inode drifted after directory sync",
+        ));
+    }
+    Ok(())
+}
+
+fn physical_path_exists(path: &Path) -> Result<bool, ProcessDriverError> {
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error.into()),
+    }
 }
 
 fn runtime_bootstrap_nonce(
@@ -328,19 +361,91 @@ fn runtime_bootstrap_nonce(
     Sha256Digest::for_bytes(&bytes)
 }
 
+fn validate_physical_directory(path: &Path) -> Result<std::fs::Metadata, ProcessDriverError> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
+        return Err(ProcessDriverError::new(format!(
+            "runtime bootstrap parent is not a physical directory: {}",
+            path.display()
+        )));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        if metadata.permissions().mode() & 0o077 != 0 {
+            return Err(ProcessDriverError::new(format!(
+                "runtime bootstrap parent is not owner-only: {}",
+                path.display()
+            )));
+        }
+    }
+    Ok(metadata)
+}
+
+fn validate_owner_only_metadata(
+    path: &Path,
+    metadata: &std::fs::Metadata,
+    parent_metadata: &std::fs::Metadata,
+    expected_links: u64,
+) -> Result<(), ProcessDriverError> {
+    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+        return Err(ProcessDriverError::new(format!(
+            "runtime bootstrap object is not a physical regular file: {}",
+            path.display()
+        )));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        use std::os::unix::fs::PermissionsExt as _;
+        if metadata.uid() != parent_metadata.uid()
+            || metadata.nlink() != expected_links
+            || metadata.permissions().mode() & 0o777 != 0o400
+        {
+            return Err(ProcessDriverError::new(format!(
+                "runtime bootstrap object is not owner-bound, owner-read-only, or link-exact: {}",
+                path.display()
+            )));
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = parent_metadata;
+        let _ = expected_links;
+        if !metadata.permissions().readonly() {
+            return Err(ProcessDriverError::new(format!(
+                "runtime bootstrap object is not read-only: {}",
+                path.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(unix)]
-fn set_owner_read_only(path: &Path) -> Result<(), ProcessDriverError> {
+fn set_file_owner_read_only(file: &File) -> Result<(), ProcessDriverError> {
     use std::os::unix::fs::PermissionsExt as _;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o400))?;
+    file.set_permissions(std::fs::Permissions::from_mode(0o400))?;
     Ok(())
 }
 
 #[cfg(not(unix))]
-fn set_owner_read_only(path: &Path) -> Result<(), ProcessDriverError> {
-    let mut permissions = std::fs::metadata(path)?.permissions();
+fn set_file_owner_read_only(file: &File) -> Result<(), ProcessDriverError> {
+    let mut permissions = file.metadata()?.permissions();
     permissions.set_readonly(true);
-    std::fs::set_permissions(path, permissions)?;
+    file.set_permissions(permissions)?;
     Ok(())
+}
+
+#[cfg(unix)]
+fn physical_identity(metadata: &std::fs::Metadata) -> (u64, u64, u64) {
+    use std::os::unix::fs::MetadataExt as _;
+    (metadata.dev(), metadata.ino(), metadata.len())
+}
+
+#[cfg(not(unix))]
+fn physical_identity(metadata: &std::fs::Metadata) -> (u64,) {
+    (metadata.len(),)
 }
 
 #[cfg(unix)]
