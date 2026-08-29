@@ -14,7 +14,7 @@ permissions:
 jobs:
   export:
     name: Export exact reconstruction payload
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
       - name: Checkout exact helper head
