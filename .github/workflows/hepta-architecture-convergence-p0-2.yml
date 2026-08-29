@@ -23,7 +23,7 @@ env:
 jobs:
   exact-source-head:
     name: Exact source-head architecture closure
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
       - name: Checkout exact source head
@@ -91,7 +91,7 @@ jobs:
           cargo test --locked -p codex-hepta-agentd --lib -- --nocapture
           cargo test --locked -p codex-hepta-agentd --features qualification-cognitive-write --lib -- --nocapture
           cargo test --locked -p codex-hepta-matrix-store --lib -- --nocapture
-          cargo test --locked -p codex-hepta-matrix-store --test sqlite_full -- --nocapture
+          cargo test --locked -p codex-hepta-matrix-store --features qualification-fault-injection --test sqlite_full -- --nocapture
           cargo test --locked -p codex-hepta-matrixd --lib -- --nocapture
 
       - name: Product package graph compilation
@@ -123,6 +123,7 @@ jobs:
             -p codex-hepta-matrix-store \
             -p codex-hepta-matrixd \
             -- -D warnings
+          cargo clippy --locked -p codex-hepta-matrix-store --all-targets --features qualification-fault-injection -- -D warnings
           cargo clippy --locked --all-targets --no-default-features \
             -p codex-hepta-agentd \
             --features qualification-cognitive-write \
@@ -136,7 +137,7 @@ jobs:
           evidence="$RUNNER_TEMP/hepta-architecture-source-head"
           mkdir -p "$evidence"
           {
-            echo "schema=hepta_architecture_source_head_evidence_v3"
+            echo "schema=hepta_architecture_source_head_evidence_v4"
             echo "identity=source_head"
             echo "repository=$GITHUB_REPOSITORY"
             echo "workflow=$GITHUB_WORKFLOW"
@@ -149,6 +150,7 @@ jobs:
             echo "actual_commit=$(git rev-parse HEAD)"
             echo "actual_tree=$(git rev-parse 'HEAD^{tree}')"
             echo "job_status=${{ job.status }}"
+            echo "same_connection_sqlite_full=true"
             echo "source_mutation=false"
             echo "production_authority=false"
             echo "effect_authority=false"
@@ -169,7 +171,7 @@ jobs:
   merge-candidate:
     name: Merge-candidate architecture integration
     if: ${{ github.event_name == 'pull_request' }}
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
       - name: Checkout merge candidate
@@ -218,7 +220,7 @@ jobs:
           cargo test --locked -p codex-hepta-automation --lib -- --nocapture
           cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
           cargo test --locked -p codex-hepta-matrix-store --lib -- --nocapture
-          cargo test --locked -p codex-hepta-matrix-store --test sqlite_full -- --nocapture
+          cargo test --locked -p codex-hepta-matrix-store --features qualification-fault-injection --test sqlite_full -- --nocapture
           cargo test --locked -p codex-hepta-matrixd --lib -- --nocapture
           cargo check --locked \
             -p codex-hepta-memory-runtime \
@@ -237,7 +239,7 @@ jobs:
           evidence="$RUNNER_TEMP/hepta-architecture-merge-candidate"
           mkdir -p "$evidence"
           {
-            echo "schema=hepta_architecture_merge_candidate_evidence_v3"
+            echo "schema=hepta_architecture_merge_candidate_evidence_v4"
             echo "identity=merge_candidate"
             echo "repository=$GITHUB_REPOSITORY"
             echo "workflow=$GITHUB_WORKFLOW"
@@ -252,6 +254,7 @@ jobs:
             echo "first_parent=$(git rev-parse HEAD^1)"
             echo "second_parent=$(git rev-parse HEAD^2)"
             echo "job_status=${{ job.status }}"
+            echo "same_connection_sqlite_full=true"
             echo "source_mutation=false"
             echo "production_authority=false"
             echo "effect_authority=false"
@@ -275,7 +278,7 @@ jobs:
     needs:
       - exact-source-head
       - merge-candidate
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     steps:
       - name: Require successful architecture identities
         env:
