@@ -1,0 +1,404 @@
+name: P0.3.4 strict paired qualification and draft publication
+
+on:
+  push:
+    branches:
+      - codex/p034-rebuild-v2-20260829
+    paths:
+      - .github/workflows/p034-strict-paired.yml
+      - ci/p034-rebuild/p034-strict-helper.bundle.b64
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+  statuses: write
+
+concurrency:
+  group: p034-strict-paired
+  cancel-in-progress: true
+
+env:
+  P033_HEAD: eddcb59ca43a76ac83b64507983bd908f406ff48
+  BASE_BRANCH: codex/hepta-intelligence-evidence-resolver-v4-20260828
+  TARGET_BRANCH: codex/hepta-intelligence-legacy-governance-v3-20260829
+  SOURCE_ARTIFACT_ID: "9712230794"
+  SOURCE_PATCH_SHA256: d9fe46d4be7f8395101879ab1f638a0d8ea4f0730e8a6c18de77a52765aa3339
+  STRICT_HELPER_B64_SHA256: 37daa582d5e359cd43acc2150aacd175b6698494137aaf9268053444f1cfa7fc
+  STRICT_HELPER_TAR_SHA256: 936f5ae5ab697cad67b6163fbccde442b0dc2b86d9831d747daf8472bb86ab95
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  RUST_BACKTRACE: "1"
+
+jobs:
+  build-x64:
+    name: Build exact successor and strict-qualify X64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    outputs:
+      candidate_head: ${{ steps.commit.outputs.candidate_head }}
+      candidate_tree: ${{ steps.commit.outputs.candidate_tree }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout exact helper head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          path: helper
+          persist-credentials: false
+
+      - name: Checkout exact qualified P0.3.3 predecessor
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.P033_HEAD }}
+          fetch-depth: 0
+          path: target
+          persist-credentials: false
+
+      - name: Install Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.13"
+
+      - name: Install exact Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Recover immutable strict-closure helper payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/p034-strict-helper"
+          mkdir -p "${out}"
+          echo "${STRICT_HELPER_B64_SHA256}  helper/ci/p034-rebuild/p034-strict-helper.bundle.b64" | sha256sum -c -
+          base64 -d helper/ci/p034-rebuild/p034-strict-helper.bundle.b64 > "${out}.tar.gz"
+          echo "${STRICT_HELPER_TAR_SHA256}  ${out}.tar.gz" | sha256sum -c -
+          tar -C "${out}" -xzf "${out}.tar.gz"
+          PYTHONPYCACHEPREFIX="${RUNNER_TEMP}/p034-strict-helper-pycache" \
+            python3 -m py_compile "${out}/"*.py
+
+      - name: Reconstruct exact candidate and apply bounded strict-Clippy closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C target rev-parse HEAD)" = "${P033_HEAD}"
+          mkdir -p recovered/autofix "${RUNNER_TEMP}/p034-helper-x64/qualification"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" > recovered/autofix.zip
+          unzip -q recovered/autofix.zip -d recovered/autofix
+          echo "${SOURCE_PATCH_SHA256}  recovered/autofix/candidate-after-autofix.patch" | sha256sum -c -
+          test "$(tr -d '\r\n' < recovered/autofix/candidate-head.txt)" = "${P033_HEAD}"
+          git -C target apply --index --check ../recovered/autofix/candidate-after-autofix.patch
+          git -C target apply --index ../recovered/autofix/candidate-after-autofix.patch
+          sed -i 's/[[:space:]]\+$//' target/codex-rs/hepta-memory/src/intuition_shadow.rs
+          sed -i 's/[[:space:]]\+$//' target/plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_DEVELOPMENT_PLAN_V3_15_2026-08-29.md
+          git -C target add -A
+
+          python3 "${RUNNER_TEMP}/p034-strict-helper/p034-strict-clippy-closure.py" target \
+            | tee "${RUNNER_TEMP}/p034-helper-x64/strict-clippy-closure.log"
+          git -C target add -A
+          git -C target diff --cached --check
+
+          git -C target diff --cached --name-only "${P033_HEAD}" | LC_ALL=C sort > "${RUNNER_TEMP}/p034-helper-x64/actual-scope.txt"
+          diff -u "${RUNNER_TEMP}/p034-strict-helper/p034-strict-expected-scope.txt" "${RUNNER_TEMP}/p034-helper-x64/actual-scope.txt"
+          git -C target status --short > "${RUNNER_TEMP}/p034-helper-x64/precommit-status.txt"
+
+      - name: Create one deterministic governed successor commit
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C target config user.name "Hepta Qualification Builder"
+          git -C target config user.email "hepta-qualification@users.noreply.github.com"
+          GIT_AUTHOR_DATE="2026-08-29T10:00:00Z" \
+          GIT_COMMITTER_DATE="2026-08-29T10:00:00Z" \
+            git -C target commit -m "feat(memory): close P0.3.4 legacy grounding governance blockers"
+          candidate_head="$(git -C target rev-parse HEAD)"
+          candidate_tree="$(git -C target rev-parse HEAD^{tree})"
+          test "$(git -C target rev-parse HEAD^)" = "${P033_HEAD}"
+          test "$(git -C target rev-list --count "${P033_HEAD}..HEAD")" = "1"
+          echo "candidate_head=${candidate_head}" >> "${GITHUB_OUTPUT}"
+          echo "candidate_tree=${candidate_tree}" >> "${GITHUB_OUTPUT}"
+          printf '%s\n' "${candidate_head}" > "${RUNNER_TEMP}/p034-helper-x64/candidate-head.txt"
+          printf '%s\n' "${candidate_tree}" > "${RUNNER_TEMP}/p034-helper-x64/candidate-tree.txt"
+
+      - name: Execute exact-head X64 strict admission matrix
+        shell: bash
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p034-helper-x64/qualification
+        run: python3 target/scripts/run-hepta-intelligence-legacy-grounding-governance-v2.py
+
+      - name: Create unpublished exact candidate bundle
+        shell: bash
+        env:
+          CANDIDATE_HEAD: ${{ steps.commit.outputs.candidate_head }}
+          CANDIDATE_TREE: ${{ steps.commit.outputs.candidate_tree }}
+        run: |
+          set -euo pipefail
+          bundle="${RUNNER_TEMP}/p034-helper-x64/candidate.bundle"
+          receipt="${RUNNER_TEMP}/p034-helper-x64/candidate-bundle-receipt.json"
+          qualification="${RUNNER_TEMP}/p034-helper-x64/qualification/qualification-receipt.json"
+          git -C target branch -f p034-candidate-bundle "${CANDIDATE_HEAD}"
+          git -C target bundle create "${bundle}" refs/heads/p034-candidate-bundle "^${P033_HEAD}"
+          export bundle receipt qualification CANDIDATE_HEAD CANDIDATE_TREE
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          bundle = Path(os.environ["bundle"])
+          qualification = json.loads(Path(os.environ["qualification"]).read_text())
+          assert qualification["schema"] == "hepta_intelligence_p0_3_4_exact_head_qualification_v2"
+          assert qualification["head"] == os.environ["CANDIDATE_HEAD"]
+          assert qualification["tree"] == os.environ["CANDIDATE_TREE"]
+          assert qualification["qualified"] is True
+          record = {
+              "schema": "hepta_intelligence_p0_3_4_candidate_bundle_v2",
+              "base_head": os.environ["P033_HEAD"],
+              "head": os.environ["CANDIDATE_HEAD"],
+              "tree": os.environ["CANDIDATE_TREE"],
+              "successor_commit_count": 1,
+              "qualification_receipt_schema": qualification["schema"],
+              "qualification_runner_arch": qualification["runner_arch"],
+              "qualification_run_id": qualification["run_id"],
+              "qualified_before_publication": True,
+              "published": False,
+              "force_push": False,
+              "history_rewrite": False,
+              "bundle_sha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
+          }
+          Path(os.environ["receipt"]).write_text(
+              json.dumps(record, indent=2, sort_keys=True) + "\n"
+          )
+          print(json.dumps(record, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload unpublished X64 bundle and evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: p034-strict-linux-x64-${{ github.sha }}
+          path: ${{ runner.temp }}/p034-helper-x64
+          if-no-files-found: error
+          retention-days: 30
+
+  qualify-arm64:
+    name: Strict-qualify identical unpublished bundle on ARM64
+    needs: build-x64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    env:
+      EXPECTED_HEAD: ${{ needs.build-x64.outputs.candidate_head }}
+      EXPECTED_TREE: ${{ needs.build-x64.outputs.candidate_tree }}
+    steps:
+      - name: Checkout exact qualified P0.3.3 predecessor
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.P033_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download unpublished X64 candidate bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: p034-strict-linux-x64-${{ github.sha }}
+          path: ${{ runner.temp }}/p034-x64-evidence
+
+      - name: Install Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.13"
+
+      - name: Install exact Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Materialize and verify exact bundled candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/p034-helper-arm64/qualification"
+          bundle="$(find "${RUNNER_TEMP}/p034-x64-evidence" -name candidate.bundle -type f -print -quit)"
+          receipt="$(find "${RUNNER_TEMP}/p034-x64-evidence" -name candidate-bundle-receipt.json -type f -print -quit)"
+          test -n "${bundle}" && test -n "${receipt}"
+          export bundle receipt
+          python3 - <<'PY'
+          import hashlib, json, os
+          record = json.load(open(os.environ["receipt"], encoding="utf-8"))
+          observed = hashlib.sha256(open(os.environ["bundle"], "rb").read()).hexdigest()
+          assert record["schema"] == "hepta_intelligence_p0_3_4_candidate_bundle_v2"
+          assert record["base_head"] == os.environ["P033_HEAD"]
+          assert record["head"] == os.environ["EXPECTED_HEAD"]
+          assert record["tree"] == os.environ["EXPECTED_TREE"]
+          assert record["successor_commit_count"] == 1
+          assert record["bundle_sha256"] == observed
+          assert record["qualified_before_publication"] is True
+          assert record["published"] is False
+          assert record["force_push"] is False
+          assert record["history_rewrite"] is False
+          PY
+          git bundle verify "${bundle}"
+          git fetch "${bundle}" refs/heads/p034-candidate-bundle:refs/remotes/p034/candidate
+          test "$(git rev-parse refs/remotes/p034/candidate)" = "${EXPECTED_HEAD}"
+          test "$(git rev-parse refs/remotes/p034/candidate^{tree})" = "${EXPECTED_TREE}"
+          test "$(git rev-parse refs/remotes/p034/candidate^)" = "${P033_HEAD}"
+          test "$(git rev-list --count "${P033_HEAD}..refs/remotes/p034/candidate")" = "1"
+          git checkout --detach refs/remotes/p034/candidate
+
+      - name: Execute exact-head ARM64 strict admission matrix
+        shell: bash
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p034-helper-arm64/qualification
+        run: python3 scripts/run-hepta-intelligence-legacy-grounding-governance-v2.py
+
+      - name: Upload ARM64 qualification evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: p034-strict-linux-arm64-${{ github.sha }}
+          path: ${{ runner.temp }}/p034-helper-arm64
+          if-no-files-found: error
+          retention-days: 30
+
+  paired-qualification:
+    name: Aggregate same-head X64 and ARM64 strict receipts
+    needs: [build-x64, qualify-arm64]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      qualified: ${{ steps.aggregate.outputs.qualified }}
+      head: ${{ steps.aggregate.outputs.head }}
+      tree: ${{ steps.aggregate.outputs.tree }}
+      bundle_sha256: ${{ steps.aggregate.outputs.bundle_sha256 }}
+    env:
+      EXPECTED_HEAD: ${{ needs.build-x64.outputs.candidate_head }}
+    steps:
+      - name: Checkout exact helper aggregator
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download X64 evidence
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: p034-strict-linux-x64-${{ github.sha }}
+          path: ${{ runner.temp }}/p034-paired/linux-x64
+
+      - name: Download ARM64 evidence
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: p034-strict-linux-arm64-${{ github.sha }}
+          path: ${{ runner.temp }}/p034-paired/linux-arm64
+
+      - name: Recover immutable paired-qualification helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/p034-strict-helper"
+          mkdir -p "${out}"
+          echo "${STRICT_HELPER_B64_SHA256}  ci/p034-rebuild/p034-strict-helper.bundle.b64" | sha256sum -c -
+          base64 -d ci/p034-rebuild/p034-strict-helper.bundle.b64 > "${out}.tar.gz"
+          echo "${STRICT_HELPER_TAR_SHA256}  ${out}.tar.gz" | sha256sum -c -
+          tar -C "${out}" -xzf "${out}.tar.gz"
+          PYTHONPYCACHEPREFIX="${RUNNER_TEMP}/p034-strict-helper-pycache" \
+            python3 -m py_compile "${out}/paired-strict.py"
+
+      - name: Build and enforce paired strict qualification receipt
+        id: aggregate
+        if: always()
+        shell: bash
+        run: |
+          python3 "${RUNNER_TEMP}/p034-strict-helper/paired-strict.py" \
+            "${RUNNER_TEMP}/p034-paired" \
+            "${EXPECTED_HEAD}" \
+            "${RUNNER_TEMP}/p034-paired/paired-qualification-receipt.json"
+
+      - name: Upload paired strict qualification receipt
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: p034-strict-paired-${{ github.sha }}
+          path: ${{ runner.temp }}/p034-paired/paired-qualification-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Ordinary-push exact head and retain Draft governance state
+    needs: paired-qualification
+    if: needs.paired-qualification.result == 'success' && needs.paired-qualification.outputs.qualified == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXPECTED_HEAD: ${{ needs.paired-qualification.outputs.head }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout exact helper publisher
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          path: helper
+          persist-credentials: false
+
+      - name: Recover immutable publication helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/p034-strict-helper"
+          mkdir -p "${out}"
+          echo "${STRICT_HELPER_B64_SHA256}  helper/ci/p034-rebuild/p034-strict-helper.bundle.b64" | sha256sum -c -
+          base64 -d helper/ci/p034-rebuild/p034-strict-helper.bundle.b64 > "${out}.tar.gz"
+          echo "${STRICT_HELPER_TAR_SHA256}  ${out}.tar.gz" | sha256sum -c -
+          tar -C "${out}" -xzf "${out}.tar.gz"
+          PYTHONPYCACHEPREFIX="${RUNNER_TEMP}/p034-strict-helper-pycache" \
+            python3 -m py_compile "${out}/publish-strict.py"
+
+      - name: Checkout exact P0.3.3 publication base with credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.P033_HEAD }}
+          fetch-depth: 0
+          path: target
+
+      - name: Download X64 candidate bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: p034-strict-linux-x64-${{ github.sha }}
+          path: ${{ runner.temp }}/p034-publication/x64
+
+      - name: Download paired authorization receipt
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: p034-strict-paired-${{ github.sha }}
+          path: ${{ runner.temp }}/p034-publication/paired
+
+      - name: Publish idempotently without force
+        shell: bash
+        run: |
+          set -euo pipefail
+          paired="$(find "${RUNNER_TEMP}/p034-publication/paired" -name paired-qualification-receipt.json -type f -print -quit)"
+          test -n "${paired}"
+          python3 "${RUNNER_TEMP}/p034-strict-helper/publish-strict.py" \
+            target \
+            "${RUNNER_TEMP}/p034-publication/x64" \
+            "${paired}" \
+            "${EXPECTED_HEAD}" \
+            "${RUNNER_TEMP}/p034-publication/publication-receipt.json"
+
+      - name: Upload publication receipt
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: p034-strict-publication-${{ github.sha }}
+          path: ${{ runner.temp }}/p034-publication/publication-receipt.json
+          if-no-files-found: error
+          retention-days: 30
