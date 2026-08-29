@@ -1,4 +1,4 @@
-name: P0.3.4 reconstructed candidate publisher v3
+name: P0.3.4 reconstructed candidate publisher v4
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
       - codex/p034-rebuild-v2-20260829
     paths:
       - ci/p034-rebuild/payload.part*
+      - ci/p034-rebuild/hotfix.py
       - .github/workflows/p034-rebuild-v2-publisher.yml
 
 permissions:
@@ -54,7 +55,7 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt,clippy
 
-      - name: Recover digest-bound reconstruction payload
+      - name: Recover and repair digest-bound reconstruction payload
         shell: bash
         run: |
           set -euo pipefail
@@ -63,6 +64,7 @@ jobs:
           base64 -d "${RUNNER_TEMP}/p034-rebuild.b64" > "${RUNNER_TEMP}/p034-rebuild.tar.gz"
           echo "${PAYLOAD_SHA256}  ${RUNNER_TEMP}/p034-rebuild.tar.gz" | sha256sum -c -
           tar -C "${RUNNER_TEMP}/p034-rebuild" -xzf "${RUNNER_TEMP}/p034-rebuild.tar.gz"
+          python3 helper/ci/p034-rebuild/hotfix.py "${RUNNER_TEMP}/p034-rebuild"
           python3 -m py_compile "${RUNNER_TEMP}/p034-rebuild/"*.py
 
       - name: Build, prequalify, squash, and publish exact candidate
