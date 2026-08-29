@@ -1,0 +1,57 @@
+name: Hepta inference V4 canonical docs publisher
+
+on:
+  push:
+    branches:
+      - ops/hepta-inference-v4-docs-publisher-20260830
+    paths:
+      - ".github/workflows/hepta-inference-v4-docs-publisher.yml"
+      - "tools/hepta-inference-v4-docs-publisher/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-v4-canonical-docs-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Validate and publish canonical V4 documents
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Reconstruct and verify bounded payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=tools/hepta-inference-v4-docs-publisher
+          cat "$root"/docs-v4.part00 \
+              "$root"/docs-v4.part01 \
+              "$root"/docs-v4.part02 \
+              "$root"/docs-v4.part03 \
+              "$root"/docs-v4.part04 \
+            | base64 --decode > "$root/docs-v4.tar.gz"
+          test "$(sha256sum "$root/docs-v4.tar.gz" | cut -d' ' -f1)" = \
+            "14f8274f4dcb31de84b2eaa21a2dc397cadff0581477bd3f688679d17bed9a11"
+          python3 -m py_compile "$root/publish_docs_v4.py"
+
+      - name: Execute exact-head docs transaction
+        shell: bash
+        run: python3 tools/hepta-inference-v4-docs-publisher/publish_docs_v4.py
+
+      - name: Upload publisher receipt
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-v4-docs-publisher-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-inference-v4-docs-receipt.json
+          if-no-files-found: warn
+          retention-days: 30
