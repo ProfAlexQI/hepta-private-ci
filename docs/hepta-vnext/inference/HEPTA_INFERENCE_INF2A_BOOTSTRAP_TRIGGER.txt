@@ -1,0 +1,7 @@
+bootstrap_source=15e56462622ab61ac6d7a5242a064c336d6642e1
+qualification_only=true
+route_mode=SHADOW_COMPARE_ONLY
+production_listener=false
+product_default_route_changed=false
+operator_accepted=false
+promoted=false
