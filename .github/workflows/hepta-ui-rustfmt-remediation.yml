@@ -1,0 +1,68 @@
+name: Hepta UI Rustfmt Remediation
+
+on:
+  push:
+    branches:
+      - codex/ui-v4-executable-final-gap-closure-v3-20260829
+    paths:
+      - .github/workflows/hepta-ui-rustfmt-remediation.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-rustfmt-remediation
+  cancel-in-progress: false
+
+jobs:
+  rustfmt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact remediation commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: codex/ui-v4-executable-final-gap-closure-v3-20260829
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install Rust 1.95 rustfmt
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+
+      - name: Format bounded source-closure surface and remove this workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+
+          cargo fmt --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml
+          git rm -- .github/workflows/hepta-ui-rustfmt-remediation.yml
+
+          allowed_paths=$(cat <<'EOF'
+          .github/workflows/hepta-ui-rustfmt-remediation.yml
+          apps/hepta-native/src/shared/hepta_android_material3_activity_bridge.rs
+          apps/hepta-native/src/shared/hepta_ios_uikit_material_adapter.rs
+          apps/hepta-native/src/shared/hepta_macos_appkit_material_adapter.rs
+          apps/hepta-native/src/shared/hepta_platform_material_runtime.rs
+          apps/hepta-native/src/shared/hepta_system_preferences.rs
+          apps/hepta-native/src/shared/hepta_ui_explicit_activation_caller.rs
+          tools/hepta-ui-global-platform-source-closure/src/lib.rs
+          EOF
+          )
+
+          while IFS= read -r changed_path; do
+            grep -Fxq "$changed_path" <<<"$allowed_paths" || {
+              echo "unexpected rustfmt change: $changed_path" >&2
+              exit 1
+            }
+          done < <(git diff --name-only)
+
+          git diff --check
+          git config user.name "hepta-ci"
+          git config user.email "hepta-ci@users.noreply.github.com"
+          git add -A
+          git commit -m "style(ui): apply Rust 1.95 formatting"
+          git push origin HEAD:refs/heads/codex/ui-v4-executable-final-gap-closure-v3-20260829
