@@ -1,0 +1,175 @@
+{
+  "schema": "hepta.qualification-status.v4",
+  "schemaVersion": 4,
+  "planId": "HEPTA-ARCHITECTURE-CONVERGENCE-V5",
+  "claimLevel": "source_execution_in_progress_unqualified",
+  "executionStateVocabulary": [
+    "not_run",
+    "queued",
+    "running",
+    "passed",
+    "failed",
+    "blocked",
+    "superseded"
+  ],
+  "packageStateVocabulary": [
+    "open",
+    "source_in_progress",
+    "source_implemented",
+    "source_verified",
+    "qualified_exact",
+    "merge_candidate_qualified",
+    "blocked_external",
+    "closed"
+  ],
+  "externalDecisionStateVocabulary": [
+    "not_issued",
+    "issued",
+    "rejected",
+    "revoked",
+    "superseded"
+  ],
+  "subject": {
+    "repository": "ProfHepta/hepta-private-ci",
+    "stackParentPr": 83,
+    "stackParentBranch": "codex/hepta-architecture-v4-p0-7a-executable-closure-20260830",
+    "stackParentCommit": "f69e5a4a5068a2657f1470da43c26b1410d53c6f",
+    "stackParentTree": "532307507d2b02a479d3c76042d42cc948b499df",
+    "sourceBranch": "codex/hepta-architecture-v5-b0-verified-use-kernel-20260830",
+    "sourceCommit": "resolved_by_exact_head_workflow",
+    "sourceTree": "resolved_by_exact_head_workflow",
+    "mergeCandidate": "resolved_by_pull_request_workflow"
+  },
+  "sourceClosure": {
+    "state": "source_execution_in_progress_unqualified",
+    "completedTranches": ["p0.5", "p0.6"],
+    "predecessorTranche": "p0.7a_signed_runtime_bootstrap_closure",
+    "currentTranche": "p0.7b_b0_verified_use_kernel",
+    "predecessorState": "source_implemented_executable_qualification_pending",
+    "currentState": "source_in_progress",
+    "activationBlockers": [
+      "p0_7a_exact_head_qualification_pending",
+      "p0_7a_merge_candidate_qualification_pending",
+      "p0_7a_independent_review_pending",
+      "b0_source_and_executable_qualification_pending"
+    ],
+    "artifacts": [
+      "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md",
+      "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json",
+      "docs/architecture/HEPTA_DOCUMENT_AUTHORITY_INDEX_V4.json",
+      "docs/architecture/HEPTA_QUALIFICATION_STATUS_V4.json",
+      "docs/architecture/HEPTA_P0_7B_VERIFIED_USE_DELIVERY_CONTRACT_V1.md",
+      "codex-rs/hepta-contracts/src/verified_use.rs",
+      "codex-rs/hepta-contracts/src/verified_use_tests.rs",
+      "scripts/verify-hepta-architecture-plan-v5.py",
+      ".github/workflows/hepta-architecture-v5-b0-verified-use.yml"
+    ]
+  },
+  "observedExecution": {
+    "observedAt": "2026-08-30",
+    "p07aExactHead": {
+      "commit": "f69e5a4a5068a2657f1470da43c26b1410d53c6f",
+      "state": "queued",
+      "qualificationClaim": "not_run",
+      "runs": [
+        {
+          "name": "Hepta P0.7a direct qualification ARM",
+          "runId": 33271360146,
+          "state": "queued"
+        },
+        {
+          "name": "Hepta P0.7a runtime bootstrap",
+          "runId": 33271360151,
+          "state": "queued"
+        },
+        {
+          "name": "blocking-ci",
+          "runId": 33271360301,
+          "state": "queued"
+        }
+      ]
+    },
+    "b0ExactHead": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null,
+      "qualificationClaim": "not_run"
+    },
+    "b0MergeCandidate": {
+      "state": "not_run",
+      "runId": null,
+      "jobId": null,
+      "runnerId": null,
+      "stepCount": null,
+      "qualificationClaim": "not_run"
+    }
+  },
+  "externalDecisions": {
+    "repositoryRulesetEnforcement": {
+      "state": "not_issued",
+      "receipt": null
+    },
+    "independentCodeOwnerReview": {
+      "state": "not_issued",
+      "receipt": null
+    },
+    "physicalPlatformEvidence": {
+      "state": "not_issued",
+      "receipt": null
+    },
+    "realModelProviderCorpusEvidence": {
+      "state": "not_issued",
+      "receipt": null
+    },
+    "humanAccessibilityVisualAcceptance": {
+      "state": "not_issued",
+      "receipt": null
+    },
+    "operatorAcceptance": {
+      "state": "not_issued",
+      "receipt": null
+    },
+    "productionTrustRootCeremony": {
+      "state": "not_issued",
+      "receipt": null
+    },
+    "promotion": {
+      "state": "not_issued",
+      "receipt": null
+    },
+    "release": {
+      "state": "not_issued",
+      "receipt": null
+    }
+  },
+  "rules": {
+    "queuedCanPass": false,
+    "runnerZeroCanPass": false,
+    "emptyStepsCanPass": false,
+    "sourceVerifierCanReplaceExecutableQualification": false,
+    "sourceCanSelfIssueIndependentReview": false,
+    "sourceCanSelfIssueOperatorAcceptance": false,
+    "sourceCanSelfIssuePromotion": false,
+    "sourceCanSelfIssueRelease": false
+  },
+  "authorityBoundary": {
+    "runtimeAuthority": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "effectAuthority": false,
+    "externalEffect": false,
+    "modelInvocationAuthority": false,
+    "providerDispatchAuthority": false,
+    "toolExecutionAuthority": false,
+    "networkConnectAuthority": false,
+    "externalFilesystemMutationAuthority": false,
+    "secretOperationAuthority": false,
+    "matrixSendAuthority": false,
+    "fleetMutationAuthority": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
