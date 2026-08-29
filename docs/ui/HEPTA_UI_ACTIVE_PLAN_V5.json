@@ -1,11 +1,27 @@
 {
   "schema": "hepta.ui.active-plan.v5",
-  "status": "REPOSITORY_GAP_CLOSURE_CANDIDATE_EXTERNAL_EVIDENCE_REQUIRED",
+  "status": "IMPLEMENTATION_COMMITTED_HOSTED_QUALIFICATION_REQUIRED",
   "repository": "ProfHepta/hepta-private-ci",
   "baseBranch": "codex/ui-v4-executable-final-gap-closure-v3-20260829",
   "baseCommit": "304143bf362e6cc8369158309b7b9c7c9c3d3868",
   "baseTree": "a28c7808e64e2cfa21a8ed3fcbc5525cbbfbac3f",
   "workBranch": "codex/ui-v5-plan-and-repo-gap-closure-20260829",
+  "implementationCandidate": {
+    "commit": "4171b464e49708a44418241fe857986dce0edb53",
+    "tree": "f52543dc64b1c831e261bb9b8ac07b6e363d231d",
+    "branch": "codex/ui-v5-plan-and-repo-gap-closure-20260829"
+  },
+  "bootstrapValidation": {
+    "runId": 33264125711,
+    "jobId": 99131005577,
+    "artifactId": 9718170325,
+    "artifactDigest": "sha256:ecc88d56bcaac8b4baa725aae8121a558c314b03ed45542fc4ef4049a4686564",
+    "assignedRunner": true,
+    "nonemptySuccessfulSteps": true,
+    "localPatchValidationPassed": true
+  },
+  "repositoryPatchCommitted": true,
+  "hostedQualificationComplete": false,
   "planningAuthority": true,
   "runtimeAuthority": false,
   "effectAuthority": false,

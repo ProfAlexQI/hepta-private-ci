@@ -41,3 +41,14 @@ Repository source, Hosted CI and this applicator cannot synthesize physical Wind
 - `scripts/hepta-ui-v4-apply-makepad-windows-ack-patch`
 - `scripts/hepta-ui-v4-exact-candidate-materialization-gate`
 - `scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch`
+
+## Implementation candidate binding
+
+- Commit: `4171b464e49708a44418241fe857986dce0edb53`
+- Tree: `f52543dc64b1c831e261bb9b8ac07b6e363d231d`
+- Branch: `codex/ui-v5-plan-and-repo-gap-closure-20260829`
+- State: `IMPLEMENTATION_COMMITTED_HOSTED_QUALIFICATION_REQUIRED`
+
+The one-shot bootstrap transport was removed from this implementation tree. Bootstrap run `33264125711`, job `99131005577`, executed on an assigned runner with nonempty successful steps, applied all 20 intended paths, passed Python, shell, Ruby, YAML, JSON and `git diff --check` validation, pushed the non-workflow staging commit, and published artifact `9718170325` with digest `sha256:ecc88d56bcaac8b4baa725aae8121a558c314b03ed45542fc4ef4049a4686564`. The three retained workflow files were then published as exact SHA-256-verified Git blobs in the implementation commit.
+
+This binding proves repository materialization and local source validation only. It does not claim exact-head Hosted qualification, physical-device evidence, browser-human acceptance, operator acceptance, product binding, production, promotion or release authority.

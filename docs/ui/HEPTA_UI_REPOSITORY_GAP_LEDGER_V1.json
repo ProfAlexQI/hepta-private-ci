@@ -1,16 +1,25 @@
 {
   "schema": "hepta.ui.repository-gap-ledger.v1",
   "candidate": {
-    "commit": "304143bf362e6cc8369158309b7b9c7c9c3d3868",
-    "tree": "a28c7808e64e2cfa21a8ed3fcbc5525cbbfbac3f",
+    "commit": "4171b464e49708a44418241fe857986dce0edb53",
+    "tree": "f52543dc64b1c831e261bb9b8ac07b6e363d231d",
     "branch": "codex/ui-v5-plan-and-repo-gap-closure-20260829"
   },
-  "status": "PATCH_CANDIDATE_REQUIRES_COMMIT_AND_HOSTED_EXECUTION",
+  "status": "IMPLEMENTATION_COMMITTED_HOSTED_QUALIFICATION_REQUIRED",
+  "bootstrapValidation": {
+    "runId": 33264125711,
+    "jobId": 99131005577,
+    "artifactId": 9718170325,
+    "artifactDigest": "sha256:ecc88d56bcaac8b4baa725aae8121a558c314b03ed45542fc4ef4049a4686564",
+    "assignedRunner": true,
+    "nonemptySuccessfulSteps": true,
+    "localPatchValidationPassed": true
+  },
   "gaps": [
     {
       "id": "REPO-UI-001",
       "title": "contract fixture missing frozen Git objects",
-      "state": "PATCHED_CANDIDATE",
+      "state": "COMMITTED_AWAITING_HOSTED_QUALIFICATION",
       "paths": [
         "scripts/hepta-ci-baseline-contract"
       ]
@@ -18,7 +27,7 @@
     {
       "id": "REPO-UI-002",
       "title": "DWM Windows job executes Bash continuation in PowerShell",
-      "state": "PATCHED_CANDIDATE",
+      "state": "COMMITTED_AWAITING_HOSTED_QUALIFICATION",
       "paths": [
         ".github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml"
       ]
@@ -26,7 +35,7 @@
     {
       "id": "REPO-UI-003",
       "title": "aggregate Windows job executes Bash continuation in PowerShell",
-      "state": "PATCHED_CANDIDATE",
+      "state": "COMMITTED_AWAITING_HOSTED_QUALIFICATION",
       "paths": [
         ".github/workflows/hepta-ui-v4-windows-material-profile-aggregate.yml"
       ]
@@ -34,7 +43,7 @@
     {
       "id": "REPO-UI-004",
       "title": "patched Makepad CxOsOp Debug match is non-exhaustive",
-      "state": "PATCHED_CANDIDATE",
+      "state": "COMMITTED_AWAITING_HOSTED_QUALIFICATION",
       "paths": [
         "scripts/hepta-ui-v4-apply-makepad-windows-ack-patch",
         "scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch"
@@ -43,7 +52,7 @@
     {
       "id": "REPO-UI-005",
       "title": "pipefail gate rejects set -euo pipefail",
-      "state": "PATCHED_CANDIDATE",
+      "state": "COMMITTED_AWAITING_HOSTED_QUALIFICATION",
       "paths": [
         "scripts/hepta-ui-v4-exact-candidate-materialization-gate"
       ]
@@ -51,7 +60,7 @@
     {
       "id": "REPO-UI-006",
       "title": "rmcp 1.8 non_exhaustive constructors",
-      "state": "PATCHED_CANDIDATE",
+      "state": "COMMITTED_AWAITING_HOSTED_QUALIFICATION",
       "paths": [
         "codex-rs/memories/mcp/src/server.rs",
         "codex-rs/tools/src/mcp_tool_tests.rs",
@@ -61,7 +70,7 @@
     {
       "id": "REPO-UI-007",
       "title": "Windows Bazel Rust/test compatibility regressions",
-      "state": "PATCHED_CANDIDATE",
+      "state": "COMMITTED_AWAITING_HOSTED_QUALIFICATION",
       "paths": [
         "codex-rs/analytics/src/analytics_client_tests.rs",
         "codex-rs/app-server-protocol/src/protocol/v2/turn.rs",
