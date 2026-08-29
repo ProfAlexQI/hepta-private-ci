@@ -1,0 +1,52 @@
+{
+  "schema": "hepta.inference.inf1_cross_platform_qualification_receipt.v1",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
+  "source_candidate_commit": "715c48bcdf2a322da683f2bebb182d0856158930",
+  "source_candidate_tree": "0cc6642544fe90b39cd09d06386a8302751a719f",
+  "source_receipt_commit": "1683f3a1a5aaba7c0d46ac60bcd73efd1be366ae",
+  "platforms": {
+    "linux_arm64": {
+      "workflow_run_id": 33236053088,
+      "job_id": 99057123440,
+      "append_only_binding": "PASS",
+      "source_gate": "PASS",
+      "cargo_fmt_check_test": "PASS",
+      "core_tests": "7/7",
+      "daemon_tests": "4/4",
+      "strict_clippy_all_targets_no_deps_d_warnings": "PASS"
+    },
+    "macos_x86_64": {
+      "workflow_run_id": 33236101161,
+      "job_id": 99057250960,
+      "append_only_binding": "PASS",
+      "source_gate": "PASS",
+      "cargo_fmt_check_test": "PASS",
+      "core_tests": "7/7",
+      "daemon_tests": "4/4",
+      "strict_clippy_all_targets_no_deps_d_warnings": "PASS"
+    }
+  },
+  "claim": "CROSS_PLATFORM_EXECUTED_PASSED_QUALIFICATION_ONLY",
+  "source_qualified": true,
+  "uds_controller_behavior_qualified": true,
+  "runtime_activated": false,
+  "product_wired": false,
+  "production_qualified": false,
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
