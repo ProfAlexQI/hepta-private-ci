@@ -12,6 +12,7 @@ on:
       - "MODULE.bazel.lock"
       - "docs/architecture/**"
       - "scripts/verify-hepta-architecture-plan-v4.py"
+      - "scripts/verify-hepta-p0-7a-format.py"
       - ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml"
   push:
     branches:
@@ -25,6 +26,7 @@ on:
       - "MODULE.bazel.lock"
       - "docs/architecture/**"
       - "scripts/verify-hepta-architecture-plan-v4.py"
+      - "scripts/verify-hepta-p0-7a-format.py"
       - ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml"
 
 permissions:
@@ -37,7 +39,7 @@ concurrency:
 jobs:
   source-qualification:
     name: P0.7a source qualification
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     defaults:
       run:
@@ -112,7 +114,7 @@ jobs:
 
   lock-coherence:
     name: P0.7a committed lock coherence
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     steps:
       - name: Checkout exact event identity
@@ -153,7 +155,7 @@ jobs:
     needs:
       - source-qualification
       - lock-coherence
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Require successful P0.7a dependencies
         env:
