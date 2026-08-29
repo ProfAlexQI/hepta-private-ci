@@ -1,0 +1,172 @@
+name: Hepta operation safety repair slim once
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-convergence-p0-2-20260828
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-operation-safety-repair-once
+  cancel-in-progress: true
+
+env:
+  BRANCH_NAME: codex/hepta-architecture-convergence-p0-2-20260828
+  SOURCE_HEAD: ${{ github.sha }}
+
+jobs:
+  repair-test-retire:
+    name: Repair, execute and retire operation safety lane
+    if: ${{ !contains(github.event.head_commit.message || '', '[hepta-operation-safety-repair]') }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact triggering head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Verify exact clean input
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$BRANCH_NAME"
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+          git fetch --no-tags origin \
+            "refs/heads/$BRANCH_NAME:refs/remotes/origin/$BRANCH_NAME"
+          test "$(git rev-parse refs/remotes/origin/$BRANCH_NAME)" = "$SOURCE_HEAD"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply audited operation repair
+        run: python3 scripts/hepta-operation-safety-repair.py
+
+      - name: Format owned packages
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt \
+            -p codex-hepta-contracts \
+            -p codex-hepta-automation \
+            -p codex-hepta-agentd \
+            -p codex-hepta-matrix-store
+
+      - name: Execute operation and product gates
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo metadata --format-version 1 --no-deps > "$RUNNER_TEMP/workspace-metadata.json"
+          cargo test -p codex-hepta-contracts provider_operation::tests -- --nocapture
+          cargo test -p codex-hepta-matrix-store operation::tests -- --nocapture
+          cargo test -p codex-hepta-automation --lib -- --nocapture
+          cargo check -p codex-hepta-agentd -p codex-hepta-matrixd
+          cargo clippy \
+            -p codex-hepta-contracts \
+            -p codex-hepta-automation \
+            -p codex-hepta-agentd \
+            -p codex-hepta-matrix-store \
+            -p codex-hepta-matrixd \
+            --all-targets -- -D warnings
+          cargo metadata --locked --format-version 1 --no-deps > /dev/null
+          cargo check --locked -p codex-hepta-agentd -p codex-hepta-matrixd
+
+      - name: Execute architecture ratchets
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+          python3 scripts/verify-hepta-cross-owner-operation-wiring.py
+          python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python3 scripts/verify-hepta-architecture-gap-ledger.py
+
+      - name: Enforce exact mutation set
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+          allowed = {
+              ".github/workflows/hepta-automation-operation-repair-once.yml",
+              ".github/workflows/hepta-operation-safety-repair-slim-once.yml",
+              "scripts/.hepta-automation-repair-trigger",
+              "scripts/hepta-operation-safety-repair.py",
+              "scripts/hepta-automation-operation-repair-once.py",
+              "scripts/hepta-automation-operation-repair-once.py.part-00",
+              "scripts/hepta-automation-operation-repair-once.py.part-01",
+              "scripts/hepta-automation-operation-repair-once.py.part-02",
+              "scripts/hepta-automation-operation-repair-once.py.part-03",
+              "scripts/hepta-automation-model-v4.rs",
+              "scripts/verify-hepta-cross-owner-operation-wiring.py",
+              "codex-rs/Cargo.lock",
+              "codex-rs/hepta-automation/src/model.rs",
+              "codex-rs/hepta-automation/src/store.rs",
+              "codex-rs/hepta-automation/migrations/0004_operation_identity.sql",
+              "codex-rs/hepta-agentd/src/automation.rs",
+              "codex-rs/hepta-matrix-store/src/operation.rs",
+              "codex-rs/hepta-contracts/src/provider_operation.rs",
+          }
+          tracked = set(subprocess.check_output(
+              ["git", "diff", "--name-only", "--diff-filter=ACMRTUXB"], text=True
+          ).splitlines())
+          untracked = set(subprocess.check_output(
+              ["git", "ls-files", "--others", "--exclude-standard"], text=True
+          ).splitlines())
+          changed = tracked | untracked
+          unexpected = sorted(changed - allowed)
+          if unexpected:
+              raise SystemExit(f"operation repair escaped allowlist: {unexpected}")
+          required = {
+              "codex-rs/hepta-automation/src/model.rs",
+              "codex-rs/hepta-automation/src/store.rs",
+              "codex-rs/hepta-automation/migrations/0004_operation_identity.sql",
+              "codex-rs/hepta-agentd/src/automation.rs",
+              "codex-rs/hepta-matrix-store/src/operation.rs",
+              "codex-rs/hepta-contracts/src/provider_operation.rs",
+              "scripts/verify-hepta-cross-owner-operation-wiring.py",
+          }
+          missing = sorted(required - changed)
+          if missing:
+              raise SystemExit(f"operation repair did not materialize: {missing}")
+          PY
+          git diff --check
+
+      - name: Retire write lanes and push exact tested commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f scripts/hepta-automation-operation-repair-once.py
+          git rm \
+            .github/workflows/hepta-automation-operation-repair-once.yml \
+            .github/workflows/hepta-operation-safety-repair-slim-once.yml \
+            scripts/.hepta-automation-repair-trigger \
+            scripts/hepta-operation-safety-repair.py \
+            scripts/hepta-automation-operation-repair-once.py.part-00 \
+            scripts/hepta-automation-operation-repair-once.py.part-01 \
+            scripts/hepta-automation-operation-repair-once.py.part-02 \
+            scripts/hepta-automation-operation-repair-once.py.part-03 \
+            scripts/hepta-automation-model-v4.rs
+          git add \
+            scripts/verify-hepta-cross-owner-operation-wiring.py \
+            codex-rs/Cargo.lock \
+            codex-rs/hepta-automation/src/model.rs \
+            codex-rs/hepta-automation/src/store.rs \
+            codex-rs/hepta-automation/migrations/0004_operation_identity.sql \
+            codex-rs/hepta-agentd/src/automation.rs \
+            codex-rs/hepta-matrix-store/src/operation.rs \
+            codex-rs/hepta-contracts/src/provider_operation.rs
+          git diff --cached --check
+          git fetch --no-tags origin \
+            "refs/heads/$BRANCH_NAME:refs/remotes/origin/$BRANCH_NAME"
+          test "$(git rev-parse refs/remotes/origin/$BRANCH_NAME)" = "$SOURCE_HEAD"
+          git config user.name "Hepta operation safety repair"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git commit -m "fix(hepta): close operation safety blockers [hepta-operation-safety-repair]"
+          git push origin "HEAD:refs/heads/$BRANCH_NAME"
