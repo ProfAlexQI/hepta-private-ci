@@ -21,7 +21,7 @@ jobs:
   repair-verify-retire:
     name: Repair Automation operation boundary and retire write lane
     if: ${{ !contains(github.event.head_commit.message || '', '[hepta-automation-repair]') }}
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-slim
     timeout-minutes: 180
     steps:
       - name: Checkout exact triggering head
@@ -90,6 +90,7 @@ jobs:
 
           allowed = {
               ".github/workflows/hepta-automation-operation-repair-once.yml",
+              "scripts/.hepta-automation-repair-trigger",
               "scripts/hepta-automation-operation-repair-once.py",
               "scripts/hepta-automation-operation-repair-once.py.part-00",
               "scripts/hepta-automation-operation-repair-once.py.part-01",
@@ -137,6 +138,7 @@ jobs:
           rm scripts/hepta-automation-operation-repair-once.py
           git rm \
             .github/workflows/hepta-automation-operation-repair-once.yml \
+            scripts/.hepta-automation-repair-trigger \
             scripts/hepta-automation-operation-repair-once.py.part-00 \
             scripts/hepta-automation-operation-repair-once.py.part-01 \
             scripts/hepta-automation-operation-repair-once.py.part-02 \
