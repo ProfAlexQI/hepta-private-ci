@@ -1,0 +1,32 @@
+{
+  "attestation_payload_sha256": null,
+  "callers_ratchet": false,
+  "candidate": {
+    "head": null,
+    "parent": null,
+    "tree": null
+  },
+  "checklist": {
+    "agentd_default_off_reviewed": false,
+    "e1_e2_pair_verified": false,
+    "exact_candidate_identity_reviewed": false,
+    "known_limitations_accepted": false,
+    "migration_reopen_corruption_failpoints_reviewed": false,
+    "rollback_rehearsal_reviewed": false,
+    "zero_write_and_no_external_effect_reviewed": false
+  },
+  "note": "Template only. Q0 qualification requires operator_acceptance=false. A future E5 acceptance must be completed and signed by a trusted human operator.",
+  "operator_acceptance": false,
+  "promotion": false,
+  "q0_evidence_pair_sha256": null,
+  "reviewed_at_utc": null,
+  "reviewer": {
+    "identity": null,
+    "organization": null,
+    "signing_key_fingerprint": null
+  },
+  "schema": "hepta.intelligence.operator_acceptance.v1",
+  "signature": null,
+  "signature_scheme": null,
+  "status": "NOT_ACCEPTED_TEMPLATE"
+}

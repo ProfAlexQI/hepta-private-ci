@@ -113,6 +113,7 @@ impl<'a> LocalRehydrationWitnessLifecycleInput<'a> {
     }
 
     /// Construct an input with an embedding-supplied policy gate.
+    #[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
     pub fn with_policy(
         policy: LocalDevelopmentLifecyclePolicy,
         turn_id: &'a str,

@@ -25,11 +25,44 @@ TOP_LEVEL_NAME_EXCEPTIONS = {
 UTILITY_NAME_EXCEPTIONS = {
     "path-utils": "codex-utils-path",
 }
+# Exact, temporary migrations whose feature gates carry qualification or
+# production-authority separation.  The verifier below rejects both drift and
+# stale entries, so this remains a closed enumeration rather than a wildcard.
 MANIFEST_FEATURE_EXCEPTIONS = {
-    "codex-rs/code-mode/Cargo.toml": {"sandbox": ("v8/v8_enable_sandbox",)},
-    "codex-rs/v8-poc/Cargo.toml": {"sandbox": ("v8/v8_enable_sandbox",)},
+    "codex-rs/hepta-agentd/Cargo.toml": {
+        "default": (),
+        "qualification-cognitive-write": (),
+        "qualification-intelligence-mutation-shadow": (),
+    },
+    "codex-rs/hepta-automation/Cargo.toml": {
+        "default": (),
+        "taskflow-structural-qualification": (),
+    },
+    "codex-rs/hepta-contracts/Cargo.toml": {
+        "authbus-local-qualification": ("dep:zeroize",),
+        "default": (),
+    },
+    "codex-rs/hepta-matrix-sdk/Cargo.toml": {
+        "default": (),
+        "qualification-failpoints": (),
+    },
+    "codex-rs/hepta-matrixd/Cargo.toml": {
+        "default": (),
+        "real-synapse-e2e": (
+            "codex-hepta-matrix-sdk/qualification-failpoints",
+        ),
+    },
+    "codex-rs/hepta-supervisor/Cargo.toml": {
+        "default": (),
+        "production-authority": (),
+    },
+    "codex-rs/v8-poc/Cargo.toml": {
+        "sandbox": ("v8/v8_enable_sandbox",),
+    },
 }
-OPTIONAL_DEPENDENCY_EXCEPTIONS = set()
+OPTIONAL_DEPENDENCY_EXCEPTIONS = {
+    ("codex-rs/hepta-contracts/Cargo.toml", "dependencies", "zeroize"),
+}
 INTERNAL_DEPENDENCY_FEATURE_EXCEPTIONS = {}
 
 
@@ -380,6 +413,7 @@ def cargo_manifests() -> list[Path]:
         path
         for path in CARGO_RS_ROOT.rglob("Cargo.toml")
         if path != CARGO_RS_ROOT / "Cargo.toml"
+        and "third_party" not in path.relative_to(CARGO_RS_ROOT).parts
     )
 
 

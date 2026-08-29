@@ -1,6 +1,8 @@
 use super::*;
+use super::support::durable_receipt_digest;
+use super::support::to_i64_len;
 
-pub(super) async fn insert_tx(
+pub(in super::super::super) async fn insert_tx(
     transaction: &mut Transaction<'_, Sqlite>,
     memory: &MemoryRevisionRecord,
     source: &SourceRevisionId,

@@ -1,0 +1,175 @@
+name: Hepta Intelligence P0 compatibility matrix
+
+on:
+  pull_request:
+    paths:
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json
+      - plans/hepta-intelligence/status-snapshots/**
+      - scripts/hepta-intelligence-status-compat.py
+      - scripts/verify-hepta-intelligence-grounding-ledger.py
+      - scripts/verify-hepta-intelligence-grounding-gate.py
+      - scripts/verify-hepta-intelligence-mutation-state.py
+      - scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py
+      - scripts/verify-hepta-intelligence-mutation-journal.py
+      - scripts/verify-hepta-intelligence-shadow-host.py
+      - .github/workflows/hepta-intelligence-p0-compatibility-matrix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-p0-compatibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-head-source-compatibility:
+    name: P0.2-P0.4c immutable status compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout explicit candidate identity
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove checked-out commit and tree
+        run: |
+          set -euo pipefail
+          actual_sha=$(git rev-parse HEAD)
+          actual_tree=$(git rev-parse HEAD^{tree})
+          test "$actual_sha" = "$EXPECTED_SHA"
+          mkdir -p artifacts/hepta-intelligence-p0-compatibility
+          printf '{"expected_sha":"%s","actual_sha":"%s","actual_tree":"%s","lane":"pr_head_or_dispatch"}\n' \
+            "$EXPECTED_SHA" "$actual_sha" "$actual_tree" \
+            > artifacts/hepta-intelligence-p0-compatibility/identity.json
+
+      - name: Compile compatibility and source verifiers
+        run: |
+          python3 -m py_compile \
+            scripts/hepta-intelligence-status-compat.py \
+            scripts/verify-hepta-intelligence-grounding-ledger.py \
+            scripts/verify-hepta-intelligence-grounding-gate.py \
+            scripts/verify-hepta-intelligence-mutation-state.py \
+            scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py \
+            scripts/verify-hepta-intelligence-mutation-journal.py \
+            scripts/verify-hepta-intelligence-shadow-host.py
+
+      - name: Preserve canonical compatibility status
+        run: |
+          cp plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json \
+            artifacts/hepta-intelligence-p0-compatibility/canonical-status-v2.json
+
+      - name: Run P0.2 source compatibility gate
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-intelligence-status-compat.py P0.2 \
+            > artifacts/hepta-intelligence-p0-compatibility/p0-2-snapshot.json
+          python3 scripts/verify-hepta-intelligence-grounding-ledger.py \
+            > artifacts/hepta-intelligence-p0-compatibility/p0-2-source.json
+
+      - name: Run P0.3 source compatibility gate
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-intelligence-status-compat.py P0.3 \
+            > artifacts/hepta-intelligence-p0-compatibility/p0-3-snapshot.json
+          python3 scripts/verify-hepta-intelligence-grounding-gate.py \
+            > artifacts/hepta-intelligence-p0-compatibility/p0-3-source.json
+
+      - name: Run P0.4a source compatibility gate
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-intelligence-status-compat.py P0.4a \
+            > artifacts/hepta-intelligence-p0-compatibility/p0-4a-snapshot.json
+          python3 scripts/verify-hepta-intelligence-mutation-state.py \
+            > artifacts/hepta-intelligence-p0-compatibility/p0-4a-source.json
+
+      - name: Run P0.4b source and SQLite compatibility gates
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-intelligence-status-compat.py P0.4b \
+            > artifacts/hepta-intelligence-p0-compatibility/p0-4b-snapshot.json
+          python3 scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py \
+            > artifacts/hepta-intelligence-p0-compatibility/p0-4b-sqlite.json
+          python3 scripts/verify-hepta-intelligence-mutation-journal.py \
+            > artifacts/hepta-intelligence-p0-compatibility/p0-4b-source.json
+
+      - name: Run P0.4c source compatibility gate
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-intelligence-status-compat.py P0.4c \
+            > artifacts/hepta-intelligence-p0-compatibility/p0-4c-snapshot.json
+          python3 scripts/verify-hepta-intelligence-shadow-host.py \
+            > artifacts/hepta-intelligence-p0-compatibility/p0-4c-source.json
+
+      - name: Restore canonical worktree status and aggregate receipts
+        shell: python
+        run: |
+          import json
+          import shutil
+          from pathlib import Path
+
+          root = Path("artifacts/hepta-intelligence-p0-compatibility")
+          status_path = Path("plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json")
+          shutil.copyfile(root / "canonical-status-v2.json", status_path)
+
+          expected = {
+              "p0-2-source.json": "PASS_P0_2_DURABLE_GROUNDING_SOURCE_ONLY",
+              "p0-3-source.json": "PASS_P0_3_SHADOW_GROUNDING_SOURCE_ONLY",
+              "p0-4a-source.json": "PASS_P0_4_MUTATION_STATE_SOURCE_ONLY",
+              "p0-4b-sqlite.json": "PASS_P0_4B_MUTATION_JOURNAL_SQLITE",
+              "p0-4b-source.json": "PASS_P0_4B_MUTATION_JOURNAL_SOURCE_ONLY",
+              "p0-4c-source.json": "PASS_P0_4C_SHADOW_HOST_SOURCE_ONLY",
+          }
+          receipts = {}
+          for filename, wanted in expected.items():
+              value = json.loads((root / filename).read_text(encoding="utf-8"))
+              assert value["status"] == wanted, (filename, value.get("status"))
+              for key in (
+                  "production_authority",
+                  "external_effects",
+                  "operator_acceptance",
+                  "promotion",
+              ):
+                  if key in value:
+                      assert value[key] is False, (filename, key)
+              receipts[filename] = wanted
+
+          identity = json.loads((root / "identity.json").read_text(encoding="utf-8"))
+          aggregate = {
+              "schema": "hepta_intelligence_p0_compatibility_matrix_receipt_v1",
+              "status": "PASS_P0_COMPATIBILITY_MATRIX_SOURCE_ONLY",
+              "identity": identity,
+              "receipts": receipts,
+              "legacy_status_materialized_only_in_ephemeral_worktree": True,
+              "current_plan_authority_changed": False,
+              "runtime_wired": False,
+              "production_authority": False,
+              "external_effects": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "callers_ratchet": False,
+              "rust_qualification": False,
+              "q0_satisfied": False,
+          }
+          (root / "aggregate.json").write_text(
+              json.dumps(aggregate, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+      - name: Assert compatibility run did not change tracked files
+        run: git diff --exit-code
+
+      - name: Upload compatibility receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p0-compatibility-${{ env.EXPECTED_SHA }}
+          path: artifacts/hepta-intelligence-p0-compatibility/*.json
+          if-no-files-found: error
+          retention-days: 30

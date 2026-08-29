@@ -355,13 +355,10 @@ async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_send
     fleet.supervisor.kill(&agent.agent_id)?;
     wait_inactive(&mut fleet, &agent.agent_id).await?;
     let trajectory_store = CognitiveStore::open(&agent.layout).await?;
-    let remember_trajectory = read_h7_trajectory_for_turn(
-        &trajectory_store,
-        &agent,
-        &remember_turn_id,
-    )
-        .await?
-        .context("qualification turn did not leave an H7 trajectory")?;
+    let remember_trajectory =
+        read_h7_trajectory_for_turn(&trajectory_store, &agent, &remember_turn_id)
+            .await?
+            .context("qualification turn did not leave an H7 trajectory")?;
     ensure!(
         remember_trajectory.events.len() == 2,
         "qualification turn trajectory was not start+terminal: {:?}",
@@ -1753,7 +1750,7 @@ fn assert_thread_read_contains_cited_answer(
             } => Some((text, memory_citation.as_ref())),
             _ => None,
         })
-        .last()
+        .next_back()
         .context("thread/read omitted the completed assistant message")?;
     ensure!(
         agent_message.0 == "done",
@@ -1806,7 +1803,7 @@ fn assert_external_read_only_turn(
             ThreadItem::AgentMessage { text, .. } => Some(text.as_str()),
             _ => None,
         })
-        .last()
+        .next_back()
         .context("external-provider turn omitted an assistant message")?;
     ensure!(
         assistant_text.trim() == expected_text,
@@ -2015,7 +2012,10 @@ fn attached_memory(request: &ResponsesRequest, memory_id: &str) -> Result<Value>
         "expected one attached occurrence of memory {memory_id}, found {}",
         matching.len()
     );
-    Ok(matching.into_iter().next().expect("length checked"))
+    matching
+        .into_iter()
+        .next()
+        .context("attached memory disappeared after exact-cardinality check")
 }
 
 fn assert_memory_absent(request: &ResponsesRequest, memory_id: &str) -> Result<()> {

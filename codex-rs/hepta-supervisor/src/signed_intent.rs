@@ -66,6 +66,10 @@ pub enum SignedIntentError {
 }
 
 impl SignedSupervisorIntent {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the durable intent binds every signed release and fencing field explicitly"
+    )]
     pub fn new(
         grant_sha256: Sha256Digest,
         agent_id: impl Into<String>,
@@ -131,6 +135,10 @@ impl SignedSupervisorIntent {
         next
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "the fixed tuple contains only infallibly serializable typed fields"
+    )]
     fn compute_digest(&self) -> Sha256Digest {
         let payload = serde_json::to_vec(&(
             self.schema_version,
@@ -170,18 +178,18 @@ pub fn write_intent(
     intent: &SignedSupervisorIntent,
 ) -> Result<(), SignedIntentError> {
     intent.validate()?;
-    if let Some(existing) = read_intent(run_root)? {
-        if matches!(
+    if let Some(existing) = read_intent(run_root)?
+        && matches!(
             existing.status,
             SignedIntentStatus::Prepared
                 | SignedIntentStatus::Queued
                 | SignedIntentStatus::RecoveryRequired
-        ) && existing.grant_sha256 != intent.grant_sha256
-        {
-            return Err(SignedIntentError::Invalid(
-                "another signed supervisor intent is unresolved".to_string(),
-            ));
-        }
+        )
+        && existing.grant_sha256 != intent.grant_sha256
+    {
+        return Err(SignedIntentError::Invalid(
+            "another signed supervisor intent is unresolved".to_string(),
+        ));
     }
     std::fs::create_dir_all(run_root)?;
     let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
@@ -213,7 +221,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp");
         let grant = Sha256Digest::for_bytes(b"grant");
         let first = SignedSupervisorIntent::new(
-            grant.clone(),
+            grant,
             "agent",
             H7H89ProductionTransition::Upgrade,
             "v1",

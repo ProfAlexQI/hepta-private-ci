@@ -238,6 +238,7 @@ impl LocalLeaseOutbox {
     /// Tombstone a candidate through the same Pending -> Applied/Rejected
     /// target-ack path.  The underlying CognitiveStore forget operation is
     /// append-only and cannot resurrect a tombstoned head.
+    #[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
     pub async fn tombstone_memory_candidate_saga(
         &self,
         access: &CognitiveAccess,
@@ -440,6 +441,7 @@ impl LocalLeaseOutbox {
         }
     }
 
+    #[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
     async fn replay_tombstone(
         &self,
         access: &CognitiveAccess,
@@ -568,7 +570,7 @@ impl LocalLeaseOutbox {
         let current = match self.store().latest_memory(access, candidate_id).await {
             Ok(current) => current,
             Err(CognitiveStoreError::Invalid(message)) if message == "memory does not exist" => {
-                return Ok(None)
+                return Ok(None);
             }
             Err(error) => return Err(error.into()),
         };
@@ -622,7 +624,7 @@ impl LocalLeaseOutbox {
         let current = match self.store().latest_memory(access, memory_id).await {
             Ok(current) => current,
             Err(CognitiveStoreError::Invalid(message)) if message == "memory does not exist" => {
-                return Ok(None)
+                return Ok(None);
             }
             Err(error) => return Err(error.into()),
         };
@@ -833,13 +835,13 @@ fn bounded_reason(reason: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cognitive_test_support::agent_id;
-    use crate::cognitive_test_support::layout;
     use crate::CognitiveScope;
     use crate::CognitiveStore;
     use crate::LedgerSourceKind;
     use crate::LocalLeaseAcquire;
     use crate::SourceDraft;
+    use crate::cognitive_test_support::agent_id;
+    use crate::cognitive_test_support::layout;
     use tempfile::TempDir;
 
     async fn setup(number: u8) -> (TempDir, CognitiveStore, LocalLeaseOutbox) {

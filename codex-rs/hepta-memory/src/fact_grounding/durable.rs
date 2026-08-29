@@ -35,10 +35,16 @@ use crate::StableMemoryId;
 use crate::cognitive_intelligence_writer::CanonicalFactSet;
 use crate::cognitive_store::unavailable;
 
+// This module is mounted below `framing` through a `#[path]` attribute.  Give
+// rustfmt and rustc the exact nested paths instead of relying on an implicit
+// module-name-to-file-name derivation that differs for path-mounted modules.
+#[path = "durable/grounding.rs"]
 mod grounding;
+#[path = "durable/schema.rs"]
 mod schema;
 
 #[cfg(test)]
+#[path = "durable/tests.rs"]
 mod tests;
 
 const COMPONENT_MIGRATION_VERSION: i64 = 11;
@@ -115,17 +121,13 @@ impl CognitiveStore {
 
     /// Applies the append-only P0.2 component migration exactly once and
     /// verifies its dedicated migration ledger and schema oracle.
-    pub async fn ensure_durable_fact_grounding_schema(
-        &self,
-    ) -> Result<(), CognitiveStoreError> {
+    pub async fn ensure_durable_fact_grounding_schema(&self) -> Result<(), CognitiveStoreError> {
         schema::ensure(&self.pool).await
     }
 
     /// Recomputes the component schema and every durable fact-grounding
     /// receipt from source bytes and immutable KG facts.
-    pub async fn verify_durable_fact_grounding_ledger(
-        &self,
-    ) -> Result<(), CognitiveStoreError> {
+    pub async fn verify_durable_fact_grounding_ledger(&self) -> Result<(), CognitiveStoreError> {
         schema::verify(&self.pool).await?;
         grounding::verify_receipts(&self.pool, self.owner_agent_id.as_str()).await
     }
@@ -140,11 +142,7 @@ impl CognitiveStore {
         grounded: &GroundedKgFactSetDraft,
     ) -> Result<CognitiveWriteReceipt, CognitiveStoreError> {
         self.ensure_durable_fact_grounding_schema().await?;
-        grounding::validate_source_binding(
-            source,
-            &draft.revision.scope,
-            &draft.revision.content,
-        )?;
+        grounding::validate_source_binding(source, &draft.revision.scope, &draft.revision.content)?;
         grounding::require_groundable_revision(&draft.revision, grounded)?;
         let prepared = grounding::prepare(source, grounded)?;
 
@@ -170,14 +168,7 @@ impl CognitiveStore {
         grounding::validate_canonical_identity_binding(&prepared, &canonical)?;
         self.insert_revision_facts_tx(&mut transaction, &memory, &citation, &canonical)
             .await?;
-        grounding::insert_tx(
-            &mut transaction,
-            &memory,
-            &citation,
-            &canonical,
-            &prepared,
-        )
-        .await?;
+        grounding::insert_tx(&mut transaction, &memory, &citation, &canonical, &prepared).await?;
         let projection = self
             .refresh_scope_projection_tx(
                 &mut transaction,
@@ -239,14 +230,7 @@ impl CognitiveStore {
         grounding::validate_canonical_identity_binding(&prepared, &canonical)?;
         self.insert_revision_facts_tx(&mut transaction, &memory, &citation, &canonical)
             .await?;
-        grounding::insert_tx(
-            &mut transaction,
-            &memory,
-            &citation,
-            &canonical,
-            &prepared,
-        )
-        .await?;
+        grounding::insert_tx(&mut transaction, &memory, &citation, &canonical, &prepared).await?;
         let projection = self
             .refresh_scope_projection_tx(
                 &mut transaction,

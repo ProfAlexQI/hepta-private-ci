@@ -327,6 +327,7 @@ impl LogicalTurnEvidence {
 
 /// Result of one serialized reservation attempt.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(clippy::large_enum_variant, reason = "reservation variants preserve a stable explicit qualification API")]
 pub enum LogicalTurnReservation {
     Acquired {
         attempt: LogicalTurnAttempt,
@@ -434,14 +435,13 @@ impl CognitiveStore {
                 let mut persisted_attempt = attempt.clone();
                 persisted_attempt.lease_expires_at_unix_seconds =
                     head.lease_expires_at_unix_seconds;
-                let lease =
-                    verify_or_load_requested_lease(
-                        &mut transaction,
-                        self,
-                        &persisted_attempt,
-                        false,
-                    )
-                    .await?;
+                let lease = verify_or_load_requested_lease(
+                    &mut transaction,
+                    self,
+                    &persisted_attempt,
+                    false,
+                )
+                .await?;
                 if lease.is_none() {
                     return Ok(commit_reservation(
                         transaction,
@@ -551,8 +551,9 @@ impl CognitiveStore {
                 return Ok(commit_reservation(
                     transaction,
                     LogicalTurnReservation::Conflict {
-                        reason: "takeover authority epoch must match the historical local authority"
-                            .to_string(),
+                        reason:
+                            "takeover authority epoch must match the historical local authority"
+                                .to_string(),
                     },
                 )
                 .await?);
@@ -663,8 +664,7 @@ impl CognitiveStore {
                 return rollback_reservation(
                     transaction,
                     LogicalTurnReservation::Conflict {
-                        reason: "attempt-scoped identity is already bound elsewhere"
-                            .to_string(),
+                        reason: "attempt-scoped identity is already bound elsewhere".to_string(),
                     },
                 )
                 .await;
@@ -807,8 +807,8 @@ impl CognitiveStore {
             .ok_or_else(|| corrupt("durable logical-turn identity has no attempt chain"))?;
         let (lease_head, _) =
             load_lease_chain(&mut transaction, &head.lease_id, self.owner_agent_id()).await?;
-        let lease_head = lease_head
-            .ok_or_else(|| corrupt("logical-turn registry head has no lease journal"))?;
+        let lease_head =
+            lease_head.ok_or_else(|| corrupt("logical-turn registry head has no lease journal"))?;
         // A lease id may legally receive a later generation after a normal
         // terminal transition.  That successor must not be mistaken for the
         // registry head's historical physical witness; otherwise a read-only
@@ -821,8 +821,7 @@ impl CognitiveStore {
             || lease_head.fencing_token != head.fencing_token
             || lease_head.authority_epoch != Some(head.authority_epoch)
             || lease_head.owner_epoch != Some(head.owner_epoch)
-            || lease_head.lease_expires_at_unix_seconds
-                != Some(head.lease_expires_at_unix_seconds)
+            || lease_head.lease_expires_at_unix_seconds != Some(head.lease_expires_at_unix_seconds)
         {
             return Err(corrupt(
                 "logical-turn registry head lease identity drifted before terminal inspection",
@@ -1059,13 +1058,12 @@ async fn physical_identity_is_reused(
         return Ok(true);
     }
 
-    let lease_rows: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM cognitive_local_leases WHERE lease_id = ?",
-    )
-    .bind(&attempt.lease_id)
-    .fetch_one(&mut **transaction)
-    .await
-    .map_err(crate::cognitive_store::unavailable)?;
+    let lease_rows: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_local_leases WHERE lease_id = ?")
+            .bind(&attempt.lease_id)
+            .fetch_one(&mut **transaction)
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
     if lease_rows > 0 {
         return Ok(true);
     }
@@ -1252,6 +1250,7 @@ fn attempt_from_existing_for_supersede(attempt: &LogicalTurnAttempt) -> LogicalT
     }
 }
 
+#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
 async fn append_attempt(
     transaction: &mut Transaction<'_, Sqlite>,
     owner: &AgentId,
@@ -1659,6 +1658,7 @@ fn logical_identity_digest(
     )
 }
 
+#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
 fn attempt_digest(
     owner: &AgentId,
     request: &LogicalTurnRequest,
@@ -1684,6 +1684,7 @@ fn attempt_digest(
     )
 }
 
+#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
 fn attempt_digest_without_scope(
     owner: &AgentId,
     logical_turn_id: &str,

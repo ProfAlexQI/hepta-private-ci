@@ -7,6 +7,12 @@ on:
   push:
     branches: [main]
 
+# A PR head supersedes every earlier head. Cancel obsolete merge-gate work so
+# stale candidates cannot monopolize the repository's limited hosted capacity.
+concurrency:
+  group: blocking-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # Keep reusable workflow calls alphabetized. The `required` job below is the
   # version-controlled list that the main-branch ruleset should require.

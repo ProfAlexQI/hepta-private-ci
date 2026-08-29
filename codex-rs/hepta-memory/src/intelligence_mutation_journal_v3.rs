@@ -100,21 +100,39 @@ pub(crate) enum IntelligenceMutationJournalError {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum PersistedAction {
-    WitnessSource { source_sha256: String },
-    ValidateGrounding { grounding_receipt_sha256: String },
-    AppendDurableIntent { intent_sha256: String },
-    CommitMemoryFacts { write_receipt_sha256: String },
+    WitnessSource {
+        source_sha256: String,
+    },
+    ValidateGrounding {
+        grounding_receipt_sha256: String,
+    },
+    AppendDurableIntent {
+        intent_sha256: String,
+    },
+    CommitMemoryFacts {
+        write_receipt_sha256: String,
+    },
     PublishProjection {
         expected_previous_generation: u64,
         new_generation: u64,
         projection_receipt_sha256: String,
     },
-    SettleOutbox { outcome_sha256: String },
+    SettleOutbox {
+        outcome_sha256: String,
+    },
     Terminalize,
-    MarkIndeterminate { reason_sha256: String },
-    ReconcileApplied { outcome_sha256: String },
-    ReconcileNotApplied { outcome_sha256: String },
-    Quarantine { reason_sha256: String },
+    MarkIndeterminate {
+        reason_sha256: String,
+    },
+    ReconcileApplied {
+        outcome_sha256: String,
+    },
+    ReconcileNotApplied {
+        outcome_sha256: String,
+    },
+    Quarantine {
+        reason_sha256: String,
+    },
 }
 
 impl PersistedAction {
@@ -123,21 +141,21 @@ impl PersistedAction {
             IntelligenceMutationAction::WitnessSource { source_sha256 } => Self::WitnessSource {
                 source_sha256: source_sha256.as_str().to_string(),
             },
-            IntelligenceMutationAction::ValidateGrounding { grounding_receipt_sha256 } => {
-                Self::ValidateGrounding {
-                    grounding_receipt_sha256: grounding_receipt_sha256.as_str().to_string(),
-                }
-            }
+            IntelligenceMutationAction::ValidateGrounding {
+                grounding_receipt_sha256,
+            } => Self::ValidateGrounding {
+                grounding_receipt_sha256: grounding_receipt_sha256.as_str().to_string(),
+            },
             IntelligenceMutationAction::AppendDurableIntent { intent_sha256 } => {
                 Self::AppendDurableIntent {
                     intent_sha256: intent_sha256.as_str().to_string(),
                 }
             }
-            IntelligenceMutationAction::CommitMemoryFacts { write_receipt_sha256 } => {
-                Self::CommitMemoryFacts {
-                    write_receipt_sha256: write_receipt_sha256.as_str().to_string(),
-                }
-            }
+            IntelligenceMutationAction::CommitMemoryFacts {
+                write_receipt_sha256,
+            } => Self::CommitMemoryFacts {
+                write_receipt_sha256: write_receipt_sha256.as_str().to_string(),
+            },
             IntelligenceMutationAction::PublishProjection {
                 expected_previous_generation,
                 new_generation,
@@ -177,27 +195,24 @@ impl PersistedAction {
             Self::WitnessSource { source_sha256 } => IntelligenceMutationAction::WitnessSource {
                 source_sha256: parse_digest(source_sha256, "source digest")?,
             },
-            Self::ValidateGrounding { grounding_receipt_sha256 } => {
-                IntelligenceMutationAction::ValidateGrounding {
-                    grounding_receipt_sha256: parse_digest(
-                        grounding_receipt_sha256,
-                        "grounding receipt digest",
-                    )?,
-                }
-            }
+            Self::ValidateGrounding {
+                grounding_receipt_sha256,
+            } => IntelligenceMutationAction::ValidateGrounding {
+                grounding_receipt_sha256: parse_digest(
+                    grounding_receipt_sha256,
+                    "grounding receipt digest",
+                )?,
+            },
             Self::AppendDurableIntent { intent_sha256 } => {
                 IntelligenceMutationAction::AppendDurableIntent {
                     intent_sha256: parse_digest(intent_sha256, "intent digest")?,
                 }
             }
-            Self::CommitMemoryFacts { write_receipt_sha256 } => {
-                IntelligenceMutationAction::CommitMemoryFacts {
-                    write_receipt_sha256: parse_digest(
-                        write_receipt_sha256,
-                        "write receipt digest",
-                    )?,
-                }
-            }
+            Self::CommitMemoryFacts {
+                write_receipt_sha256,
+            } => IntelligenceMutationAction::CommitMemoryFacts {
+                write_receipt_sha256: parse_digest(write_receipt_sha256, "write receipt digest")?,
+            },
             Self::PublishProjection {
                 expected_previous_generation,
                 new_generation,
@@ -406,12 +421,10 @@ impl CognitiveStore {
         operation_id: &str,
     ) -> Result<IntelligenceMutationState, IntelligenceMutationJournalError> {
         self.ensure_intelligence_mutation_journal_schema().await?;
-        Ok(replay::replay_operation_pool(
-            &self.pool,
-            self.owner_agent_id.as_str(),
-            operation_id,
+        Ok(
+            replay::replay_operation_pool(&self.pool, self.owner_agent_id.as_str(), operation_id)
+                .await?,
         )
-        .await?)
     }
 }
 
@@ -440,7 +453,12 @@ async fn insert_transition_tx(
     .bind(action.kind())
     .bind(action_json)
     .bind(receipt.request_sha256.as_str())
-    .bind(receipt.causal_parent_sha256.as_ref().map(Sha256Digest::as_str))
+    .bind(
+        receipt
+            .causal_parent_sha256
+            .as_ref()
+            .map(Sha256Digest::as_str),
+    )
     .bind(receipt.transition_sha256.as_str())
     .bind(bool_i64(receipt.durable_intent_appended))
     .bind(bool_i64(receipt.durable_intent_settled))
@@ -506,13 +524,11 @@ pub(super) fn parse_digest(
 }
 
 pub(super) fn to_i64(value: u64, label: &str) -> Result<i64, CognitiveStoreError> {
-    i64::try_from(value)
-        .map_err(|_| CognitiveStoreError::Invalid(format!("{label} exceeds i64")))
+    i64::try_from(value).map_err(|_| CognitiveStoreError::Invalid(format!("{label} exceeds i64")))
 }
 
 pub(super) fn from_i64(value: i64, label: &str) -> Result<u64, CognitiveStoreError> {
-    u64::try_from(value)
-        .map_err(|_| CognitiveStoreError::Corrupt(format!("negative {label}")))
+    u64::try_from(value).map_err(|_| CognitiveStoreError::Corrupt(format!("negative {label}")))
 }
 
 pub(super) const fn bool_i64(value: bool) -> i64 {

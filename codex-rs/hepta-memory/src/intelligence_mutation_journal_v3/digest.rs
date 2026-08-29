@@ -24,9 +24,6 @@ pub(super) fn binding_digest(binding: &IntelligenceMutationBinding) -> Sha256Dig
         &mut hasher,
         &binding.starting_projection_generation.to_be_bytes(),
     );
-    super::super::frame_part(
-        &mut hasher,
-        binding.causal_root_sha256.as_str().as_bytes(),
-    );
+    super::super::frame_part(&mut hasher, binding.causal_root_sha256.as_str().as_bytes());
     Sha256Digest::from_sha256_output(hasher.finalize())
 }

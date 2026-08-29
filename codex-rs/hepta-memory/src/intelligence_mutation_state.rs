@@ -186,8 +186,7 @@ impl IntelligenceMutationAction {
             | Self::ReconcileNotApplied { outcome_sha256 } => {
                 validate_digest(outcome_sha256, "outcome digest")
             }
-            Self::MarkIndeterminate { reason_sha256 }
-            | Self::Quarantine { reason_sha256 } => {
+            Self::MarkIndeterminate { reason_sha256 } | Self::Quarantine { reason_sha256 } => {
                 validate_digest(reason_sha256, "reason digest")
             }
             Self::Terminalize => Ok(()),
@@ -401,7 +400,10 @@ impl IntelligenceMutationState {
         }
         if self.projection_publish_count == 1
             && self.last_published_generation
-                != self.binding.starting_projection_generation.saturating_add(1)
+                != self
+                    .binding
+                    .starting_projection_generation
+                    .saturating_add(1)
         {
             return Err(IntelligenceMutationStateError::Corrupt(
                 "projection publication did not advance exactly once".to_string(),
@@ -478,9 +480,10 @@ impl IntelligenceMutationState {
         action: &IntelligenceMutationAction,
     ) -> Result<IntelligenceMutationPhase, IntelligenceMutationStateError> {
         match (self.phase, action) {
-            (IntelligenceMutationPhase::Planned, IntelligenceMutationAction::WitnessSource { .. }) => {
-                Ok(IntelligenceMutationPhase::SourceWitnessed)
-            }
+            (
+                IntelligenceMutationPhase::Planned,
+                IntelligenceMutationAction::WitnessSource { .. },
+            ) => Ok(IntelligenceMutationPhase::SourceWitnessed),
             (
                 IntelligenceMutationPhase::SourceWitnessed,
                 IntelligenceMutationAction::ValidateGrounding { .. },
@@ -497,9 +500,12 @@ impl IntelligenceMutationState {
                 IntelligenceMutationPhase::DurableIntentAppended,
                 IntelligenceMutationAction::CommitMemoryFacts { .. },
             ) => {
-                self.memory_write_count = self.memory_write_count.checked_add(1).ok_or_else(|| {
-                    IntelligenceMutationStateError::Corrupt("memory write count overflow".to_string())
-                })?;
+                self.memory_write_count =
+                    self.memory_write_count.checked_add(1).ok_or_else(|| {
+                        IntelligenceMutationStateError::Corrupt(
+                            "memory write count overflow".to_string(),
+                        )
+                    })?;
                 if self.memory_write_count != 1 {
                     return Err(IntelligenceMutationStateError::DoubleWrite);
                 }
@@ -519,19 +525,24 @@ impl IntelligenceMutationState {
                         received: *expected_previous_generation,
                     });
                 }
-                let expected_new = self.last_published_generation.checked_add(1).ok_or_else(|| {
-                    IntelligenceMutationStateError::Corrupt(
-                        "projection generation overflow".to_string(),
-                    )
-                })?;
+                let expected_new =
+                    self.last_published_generation
+                        .checked_add(1)
+                        .ok_or_else(|| {
+                            IntelligenceMutationStateError::Corrupt(
+                                "projection generation overflow".to_string(),
+                            )
+                        })?;
                 if *new_generation != expected_new {
                     return Err(IntelligenceMutationStateError::StaleProjectionGeneration {
                         expected: expected_new,
                         received: *new_generation,
                     });
                 }
-                self.projection_publish_count =
-                    self.projection_publish_count.checked_add(1).ok_or_else(|| {
+                self.projection_publish_count = self
+                    .projection_publish_count
+                    .checked_add(1)
+                    .ok_or_else(|| {
                         IntelligenceMutationStateError::Corrupt(
                             "projection publish count overflow".to_string(),
                         )
@@ -549,10 +560,7 @@ impl IntelligenceMutationState {
                 self.durable_intent_settled = true;
                 Ok(IntelligenceMutationPhase::OutboxSettled)
             }
-            (
-                IntelligenceMutationPhase::OutboxSettled,
-                IntelligenceMutationAction::Terminalize,
-            ) => {
+            (IntelligenceMutationPhase::OutboxSettled, IntelligenceMutationAction::Terminalize) => {
                 if !self.durable_intent_settled {
                     return Err(IntelligenceMutationStateError::UnsettledIntent);
                 }
@@ -678,10 +686,7 @@ fn transition_digest(
     frame_part(&mut hasher, &[u8::from(state.durable_intent_settled)]);
     frame_part(&mut hasher, &[state.memory_write_count]);
     frame_part(&mut hasher, &[state.projection_publish_count]);
-    frame_part(
-        &mut hasher,
-        &state.last_published_generation.to_be_bytes(),
-    );
+    frame_part(&mut hasher, &state.last_published_generation.to_be_bytes());
     Sha256Digest::from_sha256_output(hasher.finalize())
 }
 
@@ -805,10 +810,7 @@ mod tests {
         action: IntelligenceMutationAction,
     ) -> IntelligenceMutationTransitionReceipt {
         let request = request(state, action);
-        state
-            .apply(request)
-            .expect("transition")
-            .receipt
+        state.apply(request).expect("transition").receipt
     }
 
     fn advance_to_intent(state: &mut IntelligenceMutationState) {
@@ -883,8 +885,14 @@ mod tests {
         );
         let applied = state.apply(request.clone()).expect("applied");
         let replay = state.apply(request).expect("replay");
-        assert_eq!(applied.disposition, IntelligenceMutationApplyDisposition::Applied);
-        assert_eq!(replay.disposition, IntelligenceMutationApplyDisposition::Replay);
+        assert_eq!(
+            applied.disposition,
+            IntelligenceMutationApplyDisposition::Applied
+        );
+        assert_eq!(
+            replay.disposition,
+            IntelligenceMutationApplyDisposition::Replay
+        );
         assert_eq!(applied.receipt, replay.receipt);
         assert_eq!(replay.receipt.memory_write_count, 1);
     }
@@ -945,7 +953,7 @@ mod tests {
         let mut state = IntelligenceMutationState::new(binding()).expect("state");
         let mut drifted = state.binding().clone();
         drifted.lease_epoch += 1;
-        let request = IntelligenceMutationTransitionRequest {
+        let drifted_request = IntelligenceMutationTransitionRequest {
             binding: drifted,
             sequence: 0,
             causal_parent_sha256: None,
@@ -954,7 +962,7 @@ mod tests {
             },
         };
         assert_eq!(
-            state.apply(request),
+            state.apply(drifted_request),
             Err(IntelligenceMutationStateError::BindingDrift)
         );
 
@@ -995,7 +1003,10 @@ mod tests {
                 outcome_sha256: digest("not-applied"),
             },
         );
-        assert_eq!(state.phase(), IntelligenceMutationPhase::ReconciledNotApplied);
+        assert_eq!(
+            state.phase(),
+            IntelligenceMutationPhase::ReconciledNotApplied
+        );
         assert!(resolved.durable_intent_settled);
         assert_eq!(resolved.memory_write_count, 0);
     }

@@ -192,11 +192,7 @@ pub(crate) fn prepare_grounded_tool_v3(
             MAX_KEY_BYTES,
             "relation target key",
         )?;
-        validate_text(
-            &relation.relation,
-            MAX_RELATION_BYTES,
-            "relation predicate",
-        )?;
+        validate_text(&relation.relation, MAX_RELATION_BYTES, "relation predicate")?;
         append_evidence(
             source_content,
             GroundedFactKind::Relation,
@@ -314,8 +310,8 @@ mod tests {
                 "evidence"
             ])
         );
-        assert!(!GROUNDED_TOOL_V3_REGISTERED);
-        assert!(!GROUNDED_TOOL_V3_PRODUCTION_AUTHORITY);
+        const { assert!(!GROUNDED_TOOL_V3_REGISTERED); }
+        const { assert!(!GROUNDED_TOOL_V3_PRODUCTION_AUTHORITY); }
     }
 
     #[test]

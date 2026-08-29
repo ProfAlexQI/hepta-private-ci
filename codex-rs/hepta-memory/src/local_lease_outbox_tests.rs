@@ -20,22 +20,22 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tempfile::TempDir;
 
-use crate::cognitive_test_support::agent_id;
-use crate::cognitive_test_support::layout;
 use crate::CognitiveStore;
+use crate::LOCAL_LEASE_OUTBOX_EXTERNAL_EFFECTS;
+use crate::LOCAL_LEASE_OUTBOX_KG_WRITE_AUTHORITY;
+use crate::LOCAL_LEASE_OUTBOX_PRODUCTION_CALLER;
 use crate::LocalAdmission;
 use crate::LocalAdmissionFault;
 use crate::LocalLeaseAcquire;
 use crate::LocalLeaseHeadDisposition;
-use crate::LocalLeaseOutboxError;
 use crate::LocalLeaseOutboxCounts;
+use crate::LocalLeaseOutboxError;
 use crate::LocalLeaseState;
 use crate::LocalOutcomeState;
 use crate::LocalReconcileOutcome;
 use crate::LocalReplayFinalization;
-use crate::LOCAL_LEASE_OUTBOX_EXTERNAL_EFFECTS;
-use crate::LOCAL_LEASE_OUTBOX_KG_WRITE_AUTHORITY;
-use crate::LOCAL_LEASE_OUTBOX_PRODUCTION_CALLER;
+use crate::cognitive_test_support::agent_id;
+use crate::cognitive_test_support::layout;
 use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_paths::HeptaFleetRoot;
 
@@ -91,7 +91,10 @@ async fn inspect_local_lease_head_is_read_only_and_classifies_fences() {
     assert_eq!(active_head.fencing_token, "fence:inspect-active");
     assert_eq!(active_head.state, LocalLeaseState::Active);
     assert_eq!(
-        active.snapshot_counts().await.expect("counts after inspect"),
+        active
+            .snapshot_counts()
+            .await
+            .expect("counts after inspect"),
         before,
         "inspection must not append lease/event/outbox rows"
     );
@@ -104,14 +107,7 @@ async fn inspect_local_lease_head_is_read_only_and_classifies_fences() {
 
     let expired = acquired(
         store
-            .acquire_host_bound_lease(
-                "lease:inspect-expired",
-                1,
-                1,
-                1,
-                "fence:inspect-expired",
-                1,
-            )
+            .acquire_host_bound_lease("lease:inspect-expired", 1, 1, 1, "fence:inspect-expired", 1)
             .await
             .expect("expired active acquire"),
     );
@@ -186,10 +182,12 @@ async fn generation_cas_release_and_stale_handle_fail_closed() {
             if message.contains("exact lease head")
     ));
     let released = old.release().await.expect("release");
-    assert!(store
-        .acquire_local_lease_after("lease:generation", 1, 2, "fence:1")
-        .await
-        .is_err());
+    assert!(
+        store
+            .acquire_local_lease_after("lease:generation", 1, 2, "fence:1")
+            .await
+            .is_err()
+    );
     assert!(matches!(
         store
             .acquire_local_lease_after("lease:generation", 1, 2, "fence:2")
@@ -203,18 +201,22 @@ async fn generation_cas_release_and_stale_handle_fail_closed() {
             .await
             .expect("next generation"),
     );
-    assert!(old
-        .admit("occurrence:stale", "topic", "payload")
-        .await
-        .is_err());
-    assert!(next
-        .admit("occurrence:current", "topic", "payload")
-        .await
-        .is_ok());
-    assert!(store
-        .acquire_local_lease_after("lease:generation", 1, 3, "fence:3")
-        .await
-        .is_err());
+    assert!(
+        old.admit("occurrence:stale", "topic", "payload")
+            .await
+            .is_err()
+    );
+    assert!(
+        next.admit("occurrence:current", "topic", "payload")
+            .await
+            .is_ok()
+    );
+    assert!(
+        store
+            .acquire_local_lease_after("lease:generation", 1, 3, "fence:3")
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
@@ -331,10 +333,11 @@ async fn bound_expiry_is_explicit_timeout_rollback_and_exact_head_reopens_genera
             .lease_expires_at_unix_seconds,
         next_expires_at
     );
-    assert!(next
-        .admit("occurrence:next-generation", "topic", "payload")
-        .await
-        .is_ok());
+    assert!(
+        next.admit("occurrence:next-generation", "topic", "payload")
+            .await
+            .is_ok()
+    );
 }
 
 #[tokio::test]
@@ -694,7 +697,10 @@ async fn lease_terminalization_rejects_unresolved_outbox_until_occurrence_is_set
             .await
             .expect("admit queued occurrence");
 
-        let before = lease.snapshot_counts().await.expect("counts before terminal");
+        let before = lease
+            .snapshot_counts()
+            .await
+            .expect("counts before terminal");
         let head_before = lease.head_witness().await.expect("head before terminal");
         let first = match transition {
             "release" => lease.release().await,
@@ -710,12 +716,18 @@ async fn lease_terminalization_rejects_unresolved_outbox_until_occurrence_is_set
             "{transition} must reject a queued occurrence: {first:?}"
         );
         assert_eq!(
-            lease.snapshot_counts().await.expect("counts after queued rejection"),
+            lease
+                .snapshot_counts()
+                .await
+                .expect("counts after queued rejection"),
             before,
             "{transition} must not append a terminal lease for a queued occurrence"
         );
         assert_eq!(
-            lease.head_witness().await.expect("head after queued rejection"),
+            lease
+                .head_witness()
+                .await
+                .expect("head after queued rejection"),
             head_before,
             "{transition} must preserve the active head after a queued rejection"
         );
@@ -746,7 +758,10 @@ async fn lease_terminalization_rejects_unresolved_outbox_until_occurrence_is_set
             "{transition} must reject an indeterminate occurrence: {second:?}"
         );
         assert_eq!(
-            lease.snapshot_counts().await.expect("counts after indeterminate rejection"),
+            lease
+                .snapshot_counts()
+                .await
+                .expect("counts after indeterminate rejection"),
             after_indeterminate,
             "{transition} must not append a terminal lease for an indeterminate occurrence"
         );
@@ -768,7 +783,10 @@ async fn lease_terminalization_rejects_unresolved_outbox_until_occurrence_is_set
         };
         assert_eq!(terminal.state, expected_state);
         assert_eq!(
-            lease.snapshot_counts().await.expect("counts after settled terminal"),
+            lease
+                .snapshot_counts()
+                .await
+                .expect("counts after settled terminal"),
             LocalLeaseOutboxCounts {
                 lease_rows: 2,
                 event_rows: 3,
@@ -983,15 +1001,17 @@ async fn event_and_outbox_faults_leave_no_partial_rows() {
             .await
             .expect("acquire"),
     );
-    assert!(handle
-        .admit_with_fault(
-            "occurrence:fault",
-            "topic",
-            "payload",
-            LocalAdmissionFault::AfterEventBeforeOutbox,
-        )
-        .await
-        .is_err());
+    assert!(
+        handle
+            .admit_with_fault(
+                "occurrence:fault",
+                "topic",
+                "payload",
+                LocalAdmissionFault::AfterEventBeforeOutbox,
+            )
+            .await
+            .is_err()
+    );
     assert_eq!(
         handle.snapshot_counts().await.expect("counts after fault"),
         crate::LocalLeaseOutboxCounts {
@@ -1000,15 +1020,17 @@ async fn event_and_outbox_faults_leave_no_partial_rows() {
             outbox_rows: 0,
         }
     );
-    assert!(handle
-        .admit_with_fault(
-            "occurrence:fault-after-outbox",
-            "topic",
-            "payload",
-            LocalAdmissionFault::AfterOutboxBeforeCommit,
-        )
-        .await
-        .is_err());
+    assert!(
+        handle
+            .admit_with_fault(
+                "occurrence:fault-after-outbox",
+                "topic",
+                "payload",
+                LocalAdmissionFault::AfterOutboxBeforeCommit,
+            )
+            .await
+            .is_err()
+    );
     assert_eq!(
         handle
             .snapshot_counts()
@@ -1142,10 +1164,12 @@ async fn indeterminate_replay_is_status_aware_and_releases_without_dispatch() {
             outbox_rows: 1,
         }
     );
-    assert!(reopened_store
-        .acquire_local_lease("lease:replay-recovery", 1, "fence:1")
-        .await
-        .is_err());
+    assert!(
+        reopened_store
+            .acquire_local_lease("lease:replay-recovery", 1, "fence:1")
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
@@ -1346,10 +1370,12 @@ async fn tampered_event_chain_is_rejected_on_reopen() {
     .execute(&store.pool)
     .await
     .expect("tamper");
-    assert!(store
-        .reopen_local_lease("lease:tamper", 1, "fence:1")
-        .await
-        .is_err());
+    assert!(
+        store
+            .reopen_local_lease("lease:tamper", 1, "fence:1")
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
@@ -1358,7 +1384,11 @@ async fn replay_acquisition_rejects_corrupt_child_chain_before_returning_handle(
     let store = opened_store(&temp, 106).await;
     let handle = acquired(
         store
-            .acquire_local_lease("lease:replay-child-corrupt", 1, "fence:replay-child-corrupt")
+            .acquire_local_lease(
+                "lease:replay-child-corrupt",
+                1,
+                "fence:replay-child-corrupt",
+            )
             .await
             .expect("acquire"),
     );
@@ -1384,7 +1414,11 @@ async fn replay_acquisition_rejects_corrupt_child_chain_before_returning_handle(
     .expect("tamper event");
 
     let replay = store
-        .acquire_local_lease("lease:replay-child-corrupt", 1, "fence:replay-child-corrupt")
+        .acquire_local_lease(
+            "lease:replay-child-corrupt",
+            1,
+            "fence:replay-child-corrupt",
+        )
         .await;
     assert!(matches!(
         replay,
@@ -1512,7 +1546,10 @@ async fn terminal_recovery_rejects_missing_event_outbox_pair_without_appending_l
             .await
             .expect("delete damaged outbox intent");
 
-        let before = lease.snapshot_counts().await.expect("counts before terminal");
+        let before = lease
+            .snapshot_counts()
+            .await
+            .expect("counts before terminal");
         assert_eq!(before.outbox_rows, 0);
         let result = match transition {
             "release" => lease.release().await,
@@ -1524,7 +1561,10 @@ async fn terminal_recovery_rejects_missing_event_outbox_pair_without_appending_l
             "{transition} must reject an unpaired admitted event: {result:?}"
         );
         assert_eq!(
-            lease.snapshot_counts().await.expect("counts after terminal"),
+            lease
+                .snapshot_counts()
+                .await
+                .expect("counts after terminal"),
             before,
             "{transition} must not append a terminal lease over damaged history"
         );
@@ -1557,11 +1597,7 @@ async fn expiry_and_replay_finalization_reject_missing_outbox_pair() {
         } else {
             acquired(
                 store
-                    .acquire_local_lease(
-                        "lease:pairing-replay",
-                        1,
-                        "fence:pairing-replay",
-                    )
+                    .acquire_local_lease("lease:pairing-replay", 1, "fence:pairing-replay")
                     .await
                     .expect("acquire"),
             )
@@ -1585,7 +1621,10 @@ async fn expiry_and_replay_finalization_reject_missing_outbox_pair() {
             .execute(&store.pool)
             .await
             .expect("delete damaged outbox intent");
-        let before = lease.snapshot_counts().await.expect("counts before recovery");
+        let before = lease
+            .snapshot_counts()
+            .await
+            .expect("counts before recovery");
         let result = if path == "expiry" {
             lease
                 .expire_lease_at_unix_seconds(expiry_deadline)
@@ -1602,7 +1641,10 @@ async fn expiry_and_replay_finalization_reject_missing_outbox_pair() {
             "{path} must reject an unpaired admitted event: {result:?}"
         );
         assert_eq!(
-            lease.snapshot_counts().await.expect("counts after recovery"),
+            lease
+                .snapshot_counts()
+                .await
+                .expect("counts after recovery"),
             before,
             "{path} must not append over damaged history"
         );
@@ -1849,6 +1891,7 @@ async fn verifier_accepts_direct_queued_apply_and_reject_after_reopen() {
 /// Insert one validly hashed event after a normal admission.  This models a
 /// higher-level apply/reject writer that shares the append-only event table
 /// but is not present in this qualification-only branch.
+#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
 async fn insert_test_transition(
     store: &CognitiveStore,
     lease_id: &str,
@@ -1915,6 +1958,7 @@ async fn insert_test_transition(
     .expect("insert direct terminal transition");
 }
 
+#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
 fn test_event_digest(
     lease_id: &str,
     sequence: u64,
@@ -1949,9 +1993,9 @@ fn frame_test_part(hasher: &mut Sha256, part: &[u8]) {
 
 #[test]
 fn local_lease_outbox_has_no_production_authority() {
-    assert!(!LOCAL_LEASE_OUTBOX_EXTERNAL_EFFECTS);
-    assert!(!LOCAL_LEASE_OUTBOX_KG_WRITE_AUTHORITY);
-    assert!(!LOCAL_LEASE_OUTBOX_PRODUCTION_CALLER);
+    const { assert!(!LOCAL_LEASE_OUTBOX_EXTERNAL_EFFECTS); }
+    const { assert!(!LOCAL_LEASE_OUTBOX_KG_WRITE_AUTHORITY); }
+    const { assert!(!LOCAL_LEASE_OUTBOX_PRODUCTION_CALLER); }
 }
 
 // H4 qualification probe constants. These are test-only and deliberately
@@ -1966,8 +2010,7 @@ const H4_PROBE_OWNER_NUMBER: u8 = 240;
 const H4_PROBE_LEASE_ID: &str = "lease:h4-crash-probe";
 const H4_PROBE_OCCURRENCE_KEY: &str = "occurrence:h4-crash-probe";
 const H4_PROBE_TOPIC: &str = "qualification.h4.crash.v1";
-const H4_PROBE_PAYLOAD: &str =
-    r#"{"schema_version":1,"external_effect":false,"kg_write_authority":false,"production_caller":false}"#;
+const H4_PROBE_PAYLOAD: &str = r#"{"schema_version":1,"external_effect":false,"kg_write_authority":false,"production_caller":false}"#;
 const H4_PROBE_AUTHORITY_EPOCH: u64 = 7;
 const H4_PROBE_INITIAL_OWNER_EPOCH: u64 = 11;
 const H4_PROBE_SUCCESSOR_OWNER_EPOCH: u64 = 12;
@@ -2031,9 +2074,7 @@ struct H4CrashReopenReceipt {
 
 impl H4CrashReopenReceipt {
     fn validate(&self) -> Result<(), String> {
-        if self.schema_version != H4_PROBE_SCHEMA_VERSION
-            || self.namespace != H4_PROBE_NAMESPACE
-        {
+        if self.schema_version != H4_PROBE_SCHEMA_VERSION || self.namespace != H4_PROBE_NAMESPACE {
             return Err("unsupported H4 receipt schema or namespace".to_string());
         }
         if self.journal_mode.to_ascii_lowercase() != "wal" || self.synchronous != 2 {
@@ -2056,7 +2097,9 @@ impl H4CrashReopenReceipt {
             || self.crash.lease_rows != 3
             || self.crash.lease_state != "active"
         {
-            return Err("crash child marker does not describe one admitted active attempt".to_string());
+            return Err(
+                "crash child marker does not describe one admitted active attempt".to_string(),
+            );
         }
         if self.counts_after_reopen.lease_rows != 3
             || self.counts_after_reopen.event_rows != 1
@@ -2071,7 +2114,8 @@ impl H4CrashReopenReceipt {
             return Err("H4 reopen/retry/terminal counts are inconsistent".to_string());
         }
         if self.retry_disposition != "replay"
-            || self.terminal_transition != "mark_indeterminate_then_rollback_occurrence_then_release"
+            || self.terminal_transition
+                != "mark_indeterminate_then_rollback_occurrence_then_release"
             || self.final_lease_state != "released"
         {
             return Err("H4 retry/rollback transition receipt is incomplete".to_string());
@@ -2115,9 +2159,7 @@ fn h4_publish_marker(path: &Path, marker: &H4ProbeChildMarker) {
 }
 
 async fn h4_open_store(fleet_root: &Path) -> CognitiveStore {
-    let canonical_root = fleet_root
-        .canonicalize()
-        .expect("H4 canonical fleet root");
+    let canonical_root = fleet_root.canonicalize().expect("H4 canonical fleet root");
     let fleet = HeptaFleetRoot::parse(canonical_root).expect("H4 fleet root");
     let owner = agent_id(H4_PROBE_OWNER_NUMBER);
     CognitiveStore::open(&fleet.layout().agent(&owner))
@@ -2126,27 +2168,24 @@ async fn h4_open_store(fleet_root: &Path) -> CognitiveStore {
 }
 
 async fn h4_counts(store: &CognitiveStore) -> LocalLeaseOutboxCounts {
-    let lease_rows: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM cognitive_local_leases WHERE lease_id = ?",
-    )
-    .bind(H4_PROBE_LEASE_ID)
-    .fetch_one(&store.pool)
-    .await
-    .expect("H4 lease row count");
-    let event_rows: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM cognitive_local_events WHERE lease_id = ?",
-    )
-    .bind(H4_PROBE_LEASE_ID)
-    .fetch_one(&store.pool)
-    .await
-    .expect("H4 event row count");
-    let outbox_rows: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM cognitive_local_outbox WHERE lease_id = ?",
-    )
-    .bind(H4_PROBE_LEASE_ID)
-    .fetch_one(&store.pool)
-    .await
-    .expect("H4 outbox row count");
+    let lease_rows: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_local_leases WHERE lease_id = ?")
+            .bind(H4_PROBE_LEASE_ID)
+            .fetch_one(&store.pool)
+            .await
+            .expect("H4 lease row count");
+    let event_rows: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_local_events WHERE lease_id = ?")
+            .bind(H4_PROBE_LEASE_ID)
+            .fetch_one(&store.pool)
+            .await
+            .expect("H4 event row count");
+    let outbox_rows: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_local_outbox WHERE lease_id = ?")
+            .bind(H4_PROBE_LEASE_ID)
+            .fetch_one(&store.pool)
+            .await
+            .expect("H4 outbox row count");
     LocalLeaseOutboxCounts {
         lease_rows: u64::try_from(lease_rows).expect("non-negative H4 lease count"),
         event_rows: u64::try_from(event_rows).expect("non-negative H4 event count"),
@@ -2245,11 +2284,7 @@ impl H4ProbeChild {
                 return status;
             }
             if Instant::now() >= deadline {
-                let _ = self
-                    .child
-                    .as_mut()
-                    .expect("H4 probe child handle")
-                    .kill();
+                let _ = self.child.as_mut().expect("H4 probe child handle").kill();
                 let status = self
                     .child
                     .as_mut()
@@ -2264,11 +2299,7 @@ impl H4ProbeChild {
     }
 
     fn kill_and_wait(&mut self) -> ExitStatus {
-        let _ = self
-            .child
-            .as_mut()
-            .expect("H4 probe child handle")
-            .kill();
+        let _ = self.child.as_mut().expect("H4 probe child handle").kill();
         let status = self
             .child
             .as_mut()
@@ -2300,12 +2331,10 @@ async fn qualification_durable_writer_crash_helper() {
     let Some(mode) = env::var(H4_PROBE_MODE_ENV).ok() else {
         return;
     };
-    let fleet_root = PathBuf::from(
-        env::var(H4_PROBE_FLEET_ROOT_ENV).expect("H4 fleet root environment"),
-    );
-    let marker_dir = PathBuf::from(
-        env::var(H4_PROBE_MARKER_DIR_ENV).expect("H4 marker directory environment"),
-    );
+    let fleet_root =
+        PathBuf::from(env::var(H4_PROBE_FLEET_ROOT_ENV).expect("H4 fleet root environment"));
+    let marker_dir =
+        PathBuf::from(env::var(H4_PROBE_MARKER_DIR_ENV).expect("H4 marker directory environment"));
     let store = h4_open_store(&fleet_root).await;
     match mode.as_str() {
         "rollback" => {
@@ -2344,7 +2373,10 @@ async fn qualification_durable_writer_crash_helper() {
             );
             let terminal = lease.rollback_lease().await.expect("H4 rollback lease");
             assert_eq!(terminal.state, LocalLeaseState::RolledBack);
-            let counts = lease.snapshot_counts().await.expect("H4 rollback terminal counts");
+            let counts = lease
+                .snapshot_counts()
+                .await
+                .expect("H4 rollback terminal counts");
             h4_publish_marker(
                 &marker_dir.join("rollback-complete"),
                 &H4ProbeChildMarker {
@@ -2362,7 +2394,10 @@ async fn qualification_durable_writer_crash_helper() {
                 .inspect_local_lease_head(H4_PROBE_LEASE_ID)
                 .await
                 .expect("H4 rollback head inspection");
-            assert_eq!(inspection.disposition, LocalLeaseHeadDisposition::RolledBack);
+            assert_eq!(
+                inspection.disposition,
+                LocalLeaseHeadDisposition::RolledBack
+            );
             let previous = inspection.head.expect("H4 rollback head");
             let lease = acquired(
                 store
@@ -2467,7 +2502,10 @@ fn qualification_durable_writer_crash_reopen_probe() {
         pragma
     });
     assert_eq!(journal_mode.to_ascii_lowercase(), "wal");
-    assert_eq!(synchronous, 2, "qualification evidence requires SQLite FULL");
+    assert_eq!(
+        synchronous, 2,
+        "qualification evidence requires SQLite FULL"
+    );
 
     let mut crash = H4ProbeChild::spawn(h4_probe_command(
         &executable,
@@ -2569,8 +2607,8 @@ fn qualification_durable_writer_crash_reopen_probe() {
             counts_after_retry: counts_after_retry.into(),
             counts_after_terminal: counts_after_terminal.into(),
             retry_disposition: "replay".to_string(),
-            terminal_transition:
-                "mark_indeterminate_then_rollback_occurrence_then_release".to_string(),
+            terminal_transition: "mark_indeterminate_then_rollback_occurrence_then_release"
+                .to_string(),
             final_lease_state: "released".to_string(),
             external_effect: false,
             kg_write_authority: false,

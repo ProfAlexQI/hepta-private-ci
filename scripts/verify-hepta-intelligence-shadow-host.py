@@ -23,7 +23,13 @@ FILES = {
     "plan": ROOT
     / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4C_SHADOW_HOST_2026-08-28.md",
     "workflow": ROOT
-    / ".github/workflows/hepta-intelligence-shadow-host.yml",
+    / ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml",
+    "prepare": ROOT / "scripts/q0-qualification/00-prepare.sh",
+    "source_gates": ROOT / "scripts/q0-qualification/10-source-gates.sh",
+    "rust_matrix": ROOT / "scripts/q0-qualification/20-rust-matrix.sh",
+    "workspace_toolchain": ROOT / "codex-rs/rust-toolchain.toml",
+    "workflow_consolidation": ROOT
+    / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V1.json",
 }
 
 
@@ -80,12 +86,21 @@ def main() -> int:
     app_runtime = FILES["agentd_app_runtime"].read_text(encoding="utf-8")
     plan = FILES["plan"].read_text(encoding="utf-8")
     workflow = FILES["workflow"].read_text(encoding="utf-8")
+    prepare = FILES["prepare"].read_text(encoding="utf-8")
+    source_gates = FILES["source_gates"].read_text(encoding="utf-8")
+    rust_matrix = FILES["rust_matrix"].read_text(encoding="utf-8")
+    workspace_toolchain = FILES["workspace_toolchain"].read_text(encoding="utf-8")
     try:
         status = json.loads(FILES["status"].read_text(encoding="utf-8"))
+        consolidation = json.loads(
+            FILES["workflow_consolidation"].read_text(encoding="utf-8")
+        )
     except (OSError, UnicodeError, json.JSONDecodeError):
         checks["status.valid_json"] = False
+        checks["workflow_consolidation.valid_json"] = False
         return emit(checks)
     checks["status.valid_json"] = True
+    checks["workflow_consolidation.valid_json"] = True
 
     checks["core.compiled"] = contains_all(
         framing,
@@ -275,14 +290,55 @@ def main() -> int:
             "spawn generation",
         ],
     )
-    checks["workflow.toolchain"] = contains_all(
-        workflow,
-        [
-            'toolchain: "1.95.0"',
-            "cargo fmt --all -- --check",
-            "qualification-intelligence-mutation-shadow",
-            "verify-hepta-intelligence-shadow-host.py",
-        ],
+    checks["workflow.canonical_paired"] = (
+        consolidation.get("status") == "CANONICAL_PAIRED_WORKFLOW"
+        and consolidation.get("canonical_workflow")
+        == ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml"
+        and consolidation.get("e1_e2_same_run") is True
+        and consolidation.get("e1_e2_distinct_jobs") is True
+        and consolidation.get("e1_e2_distinct_architectures") is True
+        and contains_all(
+            workflow,
+            [
+                "prove-primary:",
+                "prove-independent:",
+                "pair-evidence:",
+                "q0-e1-${{ github.sha }}",
+                "q0-e2-${{ github.sha }}",
+                "q0-pair-${{ github.sha }}",
+            ],
+        )
+    )
+    checks["workflow.toolchain"] = (
+        'channel = "1.95.0"' in workspace_toolchain
+        and workflow.count("toolchain: 1.95.0") == 2
+        and "toolchain: 1.88.0" not in workflow
+        and contains_all(
+            prepare,
+            [
+                "expected_toolchain",
+                "rustc --version",
+                "Q0_EXPECTED_RUST_HOST",
+                "rustfmt --edition 2024 --check",
+            ],
+        )
+        and contains_all(
+            source_gates,
+            [
+                "verify-hepta-intelligence-shadow-host.py",
+                "shadow-host",
+            ],
+        )
+        and contains_all(
+            rust_matrix,
+            [
+                "cargo test --locked -p codex-hepta-memory intelligence_mutation_shadow_host",
+                "cargo test --locked -p codex-hepta-agentd",
+                "qualification-intelligence-mutation-shadow",
+                "shadow_intelligence_mutation_host",
+                "agentd-shadow-strict-clippy",
+            ],
+        )
     )
 
     return emit(checks)

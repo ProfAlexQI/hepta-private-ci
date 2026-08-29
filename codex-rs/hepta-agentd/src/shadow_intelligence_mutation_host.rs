@@ -151,11 +151,8 @@ impl AgentdShadowIntelligenceMutationHost {
         operation_id: &str,
         observation_json: &str,
     ) -> Result<String, AgentdError> {
-        let effective_operation_id = effective_operation_id(
-            &self.agent_id,
-            self.spawn_generation,
-            operation_id,
-        )?;
+        let effective_operation_id =
+            effective_operation_id(&self.agent_id, self.spawn_generation, operation_id)?;
         let payload = self
             .store
             .prepare_shadow_intelligence_mutation_observation(
@@ -190,28 +187,19 @@ impl AgentdShadowIntelligenceMutationHost {
         operation_id: &str,
         observation_json: &str,
     ) -> Result<String, AgentdError> {
-        let effective_operation_id = effective_operation_id(
-            &self.agent_id,
-            self.spawn_generation,
-            operation_id,
-        )?;
+        let effective_operation_id =
+            effective_operation_id(&self.agent_id, self.spawn_generation, operation_id)?;
         let payload = self
             .store
-            .observe_shadow_intelligence_mutation(
-                &effective_operation_id,
-                observation_json,
-            )
+            .observe_shadow_intelligence_mutation(&effective_operation_id, observation_json)
             .await
             .map_err(shadow_error)?;
         self.wrap("observe", payload)
     }
 
     pub async fn inspect(&self, operation_id: &str) -> Result<String, AgentdError> {
-        let effective_operation_id = effective_operation_id(
-            &self.agent_id,
-            self.spawn_generation,
-            operation_id,
-        )?;
+        let effective_operation_id =
+            effective_operation_id(&self.agent_id, self.spawn_generation, operation_id)?;
         let payload = self
             .store
             .inspect_shadow_intelligence_mutation(&effective_operation_id)
@@ -221,12 +209,7 @@ impl AgentdShadowIntelligenceMutationHost {
     }
 
     fn wrap(&self, action: &str, payload_json: String) -> Result<String, AgentdError> {
-        wrap_payload(
-            &self.agent_id,
-            self.spawn_generation,
-            action,
-            &payload_json,
-        )
+        wrap_payload(&self.agent_id, self.spawn_generation, action, &payload_json)
     }
 }
 
@@ -240,21 +223,10 @@ fn bind_for_host(
     validate_id(&draft.lease_id, "lease id")?;
     let caller_root = Sha256Digest::parse(draft.causal_root_sha256)
         .map_err(|error| AgentdError::Invalid(format!("invalid causal root digest: {error}")))?;
-    let effective_operation_id = effective_operation_id(
-        agent_id,
-        spawn_generation,
-        &draft.operation_id,
-    )?;
-    let effective_lease_id = effective_lease_id(
-        agent_id,
-        spawn_generation,
-        &draft.lease_id,
-    )?;
-    let causal_root_sha256 = host_bound_causal_root(
-        agent_id,
-        spawn_generation,
-        &caller_root,
-    );
+    let effective_operation_id =
+        effective_operation_id(agent_id, spawn_generation, &draft.operation_id)?;
+    let effective_lease_id = effective_lease_id(agent_id, spawn_generation, &draft.lease_id)?;
+    let causal_root_sha256 = host_bound_causal_root(agent_id, spawn_generation, &caller_root);
     Ok(serde_json::json!({
         "operation_id": effective_operation_id,
         "lease_id": effective_lease_id,
@@ -338,12 +310,8 @@ fn wrap_payload(
     let payload: Value = serde_json::from_str(payload_json)?;
     let canonical_payload = serde_json::to_string(&payload)?;
     let payload_sha256 = Sha256Digest::for_bytes(canonical_payload.as_bytes());
-    let host_receipt_sha256 = host_receipt_digest(
-        agent_id,
-        spawn_generation,
-        action,
-        &payload_sha256,
-    );
+    let host_receipt_sha256 =
+        host_receipt_digest(agent_id, spawn_generation, action, &payload_sha256);
     Ok(serde_json::to_string(&AgentdShadowHostEnvelope {
         schema_version: AGENTD_SHADOW_INTELLIGENCE_MUTATION_HOST_SCHEMA_VERSION,
         namespace: AGENTD_SHADOW_INTELLIGENCE_MUTATION_HOST_NAMESPACE.to_string(),
@@ -389,12 +357,9 @@ fn unwrap_prepared_payload(
             "unsupported prepared host envelope contract".to_string(),
         ));
     }
-    if envelope.agent_id != agent_id.as_str()
-        || envelope.spawn_generation != spawn_generation
-    {
+    if envelope.agent_id != agent_id.as_str() || envelope.spawn_generation != spawn_generation {
         return Err(AgentdError::GenerationFenced(
-            "prepared host envelope belongs to another Agentd identity or spawn"
-                .to_string(),
+            "prepared host envelope belongs to another Agentd identity or spawn".to_string(),
         ));
     }
     if envelope.runtime_wired
@@ -409,8 +374,7 @@ fn unwrap_prepared_payload(
         || envelope.promotion
     {
         return Err(AgentdError::Invalid(
-            "prepared host envelope crosses the shadow authority boundary"
-                .to_string(),
+            "prepared host envelope crosses the shadow authority boundary".to_string(),
         ));
     }
     let payload_json = serde_json::to_string(&envelope.payload)?;
@@ -486,8 +450,7 @@ fn validate_id(value: &str, label: &str) -> Result<(), AgentdError> {
 fn require_positive_spawn(spawn_generation: u64) -> Result<(), AgentdError> {
     if spawn_generation == 0 {
         return Err(AgentdError::GenerationFenced(
-            "shadow intelligence mutation host requires a positive spawn generation"
-                .to_string(),
+            "shadow intelligence mutation host requires a positive spawn generation".to_string(),
         ));
     }
     Ok(())
@@ -559,24 +522,18 @@ mod tests {
         let mut tampered: Value = serde_json::from_str(&envelope).expect("json");
         tampered["payload"]["prepared_sha256"] =
             Value::String(Sha256Digest::for_bytes(b"changed").as_str().to_string());
-        assert!(
-            unwrap_prepared_payload(&agent_id, 7, &tampered.to_string()).is_err()
-        );
+        assert!(unwrap_prepared_payload(&agent_id, 7, &tampered.to_string()).is_err());
 
         let mut escalated: Value = serde_json::from_str(&envelope).expect("json");
         escalated["production_authority"] = Value::Bool(true);
-        assert!(
-            unwrap_prepared_payload(&agent_id, 7, &escalated.to_string()).is_err()
-        );
+        assert!(unwrap_prepared_payload(&agent_id, 7, &escalated.to_string()).is_err());
     }
 
     #[test]
     fn operation_and_causal_root_are_spawn_bound() {
         let agent_id = agent_id();
-        let operation_7 =
-            effective_operation_id(&agent_id, 7, "operation").expect("operation 7");
-        let operation_8 =
-            effective_operation_id(&agent_id, 8, "operation").expect("operation 8");
+        let operation_7 = effective_operation_id(&agent_id, 7, "operation").expect("operation 7");
+        let operation_8 = effective_operation_id(&agent_id, 8, "operation").expect("operation 8");
         assert_ne!(operation_7, operation_8);
         let root = Sha256Digest::for_bytes(b"root");
         assert_ne!(

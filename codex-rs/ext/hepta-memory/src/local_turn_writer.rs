@@ -136,9 +136,7 @@ pub type QualificationTurnWriterPrepareFuture = Pin<
     >,
 >;
 
-type QualificationTurnWriterPrepareFn = dyn Fn(
-        QualificationTurnWriterPrepareRequest,
-    ) -> QualificationTurnWriterPrepareFuture
+type QualificationTurnWriterPrepareFn = dyn Fn(QualificationTurnWriterPrepareRequest) -> QualificationTurnWriterPrepareFuture
     + Send
     + Sync
     + 'static;
@@ -612,9 +610,11 @@ impl QualificationTurnLifecycleContributor {
             LocalReplayFinalization::Queued(_) => Err(QualificationTurnWriterInputError::Invalid(
                 "qualification terminal outcome left the local occurrence queued".to_string(),
             )),
-            LocalReplayFinalization::NotAdmitted => Err(QualificationTurnWriterInputError::Invalid(
-                "qualification terminal outcome has no local admission".to_string(),
-            )),
+            LocalReplayFinalization::NotAdmitted => {
+                Err(QualificationTurnWriterInputError::Invalid(
+                    "qualification terminal outcome has no local admission".to_string(),
+                ))
+            }
         }
     }
 
@@ -1040,16 +1040,17 @@ impl TurnLifecycleContributor for QualificationTurnLifecycleContributor {
                     gate.block("qualification_host_missing");
                     return;
                 };
-                let prepared = if let Some(identity) = input
-                    .turn_store
-                    .get::<QualificationTurnAdmissionIdentity>()
+                let prepared = if let Some(identity) =
+                    input.turn_store.get::<QualificationTurnAdmissionIdentity>()
                 {
                     tokio::time::timeout(
                         IO_TIMEOUT,
-                        host.prepare_with_request(QualificationTurnWriterPrepareRequest::from_admission(
-                            input.turn_id,
-                            identity.as_ref(),
-                        )),
+                        host.prepare_with_request(
+                            QualificationTurnWriterPrepareRequest::from_admission(
+                                input.turn_id,
+                                identity.as_ref(),
+                            ),
+                        ),
                     )
                     .await
                 } else {
@@ -1142,13 +1143,13 @@ mod tests {
     use codex_hepta_memory::KgFactSetDraft;
     use codex_hepta_memory::LedgerSourceKind;
     use codex_hepta_memory::LocalLeaseAcquire;
+    use codex_hepta_memory::LocalLeaseHeadDisposition;
     use codex_hepta_memory::LocalLeaseState;
     use codex_hepta_memory::MemoryAdmissionEvidence;
     use codex_hepta_memory::MemoryCandidateDraft;
     use codex_hepta_memory::MemoryCandidateOrigin;
     use codex_hepta_memory::MemoryCandidateState;
     use codex_hepta_memory::MemoryLifecycleState;
-    use codex_hepta_memory::LocalLeaseHeadDisposition;
     use codex_hepta_memory::RetrievalRequest;
     use codex_hepta_memory::SourceDraft;
     use codex_hepta_paths::HeptaFleetRoot;
@@ -1531,16 +1532,13 @@ mod tests {
         )
         .expect("second identity");
         let first_request = QualificationTurnWriterPrepareRequest::from_admission("turn", &first);
-        let second_request =
-            QualificationTurnWriterPrepareRequest::from_admission("turn", &second);
+        let second_request = QualificationTurnWriterPrepareRequest::from_admission("turn", &second);
         assert_ne!(
-            first_request.logical_turn_id,
-            second_request.logical_turn_id,
+            first_request.logical_turn_id, second_request.logical_turn_id,
             "delimiter-containing identities must not alias"
         );
         assert_ne!(
-            first_request.logical_binding_sha256,
-            second_request.logical_binding_sha256,
+            first_request.logical_binding_sha256, second_request.logical_binding_sha256,
             "binding digest must preserve field boundaries"
         );
     }
@@ -2007,9 +2005,9 @@ mod tests {
             .await
             .expect("terminalize Saga lease");
         assert_eq!(released.state, LocalLeaseState::Released);
-        assert!(!QUALIFICATION_TURN_WRITER_EXTERNAL_EFFECTS);
-        assert!(!QUALIFICATION_TURN_WRITER_KG_WRITE_AUTHORITY);
-        assert!(!QUALIFICATION_TURN_WRITER_PRODUCTION_CALLER);
+        const { assert!(!QUALIFICATION_TURN_WRITER_EXTERNAL_EFFECTS); }
+        const { assert!(!QUALIFICATION_TURN_WRITER_KG_WRITE_AUTHORITY); }
+        const { assert!(!QUALIFICATION_TURN_WRITER_PRODUCTION_CALLER); }
     }
 
     #[tokio::test]

@@ -122,19 +122,23 @@ impl LocalTurnLifecycleContributor {
         // transactions remains replayable and no intent is stranded behind a
         // terminal fence.
         let settled = match action {
-            TerminalAction::Stop => tokio::time::timeout(
-                LOCAL_LIFECYCLE_IO_TIMEOUT,
-                lease.rollback_occurrence(
-                    occurrence_key.clone(),
-                    "local_turn_stopped_without_external_dispatch",
-                ),
-            )
-            .await,
-            TerminalAction::Indeterminate(reason) => tokio::time::timeout(
-                LOCAL_LIFECYCLE_IO_TIMEOUT,
-                lease.mark_indeterminate(occurrence_key.clone(), reason),
-            )
-            .await,
+            TerminalAction::Stop => {
+                tokio::time::timeout(
+                    LOCAL_LIFECYCLE_IO_TIMEOUT,
+                    lease.rollback_occurrence(
+                        occurrence_key.clone(),
+                        "local_turn_stopped_without_external_dispatch",
+                    ),
+                )
+                .await
+            }
+            TerminalAction::Indeterminate(reason) => {
+                tokio::time::timeout(
+                    LOCAL_LIFECYCLE_IO_TIMEOUT,
+                    lease.mark_indeterminate(occurrence_key.clone(), reason),
+                )
+                .await
+            }
         };
         if match settled {
             Ok(result) => result.is_err(),
@@ -679,12 +683,13 @@ mod tests {
         let restarted_state = restarted_turn
             .get::<Mutex<TurnLeaseState>>()
             .expect("restarted state");
-        let guard = restarted_state
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        assert!(guard.active.is_none());
-        assert!(guard.terminal_started);
-        drop(guard);
+        {
+            let guard = restarted_state
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            assert!(guard.active.is_none());
+            assert!(guard.terminal_started);
+        }
         assert_eq!(
             active.lease.snapshot_counts().await.expect("counts"),
             codex_hepta_memory::LocalLeaseOutboxCounts {

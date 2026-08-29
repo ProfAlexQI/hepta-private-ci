@@ -1,0 +1,67 @@
+{
+  "schema": "hepta_intelligence_master_plan_hosted_source_receipt_v1",
+  "generated_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "branch": "codex/hepta-intelligence-plan-v3-20260828",
+  "exact_head": "1099821cdf02595d716fa877fe2639cca92a6d8b",
+  "exact_tree": "afae13be9b07d8630a852d01071078a893d08313",
+  "master_plan": {
+    "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
+    "content_sha256": "74339a00c972e64d29aaf89eea8fa416418d61a8c701dff3ce3cdfc9a326cfe8",
+    "blob_sha": "e7e73e23c4d94ee3035170fd7cab7dc6be1c3ab6",
+    "plan_commit": "298073d29bfb5b3f94ba4b08a2d3dd3d9ac3bcd4"
+  },
+  "workflow": {
+    "name": "Hepta Intelligence canonical master plan",
+    "run_id": 33152382416,
+    "run_number": 2,
+    "run_attempt": 1,
+    "job_id": 98787148022,
+    "job_name": "Canonical master plan source-only gate",
+    "status": "completed",
+    "conclusion": "success",
+    "runner_id": 1000025882,
+    "runner_name": "GitHub Actions 1000025882",
+    "runner_labels": ["ubuntu-latest"],
+    "started_at": "2026-08-28T07:41:19Z",
+    "completed_at": "2026-08-28T07:41:30Z"
+  },
+  "executed_steps": [
+    "Checkout exact candidate",
+    "Set up Python",
+    "Compile verifier",
+    "Verify sole canonical plan and fail-closed claims",
+    "Parse machine status",
+    "Assert plan-only authority boundary"
+  ],
+  "evidence": {
+    "steps_non_empty": true,
+    "checkout_executed": true,
+    "verifier_executed": true,
+    "machine_status_parsed": true,
+    "authority_asserted_false": true,
+    "source_gate_result": "PASS_CANONICAL_MASTER_PLAN_SOURCE_ONLY"
+  },
+  "scope": {
+    "plan_source_only": true,
+    "P0_Rust_qualification": false,
+    "P0_SQLite_qualification": false,
+    "P0_Agentd_qualification": false,
+    "runtime_wiring": false,
+    "efficacy": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "Q0_satisfied": false
+  },
+  "authority": {
+    "runtime_wired": false,
+    "learning_write_authority": false,
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "result": "PASS_HOSTED_MASTER_PLAN_SOURCE_ONLY_NO_RUNTIME_AUTHORITY",
+  "receipt_self_hash_excluded": true
+}

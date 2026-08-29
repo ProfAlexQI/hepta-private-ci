@@ -1,0 +1,103 @@
+name: Hepta Intelligence canonical master plan
+
+on:
+  pull_request:
+    paths:
+      - plans/hepta-intelligence/AGENTS.md
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_CLAIM_LADDER_V1.json
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V3.json
+      - plans/hepta-intelligence/status-snapshots/**
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V2_2026-08-28.md
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28.md
+      - scripts/verify-hepta-intelligence-master-plan.py
+      - scripts/verify-hepta-intelligence-document-authority.py
+      - scripts/hepta-intelligence-status-compat.py
+      - .github/workflows/hepta-intelligence-master-plan.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-master-plan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  canonical-plan-source:
+    name: Canonical plan and document authority source-only gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout explicit candidate identity
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove checked-out commit and tree
+        run: |
+          set -euo pipefail
+          actual_sha=$(git rev-parse HEAD)
+          actual_tree=$(git rev-parse HEAD^{tree})
+          test "$actual_sha" = "$EXPECTED_SHA"
+          printf 'PASS_EXPLICIT_CHECKOUT sha=%s tree=%s\n' "$actual_sha" "$actual_tree"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile plan, authority, and compatibility verifiers
+        run: |
+          python3 -m py_compile \
+            scripts/verify-hepta-intelligence-master-plan.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/hepta-intelligence-status-compat.py
+
+      - name: Verify sole canonical plan and fail-closed claims
+        run: python3 scripts/verify-hepta-intelligence-master-plan.py
+
+      - name: Verify document authority and compatibility contracts
+        run: python3 scripts/verify-hepta-intelligence-document-authority.py
+
+      - name: Validate all immutable tranche snapshots without materialization
+        run: |
+          set -euo pipefail
+          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
+            python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
+          done
+
+      - name: Parse machine registries
+        run: |
+          python3 -m json.tool plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json >/dev/null
+          python3 -m json.tool plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json >/dev/null
+          python3 -m json.tool plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json >/dev/null
+
+      - name: Assert plan-only authority boundary
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          data = json.loads(
+              Path("plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json")
+              .read_text(encoding="utf-8")
+          )
+          assert all(value is False for value in data["authority"].values())
+          assert data["active_phase"]["id"] == "Q0"
+          assert data["active_phase"]["active_task"] == "DOC-Q0.1_RESTORE_FROZEN_QUALIFICATION_COMPATIBILITY"
+          assert data["stack_budget"]["runtime_source_freeze"] is True
+          assert data["session_bootstrap"]["legacy_machine_contracts_are_current_authority"] is False
+          assert data["session_bootstrap"]["legacy_machine_contracts_must_remain_compatible_until_migrated"] is True
+          print("PASS_PLAN_ONLY_NO_RUNTIME_AUTHORITY")
+
+      - name: Assert read-only clean worktree
+        run: git diff --exit-code

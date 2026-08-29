@@ -1,0 +1,36 @@
+{
+  "schema": "hepta_intelligence_tranche_status_snapshot_v1",
+  "snapshot_id": "P0.4b",
+  "generated_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "source_ref": "a5de899e9f6a97fa0803cc1e73d664be8b7d68bc",
+  "source_status_blob_sha": "c12fc3973dec87c6af74a0a68c5e8451f14a94da",
+  "classification": "IMMUTABLE_QUALIFICATION_COMPATIBILITY_SNAPSHOT",
+  "current_authority": false,
+  "dependency": {
+    "id": "P0.4a",
+    "qualified": false
+  },
+  "current_tranche": {
+    "id": "P0.4b",
+    "qualified": false,
+    "claims": {
+      "runtime_wired": false,
+      "default_open_wired": false,
+      "main_sqlx_migration_lineage_promoted": false,
+      "production_authority": false,
+      "external_effects": false
+    }
+  },
+  "next_tranche": {
+    "id": "P0.4c",
+    "activation": "source_development_allowed_on_separate_stacked_draft"
+  },
+  "authority": {
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  }
+}

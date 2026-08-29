@@ -1,0 +1,91 @@
+{
+  "schema": "hepta_intelligence_plan_review_receipt_v1",
+  "generated_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "plan_id": "HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28",
+  "plan_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28.md",
+  "plan_commit": "7132a1c3006ec5e27cb448eb204d83942375bafa",
+  "plan_tree": "12a985499464d02f23e7fe7c3b946e2bbe7e6830",
+  "plan_blob_sha": "9ebf6b055c7682d72aaf4bc5409d0ccd23bf6aa2",
+  "plan_content_sha256": "55d3fac411c925cdfb57667b9ac044a5e1482444b96a3cfd262b27fdd1a2fd74",
+  "exact_base": {
+    "pull_request": 23,
+    "branch": "codex/hepta-intelligence-shadow-host-adapter-v4c-20260828",
+    "head": "7691978b786dd00c69477d1a3355be13db2c4d67",
+    "tree": "bc2342443fe28d2b803cf1c8273c5d3cd4171ced",
+    "p0_4c_hardened_source_candidate": "7bb26ec016c2e2c83084756485ea324e79bcddbe"
+  },
+  "files_bound": {
+    "plan": {
+      "blob_sha": "9ebf6b055c7682d72aaf4bc5409d0ccd23bf6aa2",
+      "sha256": "55d3fac411c925cdfb57667b9ac044a5e1482444b96a3cfd262b27fdd1a2fd74"
+    },
+    "initial_current_plan": {
+      "blob_sha": "7dd981232c2b14f5448d1d25335fdc5517a3ba32"
+    },
+    "initial_execution_status_v3": {
+      "blob_sha": "9f996d0d4c73c8f683b600f98d9a1ef0766e607c"
+    },
+    "claim_ladder": {
+      "blob_sha": "786a97617c408a4422acdcf3323280c1f80efa23",
+      "sha256": "bf91193f2c19d8696620b1fb8d1348fe3824560e0a37d700b0406831f7bca093"
+    },
+    "verifier": {
+      "blob_sha": "e3e23244f5c6b2b45f435b0514e59d43e8490887",
+      "sha256": "fc87df19d5dcef4341ddc717efd17db88b3752d47d0450cb52f19757713d691a"
+    },
+    "workflow": {
+      "blob_sha": "886f53a93dc2bb9375e792ee5a781d3f9b8c7144",
+      "sha256": "9c1ade4c3cd3023a42d9b260b5bada388c57ad3b6dbb847a510a7d67610380cb"
+    }
+  },
+  "review_findings_integrated": [
+    "canonical current-plan truth source",
+    "unqualified stack budget and runtime-source freeze",
+    "governance loop versus learning loop separation",
+    "LearningEpisodeV1 causal identity",
+    "durable H7 trajectory and feedback/OPE reconciliation",
+    "H5 N0-to-N3 bio-inspired claim ladder",
+    "H6 I0-to-I2 intuition claim ladder",
+    "four-axis recall/training/evaluation/promotion eligibility",
+    "two-speed episodic and consolidation architecture",
+    "ESS/CI/subgroup/retention promotion gates",
+    "early learning crate boundary extraction",
+    "correction/forget/revocation lineage"
+  ],
+  "source_equivalent_validation": {
+    "plan_utf8_and_required_markers": "PASS",
+    "JSON_parse": "PASS",
+    "workflow_YAML_parse": "PASS",
+    "verifier_python_compile": "PASS",
+    "verifier_result": "PASS_HEPTA_INTELLIGENCE_PLAN_V3_SOURCE_ONLY",
+    "hosted_runner_execution": "NOT_RUN",
+    "rust_execution": "NOT_RUN"
+  },
+  "authority": {
+    "runtime_wired": false,
+    "default_open_wired": false,
+    "app_runtime_attached": false,
+    "tool_registered": false,
+    "memory_write_authority": false,
+    "projection_write_authority": false,
+    "learning_write_authority": false,
+    "outbox_dispatch_authority": false,
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "claims": {
+    "plan_refined": true,
+    "runtime_implementation": false,
+    "executable_qualification": false,
+    "efficacy_proven": false,
+    "self_evolution": false,
+    "longitudinal_learning_efficacy": false,
+    "bio_mechanism_implemented": false
+  },
+  "result": "PASS_PLAN_V3_SOURCE_ONLY_NO_RUNTIME_AUTHORITY",
+  "receipt_self_hash_excluded": true
+}
