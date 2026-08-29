@@ -104,20 +104,25 @@ jobs:
     needs: contract
     runs-on: macos-15
     timeout-minutes: 90
-    env:
-      HEPTA_NATIVE_MOBILE_TOOLS_DIR: ${{ runner.temp }}/hepta-native-mobile-tools-c4335cee-v1
-      HEPTA_NATIVE_CARGO_TARGET_DIR: ${{ runner.temp }}/hepta-ui-native-target
-      HEPTA_UI_CI_EVIDENCE_DIR: ${{ runner.temp }}/hepta-ui-contract-evidence
-      HEPTA_UI_NODE_PREFIX: ${{ runner.temp }}/hepta-ui-node-playwright-1.59.1
-      HEPTA_CHECK_JSONSCHEMA_VENV: ${{ runner.temp }}/hepta-check-jsonschema-0.37.4
-      HEPTA_CHECK_JSONSCHEMA_BIN: ${{ runner.temp }}/hepta-check-jsonschema-0.37.4/bin/check-jsonschema
-      NODE_PATH: ${{ runner.temp }}/hepta-ui-node-playwright-1.59.1/node_modules
     steps:
       - name: Check out complete UI source history
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Bind UI contract runner paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            printf 'HEPTA_NATIVE_MOBILE_TOOLS_DIR=%s\n' "$RUNNER_TEMP/hepta-native-mobile-tools-c4335cee-v1"
+            printf 'HEPTA_NATIVE_CARGO_TARGET_DIR=%s\n' "$RUNNER_TEMP/hepta-ui-native-target"
+            printf 'HEPTA_UI_CI_EVIDENCE_DIR=%s\n' "$RUNNER_TEMP/hepta-ui-contract-evidence"
+            printf 'HEPTA_UI_NODE_PREFIX=%s\n' "$RUNNER_TEMP/hepta-ui-node-playwright-1.59.1"
+            printf 'HEPTA_CHECK_JSONSCHEMA_VENV=%s\n' "$RUNNER_TEMP/hepta-check-jsonschema-0.37.4"
+            printf 'HEPTA_CHECK_JSONSCHEMA_BIN=%s\n' "$RUNNER_TEMP/hepta-check-jsonschema-0.37.4/bin/check-jsonschema"
+            printf 'NODE_PATH=%s\n' "$RUNNER_TEMP/hepta-ui-node-playwright-1.59.1/node_modules"
+          } >> "$GITHUB_ENV"
       - name: Install UI contract tools
         run: |
           brew install jq ripgrep
