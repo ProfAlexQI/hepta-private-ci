@@ -97,7 +97,6 @@ impl AgentMemoryService {
         })
     }
 
-    #[cfg(test)]
     pub(crate) fn is_available(&self) -> bool {
         self.runtime.cognitive_runtime().available_store().is_some()
     }

@@ -1,0 +1,289 @@
+{
+  "schema": "hepta.architecture-model.v2",
+  "schemaVersion": 2,
+  "status": "normative_product_architecture_source",
+  "sourceRevision": {
+    "parentBranch": "codex/hepta-architecture-convergence-p0-2-20260828",
+    "parentCommit": "5e6cc0d84a33920e99c9b1adaf7abcba91fddda1",
+    "implementationBranch": "codex/hepta-gap-closure-p0-5-20260829",
+    "selfCommitBinding": "resolved_by_exact_head_ci",
+    "selfTreeBinding": "resolved_by_exact_head_ci"
+  },
+  "projectionPolicy": {
+    "generator": "scripts/generate-hepta-architecture-projections.py",
+    "generated": [
+      "ARCHITECTURE.md",
+      "docs/architecture/DATA_AUTHORITY_MAP.md",
+      "docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json"
+    ],
+    "handEditingGeneratedFilesAllowed": false,
+    "checkCommand": "python3 scripts/generate-hepta-architecture-projections.py --check"
+  },
+  "components": [
+    {
+      "id": "supervisor",
+      "rustVariant": "Supervisor",
+      "plane": "control",
+      "role": "lifecycle_release_and_grant_owner",
+      "productGraphMember": true,
+      "durableDomains": ["fleet_registry", "agent_lifecycle", "release_promotion"]
+    },
+    {
+      "id": "agentd",
+      "rustVariant": "Agentd",
+      "plane": "composition",
+      "role": "thin_composition_root",
+      "productGraphMember": true,
+      "durableDomains": []
+    },
+    {
+      "id": "app_server",
+      "rustVariant": "AppServer",
+      "plane": "execution",
+      "role": "session_execution_spine",
+      "productGraphMember": true,
+      "durableDomains": ["thread_session"]
+    },
+    {
+      "id": "memory_runtime",
+      "rustVariant": "MemoryRuntime",
+      "plane": "domain",
+      "role": "memory_and_knowledge_owner",
+      "productGraphMember": true,
+      "durableDomains": ["memory_ledger", "knowledge_projection"]
+    },
+    {
+      "id": "automation_runtime",
+      "rustVariant": "AutomationRuntime",
+      "plane": "domain",
+      "role": "automation_owner",
+      "productGraphMember": true,
+      "durableDomains": ["automation_schedule"]
+    },
+    {
+      "id": "matrix_ingress",
+      "rustVariant": "MatrixIngress",
+      "plane": "adapter",
+      "role": "matrix_delivery_owner",
+      "productGraphMember": true,
+      "durableDomains": ["ingress_projection"]
+    },
+    {
+      "id": "provider_effect_adapter",
+      "rustVariant": "ProviderEffectAdapter",
+      "plane": "adapter",
+      "role": "dormant_external_effect_boundary",
+      "productGraphMember": true,
+      "durableDomains": [],
+      "activeInLocalProfiles": false,
+      "requiresExternalEffectCapability": true
+    },
+    {
+      "id": "qualification_plane",
+      "rustVariant": "QualificationPlane",
+      "plane": "qualification",
+      "role": "read_only_evidence_consumer",
+      "productGraphMember": false,
+      "durableDomains": [],
+      "productDependencyAllowed": false
+    },
+    {
+      "id": "evidence_subsystem",
+      "rustVariant": null,
+      "plane": "qualification",
+      "role": "append_only_governance_and_provider_evidence_owner",
+      "productGraphMember": false,
+      "durableDomains": ["governance_provider_evidence"],
+      "productDependencyAllowed": false
+    }
+  ],
+  "dataDomains": [
+    {
+      "id": "fleet_registry",
+      "displayName": "Fleet registry",
+      "scope": "runtime_product_graph",
+      "rustVariant": "FleetRegistry",
+      "writer": "supervisor",
+      "store": "json_registry",
+      "readerRule": "read_snapshots_only"
+    },
+    {
+      "id": "agent_lifecycle",
+      "displayName": "Agent lifecycle",
+      "scope": "runtime_product_graph",
+      "rustVariant": "AgentLifecycle",
+      "writer": "supervisor",
+      "store": "json_registry",
+      "readerRule": "generation_fenced_reads"
+    },
+    {
+      "id": "thread_session",
+      "displayName": "Thread/session state",
+      "scope": "runtime_product_graph",
+      "rustVariant": "ThreadSession",
+      "writer": "app_server",
+      "store": "agent_private_sqlite",
+      "readerRule": "submit_through_app_server"
+    },
+    {
+      "id": "memory_ledger",
+      "displayName": "Memory ledger",
+      "scope": "runtime_product_graph",
+      "rustVariant": "MemoryLedger",
+      "writer": "memory_runtime",
+      "store": "agent_private_sqlite",
+      "readerRule": "typed_memory_ports"
+    },
+    {
+      "id": "knowledge_projection",
+      "displayName": "Knowledge facts/projection",
+      "scope": "runtime_product_graph",
+      "rustVariant": "KnowledgeProjection",
+      "writer": "memory_runtime",
+      "store": "agent_private_sqlite",
+      "readerRule": "projection_is_derived"
+    },
+    {
+      "id": "automation_schedule",
+      "displayName": "Automation schedules/occurrences",
+      "scope": "runtime_product_graph",
+      "rustVariant": "AutomationSchedule",
+      "writer": "automation_runtime",
+      "store": "agent_private_sqlite",
+      "readerRule": "agentd_exposes_control_only"
+    },
+    {
+      "id": "ingress_projection",
+      "displayName": "Matrix delivery projection",
+      "scope": "runtime_product_graph",
+      "rustVariant": "IngressProjection",
+      "writer": "matrix_ingress",
+      "store": "agent_private_sqlite",
+      "readerRule": "submits_sessions_through_agentd"
+    },
+    {
+      "id": "runtime_health",
+      "displayName": "Runtime health/readiness",
+      "scope": "runtime_product_graph",
+      "rustVariant": "RuntimeHealth",
+      "writer": "agentd",
+      "store": "process_memory",
+      "readerRule": "descriptive_ephemeral_observation"
+    },
+    {
+      "id": "release_promotion",
+      "displayName": "Release and promotion",
+      "scope": "external_control",
+      "rustVariant": null,
+      "writer": "supervisor",
+      "store": "signed_release_state",
+      "readerRule": "no_inferred_promotion"
+    },
+    {
+      "id": "governance_provider_evidence",
+      "displayName": "Governance/provider evidence",
+      "scope": "qualification_evidence",
+      "rustVariant": null,
+      "writer": "evidence_subsystem",
+      "store": "evidence_sqlite",
+      "readerRule": "append_only_receipts"
+    }
+  ],
+  "runtimeProfiles": [
+    {
+      "id": "snapshot_read_only",
+      "rustVariant": "SnapshotReadOnly",
+      "actions": ["read_memory"],
+      "services": [
+        {"id": "supervisor", "placement": "control_plane", "requirement": "required", "failureMode": "fail_closed", "readinessRequired": true},
+        {"id": "agentd", "placement": "in_process", "requirement": "disabled", "failureMode": "not_started", "readinessRequired": false},
+        {"id": "app_server", "placement": "in_process", "requirement": "disabled", "failureMode": "not_started", "readinessRequired": false},
+        {"id": "memory_runtime", "placement": "in_process", "requirement": "required", "failureMode": "fail_closed", "readinessRequired": true},
+        {"id": "automation_runtime", "placement": "in_process", "requirement": "disabled", "failureMode": "not_started", "readinessRequired": false},
+        {"id": "matrix_ingress", "placement": "adapter_process", "requirement": "disabled", "failureMode": "not_started", "readinessRequired": false},
+        {"id": "provider_effect_adapter", "placement": "dormant_boundary", "requirement": "disabled", "failureMode": "not_started", "readinessRequired": false}
+      ]
+    },
+    {
+      "id": "agent_local",
+      "rustVariant": "AgentLocal",
+      "actions": ["serve_session", "read_memory", "mutate_memory_federation", "mutate_automation"],
+      "services": [
+        {"id": "supervisor", "placement": "control_plane", "requirement": "required", "failureMode": "fail_closed", "readinessRequired": true},
+        {"id": "agentd", "placement": "in_process", "requirement": "required", "failureMode": "fail_closed", "readinessRequired": true},
+        {"id": "app_server", "placement": "in_process", "requirement": "required", "failureMode": "fail_closed", "readinessRequired": true},
+        {"id": "memory_runtime", "placement": "in_process", "requirement": "optional", "failureMode": "degraded", "readinessRequired": false},
+        {"id": "automation_runtime", "placement": "in_process", "requirement": "optional", "failureMode": "degraded", "readinessRequired": false},
+        {"id": "matrix_ingress", "placement": "adapter_process", "requirement": "optional", "failureMode": "degraded", "readinessRequired": false},
+        {"id": "provider_effect_adapter", "placement": "dormant_boundary", "requirement": "disabled", "failureMode": "not_started", "readinessRequired": false}
+      ]
+    },
+    {
+      "id": "qualification_cognitive_write",
+      "rustVariant": "QualificationCognitiveWrite",
+      "actions": ["serve_session", "read_memory", "mutate_memory_federation", "mutate_automation", "write_cognitive_state"],
+      "qualificationOnly": true,
+      "services": [
+        {"id": "supervisor", "placement": "control_plane", "requirement": "required", "failureMode": "fail_closed", "readinessRequired": true},
+        {"id": "agentd", "placement": "in_process", "requirement": "required", "failureMode": "fail_closed", "readinessRequired": true},
+        {"id": "app_server", "placement": "in_process", "requirement": "required", "failureMode": "fail_closed", "readinessRequired": true},
+        {"id": "memory_runtime", "placement": "in_process", "requirement": "required", "failureMode": "fail_closed", "readinessRequired": true},
+        {"id": "automation_runtime", "placement": "in_process", "requirement": "optional", "failureMode": "degraded", "readinessRequired": false},
+        {"id": "matrix_ingress", "placement": "adapter_process", "requirement": "disabled", "failureMode": "not_started", "readinessRequired": false},
+        {"id": "provider_effect_adapter", "placement": "dormant_boundary", "requirement": "disabled", "failureMode": "not_started", "readinessRequired": false}
+      ]
+    }
+  ],
+  "crossOwnerProtocol": {
+    "transport": "transactional_outbox",
+    "delivery": "at_least_once",
+    "destinationRequirement": "idempotent_digest_bound_commit",
+    "blindRetryAfterBoundary": false,
+    "requiredBindings": [
+      "operation_id",
+      "idempotency_key",
+      "payload_sha256",
+      "authority_epoch",
+      "owner_epoch",
+      "generation",
+      "fencing_token_sha256"
+    ],
+    "wiredPaths": [
+      "automation_runtime_to_app_server",
+      "matrix_ingress_to_app_server",
+      "app_server_to_provider_effect_adapter"
+    ]
+  },
+  "providerEffectBoundary": {
+    "component": "provider_effect_adapter",
+    "dataOwner": false,
+    "defaultAuthority": false,
+    "dispatchRequires": "Authorized<ExternalEffectCapability>",
+    "lookupAfterBoundaryOnly": true,
+    "blindRetry": false
+  },
+  "recoveryOrder": [
+    "release_identity",
+    "supervisor_registry_and_lifecycle",
+    "agent_private_store_integrity",
+    "schema_and_migration_oracles",
+    "operation_and_outbox_reconciliation",
+    "agentd_product_graph_composition",
+    "app_server_execution_spine",
+    "memory_and_automation_attachment",
+    "ingress_adapters",
+    "readiness"
+  ],
+  "authorityBoundary": {
+    "productionCaller": false,
+    "productionWriter": false,
+    "effectAuthority": false,
+    "externalEffect": false,
+    "modelInvocationAuthority": false,
+    "providerDispatchAuthority": false,
+    "fleetMutationAuthority": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

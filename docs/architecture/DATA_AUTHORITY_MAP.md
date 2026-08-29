@@ -1,20 +1,24 @@
 # Hepta data authority map
 
-Every durable fact has one authoritative writer. A projection may be rebuilt
-from its authority but must never overwrite or reinterpret that authority.
+> GENERATED FILE — do not hand edit. The normative source is
+> `docs/architecture/HEPTA_ARCHITECTURE_MODEL_V2.json`.
 
-| Domain | Authoritative writer | Durable store | Other components |
-|---|---|---|---|
-| Fleet registry | Supervisor | control-root JSON registry | read snapshots only |
-| Agent lifecycle | Supervisor | control-root lifecycle state | generation-fenced reads |
-| Release and promotion | Supervisor with operator authority | signed release state | no inferred promotion |
-| Thread/session state | Codex App Server | Agent-private SQLite | submit through App Server |
-| Memory ledger | Memory Runtime | Agent-private cognitive SQLite | typed read/write ports |
-| Knowledge facts/projection | Memory Runtime KG boundary | Agent-private cognitive SQLite | projection is derived |
-| Automation schedules/occurrences | Automation Runtime | Agent-private automation SQLite | Agentd exposes control only |
-| Matrix delivery projection | Matrix ingress/store | Agent-private Matrix SQLite | submits sessions through Agentd |
-| Runtime health/readiness | Agentd | process memory/event buffer | descriptive, not durable authority |
-| Governance/provider evidence | Evidence subsystem | evidence SQLite | append-only receipts |
+Every authoritative fact belongs to exactly one scope and has one writer. A
+projection may be rebuilt from its authority but must never overwrite or reinterpret
+that authority.
+
+| Scope | Domain | Authoritative writer | Durable store | Reader / projection rule |
+|---|---|---|---|---|
+| `runtime_product_graph` | Fleet registry | `supervisor` | `json_registry` | `read_snapshots_only` |
+| `runtime_product_graph` | Agent lifecycle | `supervisor` | `json_registry` | `generation_fenced_reads` |
+| `runtime_product_graph` | Thread/session state | `app_server` | `agent_private_sqlite` | `submit_through_app_server` |
+| `runtime_product_graph` | Memory ledger | `memory_runtime` | `agent_private_sqlite` | `typed_memory_ports` |
+| `runtime_product_graph` | Knowledge facts/projection | `memory_runtime` | `agent_private_sqlite` | `projection_is_derived` |
+| `runtime_product_graph` | Automation schedules/occurrences | `automation_runtime` | `agent_private_sqlite` | `agentd_exposes_control_only` |
+| `runtime_product_graph` | Matrix delivery projection | `matrix_ingress` | `agent_private_sqlite` | `submits_sessions_through_agentd` |
+| `runtime_product_graph` | Runtime health/readiness | `agentd` | `process_memory` | `descriptive_ephemeral_observation` |
+| `external_control` | Release and promotion | `supervisor` | `signed_release_state` | `no_inferred_promotion` |
+| `qualification_evidence` | Governance/provider evidence | `evidence_subsystem` | `evidence_sqlite` | `append_only_receipts` |
 
 ## Cross-owner mutation rule
 
@@ -27,23 +31,11 @@ append operation intent
 → commit
 ```
 
-Delivery is at least once. Before committing, the destination verifies:
-
-```text
-operation_id
-idempotency_key
-binding_sha256
-payload_sha256
-source owner
-destination owner
-authority epoch
-owner epoch
-generation
-fencing token
-```
-
-It then commits only destination-owned state and a digest-bound acknowledgement.
-The source adopts that acknowledgement in a later local transaction.
+Delivery is at least once. Before committing, the destination verifies the exact
+operation/idempotency identity, binding and payload digests, source/destination
+owners, authority epoch, owner epoch, generation, fencing token, and sequence. It
+commits only destination-owned state plus a digest-bound acknowledgement; the
+source adopts that acknowledgement in a later local transaction.
 
 ## Prohibited patterns
 
@@ -52,6 +44,5 @@ The source adopts that acknowledgement in a later local transaction.
 - a projection updating its source ledger;
 - blind retry after a delivery or provider boundary may have been crossed;
 - qualification fixtures writing product state;
-- booleans such as `production_writer=true` being treated as a capability;
-- logs, model text, or transport disconnect being treated as proof of an
-  external effect.
+- booleans or receipts being converted into capabilities;
+- logs, model text, or disconnects being treated as proof of an external effect.

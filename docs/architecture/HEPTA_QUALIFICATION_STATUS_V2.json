@@ -1,0 +1,66 @@
+{
+  "schema": "hepta.qualification-status.v2",
+  "schemaVersion": 2,
+  "claimLevel": "source_present_unqualified",
+  "executionStateVocabulary": [
+    "not_run",
+    "queued",
+    "running",
+    "passed",
+    "failed",
+    "blocked",
+    "superseded"
+  ],
+  "externalDecisionStateVocabulary": [
+    "not_issued",
+    "issued",
+    "rejected",
+    "revoked",
+    "superseded"
+  ],
+  "subject": {
+    "repository": "ProfHepta/hepta-private-ci",
+    "parentBranch": "codex/hepta-architecture-convergence-p0-2-20260828",
+    "parentCommit": "5e6cc0d84a33920e99c9b1adaf7abcba91fddda1",
+    "sourceBranch": "codex/hepta-gap-closure-p0-5-20260829",
+    "sourceCommit": "resolved_by_exact_head_workflow",
+    "sourceTree": "resolved_by_exact_head_workflow",
+    "mergeCandidate": "resolved_by_pull_request_workflow"
+  },
+  "sourceClosure": {
+    "state": "source_present_unqualified",
+    "artifacts": [
+      "docs/architecture/HEPTA_ARCHITECTURE_MODEL_V2.json",
+      "scripts/generate-hepta-architecture-projections.py",
+      "codex-rs/hepta-agentd/src/runtime_profile.rs",
+      "scripts/verify-hepta-p0-5-gap-closure.py",
+      ".github/workflows/hepta-gap-closure-p0-5.yml"
+    ]
+  },
+  "qualification": {
+    "sourceProjectionCheck": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "exactSourceHead": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "mergeCandidate": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "agentdRuntimeProfileTests": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "cargoCheck": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null},
+    "strictClippy": {"state": "not_run", "runId": null, "jobId": null, "runnerId": null, "stepCount": null}
+  },
+  "externalDecisions": {
+    "repositoryRulesetEnforcement": {"state": "not_issued", "receipt": null},
+    "operatorAcceptance": {"state": "not_issued", "receipt": null},
+    "promotion": {"state": "not_issued", "receipt": null},
+    "release": {"state": "not_issued", "receipt": null}
+  },
+  "authorityBoundary": {
+    "productionCaller": false,
+    "productionWriter": false,
+    "effectAuthority": false,
+    "externalEffect": false,
+    "modelInvocationAuthority": false,
+    "providerDispatchAuthority": false,
+    "fleetMutationAuthority": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
