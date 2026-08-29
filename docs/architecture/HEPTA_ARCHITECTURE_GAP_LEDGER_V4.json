@@ -1,0 +1,203 @@
+{
+  "schema": "hepta.architecture-gap-ledger.v4",
+  "schemaVersion": 4,
+  "overallState": "source_execution_in_progress_external_gates_open",
+  "subject": {
+    "repository": "ProfHepta/hepta-private-ci",
+    "stackBasePr": 77,
+    "stackBaseBranch": "codex/hepta-gap-closure-p0-7a-runtime-bootstrap-20260830",
+    "stackBaseCommit": "2f0b7bb517c6b2678b6d642e460f4f37ba3625c2",
+    "stackBaseTree": "96cbdbf4e115f1a6e1be808b5b5d377bf42c39c7",
+    "implementationBranch": "codex/hepta-architecture-v4-p0-7a-closure-20260830",
+    "sourceCommit": "resolved_by_exact_source_head_workflow",
+    "sourceTree": "resolved_by_exact_source_head_workflow",
+    "mergeCandidate": "resolved_by_pull_request_workflow"
+  },
+  "stateVocabulary": [
+    "open",
+    "source_in_progress",
+    "source_implemented",
+    "source_verified",
+    "qualified_exact",
+    "merge_candidate_qualified",
+    "blocked_external",
+    "not_run",
+    "base_drift",
+    "rejected",
+    "superseded"
+  ],
+  "currentPackage": "P0.7a_signed_runtime_bootstrap_closure",
+  "inheritedSourceClosures": [
+    "single_normative_architecture_model",
+    "deterministic_architecture_projections",
+    "scoped_data_authority",
+    "closed_runtime_profiles",
+    "runtime_profile_product_graph_binding",
+    "runtime_authority_context",
+    "lifecycle_epoch_generation_and_fence_binding",
+    "runtime_instance_readiness_graph",
+    "checked_provider_operation_boundary",
+    "matrix_operation_journal",
+    "matrix_sqlite_full_rollback_seam",
+    "repository_identity_and_governance_contract"
+  ],
+  "sourceControlledBlockers": {
+    "A-LOCK-01": {
+      "state": "open",
+      "owner": "build_lock_owners",
+      "problem": "P0.7a Cargo dependency changes are not represented in codex-rs/Cargo.lock and MODULE.bazel.lock",
+      "closureCriteria": [
+        "generated Cargo and Bazel locks are committed on the candidate",
+        "cargo metadata --locked succeeds",
+        "lock regeneration produces no diff"
+      ]
+    },
+    "A-TRANSPORT-01": {
+      "state": "source_in_progress",
+      "owner": "supervisor_agentd_fleet",
+      "problem": "fallback handoff checks require explicit no-follow open and owner identity closure",
+      "closureCriteria": [
+        "document, reservation, claim and trust/provenance objects reject symlink and unsafe hardlink states",
+        "Unix owner UID is verified against the owning run/state root or effective UID",
+        "metadata and content identity are stable across open/read/use"
+      ]
+    },
+    "A-RECOVERY-01": {
+      "state": "source_in_progress",
+      "owner": "supervisor_agentd",
+      "problem": "all durable publication/claim crash windows need explicit tests and recovery classification",
+      "closureCriteria": [
+        "partial reservation blocks reinterpretation",
+        "published unclaimed handoff can only be consumed by its exact generation",
+        "claimed handoff cannot replay after restart",
+        "a later generation can issue a fresh nonce without deleting historical claim evidence"
+      ]
+    },
+    "A-CI-01": {
+      "state": "not_run",
+      "owner": "hosted_runner",
+      "problem": "current P0.7a run is pending with jobs=[]",
+      "closureCriteria": [
+        "runner is assigned",
+        "steps are non-empty",
+        "exact source and merge-candidate checks pass"
+      ]
+    }
+  },
+  "sourceDeliveryGraph": [
+    "P0.7a_signed_runtime_bootstrap_closure",
+    "P0.7b_all_physical_boundaries_checked_per_use",
+    "P0.7c_memory_bounded_context_extraction",
+    "P0.7d_common_durable_fault_matrix_execution",
+    "P0.7e_dependency_inversion_and_wire_isolation",
+    "P0.8a_ast_authority_caller_ratchet",
+    "P0.8b_fleet_runtime_instance_projection",
+    "P0.8c_runtime_resource_budget_enforcement",
+    "P0.8d_real_process_vertical_slice",
+    "P0.9_repository_operator_promotion_release"
+  ],
+  "sourcePackages": {
+    "P0.7a_signedRuntimeBootstrapClosure": {
+      "state": "source_in_progress",
+      "owner": "supervisor_agentd_contracts_fleet",
+      "blockedBy": ["A-LOCK-01", "A-TRANSPORT-01", "A-RECOVERY-01"],
+      "externalEvidence": ["A-CI-01"],
+      "authorityDelta": "none"
+    },
+    "P0.7b_allPhysicalBoundariesCheckedPerUse": {
+      "state": "open",
+      "owner": "model_provider_tool_network_secret_matrix_fleet_adapters",
+      "blockedBy": ["P0.7a_signedRuntimeBootstrapClosure"],
+      "subpackages": ["B0_verified_use_kernel", "B1_model_provider", "B2_tool_network_filesystem", "B3_secret_matrix_fleet", "B4_negative_callsite_proof"],
+      "authorityDelta": "none"
+    },
+    "P0.7c_memoryBoundedContextExtraction": {
+      "state": "open",
+      "owner": "memory_architecture",
+      "blockedBy": ["B0_verified_use_kernel"],
+      "closureCriteria": [
+        "pure types, store, retrieval, federation, compact, trajectory, shadow learning and production writer are physical crates",
+        "one migration owner exists per schema",
+        "production writer has no shadow-learning or test-signer dependency",
+        "compatibility, migration, backup and restore tests pass"
+      ],
+      "authorityDelta": "none"
+    },
+    "P0.7d_commonDurableFaultMatrix": {
+      "state": "open",
+      "owner": "all_durable_store_owners",
+      "blockedBy": ["B0_verified_use_kernel"],
+      "closureCriteria": [
+        "Memory, Automation, TaskFlow, Matrix, Evidence and Fleet execute every applicable F01-F18 row",
+        "aggregate result contains no omitted row",
+        "no fault creates duplicate effect, false success, stale-owner mutation or partial projection"
+      ],
+      "authorityDelta": "none"
+    },
+    "P0.7e_dependencyInversionAndWireIsolation": {
+      "state": "open",
+      "owner": "architecture_ports_and_protocol",
+      "blockedBy": ["P0.7c_memoryBoundedContextExtraction"],
+      "closureCriteria": [
+        "generic Codex owners do not depend on concrete Hepta implementations",
+        "wire crates do not depend on Automation, Fleet registry, SQL, daemon or binary implementations",
+        "Codex and Hepta use distinct composition roots",
+        "forbidden Cargo edges are checked in CI"
+      ],
+      "authorityDelta": "none"
+    },
+    "P0.8a_astAuthorityCallerRatchet": {
+      "state": "open",
+      "owner": "contracts_ci",
+      "blockedBy": ["P0.7b_allPhysicalBoundariesCheckedPerUse", "P0.7e_dependencyInversionAndWireIsolation"],
+      "authorityDelta": "none"
+    },
+    "P0.8b_fleetRuntimeInstanceProjection": {
+      "state": "open",
+      "owner": "agentd_supervisor",
+      "blockedBy": ["P0.7a_signedRuntimeBootstrapClosure"],
+      "authorityDelta": "none"
+    },
+    "P0.8c_runtimeResourceBudgetEnforcement": {
+      "state": "open",
+      "owner": "agentd_and_domain_services",
+      "blockedBy": ["P0.7c_memoryBoundedContextExtraction", "P0.7d_commonDurableFaultMatrix", "P0.8b_fleetRuntimeInstanceProjection"],
+      "authorityDelta": "none"
+    },
+    "P0.8d_realProcessVerticalSlice": {
+      "state": "open",
+      "owner": "product_qualification",
+      "blockedBy": ["P0.8a_astAuthorityCallerRatchet", "P0.8b_fleetRuntimeInstanceProjection", "P0.8c_runtimeResourceBudgetEnforcement"],
+      "authorityDelta": "none"
+    }
+  },
+  "externalGates": {
+    "liveRepositoryRuleset": {"state": "blocked_external", "closureCriteria": "live GitHub administration equals the checked-in contract"},
+    "exactSourceHeadExecution": {"state": "not_run", "closureCriteria": "assigned runner, non-empty successful steps and exact commit/tree"},
+    "mergeCandidateExecution": {"state": "not_run", "closureCriteria": "assigned runner, non-empty successful steps and exact merge identity"},
+    "independentCodeOwnerReview": {"state": "blocked_external", "closureCriteria": "distinct current-head reviewer approval and resolved conversations"},
+    "operatorAcceptance": {"state": "blocked_external", "closureCriteria": "candidate-bound signed independent operator acceptance"},
+    "promotion": {"state": "blocked_external", "closureCriteria": "candidate-bound signed promotion receipt"},
+    "release": {"state": "blocked_external", "closureCriteria": "signed release manifest, provenance, SBOM and rollback evidence"}
+  },
+  "completion": {
+    "allSourceGapsClosed": false,
+    "allExecutableGapsClosed": false,
+    "allExternalGatesClosed": false,
+    "allGapsClosed": false
+  },
+  "authorityBoundary": {
+    "runtime": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
