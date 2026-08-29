@@ -48,7 +48,7 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Repair exact source anchor and apply governor
+      - name: Repair exact source anchors and apply governor
         shell: bash
         run: |
           set -euo pipefail
@@ -57,23 +57,49 @@ jobs:
 
           path = Path("scripts/hepta-resource-governor-once.py")
           source = path.read_text(encoding="utf-8")
-          old = '''    replace(
+          replacements = [
+              (
+                  '''    replace(
                   "codex-rs/app-server/src/request_processors.rs",
                   "use crate::request_serialization::RequestSerializationQueues;\\n",
                   "use crate::request_serialization::RequestSerializationQueues;\\n"
                   "use crate::runtime_resource_governor::RuntimeResourceGovernor;\\n",
               )
-          '''
-          new = '''    replace(
+          ''',
+                  '''    replace(
                   "codex-rs/app-server/src/request_processors.rs",
                   "use crate::outgoing_message::ThreadScopedOutgoingMessageSender;\\n",
                   "use crate::outgoing_message::ThreadScopedOutgoingMessageSender;\\n"
                   "use crate::runtime_resource_governor::RuntimeResourceGovernor;\\n",
               )
-          '''
-          if source.count(old) != 1:
-              raise SystemExit("resource governor request-processor anchor drifted")
-          path.write_text(source.replace(old, new), encoding="utf-8")
+          ''',
+              ),
+              (
+                  '''    replace(
+                  relative,
+                  "    turn_cost_worker: Option<crate::turn_cost_worker::TurnCostWorkerHandle>,\\n",
+                  "    turn_cost_worker: Option<crate::turn_cost_worker::TurnCostWorkerHandle>,\\n"
+                  "    resource_governor: RuntimeResourceGovernor,\\n",
+              )
+          ''',
+                  '''    replace(
+                  relative,
+                  "    skills_watcher: Arc<SkillsWatcher>,\\n"
+                  "    turn_cost_worker: Option<crate::turn_cost_worker::TurnCostWorkerHandle>,\\n"
+                  "}\\n",
+                  "    skills_watcher: Arc<SkillsWatcher>,\\n"
+                  "    turn_cost_worker: Option<crate::turn_cost_worker::TurnCostWorkerHandle>,\\n"
+                  "    resource_governor: RuntimeResourceGovernor,\\n"
+                  "}\\n",
+              )
+          ''',
+              ),
+          ]
+          for old, new in replacements:
+              if source.count(old) != 1:
+                  raise SystemExit(f"resource governor patch-script anchor drifted: {old[:80]!r}")
+              source = source.replace(old, new)
+          path.write_text(source, encoding="utf-8")
           PY
           python3 scripts/hepta-resource-governor-once.py
 
