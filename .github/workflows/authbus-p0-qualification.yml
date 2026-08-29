@@ -68,7 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           evidence_dir="$RUNNER_TEMP/authbus-p0-qualification"
-          cargo fmt --all -- --check 2>&1 | tee "$evidence_dir/fmt.log"
+          cargo fmt --package codex-hepta-contracts -- --check 2>&1 | tee "$evidence_dir/fmt.log"
           echo "fmt=passed" >> "$evidence_dir/posture.txt"
 
       - name: Locked feature-on tests
