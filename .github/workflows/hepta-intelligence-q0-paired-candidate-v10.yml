@@ -25,7 +25,7 @@ concurrency:
 
 env:
   EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-  EXPECTED_PARENT: 2b77a31d1a41fa0e2a797d47442fe3c78832dc1b
+  EXPECTED_PARENT: f4d3344b4c57637da4deccb66b5a2e652dd29814
   Q0_WORKFLOW_PATH: .github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml
   Q0_WORKFLOW_REF: ${{ github.workflow_ref }}
   Q0_WORKFLOW_SHA: ${{ github.workflow_sha }}
@@ -63,7 +63,7 @@ jobs:
 
       - name: Execute exact-candidate E1 matrix
         shell: bash
-        run: scripts/run-hepta-intelligence-q0-qualification.sh
+        run: bash scripts/run-hepta-intelligence-q0-qualification.sh
 
       - name: Upload exact E1 evidence
         if: always()
@@ -99,7 +99,7 @@ jobs:
 
       - name: Execute independent exact-candidate E2 matrix
         shell: bash
-        run: scripts/run-hepta-intelligence-q0-qualification.sh
+        run: bash scripts/run-hepta-intelligence-q0-qualification.sh
 
       - name: Upload exact E2 evidence
         if: always()
