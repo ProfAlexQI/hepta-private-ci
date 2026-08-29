@@ -1,0 +1,207 @@
+name: Hepta P0.7a candidate gate x64 (temporary)
+
+on:
+  push:
+    branches:
+      - "tmp/hepta-p0-7a-compiler-diagnostic-x64-20260830"
+    paths:
+      - ".github/workflows/hepta-p0-7a-candidate-gate-x64.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-p0-7a-candidate-gate-x64
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    if: >-
+      github.repository == 'ProfHepta/hepta-private-ci' &&
+      github.ref == 'refs/heads/tmp/hepta-p0-7a-compiler-diagnostic-x64-20260830'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify staged source blobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object codex-rs/hepta-agentd/src/lib.rs)" = \
+            "44eb98fa6a89bac6b21ca41afe7ad7d31ffd082c"
+          test "$(git hash-object codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs)" = \
+            "74abd3aa3ece1fc63f36a09acfe719b5a6f9528f"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Apply inode publication repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs")
+          text = path.read_text()
+          replacements = (
+              (
+                  "    let linked = std::fs::symlink_metadata(path)?;\n",
+                  "    let held_linked = file.metadata()?;\n"
+                  "    validate_registry_metadata(&temp, &held_linked, &parent_metadata, 2)?;\n"
+                  "    let linked = std::fs::symlink_metadata(path)?;\n",
+              ),
+              (
+                  "    if metadata_identity(&held) != metadata_identity(&linked) {\n",
+                  "    if metadata_identity(&held_linked) != metadata_identity(&linked) {\n",
+              ),
+              (
+                  "    let published = std::fs::symlink_metadata(path)?;\n",
+                  "    let held_published = file.metadata()?;\n"
+                  "    validate_registry_metadata(path, &held_published, &parent_metadata, 1)?;\n"
+                  "    let published = std::fs::symlink_metadata(path)?;\n",
+              ),
+              (
+                  "    if metadata_identity(&held) != metadata_identity(&published) {\n",
+                  "    if metadata_identity(&held_published) != metadata_identity(&published) {\n",
+              ),
+          )
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected registry repair anchor exactly once: {old!r}")
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: cargo-nextest@0.9.143
+
+      - name: Format candidate repairs
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --package codex-hepta-agentd
+          cargo fmt --package codex-hepta-fleet
+          cargo fmt --package codex-hepta-agentd --package codex-hepta-fleet -- --check
+
+      - name: Capture package tests
+        id: tests
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -uo pipefail
+          overall=0
+          for package in \
+            codex-hepta-contracts \
+            codex-hepta-fleet \
+            codex-hepta-supervisor \
+            codex-hepta-agentd
+          do
+            log="$RUNNER_TEMP/${package}.test.log"
+            set +e
+            just test -p "$package" 2>&1 | tee "$log"
+            rc=${PIPESTATUS[0]}
+            set -e
+            if [[ "$rc" != "0" && "$overall" == "0" ]]; then
+              overall="$rc"
+            fi
+          done
+          printf 'exit_code=%s\n' "$overall" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Capture all-target check
+        id: check
+        if: steps.tests.outputs.exit_code == '0'
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/hepta-p0-7a-check.log"
+          set +e
+          cargo check --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd \
+            2>&1 | tee "$log"
+          rc=${PIPESTATUS[0]}
+          printf 'exit_code=%s\n' "$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Capture strict Clippy
+        id: clippy
+        if: steps.check.outputs.exit_code == '0'
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/hepta-p0-7a-clippy.log"
+          set +e
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd \
+            -- -D warnings \
+            2>&1 | tee "$log"
+          rc=${PIPESTATUS[0]}
+          printf 'exit_code=%s\n' "$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload gate diagnostics
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-p0-7a-candidate-gate-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/*.test.log
+            ${{ runner.temp }}/hepta-p0-7a-check.log
+            ${{ runner.temp }}/hepta-p0-7a-clippy.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Verify minimal candidate diff
+        if: >-
+          steps.tests.outputs.exit_code == '0' &&
+          steps.check.outputs.exit_code == '0' &&
+          steps.clippy.outputs.exit_code == '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test "$(git diff --name-only)" = \
+            "codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs"
+          test -z "$(git ls-files --others --exclude-standard)"
+
+      - name: Preserve gate failure status
+        if: always()
+        shell: bash
+        env:
+          TEST_EXIT: ${{ steps.tests.outputs.exit_code }}
+          CHECK_EXIT: ${{ steps.check.outputs.exit_code }}
+          CLIPPY_EXIT: ${{ steps.clippy.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          test -n "$TEST_EXIT"
+          if [[ "$TEST_EXIT" != "0" ]]; then
+            exit "$TEST_EXIT"
+          fi
+          test -n "$CHECK_EXIT"
+          if [[ "$CHECK_EXIT" != "0" ]]; then
+            exit "$CHECK_EXIT"
+          fi
+          test -n "$CLIPPY_EXIT"
+          exit "$CLIPPY_EXIT"
