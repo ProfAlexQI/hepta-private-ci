@@ -1,0 +1,190 @@
+name: Hepta inference INF-1 split qualification v2
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf1-source-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf1-qualification-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-inf1-qualification-v2-${{ github.sha }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  source:
+    name: Materialized source and negative-authority contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+
+      - name: Verify isolated qualification workflow commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/hepta-inference-inf1-qualification-v2.yml"
+
+      - name: Materialize and integrate exact digest-bound source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-materialize.py
+          python3 -m py_compile \
+            scripts/hepta-inference-inf1-bootstrap.py \
+            scripts/hepta-inference-inf1-source-gate.py
+          python3 scripts/hepta-inference-inf1-bootstrap.py --apply
+          python3 scripts/hepta-inference-inf1-bootstrap.py --verify
+          test -f codex-rs/hepta-infer-core/Cargo.toml
+          test -f codex-rs/hepta-inferd/Cargo.toml
+
+      - name: Verify source and negative-authority gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-source-gate.py \
+            | tee "$RUNNER_TEMP/hepta-inference-inf1-source-gate.txt"
+
+      - name: Export integrated source for exact commit materialization
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/hepta-inference-inf1-integrated"
+          mkdir -p "$out/codex-rs" "$out/docs/hepta-vnext/inference" "$out/scripts"
+          cp codex-rs/Cargo.toml "$out/codex-rs/"
+          cp -R codex-rs/hepta-infer-core codex-rs/hepta-inferd "$out/codex-rs/"
+          cp docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_CONTRACT_V1.md \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_STATUS_V1.json \
+            "$out/docs/hepta-vnext/inference/"
+          cp scripts/hepta-inference-inf1-bootstrap.py \
+            scripts/hepta-inference-inf1-source-gate.py "$out/scripts/"
+          cp "$RUNNER_TEMP/hepta-inference-inf1-source-gate.txt" "$out/"
+          find "$out" -type f -print0 | sort -z | xargs -0 sha256sum > "$out/SHA256SUMS"
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf1-integrated-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-inference-inf1-integrated
+          if-no-files-found: error
+          retention-days: 14
+
+  core:
+    name: hepta-infer-core fmt, check, test and strict Clippy
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Materialize exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-materialize.py
+          python3 scripts/hepta-inference-inf1-bootstrap.py --apply
+          python3 scripts/hepta-inference-inf1-bootstrap.py --verify
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+      - name: Generate exact lock and format core
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile
+          cargo fmt -p codex-hepta-infer-core -- --check
+      - name: Check core
+        working-directory: codex-rs
+        run: cargo check --locked -p codex-hepta-infer-core
+      - name: Test core
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-infer-core
+      - name: Strict core Clippy
+        working-directory: codex-rs
+        run: cargo clippy --locked --all-targets --no-deps -p codex-hepta-infer-core -- -D warnings
+
+  daemon:
+    name: hepta-inferd fmt, check, test and strict Clippy
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Materialize exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf1-materialize.py
+          python3 scripts/hepta-inference-inf1-bootstrap.py --apply
+          python3 scripts/hepta-inference-inf1-bootstrap.py --verify
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+      - name: Generate exact lock and format daemon
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile
+          cargo fmt -p codex-hepta-inferd -- --check
+      - name: Check daemon
+        working-directory: codex-rs
+        run: cargo check --locked -p codex-hepta-inferd
+      - name: Test daemon including UDS and cancellation contracts
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-inferd -- --nocapture
+      - name: Strict daemon Clippy
+        working-directory: codex-rs
+        run: cargo clippy --locked --all-targets --no-deps -p codex-hepta-inferd -- -D warnings
+
+  qualification-summary:
+    name: INF-1 source qualification aggregate
+    if: always()
+    needs: [source, core, daemon]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Enforce all exact-source gates
+        shell: bash
+        env:
+          SOURCE_RESULT: ${{ needs.source.result }}
+          CORE_RESULT: ${{ needs.core.result }}
+          DAEMON_RESULT: ${{ needs.daemon.result }}
+        run: |
+          set -euo pipefail
+          printf 'source=%s\ncore=%s\ndaemon=%s\n' "$SOURCE_RESULT" "$CORE_RESULT" "$DAEMON_RESULT"
+          test "$SOURCE_RESULT" = success
+          test "$CORE_RESULT" = success
+          test "$DAEMON_RESULT" = success
+          echo "PASS_HEPTA_INFERENCE_INF1_SOURCE_QUALIFICATION_ONLY"
+          {
+            echo "source=PASS"
+            echo "core_fmt_check_test_clippy=PASS"
+            echo "daemon_fmt_check_test_clippy=PASS"
+            echo "qualified=false"
+            echo "production_listener=false"
+            echo "product_wiring=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+          } >> "$GITHUB_STEP_SUMMARY"
