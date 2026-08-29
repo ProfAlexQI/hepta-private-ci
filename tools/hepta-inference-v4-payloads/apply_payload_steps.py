@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 from typing import NamedTuple
@@ -76,13 +77,18 @@ FORBIDDEN_SCRIPT_FRAGMENTS = (
     "git checkout",
     "git switch",
     "git clean",
-    "gh ",
     "curl ",
     "wget ",
     "sudo ",
     "rm -rf",
     "GITHUB_TOKEN",
     "ACTIONS_RUNTIME_TOKEN",
+)
+
+# Command-name checks are token-aware so ordinary source text such as
+# "through a caller-owned handle" cannot be mistaken for a `gh` invocation.
+FORBIDDEN_COMMAND_PATTERNS = (
+    re.compile(r"(?m)^[ \t]*(?:command[ \t]+)?gh(?:[ \t]|$)", re.IGNORECASE),
 )
 
 ALLOWED_WORKDIRS = {".", "codex-rs"}
@@ -139,6 +145,12 @@ def validate_script(payload: str, name: str, step: Step) -> None:
     for fragment in FORBIDDEN_SCRIPT_FRAGMENTS:
         if fragment.lower() in lowered:
             fail(f"payload {payload} step {name!r} contains forbidden fragment {fragment!r}")
+    for pattern in FORBIDDEN_COMMAND_PATTERNS:
+        if pattern.search(step.script):
+            fail(
+                f"payload {payload} step {name!r} contains forbidden shell command "
+                f"matching {pattern.pattern!r}"
+            )
     if "set -euo pipefail" not in step.script:
         fail(f"payload {payload} step {name!r} is not fail-closed")
 
