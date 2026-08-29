@@ -4,18 +4,13 @@ on:
   push:
     branches:
       - codex/hepta-intelligence-q0-gap-closure-staging-20260829
-  pull_request:
-    branches:
-      - codex/hepta-intelligence-a0-authority-gap-closure-20260829
-    paths:
-      - .github/workflows/hepta-a0-byte-exact-source-export.yml
 
 permissions:
   contents: read
 
 jobs:
   export:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Checkout exact A0 candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
