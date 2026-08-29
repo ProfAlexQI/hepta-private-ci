@@ -269,12 +269,16 @@ def verify_required_gate() -> None:
     for marker in (
         "python3 scripts/verify-hepta-cross-owner-operation-wiring.py",
         "cargo test --locked -p codex-hepta-contracts provider_operation::tests",
+        "cargo test --locked -p codex-hepta-automation --test automation -- --nocapture",
         "cargo test --locked -p codex-hepta-matrix-store --features qualification-fault-injection --test sqlite_full",
         "runs-on: ubuntu-24.04",
         "Hepta architecture convergence required",
+        "if: ${{ always() && !cancelled() }}",
     ):
         if marker not in workflow:
             fail(f"canonical required workflow is missing {marker!r}")
+    if workflow.count("cargo test --locked -p codex-hepta-automation --test automation -- --nocapture") != 2:
+        fail("Automation integration suite must execute for source-head and merge-candidate identities")
 
 
 def verify_ledger() -> None:
