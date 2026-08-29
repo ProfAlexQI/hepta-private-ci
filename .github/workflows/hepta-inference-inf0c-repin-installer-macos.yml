@@ -1,0 +1,45 @@
+name: Hepta inference INF-0C audited installer repin macOS
+on:
+  push:
+    branches: [codex/hepta-inference-inf0c-real-services-arm-20260828]
+    paths: [".github/workflows/hepta-inference-inf0c-repin-installer-macos.yml"]
+permissions:
+  contents: write
+jobs:
+  repin:
+    runs-on: macos-15-intel
+    timeout-minutes: 10
+    env:
+      BRANCH: codex/hepta-inference-inf0c-real-services-arm-20260828
+      SELF: .github/workflows/hepta-inference-inf0c-repin-installer-macos.yml
+      TARGET: .github/workflows/hepta-inference-inf0c-real-services-arm-v6.yml
+      OLD: 7833a312e5e59181f0f0bc2be26d0ddede082b831d8ad99d68913eff8456047e
+      NEW: f6492caf54327951d55f281133d0d9646efd62985c2465c597bfff8d35b6795f
+      EXPECTED_PARENT: 13252af021d24f411c209a7f3920ce31d4593621
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Replace only audited digest and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          python3 - "$TARGET" "$OLD" "$NEW" <<'PY'
+          import pathlib,sys
+          path=pathlib.Path(sys.argv[1]); old=sys.argv[2]; new=sys.argv[3]
+          text=path.read_text(); assert text.count(old)==1 and new not in text
+          path.write_text(text.replace(old,new))
+          PY
+          test "$(git diff --name-only)" = "$TARGET"
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$TARGET"
+          git commit -m "ci(inference): pin audited llmster 0.0.23-1 installer"
+          git fetch --no-tags origin "$BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          git push origin HEAD:"$BRANCH"
