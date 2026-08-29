@@ -106,6 +106,7 @@ impl AgentMemoryService {
         self.runtime.cognitive_runtime().available_store().is_some()
     }
 
+    #[cfg(test)]
     pub(crate) fn cognitive_write_enabled(&self) -> bool {
         self.cognitive_write.is_some()
     }
