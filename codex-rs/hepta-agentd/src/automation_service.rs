@@ -64,7 +64,6 @@ impl AgentAutomationService {
         })
     }
 
-    #[cfg(test)]
     pub(crate) fn is_available(&self) -> bool {
         self.store.is_some()
     }

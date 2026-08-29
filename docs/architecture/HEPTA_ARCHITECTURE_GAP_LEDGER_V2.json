@@ -1,0 +1,108 @@
+{
+  "schema": "hepta.architecture-gap-ledger.v2",
+  "schemaVersion": 2,
+  "overallState": "source_gaps_closed_product_and_external_gates_open",
+  "subject": {
+    "repository": "ProfHepta/hepta-private-ci",
+    "branch": "codex/hepta-gap-closure-p0-5-20260829",
+    "parentCommit": "5e6cc0d84a33920e99c9b1adaf7abcba91fddda1",
+    "sourceCommit": "resolved_by_exact_head_workflow"
+  },
+  "closedSourceGaps": {
+    "singleNormativeArchitectureModel": {
+      "state": "source_implemented",
+      "evidence": ["docs/architecture/HEPTA_ARCHITECTURE_MODEL_V2.json"]
+    },
+    "deterministicArchitectureProjections": {
+      "state": "source_implemented",
+      "evidence": ["scripts/generate-hepta-architecture-projections.py", "ARCHITECTURE.md", "docs/architecture/DATA_AUTHORITY_MAP.md", "docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json"]
+    },
+    "scopedDataDomainAuthority": {
+      "state": "source_implemented",
+      "evidence": ["docs/architecture/HEPTA_ARCHITECTURE_MODEL_V2.json", "scripts/verify-hepta-p0-5-gap-closure.py"]
+    },
+    "runtimeProfileRequiredOptionalDisabledContract": {
+      "state": "source_implemented",
+      "evidence": ["codex-rs/hepta-agentd/src/runtime_profile.rs"]
+    },
+    "runtimeProfileProductCompositionBinding": {
+      "state": "source_implemented",
+      "evidence": ["codex-rs/hepta-agentd/src/composition.rs", "codex-rs/hepta-agentd/src/runtime.rs"]
+    },
+    "unambiguousQualificationState": {
+      "state": "source_implemented",
+      "evidence": ["docs/architecture/HEPTA_QUALIFICATION_STATUS_V2.json"]
+    },
+    "readOnlyExactIdentityQualificationWorkflow": {
+      "state": "source_implemented",
+      "evidence": [".github/workflows/hepta-gap-closure-p0-5.yml"]
+    }
+  },
+  "openProductGaps": {
+    "supervisorSignedRuntimeGrantBootstrap": {
+      "state": "open",
+      "currentEvidence": "local closed profiles exist; normal Agentd still constructs the local grant in-process",
+      "closureCriteria": "Supervisor-issued signed grant reaches the composition root through a verifier-only bootstrap path with stale-generation and revocation tests"
+    },
+    "perUseExternalCapabilityRevocation": {
+      "state": "open",
+      "currentEvidence": "external capabilities bind subject, generation, epochs, fence and expiry; revocation is not rechecked on every physical effect",
+      "closureCriteria": "every model/provider/external-effect dispatch validates a current revocation or epoch view immediately before crossing the boundary"
+    },
+    "realAuthorityAndOwnerEpochs": {
+      "state": "open",
+      "currentEvidence": "some operation contexts still derive authority epoch and fence witnesses from local schema/generation values",
+      "closureCriteria": "Supervisor and each data owner persist monotonic epochs and independently reject stale owner instances"
+    },
+    "physicalMemoryBoundedContextExtraction": {
+      "state": "open",
+      "currentEvidence": "hepta-memory-runtime facade exists; legacy hepta-memory still owns multiple bounded contexts",
+      "closureCriteria": "memory model, store, KG, retrieval, compact and learning have physical crate boundaries with one migration owner and stable facade compatibility"
+    },
+    "allProductStoreFaultMatrix": {
+      "state": "partial",
+      "currentEvidence": "Matrix has a same-connection SQLite-full seam; equivalent Memory, Automation and Evidence process-kill/disk-full/reopen evidence is incomplete",
+      "closureCriteria": "all durable product stores pass the common kill, disk-full, corruption, stale-fence, pending-outbox and backup/restore matrix"
+    },
+    "astLevelAuthorityCallerRatchet": {
+      "state": "open",
+      "currentEvidence": "current caller ratchet is source-string based",
+      "closureCriteria": "Rust compiler or AST metadata enforces the grant/capability constructor caller set and compile-fail tests reject aliases, wrappers and macros"
+    },
+    "runtimeInstanceAndReadinessGraph": {
+      "state": "partial",
+      "currentEvidence": "runtime profile is now bound during composition; a durable observed instance graph and fleet-level readiness projection do not yet exist",
+      "closureCriteria": "desired, observed and readiness graphs are candidate-bound, generation-fenced and externally queryable without becoming authority"
+    },
+    "runtimeResourceBudgetEnforcement": {
+      "state": "open",
+      "currentEvidence": "manifest carries resource budgets, but complete turn/tool/model/memory enforcement is not executable-qualified",
+      "closureCriteria": "N+1 admission, cancellation, crash, permit recovery and cross-service budget tests pass on the product runtime"
+    },
+    "physicalEndToEndProductPath": {
+      "state": "open",
+      "currentEvidence": "domain qualification lanes exist but no single promoted path proves Supervisor to Agentd to App Server to model/provider to Memory and ingress recovery",
+      "closureCriteria": "one exact candidate completes the real-process vertical slice including failure/restart/reconcile and independently reviewed evidence"
+    }
+  },
+  "openExternalGates": {
+    "repositoryRulesetEnforcement": {"state": "not_issued", "closureCriteria": "default-branch ruleset requires the aggregate checks and rejects direct/force pushes"},
+    "exactSourceHeadQualification": {"state": "not_run", "closureCriteria": "non-zero runner, non-empty successful steps and exact commit/tree receipt"},
+    "mergeCandidateQualification": {"state": "not_run", "closureCriteria": "non-zero runner, non-empty successful steps and exact PR merge-candidate receipt"},
+    "operatorAcceptance": {"state": "not_issued", "closureCriteria": "independent candidate-bound signed acceptance"},
+    "promotion": {"state": "not_issued", "closureCriteria": "independent candidate-bound signed promotion receipt"},
+    "release": {"state": "not_issued", "closureCriteria": "signed release manifest, provenance, SBOM and rollback evidence"}
+  },
+  "authorityBoundary": {
+    "productionCaller": false,
+    "productionWriter": false,
+    "effectAuthority": false,
+    "externalEffect": false,
+    "modelInvocationAuthority": false,
+    "providerDispatchAuthority": false,
+    "fleetMutationAuthority": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

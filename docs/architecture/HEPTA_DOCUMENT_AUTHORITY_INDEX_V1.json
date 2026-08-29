@@ -1,15 +1,43 @@
 {
   "schema": "hepta.document-authority-index.v1",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "normative": {
+    "architectureModel": "docs/architecture/HEPTA_ARCHITECTURE_MODEL_V2.json",
+    "executionPlan": "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V2.md",
+    "gapLedger": "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V2.json",
+    "qualificationStatus": "docs/architecture/HEPTA_QUALIFICATION_STATUS_V2.json"
+  },
   "canonical": {
     "architectureHuman": "ARCHITECTURE.md",
-    "architectureMachine": "docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json",
+    "architectureMachine": "docs/architecture/HEPTA_ARCHITECTURE_MODEL_V2.json",
     "dataAuthority": "docs/architecture/DATA_AUTHORITY_MAP.md",
     "recoveryOrder": "docs/architecture/RECOVERY_ORDER.md",
     "authorityKernel": "codex-rs/hepta-contracts/src/authority.rs",
     "productGraph": "codex-rs/hepta-contracts/src/product_graph.rs",
+    "runtimeProfile": "codex-rs/hepta-agentd/src/runtime_profile.rs",
     "operationContract": "codex-rs/hepta-contracts/src/operation.rs"
   },
+  "generatedProjections": [
+    {
+      "path": "ARCHITECTURE.md",
+      "source": "docs/architecture/HEPTA_ARCHITECTURE_MODEL_V2.json",
+      "generator": "scripts/generate-hepta-architecture-projections.py",
+      "handEditingAllowed": false
+    },
+    {
+      "path": "docs/architecture/DATA_AUTHORITY_MAP.md",
+      "source": "docs/architecture/HEPTA_ARCHITECTURE_MODEL_V2.json",
+      "generator": "scripts/generate-hepta-architecture-projections.py",
+      "handEditingAllowed": false
+    },
+    {
+      "path": "docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json",
+      "classification": "generated_compatibility_projection",
+      "source": "docs/architecture/HEPTA_ARCHITECTURE_MODEL_V2.json",
+      "generator": "scripts/generate-hepta-architecture-projections.py",
+      "currentArchitectureAuthority": false
+    }
+  ],
   "historicalEvidenceRoots": [
     {
       "path": "docs/hepta-vnext/dropbox-current-2026-08-27",
@@ -31,6 +59,27 @@
       "currentArchitectureAuthority": false,
       "runtimeAuthority": false,
       "promotionAuthority": false
+    },
+    {
+      "path": "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V1.md",
+      "classification": "superseded_execution_plan_provenance",
+      "currentArchitectureAuthority": false,
+      "runtimeAuthority": false,
+      "promotionAuthority": false
+    },
+    {
+      "path": "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V1.json",
+      "classification": "superseded_source_gap_ledger_provenance",
+      "currentArchitectureAuthority": false,
+      "runtimeAuthority": false,
+      "promotionAuthority": false
+    },
+    {
+      "path": "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_P0_2_STATUS.json",
+      "classification": "superseded_ambiguous_boolean_status_provenance",
+      "currentArchitectureAuthority": false,
+      "runtimeAuthority": false,
+      "promotionAuthority": false
     }
   ],
   "pullRequestPolicy": {
@@ -38,7 +87,8 @@
     "sourcePresenceIsQualification": false,
     "queuedJobIsQualification": false,
     "emptyRunnerStepsIsQualification": false,
-    "mergeCandidateEqualsSourceHead": false
+    "mergeCandidateEqualsSourceHead": false,
+    "qualificationWorkflowMayMutateSource": false
   },
   "retention": {
     "historicalBytesPreserved": true,

@@ -10,6 +10,7 @@ use crate::AgentdIdentity;
 use crate::AgentdState;
 use crate::automation_service::AgentAutomationService;
 use crate::memory_service::AgentMemoryService;
+use crate::runtime_profile::RuntimeProfileContract;
 
 const EVENT_CAPACITY: usize = 128;
 
@@ -20,6 +21,7 @@ pub(crate) struct AgentRuntimeComposition {
     automation_service: AgentAutomationService,
     authority: AuthorityGrant,
     product_graph: ProductGraph,
+    runtime_profile: RuntimeProfileContract,
     writer_lock: File,
 }
 
@@ -30,6 +32,7 @@ pub(crate) struct AgentRuntimeParts {
     pub(crate) automation_service: AgentAutomationService,
     pub(crate) authority: AuthorityGrant,
     pub(crate) product_graph: ProductGraph,
+    pub(crate) runtime_profile: RuntimeProfileContract,
     pub(crate) writer_lock: File,
 }
 
@@ -45,6 +48,14 @@ impl AgentRuntimeComposition {
         let product_graph = ProductGraph::agent_local(&authority).map_err(|error| {
             AgentdError::Protocol(format!("validate Agent product graph: {error}"))
         })?;
+        let runtime_profile = RuntimeProfileContract::for_authority(&authority).map_err(|error| {
+            AgentdError::Protocol(format!("validate Agent runtime profile: {error}"))
+        })?;
+        runtime_profile
+            .validate_product_graph(&product_graph)
+            .map_err(|error| {
+                AgentdError::Protocol(format!("bind runtime profile to product graph: {error}"))
+            })?;
 
         let federation_owner_layouts = registry
             .load()?
@@ -67,6 +78,14 @@ impl AgentRuntimeComposition {
         .await?;
         let automation_service =
             AgentAutomationService::open(state.as_ref(), &identity, &authority).await?;
+        runtime_profile
+            .validate_composed_services(
+                memory_service.is_available(),
+                automation_service.is_available(),
+            )
+            .map_err(|error| {
+                AgentdError::Protocol(format!("validate composed runtime services: {error}"))
+            })?;
 
         Ok(Self {
             identity,
@@ -75,6 +94,7 @@ impl AgentRuntimeComposition {
             automation_service,
             authority,
             product_graph,
+            runtime_profile,
             writer_lock,
         })
     }
@@ -87,6 +107,7 @@ impl AgentRuntimeComposition {
             automation_service: self.automation_service,
             authority: self.authority,
             product_graph: self.product_graph,
+            runtime_profile: self.runtime_profile,
             writer_lock: self.writer_lock,
         }
     }
@@ -112,6 +133,7 @@ pub(crate) fn authority_for_identity(
 mod tests {
     use codex_hepta_contracts::AgentId;
     use codex_hepta_contracts::AuthorityAction;
+    use codex_hepta_contracts::RuntimeAuthorityProfile;
     use codex_hepta_fleet::AgentLifecycle;
     use codex_hepta_fleet::AgentManifest;
     use codex_hepta_fleet::FleetRegistry;
@@ -121,6 +143,8 @@ mod tests {
 
     use super::AgentRuntimeComposition;
     use crate::AgentdConfig;
+    use crate::runtime_profile::RuntimeServiceId;
+    use crate::runtime_profile::RuntimeServiceRequirement;
 
     const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 
@@ -168,6 +192,18 @@ mod tests {
             parts.authority.allows(AuthorityAction::WriteCognitiveState)
         );
         assert!(parts.product_graph.validate().is_ok());
+        assert_eq!(
+            parts.runtime_profile.profile(),
+            RuntimeAuthorityProfile::AgentLocal
+        );
+        assert_eq!(
+            parts
+                .runtime_profile
+                .policy(RuntimeServiceId::MemoryRuntime)
+                .expect("Memory runtime policy")
+                .requirement,
+            RuntimeServiceRequirement::Optional
+        );
         assert!(parts.authority.is_product_closed());
         assert!(!parts.authority.allows(AuthorityAction::ExternalEffect));
         assert!(!parts.authority.allows(AuthorityAction::PromoteRelease));

@@ -43,6 +43,11 @@ jobs:
     uses: ./.github/workflows/hepta-architecture-convergence-p0-2.yml
     secrets: inherit
 
+  hepta-gap-closure:
+    name: Hepta gap closure P0.5
+    uses: ./.github/workflows/hepta-gap-closure-p0-5.yml
+    secrets: inherit
+
   repo-checks:
     name: repo-checks
     uses: ./.github/workflows/repo-checks.yml
@@ -69,6 +74,7 @@ jobs:
       - cargo-deny
       - codespell
       - hepta-architecture-convergence
+      - hepta-gap-closure
       - repo-checks
       - rust-ci
       - sdk

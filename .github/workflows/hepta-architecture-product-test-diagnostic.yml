@@ -1,44 +1,36 @@
-name: Hepta architecture blocker remediation
+name: Hepta architecture product-test diagnostic
 
 on:
   push:
     branches:
       - codex/hepta-architecture-convergence-p0-2-20260828
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: hepta-architecture-blocker-remediation
+  group: hepta-architecture-product-test-diagnostic-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  remediate-agentd-operation-context:
-    name: Remediate exact agentd operation-context blockers
+  diagnostic:
+    name: Isolate architecture product-test blockers
     runs-on: ubuntu-24.04
     timeout-minutes: 180
-    env:
-      EXPECTED_PARENT: 4351a61f44b8b2b7fa0db46091741453137bae65
-      EXPECTED_BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
-      WORKFLOW_PATH: .github/workflows/hepta-architecture-product-test-diagnostic.yml
     steps:
-      - name: Checkout exact remediation trigger
+      - name: Checkout exact candidate
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 2
-          persist-credentials: true
+          fetch-depth: 1
+          persist-credentials: false
 
-      - name: Verify immutable remediation boundary
+      - name: Verify exact candidate
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_REF_NAME" = "$EXPECTED_BRANCH"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
-          mapfile -t trigger_paths < <(git diff --name-only "$EXPECTED_PARENT" HEAD | sort)
-          test "${#trigger_paths[@]}" -eq 1
-          test "${trigger_paths[0]}" = "$WORKFLOW_PATH"
           git diff --exit-code
           git diff --cached --exit-code
 
@@ -48,173 +40,129 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Apply exact source remediation
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          automation_path = Path("codex-rs/hepta-agentd/src/automation.rs")
-          service_path = Path("codex-rs/hepta-agentd/src/automation_service.rs")
-
-          automation = automation_path.read_text(encoding="utf-8")
-
-          scheduler_old = r'''pub(crate) async fn run_automation_scheduler(
-              store: AutomationStore,
-              operation_context: AutomationOperationContext,
-          '''
-          scheduler_new = r'''#[cfg(test)]
-          pub(crate) async fn run_automation_scheduler(
-              store: AutomationStore,
-              state: Arc<AgentdState>,
-              identity: AgentdIdentity,
-              cancellation: CancellationToken,
-          ) -> Result<(), AgentdError> {
-              let fence = format!(
-                  "hepta:test:agentd-automation-operation-fence:v1\0{}\0{}",
-                  identity.agent_id, identity.spawn_generation
-              );
-              let operation_context = AutomationOperationContext::new(
-                  1,
-                  identity.spawn_generation,
-                  identity.spawn_generation,
-                  Sha256Digest::for_bytes(fence.as_bytes()),
-              )?;
-              run_automation_scheduler_with_context(
-                  store,
-                  operation_context,
-                  state,
-                  identity,
-                  cancellation,
-              )
-              .await
-          }
-
-          pub(crate) async fn run_automation_scheduler_with_context(
-              store: AutomationStore,
-              operation_context: AutomationOperationContext,
-          '''
-          if automation.count(scheduler_old) != 1:
-              raise SystemExit("unexpected run_automation_scheduler source shape")
-          automation = automation.replace(scheduler_old, scheduler_new, 1)
-
-          imports_old = r'''    use codex_hepta_automation::AutomationTaskId;
-              use codex_hepta_automation::AutomationTick;
-              use codex_hepta_contracts::AgentId;
-          '''
-          imports_new = r'''    use codex_hepta_automation::AutomationLease;
-              use codex_hepta_automation::AutomationOperationContext;
-              use codex_hepta_automation::AutomationSchedule;
-              use codex_hepta_automation::AutomationTask;
-              use codex_hepta_automation::AutomationTaskId;
-              use codex_hepta_automation::AutomationTaskState;
-              use codex_hepta_automation::AutomationTick;
-              use codex_hepta_contracts::AgentId;
-              use codex_hepta_contracts::Sha256Digest;
-          '''
-          if automation.count(imports_old) != 1:
-              raise SystemExit("unexpected automation test import shape")
-          automation = automation.replace(imports_old, imports_new, 1)
-
-          fixture_old = r'''        let admission = AutomationAdmission {
-                      agent_id: AgentId::parse("018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12").expect("agent id"),
-                      task_id: AutomationTaskId::parse("019153a4-3088-7000-a56a-9b1964f75007")
-                          .expect("task id"),
-                      occurrence: 3,
-                      scheduled_for_ms: 44,
-                      thread_id: "019153a4-3088-7e03-a56a-9b1964f75ddd".to_string(),
-                      prompt: "run through governance".to_string(),
-                      client_user_message_id: "hepta.automation.test".to_string(),
-                  };
-          '''
-          fixture_new = r'''        let agent_id =
-                      AgentId::parse("018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12").expect("agent id");
-                  let task_id = AutomationTaskId::parse("019153a4-3088-7000-a56a-9b1964f75007")
-                      .expect("task id");
-                  let operation_context = AutomationOperationContext::new(
-                      1,
-                      1,
-                      1,
-                      Sha256Digest::for_bytes(b"hepta:test:agentd-automation-operation-fence:v1"),
-                  )
-                  .expect("operation context");
-                  let admission = AutomationLease {
-                      task: AutomationTask {
-                          task_id,
-                          owner_agent_id: agent_id,
-                          thread_id: "019153a4-3088-7e03-a56a-9b1964f75ddd".to_string(),
-                          prompt: "run through governance".to_string(),
-                          schedule: AutomationSchedule::Once,
-                          state: AutomationTaskState::Enabled,
-                          next_run_at_ms: Some(44),
-                          next_occurrence: 3,
-                          created_at_ms: 1,
-                          updated_at_ms: 1,
-                      },
-                      occurrence: 3,
-                      scheduled_for_ms: 44,
-                      client_user_message_id: "hepta.automation.test".to_string(),
-                      lease_generation: 1,
-                      lease_token: "lease-token".to_string(),
-                      lease_expires_at_ms: 100,
-                  }
-                  .admission(&operation_context)
-                  .expect("automation admission");
-          '''
-          if automation.count(fixture_old) != 1:
-              raise SystemExit("unexpected AutomationAdmission fixture shape")
-          automation = automation.replace(fixture_old, fixture_new, 1)
-          automation_path.write_text(automation, encoding="utf-8")
-
-          service = service_path.read_text(encoding="utf-8")
-          import_old = "use crate::automation::run_automation_scheduler;\n"
-          import_new = "use crate::automation::run_automation_scheduler_with_context;\n"
-          call_old = "                run_automation_scheduler(\n"
-          call_new = "                run_automation_scheduler_with_context(\n"
-          if service.count(import_old) != 1 or service.count(call_old) != 1:
-              raise SystemExit("unexpected automation service scheduler shape")
-          service = service.replace(import_old, import_new, 1).replace(call_old, call_new, 1)
-          service_path.write_text(service, encoding="utf-8")
-          PY
-          git diff --check
-          mapfile -t changed < <(git diff --name-only | sort)
-          expected=(
-            codex-rs/hepta-agentd/src/automation.rs
-            codex-rs/hepta-agentd/src/automation_service.rs
-          )
-          test "${changed[*]}" = "${expected[*]}"
-
-      - name: Format and verify agentd runtime
+      - id: authority
+        name: Test authority contracts
+        continue-on-error: true
         working-directory: codex-rs
-        shell: bash
+        run: cargo test --locked -p codex-hepta-contracts authority::tests -- --nocapture
+
+      - id: operation
+        name: Test operation contracts
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-contracts operation::tests -- --nocapture
+
+      - id: product_graph
+        name: Test product graph contracts
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-contracts product_graph::tests -- --nocapture
+
+      - id: provider_operation
+        name: Test provider operation contracts
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-contracts provider_operation::tests -- --nocapture
+
+      - id: cross_owner
+        name: Test cross-owner fault matrix
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-contracts --test cross_owner_fault_matrix -- --nocapture
+
+      - id: memory_runtime
+        name: Test memory runtime
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
+
+      - id: automation_lib
+        name: Test automation library
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-automation --lib -- --nocapture
+
+      - id: automation_integration
+        name: Test automation integration
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-automation --test automation -- --nocapture
+
+      - id: agentd
+        name: Test agentd composition
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
+
+      - id: matrix_store_lib
+        name: Test matrix store library
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-matrix-store --lib -- --nocapture
+
+      - id: matrix_store_sqlite
+        name: Test matrix store SQLite fault matrix
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-matrix-store --features qualification-fault-injection --test sqlite_full -- --nocapture
+
+      - id: matrixd
+        name: Test matrixd library
+        continue-on-error: true
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-matrixd --lib -- --nocapture
+
+      - id: package_graph
+        name: Check converged product package graph
+        continue-on-error: true
+        working-directory: codex-rs
         run: |
           set -euo pipefail
-          cargo fmt -p codex-hepta-agentd
-          git diff --check
-          cargo fmt -p codex-hepta-agentd -- --check
-          cargo test --locked -p codex-hepta-agentd --lib -- --nocapture
-          cargo test --locked -p codex-hepta-agentd --features qualification-cognitive-write --lib -- --nocapture
           cargo check --locked \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-automation \
             -p codex-hepta-agentd \
             -p codex-hepta-supervisor \
+            -p codex-hepta-matrix-store \
+            -p codex-hepta-matrixd \
             -p codex-hepta-native-gateway
 
-      - name: Commit verified remediation and remove bootstrap
+      - name: Assert every diagnostic lane passed
+        env:
+          AUTHORITY: ${{ steps.authority.outcome }}
+          OPERATION: ${{ steps.operation.outcome }}
+          PRODUCT_GRAPH: ${{ steps.product_graph.outcome }}
+          PROVIDER_OPERATION: ${{ steps.provider_operation.outcome }}
+          CROSS_OWNER: ${{ steps.cross_owner.outcome }}
+          MEMORY_RUNTIME: ${{ steps.memory_runtime.outcome }}
+          AUTOMATION_LIB: ${{ steps.automation_lib.outcome }}
+          AUTOMATION_INTEGRATION: ${{ steps.automation_integration.outcome }}
+          AGENTD: ${{ steps.agentd.outcome }}
+          MATRIX_STORE_LIB: ${{ steps.matrix_store_lib.outcome }}
+          MATRIX_STORE_SQLITE: ${{ steps.matrix_store_sqlite.outcome }}
+          MATRIXD: ${{ steps.matrixd.outcome }}
+          PACKAGE_GRAPH: ${{ steps.package_graph.outcome }}
         shell: bash
         run: |
           set -euo pipefail
-          git diff --check
-          rm "$WORKFLOW_PATH"
-          mapfile -t changed < <(git status --short | sed 's/^...//' | sort)
-          expected=(
-            .github/workflows/hepta-architecture-product-test-diagnostic.yml
-            codex-rs/hepta-agentd/src/automation.rs
-            codex-rs/hepta-agentd/src/automation_service.rs
-          )
-          test "${changed[*]}" = "${expected[*]}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- "${expected[@]}"
-          git commit -m "fix(hepta): bind agentd automation operation context"
-          git push origin "HEAD:$EXPECTED_BRANCH"
+          printf '%s\n' \
+            "authority=$AUTHORITY" \
+            "operation=$OPERATION" \
+            "product_graph=$PRODUCT_GRAPH" \
+            "provider_operation=$PROVIDER_OPERATION" \
+            "cross_owner=$CROSS_OWNER" \
+            "memory_runtime=$MEMORY_RUNTIME" \
+            "automation_lib=$AUTOMATION_LIB" \
+            "automation_integration=$AUTOMATION_INTEGRATION" \
+            "agentd=$AGENTD" \
+            "matrix_store_lib=$MATRIX_STORE_LIB" \
+            "matrix_store_sqlite=$MATRIX_STORE_SQLITE" \
+            "matrixd=$MATRIXD" \
+            "package_graph=$PACKAGE_GRAPH" | tee -a "$GITHUB_STEP_SUMMARY"
+          for result in \
+            "$AUTHORITY" "$OPERATION" "$PRODUCT_GRAPH" "$PROVIDER_OPERATION" \
+            "$CROSS_OWNER" "$MEMORY_RUNTIME" "$AUTOMATION_LIB" \
+            "$AUTOMATION_INTEGRATION" "$AGENTD" "$MATRIX_STORE_LIB" \
+            "$MATRIX_STORE_SQLITE" "$MATRIXD" "$PACKAGE_GRAPH"; do
+            test "$result" = success
+          done

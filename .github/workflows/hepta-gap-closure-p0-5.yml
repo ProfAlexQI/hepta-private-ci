@@ -1,0 +1,271 @@
+name: Hepta gap closure P0.5
+
+on:
+  pull_request:
+    branches:
+      - integration/vnext-main-20260811
+      - codex/hepta-architecture-convergence-p0-2-20260828
+  push:
+    branches:
+      - codex/hepta-gap-closure-p0-5-20260829
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-gap-closure-p0-5-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+
+jobs:
+  exact-source-head:
+    name: Exact source-head P0.5 closure
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify immutable source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+          git rev-parse 'HEAD^{tree}'
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Verify normative architecture and generated projections
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/generate-hepta-architecture-projections.py --check
+          python3 scripts/verify-hepta-p0-5-gap-closure.py
+
+      - name: Check Agentd formatting
+        working-directory: codex-rs
+        shell: bash
+        run: cargo fmt -p codex-hepta-agentd -- --check
+
+      - name: Execute runtime-profile and composition tests
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-agentd runtime_profile::tests -- --nocapture
+          cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
+          cargo test --locked -p codex-hepta-agentd --features qualification-cognitive-write runtime_profile::tests -- --nocapture
+
+      - name: Compile affected product graph
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked -p codex-hepta-contracts -p codex-hepta-agentd
+          cargo check --locked --no-default-features -p codex-hepta-agentd --features qualification-cognitive-write
+
+      - name: Strict Agentd Clippy
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --all-targets -p codex-hepta-agentd -- -D warnings
+          cargo clippy --locked --all-targets --no-default-features -p codex-hepta-agentd --features qualification-cognitive-write -- -D warnings
+
+      - name: Record exact source-head evidence
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          RUNNER_NAME_VALUE: ${{ runner.name }}
+          RUNNER_OS_VALUE: ${{ runner.os }}
+          RUNNER_ARCH_VALUE: ${{ runner.arch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/hepta-p0-5-source-head"
+          mkdir -p "$evidence"
+          python3 - <<'PY' > "$evidence/receipt.json"
+          import json
+          import os
+          import subprocess
+
+          value = {
+              "schema": "hepta.p0-5.source-head-evidence.v1",
+              "identity": "source_head",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "workflow": os.environ["GITHUB_WORKFLOW"],
+              "runId": int(os.environ["GITHUB_RUN_ID"]),
+              "runAttempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "runner": {
+                  "name": os.environ.get("RUNNER_NAME_VALUE", ""),
+                  "os": os.environ.get("RUNNER_OS_VALUE", ""),
+                  "arch": os.environ.get("RUNNER_ARCH_VALUE", ""),
+              },
+              "expectedCommit": os.environ["SOURCE_HEAD"],
+              "actualCommit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "actualTree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(),
+              "jobStatus": os.environ["JOB_STATUS"],
+              "namedGateCount": 5,
+              "source_mutation": False,
+              "productionAuthority": False,
+              "effectAuthority": False,
+              "operatorAcceptance": False,
+              "promotion": False,
+              "release": False,
+          }
+          print(json.dumps(value, sort_keys=True, indent=2))
+          PY
+          cat "$evidence/receipt.json" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload exact source-head evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-p0-5-source-head-${{ env.SOURCE_HEAD }}
+          path: ${{ runner.temp }}/hepta-p0-5-source-head
+          if-no-files-found: error
+          retention-days: 14
+
+  merge-candidate:
+    name: Merge-candidate P0.5 closure
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact merge candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify merge-candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^2)" = "$SOURCE_HEAD"
+          git rev-parse HEAD^1
+          git rev-parse HEAD^2
+          git rev-parse 'HEAD^{tree}'
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Verify merged architecture projections
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/generate-hepta-architecture-projections.py --check
+          python3 scripts/verify-hepta-p0-5-gap-closure.py
+
+      - name: Execute merge-candidate product tests
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-agentd -- --check
+          cargo test --locked -p codex-hepta-agentd runtime_profile::tests -- --nocapture
+          cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
+          cargo check --locked -p codex-hepta-contracts -p codex-hepta-agentd
+          cargo clippy --locked --all-targets -p codex-hepta-agentd -- -D warnings
+
+      - name: Record merge-candidate evidence
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          RUNNER_NAME_VALUE: ${{ runner.name }}
+          RUNNER_OS_VALUE: ${{ runner.os }}
+          RUNNER_ARCH_VALUE: ${{ runner.arch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/hepta-p0-5-merge-candidate"
+          mkdir -p "$evidence"
+          python3 - <<'PY' > "$evidence/receipt.json"
+          import json
+          import os
+          import subprocess
+
+          value = {
+              "schema": "hepta.p0-5.merge-candidate-evidence.v1",
+              "identity": "merge_candidate",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "workflow": os.environ["GITHUB_WORKFLOW"],
+              "runId": int(os.environ["GITHUB_RUN_ID"]),
+              "runAttempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "runner": {
+                  "name": os.environ.get("RUNNER_NAME_VALUE", ""),
+                  "os": os.environ.get("RUNNER_OS_VALUE", ""),
+                  "arch": os.environ.get("RUNNER_ARCH_VALUE", ""),
+              },
+              "sourceHead": os.environ["SOURCE_HEAD"],
+              "mergeCommit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "mergeTree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(),
+              "firstParent": subprocess.check_output(["git", "rev-parse", "HEAD^1"], text=True).strip(),
+              "secondParent": subprocess.check_output(["git", "rev-parse", "HEAD^2"], text=True).strip(),
+              "jobStatus": os.environ["JOB_STATUS"],
+              "namedGateCount": 4,
+              "source_mutation": False,
+              "productionAuthority": False,
+              "effectAuthority": False,
+              "operatorAcceptance": False,
+              "promotion": False,
+              "release": False,
+          }
+          print(json.dumps(value, sort_keys=True, indent=2))
+          PY
+          cat "$evidence/receipt.json" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload merge-candidate evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-p0-5-merge-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-p0-5-merge-candidate
+          if-no-files-found: error
+          retention-days: 14
+
+  required:
+    name: Hepta P0.5 gap closure required
+    if: ${{ always() && !cancelled() }}
+    needs:
+      - exact-source-head
+      - merge-candidate
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require successful P0.5 identities
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_RESULT: ${{ needs.exact-source-head.result }}
+          MERGE_RESULT: ${{ needs.merge-candidate.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$SOURCE_RESULT" = success
+          if test "$EVENT_NAME" = pull_request; then
+            test "$MERGE_RESULT" = success
+          else
+            test "$MERGE_RESULT" = skipped
+          fi

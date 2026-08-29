@@ -53,6 +53,7 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
         automation_service,
         authority,
         product_graph: _product_graph,
+        runtime_profile: _runtime_profile,
         writer_lock: _writer_lock,
     } = AgentRuntimeComposition::open(config).await?.into_parts();
     let (cognitive_runtime, cognitive_write) = memory_service.into_runtime_parts();
