@@ -8,6 +8,7 @@ mod error;
 mod model;
 mod registry;
 mod release;
+mod runtime_launch;
 
 pub use error::FleetRegistryError;
 pub use model::AGENT_MANIFEST_SCHEMA_VERSION;
@@ -28,3 +29,6 @@ pub use release::RegisteredRelease;
 pub use release::ReleaseId;
 pub use release::ReleaseMetadata;
 pub use release::ReleaseProgramMetadata;
+pub use runtime_launch::RUNTIME_LAUNCH_BINDING_SCHEMA_VERSION;
+pub use runtime_launch::RuntimeLaunchBinding;
+pub use runtime_launch::RuntimeLaunchBindingError;
