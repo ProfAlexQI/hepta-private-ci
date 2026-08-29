@@ -1,0 +1,123 @@
+name: Hepta inference V4 agent Q0 materialize
+
+on:
+  push:
+    branches:
+      - agent/hepta-inference-v4-gap-closure-20260830
+    paths:
+      - .github/workflows/hepta-inference-v4-agent-q0-materialize.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-v4-agent-q0-materialize
+  cancel-in-progress: false
+
+jobs:
+  materialize-and-qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: agent/hepta-inference-v4-gap-closure-20260830
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Guard exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = f382b4fa76394c821fa2068e16767a941d5cfbc0
+          test "$(git branch --show-current)" = agent/hepta-inference-v4-gap-closure-20260830
+          test -z "$(git status --porcelain)"
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply deterministic Q0 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/hepta-inference-v4-agent-q0-materialize.py
+          python3 scripts/hepta-inference-v4-agent-q0-materialize.py
+          git diff --check
+
+      - name: Format and execute owned Rust gates
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
+          cargo metadata --locked --no-deps --format-version 1 > "$RUNNER_TEMP/q0-metadata.json"
+          cargo check --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
+          cargo test --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd \
+            -- --test-threads=1
+          cargo clippy --locked --all-targets --no-deps \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd \
+            -- -D warnings
+
+      - name: Create clean ordinary source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm \
+            scripts/hepta-inference-v4-agent-q0-materialize.py \
+            .github/workflows/hepta-inference-v4-agent-q0-materialize.yml \
+            .github/workflows/hepta-inference-v4-agent-source-export.yml
+          actual="$(git diff --name-only | LC_ALL=C sort)"
+          expected="$(cat <<'EOF' | LC_ALL=C sort
+          .github/workflows/hepta-inference-v4-agent-q0-materialize.yml
+          .github/workflows/hepta-inference-v4-agent-source-export.yml
+          codex-rs/hepta-infer-core/src/adapter.rs
+          codex-rs/hepta-infer-core/src/lib.rs
+          codex-rs/hepta-inferd/src/lib.rs
+          scripts/hepta-inference-v4-agent-q0-materialize.py
+          scripts/hepta-inference-v4-source-truth.py
+          EOF
+          )"
+          test "$actual" = "$expected"
+          git diff --check
+          git add -A
+          git diff --cached --check
+          git config user.name "Qian QI"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git commit -m "fix(inference): close Q0 compile and exact tuple blockers"
+
+      - name: Verify clean committed source truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          python3 scripts/hepta-inference-v4-source-truth.py \
+            | tee "$RUNNER_TEMP/q0-source-truth.json"
+          (
+            cd codex-rs
+            cargo fmt \
+              -p codex-hepta-infer-core \
+              -p codex-hepta-infer-client \
+              -p codex-hepta-inferd \
+              -- --check
+          )
+          test -z "$(git status --porcelain)"
+
+      - name: Push qualified source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin HEAD:refs/heads/agent/hepta-inference-v4-gap-closure-20260830
