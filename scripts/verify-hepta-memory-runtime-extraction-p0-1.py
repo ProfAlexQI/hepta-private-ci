@@ -130,10 +130,12 @@ def main() -> int:
         if implemented.get(field) is not True:
             fail(f"implemented status field {field} must be true")
 
+    # `remaining` is a positive outstanding-work map: false means the gap is
+    # already closed. Caller migration was materialized before this ratchet.
     expected_remaining = {
         "legacyProductionLeaseToTypedWitnessAdapter": False,
         "physicalMemoryCrateExtraction": True,
-        "allExistingCrossOwnerCallersMigrated": True,
+        "allExistingCrossOwnerCallersMigrated": False,
     }
     for field, expected in expected_remaining.items():
         if remaining.get(field) is not expected:
