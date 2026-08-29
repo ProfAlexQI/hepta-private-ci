@@ -45,6 +45,20 @@ jobs:
           git diff --exit-code
           git diff --cached --exit-code
 
+      - name: Package exact source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git -czf "$RUNNER_TEMP/hepta-source-$SOURCE_HEAD.tar.gz" .
+
+      - name: Upload exact source snapshot
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-source-${{ env.SOURCE_HEAD }}
+          path: ${{ runner.temp }}/hepta-source-${{ env.SOURCE_HEAD }}.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
           components: rustfmt, clippy
