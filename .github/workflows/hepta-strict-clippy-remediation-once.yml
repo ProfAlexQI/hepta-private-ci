@@ -1,0 +1,214 @@
+name: Hepta strict-clippy remediation once
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-convergence-p0-2-20260828
+    paths:
+      - .github/workflows/hepta-strict-clippy-remediation-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-strict-clippy-remediation-once
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    if: "${{ github.event.head_commit.message == 'ci: bootstrap Hepta strict-clippy cleanup' }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      EXPECTED_PARENT: a60709f0f1e6221c2cacad3438b68642c8c5d105
+      BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
+    steps:
+      - name: Checkout guarded bootstrap commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+
+      - name: Verify immutable bootstrap boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git branch --show-current)" = ""
+          test -z "$(git status --porcelain)"
+
+      - name: Set up CI environment
+        uses: ./.github/actions/setup-ci
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply exact warning cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          memory = Path("codex-rs/hepta-memory/src/local_lease_outbox.rs")
+          source = memory.read_text()
+          for old in (
+              "    sequence: u64,\n",
+              "    previous_sha256: Sha256Digest,\n",
+              "    event_sha256: Sha256Digest,\n",
+          ):
+              if old not in source:
+                  raise SystemExit(f"missing EventRow field: {old!r}")
+              source = source.replace(old, "", 1)
+          for old in (
+              "    sequence: u64,\n",
+              "    previous_sha256: Sha256Digest,\n",
+              "    outbox_sha256: Sha256Digest,\n",
+          ):
+              if old not in source:
+                  raise SystemExit(f"missing OutboxRow field: {old!r}")
+              source = source.replace(old, "", 1)
+
+          event_old = """        events.push(EventRow {
+                      sequence,
+                      event_id,
+                      occurrence_key,
+                      owner_agent_id: owner,
+                      generation,
+                      fencing_token,
+                      kind,
+                      payload_json,
+                      payload_sha256,
+                      previous_sha256,
+                      event_sha256,
+                  });"""
+          event_new = """        events.push(EventRow {
+                      event_id,
+                      occurrence_key,
+                      owner_agent_id: owner,
+                      generation,
+                      fencing_token,
+                      kind,
+                      payload_json,
+                      payload_sha256,
+                  });"""
+          if event_old not in source:
+              raise SystemExit("event initializer not found")
+          source = source.replace(event_old, event_new, 1)
+
+          outbox_old = """        outbox_rows.push(OutboxRow {
+                      sequence,
+                      outbox_id,
+                      event_id,
+                      occurrence_key,
+                      owner_agent_id: owner,
+                      generation,
+                      fencing_token,
+                      topic,
+                      payload_json,
+                      payload_sha256,
+                      previous_sha256,
+                      outbox_sha256,
+                  });"""
+          outbox_new = """        outbox_rows.push(OutboxRow {
+                      outbox_id,
+                      event_id,
+                      occurrence_key,
+                      owner_agent_id: owner,
+                      generation,
+                      fencing_token,
+                      topic,
+                      payload_json,
+                      payload_sha256,
+                  });"""
+          if outbox_old not in source:
+              raise SystemExit("outbox initializer not found")
+          source = source.replace(outbox_old, outbox_new, 1)
+          memory.write_text(source)
+
+          agentd = Path("codex-rs/hepta-agentd/src/app_runtime.rs")
+          source = agentd.read_text()
+          for signature in (
+              "pub(crate) fn app_server_runtime_options(\n",
+              "pub(crate) fn app_server_runtime_options_for_agent(\n",
+              "fn cognitive_write_for_authority(\n",
+          ):
+              if signature not in source:
+                  raise SystemExit(f"missing helper signature: {signature!r}")
+              source = source.replace(signature, "#[cfg(test)]\n" + signature, 1)
+          agentd.write_text(source)
+          PY
+
+      - name: Verify exact changed-path boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          actual="$(git diff --name-only | LC_ALL=C sort)"
+          expected="$(printf '%s\n' \
+            codex-rs/hepta-agentd/src/app_runtime.rs \
+            codex-rs/hepta-memory/src/local_lease_outbox.rs | LC_ALL=C sort)"
+          test "$actual" = "$expected"
+
+      - name: Run source and manifest ratchets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/verify_cargo_workspace_manifests.py
+          python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+          python3 scripts/verify-hepta-authority-callers-p0-1.py
+          python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python3 scripts/verify-hepta-cross-owner-operation-wiring.py
+          python3 scripts/verify-hepta-architecture-gap-ledger.py
+
+      - name: Run formatting, checks, and strict Clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all -- --check
+          cargo check --locked \
+            -p codex-hepta-memory \
+            -p codex-hepta-agentd
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-memory \
+            -p codex-hepta-agentd \
+            -- -D warnings
+
+      - name: Commit and fast-forward exact branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "hepta-ci-remediation"
+          git config user.email "hepta-ci-remediation@users.noreply.github.com"
+          git add -- \
+            codex-rs/hepta-agentd/src/app_runtime.rs \
+            codex-rs/hepta-memory/src/local_lease_outbox.rs
+          actual="$(git diff --cached --name-only | LC_ALL=C sort)"
+          expected="$(printf '%s\n' \
+            codex-rs/hepta-agentd/src/app_runtime.rs \
+            codex-rs/hepta-memory/src/local_lease_outbox.rs | LC_ALL=C sort)"
+          test "$actual" = "$expected"
+          git commit -m "ci: close Hepta strict-clippy warnings"
+          git fetch --no-tags origin "refs/heads/$BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          git push origin "HEAD:refs/heads/$BRANCH"
+
+      - name: Record non-authoritative receipt
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "schema=hepta_strict_clippy_remediation_once_v1"
+            echo "bootstrap_head=$GITHUB_SHA"
+            echo "expected_parent=$EXPECTED_PARENT"
+            echo "job_status=${{ job.status }}"
+            echo "changed_paths=hepta-agentd/app_runtime.rs,hepta-memory/local_lease_outbox.rs"
+            echo "production_authority=false"
+            echo "effect_authority=false"
+            echo "model_invocation_authority=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+          } >> "$GITHUB_STEP_SUMMARY"
