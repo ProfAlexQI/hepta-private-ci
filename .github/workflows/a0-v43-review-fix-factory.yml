@@ -33,8 +33,9 @@ jobs:
           test "$GITHUB_REF_NAME" = "codex/hepta-intelligence-a0-v43-review-fix-factory-20260830"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -f scripts/a0-v43-review-fix-factory.py
+          test -f scripts/a0-v43-review-fix-factory-runner.py
       - name: Build and verify reviewed replacement files
-        run: python3 scripts/a0-v43-review-fix-factory.py
+        run: python3 scripts/a0-v43-review-fix-factory-runner.py
       - name: Enforce factory read-only source boundary
         shell: bash
         run: |
