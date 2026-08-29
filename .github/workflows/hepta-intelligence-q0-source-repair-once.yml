@@ -1,0 +1,355 @@
+name: Hepta Q0 one-shot atomic source repair
+
+on:
+  push:
+    branches:
+      - codex/hepta-intelligence-plan-v3-20260828
+    paths:
+      - .github/workflows/hepta-intelligence-q0-source-repair-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-q0-one-shot-source-repair
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    name: Repair split grounding visibility and strict Q0 baseline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Checkout exact one-shot carrier
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Apply exact bounded source repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "ProfHepta/hepta-private-ci"
+          test "$GITHUB_REF_NAME" = "codex/hepta-intelligence-plan-v3-20260828"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mapfile -t carrier_changed < <(git diff --name-only HEAD^ HEAD | LC_ALL=C sort)
+          test "${#carrier_changed[@]}" = "1"
+          test "${carrier_changed[0]}" = ".github/workflows/hepta-intelligence-q0-source-repair-once.yml"
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str, expected: int = 1) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != expected:
+                  raise AssertionError(
+                      f"{path}: expected {expected} copies, found {count}: {old[:160]!r}"
+                  )
+              file.write_text(text.replace(old, new, expected), encoding="utf-8")
+
+          root = "codex-rs/hepta-memory/src/fact_grounding/durable/grounding"
+          replace_exact(
+              f"{root}/ledger.rs",
+              "pub(super) use insert::insert_tx;",
+              "pub(in super::super) use insert::insert_tx;",
+          )
+          replace_exact(
+              f"{root}/ledger.rs",
+              "pub(super) use verify::verify_receipts;",
+              "pub(in super::super) use verify::verify_receipts;",
+          )
+          replace_exact(
+              f"{root}/ledger/insert.rs",
+              "use super::*;\n",
+              "use super::*;\nuse super::support::{durable_receipt_digest, to_i64_len};\n",
+          )
+          replace_exact(
+              f"{root}/ledger/insert.rs",
+              "pub(super) async fn insert_tx(",
+              "pub(in super::super) async fn insert_tx(",
+          )
+          replace_exact(
+              f"{root}/ledger/verify.rs",
+              "use super::*;\n",
+              "use super::*;\n"
+              "use super::support::{\n"
+              "    durable_receipt_digest, limit_plus_one, parse_fact_kind, stored_fact_supports,\n"
+              "    validate_span_range_corrupt,\n"
+              "};\n",
+          )
+          replace_exact(
+              f"{root}/ledger/verify.rs",
+              "pub(super) async fn verify_receipts(",
+              "pub(in super::super) async fn verify_receipts(",
+          )
+          support = f"{root}/ledger/support.rs"
+          replace_exact(
+              support,
+              "use super::*;\n",
+              "use super::*;\nuse crate::framing::frame_part;\n",
+          )
+          for old, new in (
+              ("async fn stored_fact_supports(", "pub(super) async fn stored_fact_supports("),
+              ("fn durable_receipt_digest(", "pub(super) fn durable_receipt_digest("),
+              ("fn parse_fact_kind(", "pub(super) fn parse_fact_kind("),
+              ("fn validate_span_range_corrupt(", "pub(super) fn validate_span_range_corrupt("),
+              ("fn to_i64_len(", "pub(super) fn to_i64_len("),
+              ("fn limit_plus_one(", "pub(super) fn limit_plus_one("),
+          ):
+              replace_exact(support, old, new)
+          replace_exact(support, "super::super::frame_part", "frame_part", expected=16)
+
+          prepare = f"{root}/prepare.rs"
+          for name in (
+              "validate_source_binding",
+              "require_groundable_revision",
+              "bind_exact_citation",
+              "prepare",
+              "validate_canonical_identity_binding",
+          ):
+              replace_exact(
+                  prepare,
+                  f"pub(super) fn {name}(",
+                  f"pub(in super::super) fn {name}(",
+              )
+
+          replace_exact(
+              "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
+              "use sqlx::Executor;\n",
+              "",
+          )
+          replace_exact(
+              "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
+              "use super::intelligence_mutation_state::IntelligenceMutationState;\n",
+              "",
+          )
+          replace_exact(
+              "codex-rs/hepta-agent-protocol/src/lib.rs",
+              "impl HostTurnAuthorityBinding {\n    pub fn new(",
+              "impl HostTurnAuthorityBinding {\n"
+              "    #[expect(\n"
+              "        clippy::too_many_arguments,\n"
+              "        reason = \"the transport commits every persisted authority-binding field explicitly\"\n"
+              "    )]\n"
+              "    pub fn new(",
+          )
+          replace_exact(
+              "codex-rs/hepta-supervisor/src/signed_authority.rs",
+              "H7ArtifactVerifier::new(signer_id.clone(), signer_epoch, verifying_key.clone())",
+              "H7ArtifactVerifier::new(signer_id.clone(), signer_epoch, verifying_key)",
+          )
+          replace_exact(
+              "codex-rs/hepta-supervisor/src/signed_intent.rs",
+              "impl SignedSupervisorIntent {\n    pub fn new(",
+              "impl SignedSupervisorIntent {\n"
+              "    #[expect(\n"
+              "        clippy::too_many_arguments,\n"
+              "        reason = \"the durable intent binds every signed release and fencing field explicitly\"\n"
+              "    )]\n"
+              "    pub fn new(",
+          )
+          replace_exact(
+              "codex-rs/hepta-supervisor/src/signed_intent.rs",
+              "    fn compute_digest(&self) -> Sha256Digest {",
+              "    #[expect(\n"
+              "        clippy::expect_used,\n"
+              "        reason = \"the fixed tuple contains only infallibly serializable typed fields\"\n"
+              "    )]\n"
+              "    fn compute_digest(&self) -> Sha256Digest {",
+          )
+          replace_exact(
+              "codex-rs/hepta-supervisor/src/signed_intent.rs",
+              "    if let Some(existing) = read_intent(run_root)? {\n"
+              "        if matches!(\n"
+              "            existing.status,\n"
+              "            SignedIntentStatus::Prepared\n"
+              "                | SignedIntentStatus::Queued\n"
+              "                | SignedIntentStatus::RecoveryRequired\n"
+              "        ) && existing.grant_sha256 != intent.grant_sha256\n"
+              "        {\n"
+              "            return Err(SignedIntentError::Invalid(\n"
+              "                \"another signed supervisor intent is unresolved\".to_string(),\n"
+              "            ));\n"
+              "        }\n"
+              "    }",
+              "    if let Some(existing) = read_intent(run_root)?\n"
+              "        && matches!(\n"
+              "            existing.status,\n"
+              "            SignedIntentStatus::Prepared\n"
+              "                | SignedIntentStatus::Queued\n"
+              "                | SignedIntentStatus::RecoveryRequired\n"
+              "        )\n"
+              "        && existing.grant_sha256 != intent.grant_sha256\n"
+              "    {\n"
+              "        return Err(SignedIntentError::Invalid(\n"
+              "            \"another signed supervisor intent is unresolved\".to_string(),\n"
+              "        ));\n"
+              "    }",
+          )
+          replace_exact(
+              "codex-rs/hepta-supervisor/src/supervisor.rs",
+              "    pub fn apply_production_grant(\n",
+              "    #[expect(\n"
+              "        clippy::too_many_arguments,\n"
+              "        reason = \"the production grant boundary keeps every authority and time witness explicit\"\n"
+              "    )]\n"
+              "    pub fn apply_production_grant(\n",
+          )
+          PY
+
+          mapfile -t changed < <(git diff --name-only | LC_ALL=C sort)
+          expected=(
+            codex-rs/hepta-agent-protocol/src/lib.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs
+            codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs
+            codex-rs/hepta-supervisor/src/signed_authority.rs
+            codex-rs/hepta-supervisor/src/signed_intent.rs
+            codex-rs/hepta-supervisor/src/supervisor.rs
+          )
+          test "${#changed[@]}" = "${#expected[@]}"
+          for index in "${!expected[@]}"; do
+            test "${changed[$index]}" = "${expected[$index]}"
+          done
+          for path in "${changed[@]}"; do
+            rustfmt --edition 2024 --config skip_children=true "$path"
+            rustfmt --edition 2024 --check --config skip_children=true "$path"
+          done
+          git diff --check
+          ! git diff --unified=0 -- '*.rs' \
+            | grep -E '^\+.*(#\!?\[allow\(clippy|#\[ignore\]|todo!\(|unimplemented!\()'
+
+      - name: Prove compile and strict known-blocker baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/hepta-q0-source-repair
+          (
+            cd codex-rs
+            cargo check --locked -p codex-hepta-memory --all-targets
+          ) 2>&1 | tee artifacts/hepta-q0-source-repair/memory-check.log
+          (
+            cd codex-rs
+            cargo clippy --locked -p codex-hepta-agent-protocol --all-targets -- -D warnings
+          ) 2>&1 | tee artifacts/hepta-q0-source-repair/agent-protocol-clippy.log
+          (
+            cd codex-rs
+            cargo clippy --locked -p codex-hepta-supervisor --all-targets -- -D warnings
+          ) 2>&1 | tee artifacts/hepta-q0-source-repair/supervisor-clippy.log
+
+      - name: Prove durable queue recovery repeatedly
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/hepta-q0-source-repair/queue
+          test_name=killed_agent_recovers_same_turn_then_dispatches_queue_once_while_peer_stays_live
+          failures=0
+          for attempt in 1 2 3 4 5; do
+            log="artifacts/hepta-q0-source-repair/queue/attempt-${attempt}.log"
+            printf 'attempt=%s test=%s\n' "$attempt" "$test_name" | tee "$log"
+            set +e
+            (
+              cd codex-rs
+              cargo test --locked -p codex-hepta-agentd \
+                --test two_agent_turn_recovery \
+                "$test_name" -- --exact --nocapture
+            ) 2>&1 | tee -a "$log"
+            code=${PIPESTATUS[0]}
+            set -e
+            if test "$code" = "0" && ! grep -F "test ${test_name} ... ok" "$log" >/dev/null; then
+              printf 'exact-test execution marker missing\n' | tee -a "$log"
+              code=97
+            fi
+            printf '%s\n' "$code" > \
+              "artifacts/hepta-q0-source-repair/queue/attempt-${attempt}.exit"
+            if test "$code" != "0"; then failures=$((failures + 1)); fi
+          done
+          python3 - "$failures" "$GITHUB_SHA" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          failures = int(sys.argv[1])
+          root = pathlib.Path("artifacts/hepta-q0-source-repair/queue")
+          results = {
+              path.stem: int(path.read_text(encoding="utf-8").strip())
+              for path in sorted(root.glob("*.exit"))
+          }
+          if len(results) != 5:
+              raise SystemExit(f"expected 5 exact test results, found {len(results)}")
+          payload = {
+              "schema": "hepta.intelligence.q0.durable_queue_probe.v1",
+              "carrier_sha": sys.argv[2],
+              "architecture": "x86_64",
+              "status": "PASS_REPEATABLE" if failures == 0 else "OBSERVED_FAILURE",
+              "attempts": 5,
+              "failures": failures,
+              "results": results,
+              "qualification_authority": False,
+              "runtime_authority": False,
+              "production_authority": False,
+          }
+          (root / "receipt.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+          test "$failures" = "0"
+
+      - name: Commit one atomic source repair and retire carrier
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$GITHUB_REF_NAME"
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          rm .github/workflows/hepta-intelligence-q0-source-repair-once.yml
+          mapfile -t changed < <(git diff --name-only | LC_ALL=C sort)
+          expected=(
+            .github/workflows/hepta-intelligence-q0-source-repair-once.yml
+            codex-rs/hepta-agent-protocol/src/lib.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs
+            codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs
+            codex-rs/hepta-supervisor/src/signed_authority.rs
+            codex-rs/hepta-supervisor/src/signed_intent.rs
+            codex-rs/hepta-supervisor/src/supervisor.rs
+          )
+          test "${#changed[@]}" = "${#expected[@]}"
+          for index in "${!expected[@]}"; do
+            test "${changed[$index]}" = "${expected[$index]}"
+          done
+          git diff --check
+          git config user.name hepta-q0-bot
+          git config user.email hepta-q0-bot@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(q0): repair split grounding visibility and strict clippy"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Upload one-shot repair diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-q0-source-repair-${{ github.sha }}
+          path: artifacts/hepta-q0-source-repair/**
+          if-no-files-found: warn
+          retention-days: 30
