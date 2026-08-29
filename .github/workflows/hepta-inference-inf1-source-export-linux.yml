@@ -43,11 +43,10 @@ jobs:
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/hepta-inference-inf1-materialized"
-          mkdir -p "$out/codex-rs" "$out/scripts" "$out/docs/hepta-vnext/inference"
+          mkdir -p "$out/codex-rs" "$out/scripts"
           cp -R codex-rs/hepta-infer-core codex-rs/hepta-inferd "$out/codex-rs/"
           cp scripts/hepta-inference-inf1-bootstrap.py "$out/scripts/"
           cp scripts/hepta-inference-inf1-source-gate.py "$out/scripts/"
-          cp docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_CONTRACT_V1.md "$out/docs/hepta-vnext/inference/"
           python3 - "$out" <<'PY'
           import hashlib, json, os, pathlib, sys
           root = pathlib.Path(sys.argv[1])
@@ -61,7 +60,7 @@ jobs:
                       'byte_length': len(data),
                   })
           manifest = {
-              'schema': 'hepta.inference.inf1.materialized-source-macos.v1',
+              'schema': 'hepta.inference.inf1.materialized-source-macos.v2',
               'head': os.environ['GITHUB_SHA'],
               'files': files,
               'qualified': False,
