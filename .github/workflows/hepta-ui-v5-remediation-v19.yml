@@ -1,0 +1,123 @@
+name: Hepta UI v5 remediation v19
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-remediation-v19-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-remediation-v19.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-remediation-v19
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 75
+    env:
+      BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_PARENT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
+      BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-remediation-v19.yml
+      UPSTREAM_URL: https://github.com/openai/codex.git
+      UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
+      UPSTREAM_ROLE: current_r12
+      UPSTREAM_FROZEN_REF: refs/remotes/upstream/hepta-intake-20260830-r12
+      UPSTREAM_INTAKE_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R12.json
+      UPSTREAM_RECORD_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+      V12_DRIVER_COMMIT: 554d710f6a561166553f3c01fafc5b27cd8c28b9
+      V14_DRIVER_COMMIT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
+      V18_DRIVER_COMMIT: 022b91a04f443d7fe4ca2bce853bc26bccf99f84
+    steps:
+      - name: Check out exact v19 driver commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install deterministic remediation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes jq ripgrep ruby patch
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+
+      - name: Execute v18 remediation with refreshed WorkGraph receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source_workflow="$RUNNER_TEMP/hepta-ui-v5-remediation-v18-arm.yml"
+          generated_driver="$RUNNER_TEMP/hepta-ui-v5-remediation-v19-driver.sh"
+          git cat-file -e "$V18_DRIVER_COMMIT^{commit}"
+          git show "$V18_DRIVER_COMMIT:.github/workflows/hepta-ui-v5-remediation-v18-arm.yml" > "$source_workflow"
+          awk '
+            /      - name: Execute v14 remediation with truthful scripts-budget semantics/ { found=1; next }
+            found && /        shell: bash/ { next }
+            found && /        run: \|/ { in_run=1; next }
+            in_run { sub(/^          /, ""); print }
+          ' "$source_workflow" > "$generated_driver"
+          test -s "$generated_driver"
+
+          export V19_GENERATED_DRIVER="$generated_driver"
+          python3 <<'PY'
+          from __future__ import annotations
+
+          import base64
+          import os
+          import re
+          import zlib
+          from pathlib import Path
+
+          path = Path(os.environ["V19_GENERATED_DRIVER"])
+          text = path.read_text(encoding="utf-8")
+          matches = re.findall(r'payload = "([A-Za-z0-9+/=]+)"', text)
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"v19 embedded patch payload: expected 1 match, found {len(matches)}"
+              )
+
+          old_payload = matches[0]
+          decoded = zlib.decompress(base64.b64decode(old_payload)).decode("utf-8")
+          addon = r'''
+
+# v19: source-file splits change the first-party Rust inventory used by the
+# WorkGraph retirement proof. Regenerate and verify the receipt before the
+# implementation commit so the candidate contains the exact new proof.
+import sys as _v19_sys
+from pathlib import Path as _V19Path
+
+_v19_target = _V19Path(_v19_sys.argv[1])
+_v19_script = _v19_target.read_text(encoding="utf-8")
+_v19_lines = _v19_script.splitlines(keepends=True)
+_v19_indices = [
+    index for index, line in enumerate(_v19_lines)
+    if line.strip() == "git add -A"
+]
+if len(_v19_indices) != 1:
+    raise SystemExit(
+        f"v19 implementation staging anchor: expected 1 match, found {len(_v19_indices)}"
+    )
+_v19_insert_at = _v19_indices[0]
+_v19_lines[_v19_insert_at:_v19_insert_at] = [
+    "scripts/hepta-workgraph-caller-scc-retirement-v1 apply >/dev/null\n",
+    "scripts/hepta-workgraph-caller-scc-retirement-v1 verify >/dev/null\n",
+]
+_v19_target.write_text("".join(_v19_lines), encoding="utf-8")
+'''
+          new_payload = base64.b64encode(
+              zlib.compress((decoded + addon).encode("utf-8"), level=9)
+          ).decode("ascii")
+          if text.count(old_payload) != 1:
+              raise SystemExit("v19 payload replacement was not unique")
+          path.write_text(text.replace(old_payload, new_payload, 1), encoding="utf-8")
+          PY
+
+          bash -n "$generated_driver"
+          bash -x "$generated_driver"
