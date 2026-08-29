@@ -1,4 +1,4 @@
-name: p034-qualified-publisher-cross-platform-v3
+name: p034-qualified-publisher-cross-platform-v4
 
 on:
   push:
@@ -15,8 +15,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: p034-qualified-publisher-cross-platform-v3-${{ github.sha }}
-  cancel-in-progress: false
+  group: p034-qualified-publisher-cross-platform
+  cancel-in-progress: true
 
 jobs:
   qualify-and-publish:
@@ -25,6 +25,7 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
+          - ubuntu-24.04-arm
           - macos-14
           - windows-2025
     runs-on: ${{ matrix.os }}
