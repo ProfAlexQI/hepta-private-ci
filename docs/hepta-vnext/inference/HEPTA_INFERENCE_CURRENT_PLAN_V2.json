@@ -1,0 +1,51 @@
+{
+  "schema": "hepta.inference.current_plan.v2",
+  "active_plan_id": "HEPTA-INFERENCE-RUNTIME-V5",
+  "active_plan_version": "5.0.0",
+  "active_plan_path": "docs/hepta-vnext/inference/HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V5.md",
+  "repository": "ProfHepta/hepta-private-ci",
+  "canonical_default_branch": "integration/vnext-main-20260811",
+  "development_pr": 73,
+  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "integration_branch": "codex/hepta-inference-v5-runtime-integration-20260830",
+  "source_binding": {
+    "mode": "tracked current pointer binds observed parent; exact candidate head/tree are CI-generated",
+    "observed_parent_commit": "bfe5310be71de0e27e016332b5d3a0c217d358f1"
+  },
+  "supersedes_for_current_execution": [
+    "HEPTA_INFERENCE_CURRENT_PLAN_V1.json",
+    "HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V4.md",
+    "HEPTA_INFERENCE_CURRENT_STATUS_V4.json",
+    "HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V3.json",
+    "HEPTA_INFERENCE_STAGE_MATRIX_V5.json",
+    "HEPTA_INFERENCE_BLOCKER_LEDGER_V2.json",
+    "HEPTA_INFERENCE_V4_CLOSURE_EVIDENCE_CONTRACT_V1.json",
+    "scripts/hepta-inference-v4-source-truth.py"
+  ],
+  "current_truth": {
+    "status": "HEPTA_INFERENCE_CURRENT_STATUS_V5.json",
+    "implementation": "HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V4.json",
+    "stage_matrix": "HEPTA_INFERENCE_STAGE_MATRIX_V6.json",
+    "blocker_ledger": "HEPTA_INFERENCE_BLOCKER_LEDGER_V3.json",
+    "evidence_contract": "HEPTA_INFERENCE_V5_CLOSURE_EVIDENCE_CONTRACT_V2.json",
+    "source_truth": "scripts/hepta-inference-v5-source-truth.py"
+  },
+  "status": "SOURCE_BOUND_INTEGRATION_PLAN",
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
