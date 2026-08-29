@@ -1,0 +1,42 @@
+{
+  "authority": {
+    "callers": false,
+    "current_plan": false,
+    "memory_write": false,
+    "merge": false,
+    "model_runtime": false,
+    "operator": false,
+    "product": false,
+    "production": false,
+    "promotion": false,
+    "provider_dispatch": false,
+    "release": false,
+    "runtime": false
+  },
+  "base_branch": "codex/hepta-intelligence-a0-authority-gap-closure-20260829",
+  "base_head": "241daa85253a6224a9473a1a2b2967f71e9b46af",
+  "base_tree": "b881bf39f92ee193e514f378a16b9b7c1cbd6f6d",
+  "changed_path_prefix": "plans/hepta-intelligence/proposals/multimodal-memory-2026-08-30/",
+  "classification": "DOCUMENTATION_PROPOSAL_ONLY_BLOCKED_UPSTREAM",
+  "closed_source_work": [
+    "audit and target architecture",
+    "MM0-MM6 package blueprint",
+    "42-gap proposal ledger",
+    "embedding model matrix",
+    "agent landscape"
+  ],
+  "open_or_external": [
+    "A0IndependentReviewReceiptV1",
+    "canonical selection",
+    "RepositoryCheckAttributionReceiptV1",
+    "reviewed multimodal corpus",
+    "approved model artifacts",
+    "target hardware evidence",
+    "soak/retention/operator evidence"
+  ],
+  "proposal_branch": "docs/hepta-multimodal-memory-plan-20260830",
+  "repository": "ProfHepta/hepta-private-ci",
+  "resume_predicate": "A0 head 241daa85253a remains exact and receives distinct authenticated review plus canonical selection; selected merge candidate checks are attributed.",
+  "rollback": "delete proposal branch or close proposal PR; canonical A0 head is unchanged",
+  "schema": "hepta_multimodal_memory_proposal_handoff_v1"
+}
