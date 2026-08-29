@@ -1,4 +1,4 @@
-name: Hepta inference V4 exact-source export (temporary)
+name: Hepta inference V4 unified closure source export
 
 on:
   push:
@@ -11,38 +11,41 @@ permissions:
   contents: read
 
 concurrency:
-  group: hepta-inference-v4-source-export-chatgpt
+  group: hepta-inference-v4-unified-source-export
   cancel-in-progress: false
 
 jobs:
   export:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Checkout exact unified closure candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: e9f0442e8da3b8d18cdbc11ed0aae4fdb5e291aa
           persist-credentials: false
           fetch-depth: 2
 
-      - name: Verify exact parent and export tracked source
+      - name: Verify and export tracked candidate
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = dbf68bfed0a2a034fb519c66a89725e2b74edce3
+          test "$(git rev-parse HEAD)" = e9f0442e8da3b8d18cdbc11ed0aae4fdb5e291aa
+          test "$(git rev-parse 'HEAD^{tree}')" = d8d70040fe12766c0a40dcf7707066bbfb6451dc
           test -z "$(git status --porcelain)"
           git archive \
             --format=tar.gz \
-            --output="$RUNNER_TEMP/hepta-private-ci-dbf68bf.tar.gz" \
-            dbf68bfed0a2a034fb519c66a89725e2b74edce3
-          sha256sum "$RUNNER_TEMP/hepta-private-ci-dbf68bf.tar.gz" \
-            > "$RUNNER_TEMP/hepta-private-ci-dbf68bf.tar.gz.sha256"
+            --output="$RUNNER_TEMP/hepta-private-ci-e9f0442.tar.gz" \
+            HEAD
+          sha256sum "$RUNNER_TEMP/hepta-private-ci-e9f0442.tar.gz" \
+            > "$RUNNER_TEMP/hepta-private-ci-e9f0442.tar.gz.sha256"
 
-      - name: Upload exact source archive
+      - name: Upload exact candidate archive
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-inference-v4-source-dbf68bf
+          name: hepta-inference-v4-unified-source-e9f0442
           path: |
-            ${{ runner.temp }}/hepta-private-ci-dbf68bf.tar.gz
-            ${{ runner.temp }}/hepta-private-ci-dbf68bf.tar.gz.sha256
+            ${{ runner.temp }}/hepta-private-ci-e9f0442.tar.gz
+            ${{ runner.temp }}/hepta-private-ci-e9f0442.tar.gz.sha256
           if-no-files-found: error
           retention-days: 3
