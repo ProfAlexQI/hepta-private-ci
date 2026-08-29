@@ -1,0 +1,68 @@
+name: Hepta UI Format Exact Target
+
+on:
+  push:
+    branches: [maintenance/hepta-ui-v4-remediate-arm-20260829]
+    paths: [.github/workflows/hepta-ui-v4-format-target.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v4-format-exact-target
+  cancel-in-progress: true
+
+jobs:
+  format-target:
+    name: Format exact PR63 UI target
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    env:
+      TARGET_BRANCH: codex/ui-v4-executable-final-gap-closure-v3-20260829
+      EXPECTED_TARGET_SHA: 76171cfff604e3c0ffa9ebf40ede3d439c185580
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Verify exact target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_TARGET_SHA"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+      - name: Format audited qualification surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path apps/hepta-native/Cargo.toml
+          cargo fmt --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml
+          cargo fmt --manifest-path tools/hepta-ui-windows-product-host-safety/Cargo.toml
+          cargo fmt --manifest-path tools/hepta-ui-windows-product-host-device-drill/Cargo.toml
+          python3 <<'PY'
+          import re, subprocess
+          allowed = [
+              r'^apps/hepta-native/.+\.rs$',
+              r'^tools/hepta-ui-global-platform-source-closure/.+\.rs$',
+              r'^tools/hepta-ui-windows-product-host-safety/.+\.rs$',
+              r'^tools/hepta-ui-windows-product-host-device-drill/.+\.rs$',
+          ]
+          changed = subprocess.check_output(['git','diff','--name-only'], text=True).splitlines()
+          bad = [p for p in changed if not any(re.match(rule,p) for rule in allowed)]
+          if bad:
+              raise SystemExit(f'unexpected paths: {bad}')
+          PY
+          git diff --check
+          if git diff --quiet; then
+            echo 'Exact target already formatted'
+            exit 0
+          fi
+          git config user.name hepta-ci
+          git config user.email hepta-ci@users.noreply.github.com
+          git add -A
+          git commit -m 'style(ui): apply complete Rust 1.95 formatting'
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
