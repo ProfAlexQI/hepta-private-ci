@@ -1,0 +1,158 @@
+name: AuthBus P1.2 Clippy remediation runner race
+
+on:
+  push:
+    branches:
+      - integration/vnext-main-full-ci-authbus-p1-2-20260828
+    paths:
+      - .github/workflows/authbus-p1-2-clippy-race.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: authbus-p1-2-clippy-remediation-race
+  cancel-in-progress: true
+
+env:
+  BRANCH: integration/vnext-main-full-ci-authbus-p1-2-20260828
+  P12_MANIFEST: codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
+  P12_PACKAGE: codex-hepta-authbus-p1-2-qualification
+
+jobs:
+  publish:
+    name: Publish canonical-shim remediation on ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-slim
+          - ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Apply exact canonical-shim remediation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git branch --show-current)" = "${BRANCH}"
+          test -z "$(git status --porcelain)"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          tests_path = Path("codex-rs/hepta-authbus-p1-2-qualification/tests/p1_2.rs")
+          tests = tests_path.read_text(encoding="utf-8")
+          import_anchor = (
+              "use codex_hepta_contracts::Sha256Digest;\n"
+              "use ed25519_dalek::Signer;\n"
+          )
+          import_replacement = (
+              "use codex_hepta_contracts::Sha256Digest;\n"
+              "use codex_state::SqliteConfig;\n"
+              "use codex_utils_absolute_path::AbsolutePathBuf;\n"
+              "use ed25519_dalek::Signer;\n"
+          )
+          if tests.count(import_anchor) != 1:
+              raise SystemExit("unexpected P1.2 test import anchor")
+          tests = tests.replace(import_anchor, import_replacement, 1)
+
+          direct_pool = '''    let database_url = format!("sqlite://{}", reopened.database_path().display());
+              let inspection = sqlx::SqlitePool::connect(&database_url)
+                  .await
+                  .expect("inspection pool");
+          '''
+          shim_pool = '''    let sqlite_home = AbsolutePathBuf::try_from(
+                  fs::canonicalize(root.path()).expect("canonical P1.2 tempdir"),
+              )
+              .expect("absolute P1.2 tempdir");
+              let inspection = SqliteConfig::from_sqlite_home(sqlite_home)
+                  .open_durable_evidence_pool(reopened.database_path())
+                  .await
+                  .expect("inspection pool");
+          '''
+          if tests.count(direct_pool) != 1:
+              raise SystemExit("unexpected direct SQLite pool anchor")
+          tests = tests.replace(direct_pool, shim_pool, 1)
+          tests_path.write_text(tests, encoding="utf-8")
+
+          verifier_path = Path("scripts/verify-authbus-p1-2.py")
+          verifier = verifier_path.read_text(encoding="utf-8")
+          verifier_anchor = '''    tests = text(CRATE / "tests/p1_2.rs")
+              for test_name in TESTS:
+          '''
+          verifier_replacement = '''    tests = text(CRATE / "tests/p1_2.rs")
+              for marker in [
+                  "use codex_state::SqliteConfig;",
+                  "use codex_utils_absolute_path::AbsolutePathBuf;",
+                  "open_durable_evidence_pool",
+              ]:
+                  require(marker in tests, f"qualification test bypasses canonical SQLite shim: {marker}")
+              for forbidden in [
+                  "sqlx::SqlitePool::connect",
+                  "SqlitePoolOptions",
+                  "SqliteConnectOptions",
+              ]:
+                  require(forbidden not in tests, f"direct SQLite construction survived in tests: {forbidden}")
+              for test_name in TESTS:
+          '''
+          if verifier.count(verifier_anchor) != 1:
+              raise SystemExit("unexpected P1.2 verifier test anchor")
+          verifier = verifier.replace(verifier_anchor, verifier_replacement, 1)
+          verifier_path.write_text(verifier, encoding="utf-8")
+          PY
+          python3 -m py_compile scripts/verify-authbus-p1-2.py
+          python3 scripts/verify-authbus-p1-1.py
+          python3 scripts/verify-authbus-p1-2.py
+
+      - name: Install Rust 1.95 rustfmt
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+
+      - name: Normalize, verify and publish with exact lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(rustc -V | awk '{print $2}')" = "1.95.0"
+          cargo fmt --manifest-path "${P12_MANIFEST}" --package "${P12_PACKAGE}"
+          cargo fmt --manifest-path "${P12_MANIFEST}" --package "${P12_PACKAGE}" -- --check
+          python3 scripts/verify-authbus-p1-1.py
+          python3 scripts/verify-authbus-p1-2.py
+          git diff --check
+          python3 - <<'PY'
+          import subprocess
+
+          expected = {
+              "codex-rs/hepta-authbus-p1-2-qualification/tests/p1_2.rs",
+              "scripts/verify-authbus-p1-2.py",
+          }
+          actual = set()
+          for line in subprocess.check_output(
+              ["git", "status", "--porcelain=v1", "--untracked-files=all"], text=True
+          ).splitlines():
+              path = line[3:]
+              if " -> " in path:
+                  path = path.split(" -> ", 1)[1]
+              actual.add(path)
+          if actual != expected:
+              raise SystemExit({"missing": sorted(expected - actual), "unexpected": sorted(actual - expected)})
+          PY
+          git config user.name "Hepta Qualification"
+          git config user.email "hepta-qualification@users.noreply.github.com"
+          git add -- \
+            codex-rs/hepta-authbus-p1-2-qualification/tests/p1_2.rs \
+            scripts/verify-authbus-p1-2.py
+          test "$(git diff --cached --name-only | wc -l)" -eq 2
+          git diff --cached --check
+          git commit -m "fix(authbus): route P1.2 inspection through SQLite shim"
+          git push origin "HEAD:${BRANCH}" \
+            "--force-with-lease=refs/heads/${BRANCH}:${GITHUB_SHA}"
