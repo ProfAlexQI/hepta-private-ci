@@ -1,4 +1,4 @@
-name: Hepta inference V3 gap closure qualification-only
+name: Hepta inference V4 exact-head source qualification-only
 
 on:
   pull_request:
@@ -8,26 +8,32 @@ on:
       - "codex-rs/hepta-inferd/**"
       - "codex-rs/Cargo.toml"
       - "codex-rs/Cargo.lock"
+      - "rust-toolchain.toml"
       - "docs/hepta-vnext/inference/**"
-      - "scripts/hepta-inference-v3-source-truth.py"
+      - "scripts/hepta-inference-v4-source-truth.py"
+      - "scripts/hepta-inference-inf0c-historical-receipt-gate.py"
       - ".github/workflows/hepta-inference-gap-closure.yml"
       - ".github/workflows/hepta-inference-v2-remaining-source.yml"
+      - ".github/workflows/hepta-inference-inf0.yml"
+      - ".github/workflows/hepta-inference-inf0c-evidence-v2.yml"
+      - ".github/workflows/hepta-inference-inf0c-protocol-evidence.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: hepta-inference-v3-gap-closure-${{ github.event.pull_request.number || github.ref }}
+  group: hepta-inference-v4-source-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
   PYTHONDONTWRITEBYTECODE: "1"
+  HEPTA_INFERENCE_PLAN_ID: HEPTA-INFERENCE-RUNTIME-V4
 
 jobs:
-  evidence-contract:
-    name: V3 exact source and closed-authority contract
+  source-contract:
+    name: V4 exact source, truth, and closed-authority contract
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -35,40 +41,50 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 2
+          fetch-depth: 0
 
-      - name: Verify clean exact checkout
+      - name: Verify assigned runner and exact clean checkout
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$RUNNER_NAME"
+          test -n "$RUNNER_OS"
+          test -n "$RUNNER_ARCH"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test -z "$(git status --porcelain)"
+          git rev-parse 'HEAD^{tree}'
+          git rev-parse HEAD^
+
+      - name: Compile V4 source and historical gates
         shell: bash
         run: |
           set -euo pipefail
-          test -z "$(git status --porcelain)"
-          git rev-parse HEAD
-          git rev-parse 'HEAD^{tree}'
-
-      - name: Compile V3 source gate
-        shell: bash
-        run: python3 -m py_compile scripts/hepta-inference-v3-source-truth.py
+          python3 -m py_compile \
+            scripts/hepta-inference-v4-source-truth.py \
+            scripts/hepta-inference-inf0c-historical-receipt-gate.py
 
       - name: Verify exact source, workflow, and authority truth
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/hepta-inference-v3-source-truth.py \
-            | tee "$RUNNER_TEMP/hepta-inference-v3-source-truth.json"
+          python3 scripts/hepta-inference-v4-source-truth.py \
+            | tee "$RUNNER_TEMP/hepta-inference-v4-source-truth.json"
 
-      - name: Upload source truth
+      - name: Upload exact source truth
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-inference-v3-source-truth-${{ github.event.pull_request.head.sha || github.sha }}
-          path: ${{ runner.temp }}/hepta-inference-v3-source-truth.json
+          name: hepta-inference-v4-source-truth-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/hepta-inference-v4-source-truth.json
           if-no-files-found: error
           retention-days: 30
 
   runtime-rust:
-    name: V3 Rust 1.95 hardening qualification
-    needs: evidence-contract
+    name: V4 Rust 1.95 Linux x64 source qualification
+    needs: source-contract
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: codex-rs
@@ -83,37 +99,57 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Verify assigned runner and exact clean checkout
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$RUNNER_NAME"
+          test -n "$RUNNER_OS"
+          test -n "$RUNNER_ARCH"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test -z "$(git status --porcelain)"
+
       - name: Verify locked workspace metadata
         shell: bash
         run: |
           set -euo pipefail
           cargo metadata --locked --no-deps --format-version 1 \
-            > "$RUNNER_TEMP/hepta-inference-v3-metadata.json"
+            > "$RUNNER_TEMP/hepta-inference-v4-metadata.json"
           test -z "$(git status --porcelain -- Cargo.toml Cargo.lock)"
 
       - name: Formatting
+        shell: bash
         run: |
+          set -euo pipefail
           cargo fmt \
             -p codex-hepta-infer-core \
             -p codex-hepta-infer-client \
             -p codex-hepta-inferd -- --check
 
       - name: Locked all-target check
+        shell: bash
         run: |
+          set -euo pipefail
           cargo check --locked --all-targets \
             -p codex-hepta-infer-core \
             -p codex-hepta-infer-client \
             -p codex-hepta-inferd
 
       - name: Locked all-target tests
+        shell: bash
         run: |
+          set -euo pipefail
           cargo test --locked --all-targets \
             -p codex-hepta-infer-core \
             -p codex-hepta-infer-client \
             -p codex-hepta-inferd
 
       - name: Strict all-target Clippy
+        shell: bash
         run: |
+          set -euo pipefail
           cargo clippy --locked --all-targets --no-deps \
             -p codex-hepta-infer-core \
             -p codex-hepta-infer-client \
@@ -124,9 +160,11 @@ jobs:
         run: |
           set -euo pipefail
           {
+            echo "plan_id=$HEPTA_INFERENCE_PLAN_ID"
             echo "head=$(git rev-parse HEAD)"
             echo "tree=$(git rev-parse 'HEAD^{tree}')"
             echo "parent=$(git rev-parse HEAD^)"
+            echo "runner_name=$RUNNER_NAME"
             echo "runner_os=$RUNNER_OS"
             echo "runner_arch=$RUNNER_ARCH"
             echo "rustc=$(rustc --version)"
@@ -140,43 +178,45 @@ jobs:
             echo "real_provider_executed=false"
             echo "real_native_model_executed=false"
             echo "hardware_qualified=false"
+            echo "product_wired=false"
             echo "product_default_route_changed=false"
             echo "operator_accepted=false"
             echo "promoted=false"
             echo "released=false"
-          } | tee "$RUNNER_TEMP/hepta-inference-v3-rust.txt"
+          } | tee "$RUNNER_TEMP/hepta-inference-v4-rust-linux-x64.txt"
 
       - name: Upload Rust evidence
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-inference-v3-rust-linux-x64-${{ github.event.pull_request.head.sha || github.sha }}
+          name: hepta-inference-v4-rust-linux-x64-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
-            ${{ runner.temp }}/hepta-inference-v3-metadata.json
-            ${{ runner.temp }}/hepta-inference-v3-rust.txt
+            ${{ runner.temp }}/hepta-inference-v4-metadata.json
+            ${{ runner.temp }}/hepta-inference-v4-rust-linux-x64.txt
           if-no-files-found: error
           retention-days: 30
 
   aggregate:
-    name: V3 source hardening qualification-only aggregate
+    name: V4 exact-head source qualification-only aggregate
     if: always()
-    needs: [evidence-contract, runtime-rust]
+    needs: [source-contract, runtime-rust]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Enforce all required source gates
+      - name: Enforce every required non-skipped source job
         shell: bash
         env:
-          EVIDENCE: ${{ needs.evidence-contract.result }}
+          SOURCE_CONTRACT: ${{ needs.source-contract.result }}
           RUST: ${{ needs.runtime-rust.result }}
         run: |
           set -euo pipefail
-          test "$EVIDENCE" = success
+          test "$SOURCE_CONTRACT" = success
           test "$RUST" = success
-          echo PASS_HEPTA_INFERENCE_V3_SOURCE_HARDENING_QUALIFICATION_ONLY
+          echo PASS_HEPTA_INFERENCE_V4_EXACT_HEAD_SOURCE_QUALIFICATION_ONLY
+          echo qualification_only=true
           echo real_provider_executed=false
           echo real_native_model_executed=false
           echo hardware_qualified=false
-          echo product_default_route_changed=false
+          echo product_wired=false
           echo operator_accepted=false
           echo promoted=false
           echo released=false

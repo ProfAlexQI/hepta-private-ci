@@ -1,4 +1,4 @@
-name: Hepta inference INF-0C protocol evidence
+name: Hepta inference historical INF-0C protocol evidence
 
 on:
   pull_request:
@@ -7,10 +7,7 @@ on:
       - "scripts/hepta-inference-inf0c-protocol-evidence.py"
       - "scripts/hepta-inference-inf0c-protocol-evidence-selftest.py"
       - "scripts/hepta-inference-inf0c-protocol-evidence-source-gate.py"
-      - "scripts/hepta-inference-inf0c-evidence-v2-source-gate.py"
-      - "scripts/hepta-inference-inf0-source-gate.py"
-      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V1.json"
-      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_STAGE_MATRIX_V2.json"
+      - "scripts/hepta-inference-inf0c-historical-receipt-gate.py"
       - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_PROTOCOL_EVIDENCE.md"
       - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_SOURCE_RECEIPT_2026-08-28.json"
       - ".github/workflows/hepta-inference-inf0c-protocol-evidence.yml"
@@ -35,7 +32,7 @@ permissions:
 
 jobs:
   protocol-source:
-    name: Protocol parser and fault evidence
+    name: Historical protocol parser and fault evidence
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -45,19 +42,20 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
-      - name: Verify Python syntax
+      - name: Verify assigned runner and Python syntax
         shell: bash
         run: |
           set -euo pipefail
+          test -n "$RUNNER_NAME"
+          test -n "$RUNNER_OS"
+          test -n "$RUNNER_ARCH"
+          test -z "$(git status --porcelain)"
           python3 -m py_compile \
-            scripts/hepta-inference-inf0-source-gate.py \
             scripts/hepta-inference-inf0c-real-e2e.py \
-            scripts/hepta-inference-inf0c-evidence-v2.py \
-            scripts/hepta-inference-inf0c-evidence-v2-loopback-selftest.py \
-            scripts/hepta-inference-inf0c-evidence-v2-source-gate.py \
             scripts/hepta-inference-inf0c-protocol-evidence.py \
             scripts/hepta-inference-inf0c-protocol-evidence-selftest.py \
-            scripts/hepta-inference-inf0c-protocol-evidence-source-gate.py
+            scripts/hepta-inference-inf0c-protocol-evidence-source-gate.py \
+            scripts/hepta-inference-inf0c-historical-receipt-gate.py
 
       - name: Self-test exact tool-call parser and inventory fence
         shell: bash
@@ -80,19 +78,12 @@ jobs:
           python3 scripts/hepta-inference-inf0c-protocol-evidence-source-gate.py \
             | tee "$RUNNER_TEMP/hepta-inference-inf0c-protocol-source.txt"
 
-      - name: Re-run evidence-v2 source contract
+      - name: Verify immutable historical receipt and ancestry
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/hepta-inference-inf0c-evidence-v2-source-gate.py \
-            | tee "$RUNNER_TEMP/hepta-inference-inf0c-evidence-v2-parent.txt"
-
-      - name: Re-run append-only parent INF-0C contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/hepta-inference-inf0-source-gate.py \
-            | tee "$RUNNER_TEMP/hepta-inference-inf0c-parent-source.txt"
+          python3 scripts/hepta-inference-inf0c-historical-receipt-gate.py \
+            | tee "$RUNNER_TEMP/hepta-inference-inf0c-historical-receipt.txt"
 
       - name: Record qualification-only posture
         if: always()
@@ -100,26 +91,27 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo "### INF-0C protocol evidence posture"
+            echo "### Historical INF-0C protocol evidence posture"
             echo
-            echo "- receipt head: $(git rev-parse HEAD)"
-            echo "- source candidate: $(git rev-parse HEAD^)"
+            echo "- exact descendant head: $(git rev-parse HEAD)"
+            echo "- historical receipt validated: true"
+            echo "- mutable current stage gate replayed: false"
             echo "- exact tool-call real execution: false"
             echo "- real inventory stability: false"
             echo "- real strict SSE execution: false"
             echo "- backend cancellation acknowledged: false"
-            echo "- qualified: false"
-            echo "- INF-1: NOT_STARTED"
-            echo "- production/effect/remote/promotion authority: false"
+            echo "- qualification_only: true"
+            echo "- operator/promotion/release authority: false"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload protocol source evidence
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-inference-inf0c-protocol-source
+          name: hepta-inference-inf0c-protocol-source-${{ github.event.pull_request.head.sha || github.sha }}
           path: ${{ runner.temp }}/hepta-inference-inf0c-*.txt
-          if-no-files-found: warn
+          if-no-files-found: error
+          retention-days: 30
 
   real-protocol-evidence:
     name: Fixed-tuple tool-call and inventory evidence
@@ -168,12 +160,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-inference-inf0c-protocol-real-software
+          name: hepta-inference-inf0c-protocol-real-software-${{ github.sha }}
           path: ${{ runner.temp }}/hepta-inference-inf0c-protocol-evidence.json
           if-no-files-found: error
+          retention-days: 30
 
   protocol-summary:
-    name: Protocol evidence source aggregate
+    name: Historical protocol evidence source aggregate
     if: always()
     needs: protocol-source
     runs-on: ubuntu-24.04
@@ -186,4 +179,9 @@ jobs:
         run: |
           set -euo pipefail
           test "$SOURCE_RESULT" = success
-          echo "PASS_HEPTA_INFERENCE_INF0C_PROTOCOL_SOURCE_ONLY"
+          echo PASS_HEPTA_INFERENCE_INF0C_HISTORICAL_PROTOCOL_SOURCE_ONLY
+          echo real_provider_executed=false
+          echo backend_cancellation_acknowledged=false
+          echo operator_accepted=false
+          echo promoted=false
+          echo released=false
