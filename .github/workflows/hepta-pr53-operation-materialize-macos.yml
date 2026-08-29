@@ -1,0 +1,219 @@
+name: Hepta PR53 operation materialization on macOS
+
+on:
+  push:
+    branches:
+      - codex/hepta-pr53-operation-materialize-macos-20260829
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-pr53-operation-materialize-macos
+  cancel-in-progress: true
+
+env:
+  BASE_SOURCE_HEAD: 5c0f90e55aef0eca5923355b3b6feb9bab9e5222
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+
+jobs:
+  materialize:
+    name: Materialize audited operation patch
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout isolated qualification commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify isolated source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^1)" = "$BASE_SOURCE_HEAD"
+          test "$(git diff --name-only HEAD^1 HEAD)" = ".github/workflows/hepta-pr53-operation-materialize-macos.yml"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply deterministic audited repair
+        run: python3 scripts/hepta-operation-safety-repair.py
+
+      - name: Normalize only audited Rust files
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            hepta-automation/src/model.rs
+            hepta-automation/src/store.rs
+            hepta-agentd/src/automation.rs
+            hepta-matrix-store/src/operation.rs
+            hepta-matrix-store/tests/sqlite_full.rs
+            hepta-contracts/src/provider_operation.rs
+            hepta-contracts/tests/cross_owner_fault_matrix.rs
+            hepta-memory-runtime/src/production_writer.rs
+          )
+          rustfmt --edition 2024 --config skip_children=true "${files[@]}"
+          rustfmt --edition 2024 --check --config skip_children=true "${files[@]}"
+
+      - name: Execute operation and product gates
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-contracts provider_operation::tests -- --nocapture
+          cargo test --locked -p codex-hepta-contracts --test cross_owner_fault_matrix -- --nocapture
+          cargo test --locked -p codex-hepta-matrix-store operation::tests -- --nocapture
+          cargo test --locked -p codex-hepta-matrix-store --test sqlite_full -- --nocapture
+          cargo test --locked -p codex-hepta-automation --lib -- --nocapture
+          cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
+          cargo check --locked -p codex-hepta-agentd -p codex-hepta-matrixd
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-automation \
+            -p codex-hepta-agentd \
+            -p codex-hepta-matrix-store \
+            -p codex-hepta-matrixd \
+            -p codex-hepta-memory-runtime \
+            -- -D warnings
+
+      - name: Enforce exact mutation surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+
+          allowed = {
+              ".github/workflows/hepta-automation-operation-repair-once.yml",
+              ".github/workflows/hepta-operation-safety-repair-slim-once.yml",
+              "scripts/.hepta-automation-repair-trigger",
+              "scripts/hepta-operation-safety-repair.py",
+              "scripts/hepta-automation-operation-repair-once.py",
+              "scripts/hepta-automation-operation-repair-once.py.part-00",
+              "scripts/hepta-automation-operation-repair-once.py.part-01",
+              "scripts/hepta-automation-operation-repair-once.py.part-02",
+              "scripts/hepta-automation-operation-repair-once.py.part-03",
+              "scripts/hepta-automation-model-v4.rs",
+              "scripts/verify-hepta-cross-owner-operation-wiring.py",
+              "codex-rs/Cargo.lock",
+              "codex-rs/hepta-automation/src/model.rs",
+              "codex-rs/hepta-automation/src/store.rs",
+              "codex-rs/hepta-automation/migrations/0004_operation_identity.sql",
+              "codex-rs/hepta-agentd/src/automation.rs",
+              "codex-rs/hepta-matrix-store/src/operation.rs",
+              "codex-rs/hepta-matrix-store/tests/sqlite_full.rs",
+              "codex-rs/hepta-contracts/src/provider_operation.rs",
+              "codex-rs/hepta-contracts/tests/cross_owner_fault_matrix.rs",
+              "codex-rs/hepta-memory-runtime/src/production_writer.rs",
+          }
+          tracked = set(subprocess.check_output(
+              ["git", "diff", "--name-only", "--diff-filter=ACMRTUXB"], text=True
+          ).splitlines())
+          untracked = set(subprocess.check_output(
+              ["git", "ls-files", "--others", "--exclude-standard"], text=True
+          ).splitlines())
+          changed = tracked | untracked
+          unexpected = sorted(changed - allowed)
+          if unexpected:
+              raise SystemExit(f"repair escaped allowlist: {unexpected}")
+          required = {
+              "codex-rs/hepta-automation/src/model.rs",
+              "codex-rs/hepta-automation/src/store.rs",
+              "codex-rs/hepta-automation/migrations/0004_operation_identity.sql",
+              "codex-rs/hepta-agentd/src/automation.rs",
+              "codex-rs/hepta-matrix-store/src/operation.rs",
+              "codex-rs/hepta-contracts/src/provider_operation.rs",
+              "scripts/verify-hepta-cross-owner-operation-wiring.py",
+          }
+          missing = sorted(required - changed)
+          if missing:
+              raise SystemExit(f"repair did not materialize: {missing}")
+          PY
+          git diff --check
+
+      - name: Retire temporary write lanes and execute final ratchets
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f scripts/hepta-automation-operation-repair-once.py
+          git rm \
+            .github/workflows/hepta-automation-operation-repair-once.yml \
+            .github/workflows/hepta-operation-safety-repair-slim-once.yml \
+            scripts/.hepta-automation-repair-trigger \
+            scripts/hepta-operation-safety-repair.py \
+            scripts/hepta-automation-operation-repair-once.py.part-00 \
+            scripts/hepta-automation-operation-repair-once.py.part-01 \
+            scripts/hepta-automation-operation-repair-once.py.part-02 \
+            scripts/hepta-automation-operation-repair-once.py.part-03 \
+            scripts/hepta-automation-model-v4.rs
+          python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+          python3 scripts/verify-hepta-cross-owner-operation-wiring.py
+          python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python3 scripts/verify-hepta-architecture-gap-ledger.py
+          git diff --check
+
+      - name: Package exact tested source mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git diff --cached --check
+          artifact="$RUNNER_TEMP/hepta-operation-materialization"
+          mkdir -p "$artifact/files"
+          git diff --cached --binary --full-index HEAD > "$artifact/source.patch"
+          git diff --cached --name-status HEAD > "$artifact/changed-files.txt"
+          python3 - "$artifact" <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import shutil
+          import subprocess
+          import sys
+
+          artifact = pathlib.Path(sys.argv[1])
+          existing = subprocess.check_output(
+              ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMRTUXB", "HEAD"],
+              text=True,
+          ).splitlines()
+          deleted = subprocess.check_output(
+              ["git", "diff", "--cached", "--name-only", "--diff-filter=D", "HEAD"],
+              text=True,
+          ).splitlines()
+          for relative in existing:
+              source = pathlib.Path(relative)
+              target = artifact / "files" / relative
+              target.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(source, target)
+          patch = (artifact / "source.patch").read_bytes()
+          receipt = {
+              "schema": "hepta.operation-materialization.v1",
+              "base_source_head": "5c0f90e55aef0eca5923355b3b6feb9bab9e5222",
+              "qualification_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "patch_sha256": hashlib.sha256(patch).hexdigest(),
+              "existing_files": existing,
+              "deleted_files": deleted,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "release": False,
+          }
+          (artifact / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
+          PY
+          cat "$artifact/receipt.json" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload tested materialization artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-operation-materialization-${{ env.BASE_SOURCE_HEAD }}
+          path: ${{ runner.temp }}/hepta-operation-materialization
+          if-no-files-found: error
