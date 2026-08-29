@@ -11,8 +11,11 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use codex_hepta_contracts::Authorized;
+use codex_hepta_contracts::CapabilityUseVerifier;
 use codex_hepta_contracts::CognitiveWriteCapability;
 use codex_hepta_contracts::ExternalEffectCapability;
+use codex_hepta_contracts::RuntimeAuthorityContext;
+use codex_hepta_contracts::verify_capability_use;
 use codex_hepta_memory::CognitiveStore;
 use codex_hepta_memory::LocalOutcomeState;
 use codex_hepta_memory::ProductionAuthorityLease;
@@ -35,6 +38,7 @@ pub struct AgentdProductionWriterHost {
     writer: Arc<ProductionDurableWriter>,
     cognitive_write: Authorized<CognitiveWriteCapability>,
     external_effect: Option<Authorized<ExternalEffectCapability>>,
+    effect_runtime_authority: Option<RuntimeAuthorityContext>,
     dispatcher: Option<ProductionOutboxDispatcher>,
 }
 
@@ -53,6 +57,13 @@ impl fmt::Debug for AgentdProductionWriterHost {
                     .external_effect
                     .as_ref()
                     .map(|capability| capability.grant_sha256()),
+            )
+            .field(
+                "effect_runtime_authority_sha256",
+                &self
+                    .effect_runtime_authority
+                    .as_ref()
+                    .map(RuntimeAuthorityContext::digest),
             )
             .field("dispatcher_attached", &self.dispatcher.is_some())
             .finish()
@@ -94,7 +105,7 @@ impl AgentdProductionWriterHost {
         Ok(Self::from_runtime(runtime))
     }
 
-    /// Build a host handle around an already-open Agentd-owned store. The
+    /// Build a host handle around an already-open Agent-owned store. The
     /// Memory runtime still owns the raw writer opening and validates that the
     /// store owner matches the externally verified capability.
     pub async fn open_with_store<V>(
@@ -135,6 +146,7 @@ impl AgentdProductionWriterHost {
             writer,
             cognitive_write,
             external_effect: None,
+            effect_runtime_authority: None,
             dispatcher: None,
         }
     }
@@ -167,8 +179,8 @@ impl AgentdProductionWriterHost {
 
     /// Attach an effect target only with a separately verified typed
     /// `ExternalEffectCapability`. The capability must be external, bind the
-    /// same Agent, generation, authority epoch, and owner epoch as the
-    /// cognitive writer, and remain unexpired.
+    /// same Agent, generation, authority epoch, owner epoch and fencing token
+    /// as the cognitive writer, and remain unexpired.
     pub fn attach_target(
         mut self,
         target: Arc<dyn ProductionOutboxTarget>,
@@ -179,29 +191,66 @@ impl AgentdProductionWriterHost {
             &external_effect,
             now_unix_seconds()?,
         )?;
+        let binding = external_effect.external_lease_binding().ok_or_else(|| {
+            AgentdError::Protocol(
+                "production external-effect capability is not externally bound".to_string(),
+            )
+        })?;
+        let effect_runtime_authority = RuntimeAuthorityContext::from_external_binding(binding)
+            .map_err(|error| {
+                AgentdError::Protocol(format!(
+                    "bind production effect runtime authority: {error}"
+                ))
+            })?;
         self.external_effect = Some(external_effect);
+        self.effect_runtime_authority = Some(effect_runtime_authority);
         self.dispatcher = Some(ProductionOutboxDispatcher::attach(target));
         Ok(self)
     }
 
     pub fn has_target(&self) -> bool {
-        self.dispatcher.is_some() && self.external_effect.is_some()
+        self.dispatcher.is_some()
+            && self.external_effect.is_some()
+            && self.effect_runtime_authority.is_some()
     }
 
-    pub async fn dispatch(
+    /// Cross the physical provider boundary only after a current use verifier
+    /// rechecks revocation, epoch and policy state for this exact capability.
+    pub async fn dispatch<V>(
         &self,
         receipt: ProductionQueuedReceipt,
-    ) -> Result<ProductionDispatchReceipt, AgentdError> {
+        verifier: &V,
+    ) -> Result<ProductionDispatchReceipt, AgentdError>
+    where
+        V: CapabilityUseVerifier + ?Sized,
+    {
         let external_effect = self.external_effect.as_ref().ok_or_else(|| {
             AgentdError::Protocol(
                 "production external-effect capability is not explicitly attached".to_string(),
             )
         })?;
+        let runtime_authority = self.effect_runtime_authority.as_ref().ok_or_else(|| {
+            AgentdError::Protocol(
+                "production effect runtime authority is not explicitly attached".to_string(),
+            )
+        })?;
+        let now_unix_seconds = now_unix_seconds()?;
         validate_external_effect_capability(
             &self.cognitive_write,
             external_effect,
-            now_unix_seconds()?,
+            now_unix_seconds,
         )?;
+        verify_capability_use(
+            external_effect,
+            runtime_authority,
+            now_unix_seconds,
+            verifier,
+        )
+        .map_err(|error| {
+            AgentdError::Protocol(format!(
+                "production external-effect use rejected: {error}"
+            ))
+        })?;
         let dispatcher = self.dispatcher.as_ref().ok_or_else(|| {
             AgentdError::Protocol(
                 "production outbox dispatcher is not explicitly attached".to_string(),
@@ -241,9 +290,10 @@ fn validate_external_effect_capability(
     }
     if effect_binding.authority_epoch() != cognitive_binding.authority_epoch()
         || effect_binding.owner_epoch() != cognitive_binding.owner_epoch()
+        || effect_binding.fencing_token_sha256() != cognitive_binding.fencing_token_sha256()
     {
         return Err(AgentdError::GenerationFenced(
-            "production external-effect capability epochs do not match cognitive writer"
+            "production external-effect capability fence family does not match cognitive writer"
                 .to_string(),
         ));
     }
