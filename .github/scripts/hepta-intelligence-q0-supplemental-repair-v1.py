@@ -33,6 +33,22 @@ def replace_exact(path: str, old: str, new: str, *, expected: int = 1) -> None:
     save(file_path, text.replace(old, new, expected))
 
 
+def replace_exact_or_already(path: str, old: str, new: str) -> None:
+    """Apply one exact repair or accept its one exact post-repair form."""
+    file_path, text = load(path)
+    old_count = text.count(old)
+    new_count = text.count(new)
+    if old_count == 1 and new_count == 0:
+        save(file_path, text.replace(old, new, 1))
+        return
+    if old_count == 0 and new_count == 1:
+        return
+    raise AssertionError(
+        f"{path}: expected exactly one source or target form, "
+        f"found old={old_count} new={new_count}: {old[:120]!r}"
+    )
+
+
 def insert_expect_before_function(path: str, name: str, lint: str, reason: str) -> None:
     file_path, text = load(path)
     pattern = re.compile(
@@ -224,7 +240,7 @@ replace_exact(
     "        let mut replay_tampered = replay.clone();",
     "        let mut replay_tampered = replay;",
 )
-replace_exact(
+replace_exact_or_already(
     "codex-rs/ext/hepta-memory/src/local_turn_writer.rs",
     "            !writer_input\n"
     "                .lease\n"
