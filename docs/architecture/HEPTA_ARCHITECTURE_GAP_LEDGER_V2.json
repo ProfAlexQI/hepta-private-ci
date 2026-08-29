@@ -4,9 +4,12 @@
   "overallState": "source_gaps_closed_product_and_external_gates_open",
   "subject": {
     "repository": "ProfHepta/hepta-private-ci",
-    "branch": "codex/hepta-gap-closure-p0-5-20260829",
-    "parentCommit": "5e6cc0d84a33920e99c9b1adaf7abcba91fddda1",
-    "sourceCommit": "resolved_by_exact_head_workflow"
+    "branch": "codex/hepta-gap-closure-p0-6-20260829",
+    "parentBranch": "codex/hepta-architecture-convergence-p0-2-20260828",
+    "parentCommit": "58ef2df827b6dcf83ddf1fffa3139339cf73eb1f",
+    "sourceCommit": "resolved_by_exact_head_workflow",
+    "sourceTree": "resolved_by_exact_head_workflow",
+    "mergeCandidate": "resolved_by_pull_request_workflow"
   },
   "closedSourceGaps": {
     "singleNormativeArchitectureModel": {
@@ -35,60 +38,76 @@
     },
     "readOnlyExactIdentityQualificationWorkflow": {
       "state": "source_implemented",
-      "evidence": [".github/workflows/hepta-gap-closure-p0-5.yml"]
+      "evidence": [".github/workflows/hepta-gap-closure-p0-5.yml", ".github/workflows/hepta-gap-closure-p0-6.yml"]
+    },
+    "runtimeAuthorityContext": {
+      "state": "source_implemented",
+      "evidence": ["codex-rs/hepta-contracts/src/runtime_authority.rs", "codex-rs/hepta-contracts/src/lib.rs"]
+    },
+    "lifecycleEpochAndFenceBinding": {
+      "state": "source_implemented",
+      "evidence": ["codex-rs/hepta-agentd/src/composition.rs", "codex-rs/hepta-agentd/src/automation_service.rs", "codex-rs/hepta-agentd/src/memory_service.rs"]
+    },
+    "runtimeInstanceReadinessGraph": {
+      "state": "source_implemented",
+      "evidence": ["codex-rs/hepta-contracts/src/runtime_instance.rs", "codex-rs/hepta-agentd/src/runtime.rs"]
+    },
+    "perUseExternalEffectVerification": {
+      "state": "source_implemented",
+      "evidence": ["codex-rs/hepta-contracts/src/checked_provider_operation.rs", "codex-rs/hepta-agentd/src/production_writer_host.rs"]
+    },
+    "repositoryIdentityAndGovernanceContract": {
+      "state": "source_implemented",
+      "evidence": ["README.md", "SECURITY.md", ".github/CODEOWNERS", "docs/governance/HEPTA_REPOSITORY_RULESET_REQUIRED_V1.json"]
     }
   },
   "openProductGaps": {
     "supervisorSignedRuntimeGrantBootstrap": {
       "state": "open",
-      "currentEvidence": "local closed profiles exist; normal Agentd still constructs the local grant in-process",
-      "closureCriteria": "Supervisor-issued signed grant reaches the composition root through a verifier-only bootstrap path with stale-generation and revocation tests"
+      "currentEvidence": "Supervisor has an external Ed25519 production-transition signer, while normal Agentd startup still constructs its closed local runtime grant in-process",
+      "closureCriteria": "a separately scoped Supervisor runtime grant binds Agent, release/candidate identity, profile, epochs, generation, fence, issue/expiry window and signer epoch; Agentd verifies it from an owner-only bootstrap channel before product composition"
     },
-    "perUseExternalCapabilityRevocation": {
-      "state": "open",
-      "currentEvidence": "external capabilities bind subject, generation, epochs, fence and expiry; revocation is not rechecked on every physical effect",
-      "closureCriteria": "every model/provider/external-effect dispatch validates a current revocation or epoch view immediately before crossing the boundary"
-    },
-    "realAuthorityAndOwnerEpochs": {
-      "state": "open",
-      "currentEvidence": "some operation contexts still derive authority epoch and fence witnesses from local schema/generation values",
-      "closureCriteria": "Supervisor and each data owner persist monotonic epochs and independently reject stale owner instances"
+    "allPhysicalCapabilityBoundariesUseCurrentVerifier": {
+      "state": "partial",
+      "currentEvidence": "provider-effect and production-writer dispatch paths now require per-use verification; local model and tool physical exits are not yet uniformly capability-gated",
+      "closureCriteria": "every physical model, provider, tool, network and external-effect boundary consumes a typed capability and validates the current revocation/epoch view immediately before the boundary"
     },
     "physicalMemoryBoundedContextExtraction": {
       "state": "open",
-      "currentEvidence": "hepta-memory-runtime facade exists; legacy hepta-memory still owns multiple bounded contexts",
+      "currentEvidence": "hepta-memory-runtime facade exists; legacy hepta-memory still owns memory model/store, KG, retrieval, compact and learning contexts",
       "closureCriteria": "memory model, store, KG, retrieval, compact and learning have physical crate boundaries with one migration owner and stable facade compatibility"
     },
     "allProductStoreFaultMatrix": {
       "state": "partial",
-      "currentEvidence": "Matrix has a same-connection SQLite-full seam; equivalent Memory, Automation and Evidence process-kill/disk-full/reopen evidence is incomplete",
-      "closureCriteria": "all durable product stores pass the common kill, disk-full, corruption, stale-fence, pending-outbox and backup/restore matrix"
+      "currentEvidence": "Matrix has a same-connection SQLite-full seam; equivalent Memory, Automation and Evidence process-kill/disk-full/reopen/backup evidence is incomplete",
+      "closureCriteria": "all durable product stores pass the common kill, WAL reopen, SQLite-full, permission-loss, corruption, stale-fence, pending-outbox, acknowledgement-loss, backup and restore matrix"
     },
     "astLevelAuthorityCallerRatchet": {
       "state": "open",
-      "currentEvidence": "current caller ratchet is source-string based",
+      "currentEvidence": "current caller ratchet remains source-string based",
       "closureCriteria": "Rust compiler or AST metadata enforces the grant/capability constructor caller set and compile-fail tests reject aliases, wrappers and macros"
     },
-    "runtimeInstanceAndReadinessGraph": {
+    "fleetQueryableRuntimeInstanceProjection": {
       "state": "partial",
-      "currentEvidence": "runtime profile is now bound during composition; a durable observed instance graph and fleet-level readiness projection do not yet exist",
+      "currentEvidence": "Agentd now maintains a generation-bound in-process instance/readiness graph; a fleet-level read-only projection and signed snapshot are not yet available",
       "closureCriteria": "desired, observed and readiness graphs are candidate-bound, generation-fenced and externally queryable without becoming authority"
     },
     "runtimeResourceBudgetEnforcement": {
       "state": "open",
-      "currentEvidence": "manifest carries resource budgets, but complete turn/tool/model/memory enforcement is not executable-qualified",
-      "closureCriteria": "N+1 admission, cancellation, crash, permit recovery and cross-service budget tests pass on the product runtime"
+      "currentEvidence": "manifest carries budgets and the runtime authority fence binds them; complete turn/tool/model/memory/disk enforcement is not product-qualified",
+      "closureCriteria": "N+1 admission, cancellation, terminal release, crash, restart, memory pressure and cross-service budget tests pass on the product runtime"
     },
     "physicalEndToEndProductPath": {
       "state": "open",
-      "currentEvidence": "domain qualification lanes exist but no single promoted path proves Supervisor to Agentd to App Server to model/provider to Memory and ingress recovery",
-      "closureCriteria": "one exact candidate completes the real-process vertical slice including failure/restart/reconcile and independently reviewed evidence"
+      "currentEvidence": "domain qualification lanes exist but no exact candidate proves the complete Supervisor-to-ingress real-process path with a physical model/provider boundary",
+      "closureCriteria": "one exact candidate completes the real-process vertical slice including signed runtime bootstrap, readiness, session, approved physical boundary, Memory, Automation, ingress, failure/restart and lookup-only reconcile"
     }
   },
   "openExternalGates": {
-    "repositoryRulesetEnforcement": {"state": "not_issued", "closureCriteria": "default-branch ruleset requires the aggregate checks and rejects direct/force pushes"},
+    "repositoryRulesetEnforcement": {"state": "not_issued", "closureCriteria": "live default-branch ruleset matches the source contract, requires aggregate checks and rejects direct/force pushes and branch deletion"},
     "exactSourceHeadQualification": {"state": "not_run", "closureCriteria": "non-zero runner, non-empty successful steps and exact commit/tree receipt"},
     "mergeCandidateQualification": {"state": "not_run", "closureCriteria": "non-zero runner, non-empty successful steps and exact PR merge-candidate receipt"},
+    "independentCodeOwnerReview": {"state": "not_issued", "closureCriteria": "a reviewer other than the last pusher approves the exact candidate and all conversations are resolved"},
     "operatorAcceptance": {"state": "not_issued", "closureCriteria": "independent candidate-bound signed acceptance"},
     "promotion": {"state": "not_issued", "closureCriteria": "independent candidate-bound signed promotion receipt"},
     "release": {"state": "not_issued", "closureCriteria": "signed release manifest, provenance, SBOM and rollback evidence"}
