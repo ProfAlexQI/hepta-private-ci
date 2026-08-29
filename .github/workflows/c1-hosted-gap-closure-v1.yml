@@ -14,9 +14,11 @@ concurrency:
   group: c1-hosted-gap-closure-v1-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
-# Exact-head closure epoch 8. Two independently allocated Unix pools run the
+# Exact-head closure epoch 10. Two independently allocated Unix pools run the
 # same producer. Both bind EXPECTED_HEAD and use a final compare-and-swap before
-# a normal push, so at most one lane can update the branch.
+# a normal push, so at most one lane can update the branch. RUSTUP_TOOLCHAIN
+# binds all child Cargo invocations to the toolchain already installed above;
+# entering codex-rs must not trigger a second network sync.
 jobs:
   close-current-gaps:
     name: Close current hosted qualification gaps (${{ matrix.runner }})
@@ -35,6 +37,7 @@ jobs:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
       EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
       HEAD_REF: ${{ github.head_ref }}
+      RUSTUP_TOOLCHAIN: "1.95.0"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
