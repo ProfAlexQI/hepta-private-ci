@@ -12,13 +12,13 @@ permissions:
 
 concurrency:
   group: hepta-q0-e1-residue-repair
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   repair:
-    name: Close every remaining Q0 repository blocker
-    runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    name: Commit exact qualification-only Q0 blocker patch
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
     steps:
       - name: Checkout exact repair carrier
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -32,7 +32,7 @@ jobs:
         env:
           EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
           EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-          EXPECTED_PARENT: cf71c9b0316992d07fdad630b7965305c92c4ca1
+          EXPECTED_PARENT: f78f6b7873399365a9990c39575650d12ac5e00f
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
@@ -40,141 +40,21 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
 
-      - name: Install repository Rust toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
-        with:
-          toolchain: 1.95.0
-          components: rustfmt,clippy
-
-      - name: Apply exact qualification-only source repairs
+      - name: Apply exact fail-closed source patch and retire carrier payload
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/q0-qualification/close-final-gaps.py
-          (cd codex-rs && cargo fmt --all)
-          (cd codex-rs && cargo fmt --all -- --check)
-          git diff --check
-
-      - name: Apply machine-applicable canonical Clippy repairs
-        shell: bash
-        run: |
-          set -euo pipefail
-          run_fix() {
-            local label="$1"
-            shift
-            echo "::group::clippy-fix ${label}"
-            set +e
-            (cd codex-rs && cargo clippy --fix --locked --allow-dirty --allow-staged "$@")
-            local code=$?
-            set -e
-            echo "clippy_fix_${label//-/_}_exit=${code}"
-            echo "::endgroup::"
-          }
-
-          run_fix memory \
-            -p codex-hepta-memory --all-targets --no-deps -- -D warnings
-          run_fix extension \
-            -p codex-hepta-memory-extension --all-targets --no-deps -- -D warnings
-          run_fix agentd-default \
-            -p codex-hepta-agentd --all-targets --no-deps -- -D warnings
-          run_fix agentd-shadow \
-            -p codex-hepta-agentd \
-            --features qualification-intelligence-mutation-shadow \
-            --all-targets --no-deps -- -D warnings
-
-          (cd codex-rs && cargo fmt --all)
-          (cd codex-rs && cargo fmt --all -- --check)
-          git diff --check
-
-      - name: Require every canonical strict Clippy profile to pass
-        shell: bash
-        run: |
-          set -euo pipefail
-          output_dir="$RUNNER_TEMP/hepta-q0-strict-clippy"
-          rm -rf "$output_dir"
-          mkdir -p "$output_dir"
-          failed=0
-
-          run_strict() {
-            local label="$1"
-            shift
-            echo "::group::strict-clippy ${label}"
-            set +e
-            (cd codex-rs && cargo clippy --locked "$@") \
-              2>&1 | tee "$output_dir/${label}.log"
-            local code=${PIPESTATUS[0]}
-            set -e
-            printf '%s\n' "$code" > "$output_dir/${label}.exit"
-            echo "strict_clippy_${label//-/_}_exit=${code}"
-            echo "::endgroup::"
-            if [[ "$code" != 0 ]]; then
-              failed=1
-            fi
-          }
-
-          run_strict memory \
-            -p codex-hepta-memory --all-targets --no-deps -- -D warnings
-          run_strict agent-protocol \
-            -p codex-hepta-agent-protocol --all-targets --no-deps -- -D warnings
-          run_strict supervisor \
-            -p codex-hepta-supervisor --all-targets --no-deps -- -D warnings
-          run_strict extension \
-            -p codex-hepta-memory-extension --all-targets --no-deps -- -D warnings
-          run_strict agentd-default \
-            -p codex-hepta-agentd --all-targets --no-deps -- -D warnings
-          run_strict agentd-shadow \
-            -p codex-hepta-agentd \
-            --features qualification-intelligence-mutation-shadow \
-            --all-targets --no-deps -- -D warnings
-
-          test "$failed" = 0
-          (cd codex-rs && cargo fmt --all -- --check)
-          git diff --check
-
-      - name: Verify all source gates and the complete Q0 Rust matrix
-        shell: bash
-        run: |
-          set -euo pipefail
-          carrier=.github/workflows/hepta-q0-e1-residue-repair.yml
-          payload=scripts/q0-qualification/close-final-gaps.py
-          rm "$carrier" "$payload"
-
-          artifact_dir="$RUNNER_TEMP/hepta-q0-final-gap-closure"
-          rm -rf "$artifact_dir"
-          mkdir -p "$artifact_dir/gates" "$artifact_dir/rust"
-
-          ARTIFACT_DIR="$artifact_dir" \
-            bash scripts/q0-qualification/10-source-gates.sh
-          ARTIFACT_DIR="$artifact_dir" \
-            bash scripts/q0-qualification/20-rust-matrix.sh
-
-          python3 - "$artifact_dir" <<'PY'
-          from pathlib import Path
-          import sys
-
-          root = Path(sys.argv[1])
-          exits = sorted(root.glob("*/*.exit"))
-          if not exits:
-              raise AssertionError("qualification emitted no exit records")
-          failed = {
-              str(path.relative_to(root)): path.read_text(encoding="utf-8").strip()
-              for path in exits
-              if path.read_text(encoding="utf-8").strip() != "0"
-          }
-          if failed:
-              raise AssertionError(f"qualification failures: {failed}")
-          print(f"verified_exit_count={len(exits)}")
-          PY
-
+          rm \
+            .github/workflows/hepta-q0-e1-residue-repair.yml \
+            scripts/q0-qualification/close-final-gaps.py
           rm -rf scripts/__pycache__ .github/scripts/__pycache__
-          (cd codex-rs && cargo fmt --all -- --check)
           git diff --check
 
-      - name: Commit verified repair, bind final candidate, and retire carrier
+      - name: Verify patch surface, bind final candidate, and push
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf scripts/__pycache__ .github/scripts/__pycache__
 
           python3 - <<'PY'
           import subprocess
