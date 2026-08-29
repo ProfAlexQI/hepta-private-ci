@@ -1,4 +1,4 @@
-name: p034-qualified-publisher-cross-platform-v4
+name: p034-qualified-publisher-cross-platform-v5
 
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
     timeout-minutes: 180
     env:
       TARGET_BRANCH: codex/hepta-intelligence-legacy-governance-v2-20260829
-      EXPECTED_TARGET: 6d225487d4b42370800e676ca8309f86848f8c36
+      EXPECTED_TARGET: 35de548b07d3957679800f694ecf1a6f3e001c36
       P033_HEAD: eddcb59ca43a76ac83b64507983bd908f406ff48
       PAYLOAD_SHA256: bd21ef335c14fa2c78f6a2bb87b4c39d1a8937361c62ca80a92b5907a43617cd
     steps:
