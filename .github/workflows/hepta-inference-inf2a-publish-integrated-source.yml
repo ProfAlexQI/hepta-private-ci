@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 120
     env:
-      EXPECTED_PARENT: 171dc45646110e6e925eaab8c9c2a315204dbfee
+      EXPECTED_PARENT: 748a961b02e625284f1be4d4c2d70c30b6d277c4
       BASE_HEAD: 6f3286f99f5576b4cc545003889437bf388bb28a
       TARGET_BRANCH: codex/hepta-inference-inf2a-shadow-client-20260829
       SELF: .github/workflows/hepta-inference-inf2a-publish-integrated-source.yml
@@ -112,6 +112,8 @@ jobs:
         run: |
           set -euo pipefail
           overlay="$RUNNER_TEMP/hepta-inf2a-source-overlay"
+          git reset --hard "$GITHUB_SHA"
+          git clean -fd
           git checkout --detach "$BASE_HEAD"
           cp -a "$overlay"/. .
           git config user.name "github-actions[bot]"
