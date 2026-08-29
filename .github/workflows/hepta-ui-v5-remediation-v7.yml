@@ -17,11 +17,11 @@ concurrency:
 jobs:
   remediate:
     if: github.repository == 'ProfHepta/hepta-private-ci'
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
-      EXPECTED_PARENT: 3e0cf14de1d3a441295d1825a0299e48c8bbfb14
+      EXPECTED_PARENT: cd5d354869ba7c39f9153667d62f064fd3d708c5
       BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-remediation-v7.yml
       UPSTREAM_URL: https://github.com/openai/codex.git
       UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
@@ -84,21 +84,36 @@ jobs:
           path = Path(os.environ["GENERATED_REMEDIATION_SCRIPT"])
           text = path.read_text(encoding="utf-8")
 
-          hash_anchor = "dep_contract_path.write_text(\n    json.dumps(dep_contract, indent=2, ensure_ascii=False) + \"\\\\n\",\n    encoding=\"utf-8\",\n)\ndep_gate_path = root / \"scripts/hepta-dependency-security\"\n"
-          hash_replacement = "for input_id, input_entry in dep_contract[\"inputs\"].items():\n    if input_id == \"cargo_locks\":\n        continue\n    if not isinstance(input_entry, dict):\n        continue\n    if \"path\" not in input_entry or \"sha256\" not in input_entry:\n        continue\n    input_entry[\"sha256\"] = sha256_path(root / input_entry[\"path\"])\ndep_contract_path.write_text(\n    json.dumps(dep_contract, indent=2, ensure_ascii=False) + \"\\\\n\",\n    encoding=\"utf-8\",\n)\ndep_gate_path = root / \"scripts/hepta-dependency-security\"\n"
-          if text.count(hash_anchor) != 1:
+          write_marker = 'dep_contract_path.write_text(\n'
+          if text.count(write_marker) != 1:
               raise SystemExit(
-                  f"dependency input hash anchor: expected 1 match, found {text.count(hash_anchor)}"
+                  f"dependency contract write marker: expected 1 match, found {text.count(write_marker)}"
               )
-          text = text.replace(hash_anchor, hash_replacement)
+          input_hash_block = (
+              'for input_id, input_entry in dep_contract["inputs"].items():\n'
+              '    if input_id == "cargo_locks":\n'
+              '        continue\n'
+              '    if not isinstance(input_entry, dict):\n'
+              '        continue\n'
+              '    input_path = input_entry.get("path")\n'
+              '    if not isinstance(input_path, str) or "sha256" not in input_entry:\n'
+              '        continue\n'
+              '    input_entry["sha256"] = sha256_path(root / input_path)\n'
+          )
+          text = text.replace(write_marker, input_hash_block + write_marker, 1)
 
-          cleanup_anchor = 'git rm "$BOOTSTRAP_PATH" \\\n  .github/workflows/hepta-ui-v5-blocker-remediation-bootstrap.yml\n'
-          cleanup_replacement = 'git rm "$BOOTSTRAP_PATH" \\\n  .github/workflows/hepta-ui-v5-blocker-remediation-bootstrap.yml \\\n  .github/workflows/hepta-ui-v5-remediation-v6.yml\n'
-          if text.count(cleanup_anchor) != 1:
+          cleanup_marker = '  .github/workflows/hepta-ui-v5-blocker-remediation-bootstrap.yml\n'
+          if text.count(cleanup_marker) != 1:
               raise SystemExit(
-                  f"remediation helper cleanup anchor: expected 1 match, found {text.count(cleanup_anchor)}"
+                  f"remediation helper cleanup marker: expected 1 match, found {text.count(cleanup_marker)}"
               )
-          text = text.replace(cleanup_anchor, cleanup_replacement)
+          cleanup_replacement = (
+              '  .github/workflows/hepta-ui-v5-blocker-remediation-bootstrap.yml '
+              + chr(92)
+              + '\n'
+              + '  .github/workflows/hepta-ui-v5-remediation-v6.yml\n'
+          )
+          text = text.replace(cleanup_marker, cleanup_replacement, 1)
           path.write_text(text, encoding="utf-8")
           PATCH
           bash -n "$generated_script"
