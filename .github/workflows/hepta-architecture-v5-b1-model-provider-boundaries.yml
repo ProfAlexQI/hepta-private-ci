@@ -1,0 +1,187 @@
+name: Hepta Architecture V5 B1 model provider boundaries
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "codex-rs/hepta-contracts/src/checked_provider_operation.rs"
+      - "codex-rs/hepta-contracts/tests/provider_verified_use_boundary.rs"
+      - "scripts/verify-hepta-v5-b1-format.py"
+      - ".github/workflows/hepta-architecture-v5-b1-model-provider-boundaries.yml"
+  push:
+    branches:
+      - "codex/hepta-architecture-v5-b1-*"
+    paths:
+      - "codex-rs/hepta-contracts/src/checked_provider_operation.rs"
+      - "codex-rs/hepta-contracts/tests/provider_verified_use_boundary.rs"
+      - "scripts/verify-hepta-v5-b1-format.py"
+      - ".github/workflows/hepta-architecture-v5-b1-model-provider-boundaries.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-v5-b1-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-qualification:
+    name: V5 B1 provider-boundary qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: codex-rs
+    steps:
+      - name: Checkout exact event identity
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: nextest@0.9.143
+
+      - name: Initialize exact-candidate evidence
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-v5-b1"
+          mkdir -p "$evidence_dir"
+          {
+            echo "event=$GITHUB_EVENT_NAME"
+            echo "ref=$GITHUB_REF"
+            echo "github_sha=$GITHUB_SHA"
+            echo "checked_out_commit=$(git rev-parse HEAD)"
+            echo "checked_out_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "pr_head=${{ github.event.pull_request.head.sha || '' }}"
+            echo "pr_base=${{ github.event.pull_request.base.sha || '' }}"
+            echo "package=P0.7b/B1_model_provider_boundaries"
+            echo "runtime_authority=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "model_invocation=false"
+            echo "provider_dispatch=false"
+            echo "external_effect=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release=false"
+          } > "$evidence_dir/posture.txt"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Compile-check B1 formatter
+        working-directory: .
+        shell: bash
+        run: python3 -m py_compile scripts/verify-hepta-v5-b1-format.py
+
+      - name: Locked workspace metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-v5-b1"
+          cargo metadata --locked --no-deps --format-version 1 2>&1 | tee "$evidence_dir/metadata.log" >/dev/null
+          echo "locked_metadata=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Rust 1.95 scoped format
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-v5-b1"
+          python3 scripts/verify-hepta-v5-b1-format.py --check 2>&1 | tee "$evidence_dir/format.log"
+          echo "format=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Focused provider verified-use tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-v5-b1"
+          cargo nextest run --locked -p codex-hepta-contracts --test provider_verified_use_boundary 2>&1 | tee "$evidence_dir/focused-tests.log"
+          echo "focused_tests=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Complete hepta-contracts tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-v5-b1"
+          cargo nextest run --locked -p codex-hepta-contracts 2>&1 | tee "$evidence_dir/package-tests.log"
+          echo "package_tests=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Locked all-target check
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-v5-b1"
+          cargo check --locked --all-targets -p codex-hepta-contracts 2>&1 | tee "$evidence_dir/check.log"
+          echo "all_target_check=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Strict Clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-v5-b1"
+          cargo clippy --locked --all-targets -p codex-hepta-contracts -- -D warnings 2>&1 | tee "$evidence_dir/clippy.log"
+          echo "strict_clippy=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Verify committed Bazel lock
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-v5-b1"
+          just bazel-lock-check 2>&1 | tee "$evidence_dir/bazel-lock.log"
+          git diff --check
+          echo "bazel_lock=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Record job result
+        if: always()
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-v5-b1"
+          mkdir -p "$evidence_dir"
+          echo "job_status=${{ job.status }}" >> "$evidence_dir/posture.txt"
+          {
+            echo "### Hepta V5 B1 provider-boundary qualification"
+            echo
+            sed 's/^/- /' "$evidence_dir/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload exact-candidate evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-v5-b1-${{ github.event_name }}-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-v5-b1
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
+
+  required:
+    name: Hepta V5 B1 required
+    if: ${{ always() }}
+    needs:
+      - source-qualification
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require successful B1 qualification
+        env:
+          SOURCE_RESULT: ${{ needs.source-qualification.result }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RESULT" == success ]]
