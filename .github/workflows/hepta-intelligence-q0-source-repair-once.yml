@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   repair:
-    name: Atomically write diagnosed supervisor blockers and retire carrier
+    name: Atomically write diagnosed supervisor blockers and retire all carriers
     runs-on: ubuntu-slim
     timeout-minutes: 15
     steps:
@@ -129,15 +129,19 @@ jobs:
           ! git diff --unified=0 -- '*.rs' \
             | grep -E '^\+.*(#\!?\[allow\(clippy|#\[ignore\]|todo!\(|unimplemented!\()'
 
-      - name: Commit only diagnosed supervisor repair and retire carrier
+      - name: Commit only diagnosed supervisor repair and retire every temporary carrier
         shell: bash
         run: |
           set -euo pipefail
           git fetch --no-tags origin "$GITHUB_REF_NAME"
           test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
           rm .github/workflows/hepta-intelligence-q0-source-repair-once.yml
+          rm .github/workflows/hepta-intelligence-q0-source-repair-arm-once.yml
+          rm ci/q0-supervisor-repair-once.py
           expected=(
+            .github/workflows/hepta-intelligence-q0-source-repair-arm-once.yml
             .github/workflows/hepta-intelligence-q0-source-repair-once.yml
+            ci/q0-supervisor-repair-once.py
             codex-rs/hepta-supervisor/src/signed_authority.rs
             codex-rs/hepta-supervisor/src/signed_intent.rs
             codex-rs/hepta-supervisor/src/supervisor.rs
