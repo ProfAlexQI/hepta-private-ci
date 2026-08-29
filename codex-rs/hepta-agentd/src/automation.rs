@@ -42,11 +42,11 @@ pub(crate) struct AgentdAutomationQueue {
 
 #[derive(Debug)]
 enum QueueFailure {
-    /// The request has not crossed the App Server admission seam.  These
+    /// The request has not crossed the App Server admission seam. These
     /// failures may be retried with the existing bounded dispatch budget.
     BeforeAdmission(AgentdError),
     /// The request may have crossed the seam, but no reliable terminal receipt
-    /// was returned.  Retrying would be a blind duplicate, so the occurrence
+    /// was returned. Retrying would be a blind duplicate, so the occurrence
     /// must be durably quarantined instead.
     OutcomeUnknown,
 }
@@ -70,7 +70,7 @@ impl AgentdAutomationQueue {
         if !self
             .state
             .automation_is_available()
-            .map_err(|error| QueueFailure::BeforeAdmission(error))?
+            .map_err(QueueFailure::BeforeAdmission)?
         {
             return Err(QueueFailure::BeforeAdmission(
                 AutomationError::Unavailable.into(),
@@ -79,7 +79,7 @@ impl AgentdAutomationQueue {
         if !self
             .state
             .automation_admission_ready()
-            .map_err(|error| QueueFailure::BeforeAdmission(error))?
+            .map_err(QueueFailure::BeforeAdmission)?
         {
             return Err(QueueFailure::BeforeAdmission(AgentdError::Protocol(
                 "automation admission is unavailable until this Agent generation is ready"
@@ -118,7 +118,7 @@ impl AgentdAutomationQueue {
             .await
             .map_err(|_| QueueFailure::OutcomeUnknown)?;
         let _ = client.shutdown().await;
-        // The response proves only what the App Server returned.  Any state
+        // The response proves only what the App Server returned. Any state
         // transition observed after the request is still an uncertain local
         // outcome: preserve the occurrence for explicit reconciliation rather
         // than handing it to a retry path.
@@ -189,7 +189,34 @@ impl AutomationTurnQueue for AgentdAutomationQueue {
     }
 }
 
+#[cfg(test)]
 pub(crate) async fn run_automation_scheduler(
+    store: AutomationStore,
+    state: Arc<AgentdState>,
+    identity: AgentdIdentity,
+    cancellation: CancellationToken,
+) -> Result<(), AgentdError> {
+    let fence = format!(
+        "hepta:test:agentd-automation-operation-fence:v1\0{}\0{}",
+        identity.agent_id, identity.spawn_generation
+    );
+    let operation_context = AutomationOperationContext::new(
+        1,
+        identity.spawn_generation,
+        identity.spawn_generation,
+        Sha256Digest::for_bytes(fence.as_bytes()),
+    )?;
+    run_automation_scheduler_with_context(
+        store,
+        operation_context,
+        state,
+        identity,
+        cancellation,
+    )
+    .await
+}
+
+pub(crate) async fn run_automation_scheduler_with_context(
     store: AutomationStore,
     operation_context: AutomationOperationContext,
     state: Arc<AgentdState>,
@@ -266,7 +293,7 @@ pub(crate) async fn run_automation_scheduler(
     }
 }
 
-/// Applies the scheduler's fail-stop policy to one tick.  A `true` result
+/// Applies the scheduler's fail-stop policy to one tick. A `true` result
 /// means the caller should terminate its scheduler task after cancellation
 /// has been observed; the Agent itself remains alive for normal turns.
 pub(crate) async fn handle_automation_tick(
@@ -357,24 +384,53 @@ fn unix_time_ms() -> Result<u64, AutomationError> {
 
 #[cfg(test)]
 mod tests {
+    use codex_hepta_automation::AutomationLease;
+    use codex_hepta_automation::AutomationOperationContext;
+    use codex_hepta_automation::AutomationSchedule;
+    use codex_hepta_automation::AutomationTask;
     use codex_hepta_automation::AutomationTaskId;
+    use codex_hepta_automation::AutomationTaskState;
     use codex_hepta_automation::AutomationTick;
     use codex_hepta_contracts::AgentId;
+    use codex_hepta_contracts::Sha256Digest;
 
     use super::*;
 
     #[test]
     fn automation_has_only_normal_app_server_queue_admission() {
-        let admission = AutomationAdmission {
-            agent_id: AgentId::parse("018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12").expect("agent id"),
-            task_id: AutomationTaskId::parse("019153a4-3088-7000-a56a-9b1964f75007")
-                .expect("task id"),
+        let agent_id =
+            AgentId::parse("018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12").expect("agent id");
+        let task_id = AutomationTaskId::parse("019153a4-3088-7000-a56a-9b1964f75007")
+            .expect("task id");
+        let operation_context = AutomationOperationContext::new(
+            1,
+            1,
+            1,
+            Sha256Digest::for_bytes(b"hepta:test:agentd-automation-operation-fence:v1"),
+        )
+        .expect("operation context");
+        let admission = AutomationLease {
+            task: AutomationTask {
+                task_id,
+                owner_agent_id: agent_id,
+                thread_id: "019153a4-3088-7e03-a56a-9b1964f75ddd".to_string(),
+                prompt: "run through governance".to_string(),
+                schedule: AutomationSchedule::Once,
+                state: AutomationTaskState::Enabled,
+                next_run_at_ms: Some(44),
+                next_occurrence: 3,
+                created_at_ms: 1,
+                updated_at_ms: 1,
+            },
             occurrence: 3,
             scheduled_for_ms: 44,
-            thread_id: "019153a4-3088-7e03-a56a-9b1964f75ddd".to_string(),
-            prompt: "run through governance".to_string(),
             client_user_message_id: "hepta.automation.test".to_string(),
-        };
+            lease_generation: 1,
+            lease_token: "lease-token".to_string(),
+            lease_expires_at_ms: 100,
+        }
+        .admission(&operation_context)
+        .expect("automation admission");
         let ClientRequest::ThreadQueueAdd { params, .. } = automation_queue_request(&admission)
         else {
             panic!("automation must only enter via thread/queue/add");

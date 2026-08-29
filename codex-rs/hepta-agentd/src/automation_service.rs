@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 use crate::AgentdError;
 use crate::AgentdIdentity;
 use crate::AgentdState;
-use crate::automation::run_automation_scheduler;
+use crate::automation::run_automation_scheduler_with_context;
 
 pub(crate) struct AgentAutomationService {
     store: Option<AutomationStore>,
@@ -77,7 +77,7 @@ impl AgentAutomationService {
     ) -> Result<(), AgentdError> {
         match self.store {
             Some(store) => {
-                run_automation_scheduler(
+                run_automation_scheduler_with_context(
                     store,
                     self.operation_context,
                     state,
