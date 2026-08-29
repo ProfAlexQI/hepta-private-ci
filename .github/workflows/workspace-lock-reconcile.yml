@@ -12,17 +12,17 @@ permissions:
 
 concurrency:
   group: workspace-lock-reconcile-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   EXPECTED_BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
-  EXPECTED_PARENT: 9df5d37113a6a54208d4bf98710c42d7d327aee9
+  EXPECTED_PARENT: 74ff3ab03d463e23e5244cbf2fe04aa404949aa4
   WORKFLOW_PATH: .github/workflows/workspace-lock-reconcile.yml
 
 jobs:
   reconcile:
     name: Reconcile exact workspace lock and retire self
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Checkout exact reconciliation candidate
