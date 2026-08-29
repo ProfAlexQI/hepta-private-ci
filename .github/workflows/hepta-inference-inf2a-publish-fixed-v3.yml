@@ -1,0 +1,177 @@
+name: Hepta inference INF-2A publish fixed shadow source v3
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf2a-shadow-bootstrap-v1-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf2a-publish-fixed-v3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-inf2a-publish-fixed-v3
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Qualify and publish fixed clean source
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    env:
+      EXPECTED_PARENT: 74534041c6cb1bb9a5a654d89bcb9a818bc510ea
+      BASE_HEAD: 6f3286f99f5576b4cc545003889437bf388bb28a
+      TARGET_BRANCH: codex/hepta-inference-inf2a-shadow-client-v2-20260829
+      SELF: .github/workflows/hepta-inference-inf2a-publish-fixed-v3.yml
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact one-file carrier
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          if git ls-remote --exit-code --heads origin "$TARGET_BRANCH" >/dev/null 2>&1; then
+            echo "target branch already exists" >&2
+            exit 1
+          fi
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Integrate and qualify fixed client source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("codex-rs/Cargo.toml")
+          text = path.read_text(encoding="utf-8")
+          member = '    "hepta-infer-client",\n'
+          dependency = 'codex-hepta-infer-client = { path = "hepta-infer-client" }\n'
+          if member not in text:
+              anchor = '    "hepta-infer-core",\n'
+              if text.count(anchor) != 1:
+                  raise SystemExit("workspace member anchor drift")
+              text = text.replace(anchor, anchor + member)
+          if dependency not in text:
+              anchor = 'codex-hepta-infer-core = { path = "hepta-infer-core" }\n'
+              if text.count(anchor) != 1:
+                  raise SystemExit("workspace dependency anchor drift")
+              text = text.replace(anchor, anchor + dependency)
+          path.write_text(text, encoding="utf-8")
+          PY
+          (
+            cd codex-rs
+            cargo fmt -p codex-hepta-infer-core -p codex-hepta-inferd -p codex-hepta-infer-client
+            cargo check -p codex-hepta-infer-core -p codex-hepta-inferd -p codex-hepta-infer-client
+            cargo test -p codex-hepta-infer-core -p codex-hepta-inferd -p codex-hepta-infer-client -- --test-threads=1
+            cargo clippy --all-targets --no-deps \
+              -p codex-hepta-infer-core \
+              -p codex-hepta-inferd \
+              -p codex-hepta-infer-client \
+              -- -D warnings
+          )
+          python3 -m py_compile scripts/hepta-inference-inf2a-shadow-client-source-gate.py
+          python3 scripts/hepta-inference-inf2a-shadow-client-source-gate.py
+
+      - name: Materialize clean source overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          overlay="$RUNNER_TEMP/hepta-inf2a-fixed-source-overlay"
+          mkdir -p \
+            "$overlay/codex-rs/hepta-infer-client/src" \
+            "$overlay/codex-rs" \
+            "$overlay/scripts" \
+            "$overlay/docs/hepta-vnext/inference"
+          cp codex-rs/Cargo.toml codex-rs/Cargo.lock "$overlay/codex-rs/"
+          cp codex-rs/hepta-infer-client/Cargo.toml "$overlay/codex-rs/hepta-infer-client/"
+          cp codex-rs/hepta-infer-client/src/lib.rs codex-rs/hepta-infer-client/src/tests.rs \
+            "$overlay/codex-rs/hepta-infer-client/src/"
+          cp scripts/hepta-inference-inf2a-shadow-client-source-gate.py "$overlay/scripts/"
+          cp \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_POLICY_V1.json \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_RECEIPT_2026-08-29.json \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_INF4_PERFORMANCE_CLASSIFICATION_2026-08-29.json \
+            "$overlay/docs/hepta-vnext/inference/"
+          find "$overlay" -type f -print0 | sort -z | xargs -0 sha256sum \
+            > "$RUNNER_TEMP/hepta-inf2a-fixed-overlay-sha256.txt"
+
+      - name: Create clean source commit on qualified INF-1 head
+        shell: bash
+        run: |
+          set -euo pipefail
+          overlay="$RUNNER_TEMP/hepta-inf2a-fixed-source-overlay"
+          git reset --hard "$GITHUB_SHA"
+          git clean -fd
+          git checkout --detach "$BASE_HEAD"
+          cp -a "$overlay"/. .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            codex-rs/Cargo.toml \
+            codex-rs/Cargo.lock \
+            codex-rs/hepta-infer-client \
+            scripts/hepta-inference-inf2a-shadow-client-source-gate.py \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_POLICY_V1.json \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_RECEIPT_2026-08-29.json \
+            docs/hepta-vnext/inference/HEPTA_INFERENCE_INF4_PERFORMANCE_CLASSIFICATION_2026-08-29.json
+          python3 - <<'PY'
+          import subprocess
+          expected = {
+              "codex-rs/Cargo.lock",
+              "codex-rs/Cargo.toml",
+              "codex-rs/hepta-infer-client/Cargo.toml",
+              "codex-rs/hepta-infer-client/src/lib.rs",
+              "codex-rs/hepta-infer-client/src/tests.rs",
+              "scripts/hepta-inference-inf2a-shadow-client-source-gate.py",
+              "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_POLICY_V1.json",
+              "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_RECEIPT_2026-08-29.json",
+              "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF4_PERFORMANCE_CLASSIFICATION_2026-08-29.json",
+          }
+          actual = set(subprocess.check_output(["git", "diff", "--cached", "--name-only"], text=True).splitlines())
+          if actual != expected:
+              raise SystemExit(f"clean source path drift: missing={sorted(expected-actual)} unexpected={sorted(actual-expected)}")
+          PY
+          git diff --cached --check
+          git commit -m "feat(inference): add fixed qualified INF-2A shadow client"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_ENV"
+
+      - name: Push clean source branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin HEAD:"refs/heads/$TARGET_BRANCH"
+          {
+            echo "### INF-2A fixed clean source published"
+            echo
+            echo "- source commit: $SOURCE_SHA"
+            echo "- source tree: $SOURCE_TREE"
+            echo "- parent INF-1 qualification: $BASE_HEAD"
+            echo "- route: SHADOW_COMPARE_ONLY"
+            echo "- production listener: false"
+            echo "- product default route changed: false"
+            echo "- operator accepted: false"
+            echo "- promoted: false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload publication evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf2a-fixed-source-publication-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-inf2a-fixed-overlay-sha256.txt
+          if-no-files-found: warn
+          retention-days: 14
