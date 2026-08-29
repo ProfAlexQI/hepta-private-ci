@@ -1,0 +1,116 @@
+{
+  "schema": "hepta.inference.current_status.v5",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V5",
+  "plan_version": "5.0.0",
+  "repository": "ProfHepta/hepta-private-ci",
+  "canonical_default_branch": "integration/vnext-main-20260811",
+  "development_pr": 73,
+  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "integration_branch": "codex/hepta-inference-v5-runtime-integration-20260830",
+  "source_binding": {
+    "mode": "tracked status binds observed parent; exact candidate head/tree are CI-generated",
+    "observed_parent_commit": "475f44981d56b0b2c728d202d47279a9f92982f9",
+    "audited_development_head": "dbf68bfed0a2a034fb519c66a89725e2b74edce3",
+    "audited_development_tree": "702a7a7ff4678cec481034e6b1618b91707c429d"
+  },
+  "current_legal_conclusion": {
+    "source_components_present": true,
+    "source_runtime_integrated": false,
+    "source_candidate_qualified": false,
+    "real_provider_executed": false,
+    "real_native_model_executed": false,
+    "hardware_qualified": false,
+    "product_shadow_wired": false,
+    "privacy_accepted": false,
+    "operator_accepted": false,
+    "promoted": false,
+    "released": false
+  },
+  "packages": {
+    "INF-D0": {
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "detail": "V5 plan and blocker ledger are tracked; remaining V5 machine truth and pointer are being materialized"
+    },
+    "INF-Q0": {
+      "status": "BLOCKED_UPSTREAM",
+      "detail": "unified V4 source workflow run 33275188427 was observed queued; no exact-head PASS may be inferred"
+    },
+    "INF-I1": {
+      "status": "NOT_STARTED",
+      "detail": "digest-only public request has no one-time raw prompt input lease"
+    },
+    "INF-S1": {
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "detail": "capability/private-protocol components exist in candidate work, but daemon RuntimeCoordinator ownership and inherited worker channel are not qualified"
+    },
+    "INF-S2": {
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "detail": "cancel phases and child fixtures exist; malformed-response kill/reap and actual-kill receipt semantics remain open"
+    },
+    "INF-S3": {
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "detail": "retention/tombstone component exists; strict store namespace and full crash budget qualification remain open"
+    },
+    "INF-S4": {
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "detail": "deterministic in-memory scheduler exists; durable journal and daemon dispatch integration remain open"
+    },
+    "INF-R1": {
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "detail": "bounded loopback provider helper exists; complete request fence and daemon lifecycle integration remain open"
+    },
+    "INF-E1": {
+      "status": "BLOCKED_EXTERNAL_EVIDENCE",
+      "detail": "no fixed pre-installed provider/model runner evidence"
+    },
+    "INF-R2": {
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "detail": "fixture child and fixture ABI loader exist; real lifecycle ABI, verified-handle load and daemon private-protocol integration remain open"
+    },
+    "INF-E2": {
+      "status": "BLOCKED_EXTERNAL_EVIDENCE",
+      "detail": "no pinned runtime/GGUF exact-device execution receipt"
+    },
+    "INF-R3": {
+      "status": "SOURCE_COMPONENT_PRESENT",
+      "detail": "typed bridge exists but is not wired into codex-hepta-agentd and kill-switch authority is not separated"
+    },
+    "INF-E3": {
+      "status": "BLOCKED_EXTERNAL_EVIDENCE",
+      "detail": "performance/resource/privacy/rollback evidence absent"
+    },
+    "INF-A1": {
+      "status": "BLOCKED_INDEPENDENT_AUTHORITY",
+      "detail": "independent operator acceptance, promotion and release absent"
+    }
+  },
+  "known_executed_failures": [
+    {
+      "head": "dbf68bfed0a2a034fb519c66a89725e2b74edce3",
+      "failure": "two test helper names were shadowed by local variables in the one-shot S1 integration output",
+      "classification": "REPOSITORY_COMPONENT"
+    },
+    {
+      "head": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
+      "failure": "Rust formatting failed before check/test/clippy in required inference jobs",
+      "classification": "HISTORICAL_EXACT_HEAD_EXECUTION"
+    }
+  ],
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
