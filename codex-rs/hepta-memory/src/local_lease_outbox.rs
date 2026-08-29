@@ -844,7 +844,7 @@ impl LocalLeaseOutbox {
             LocalLeaseOutboxError::StaleFence("local lease head does not exist".to_string())
         })?;
         // A stale process must not turn this read helper into a way to discover
-        // and re-use a newer generation.  The host can ask a fresh store
+        // and reuse a newer generation.  The host can ask a fresh store
         // handle for that head explicitly; this handle only witnesses its own
         // generation/fence tuple.
         ensure_current_handle_fields(&latest, self)?;

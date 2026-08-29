@@ -25,11 +25,44 @@ TOP_LEVEL_NAME_EXCEPTIONS = {
 UTILITY_NAME_EXCEPTIONS = {
     "path-utils": "codex-utils-path",
 }
+# Exact, temporary migrations whose feature gates carry qualification or
+# production-authority separation.  The verifier below rejects both drift and
+# stale entries, so this remains a closed enumeration rather than a wildcard.
 MANIFEST_FEATURE_EXCEPTIONS = {
-    "codex-rs/code-mode/Cargo.toml": {"sandbox": ("v8/v8_enable_sandbox",)},
-    "codex-rs/v8-poc/Cargo.toml": {"sandbox": ("v8/v8_enable_sandbox",)},
+    "codex-rs/hepta-agentd/Cargo.toml": {
+        "default": (),
+        "qualification-cognitive-write": (),
+        "qualification-intelligence-mutation-shadow": (),
+    },
+    "codex-rs/hepta-automation/Cargo.toml": {
+        "default": (),
+        "taskflow-structural-qualification": (),
+    },
+    "codex-rs/hepta-contracts/Cargo.toml": {
+        "authbus-local-qualification": ("dep:zeroize",),
+        "default": (),
+    },
+    "codex-rs/hepta-matrix-sdk/Cargo.toml": {
+        "default": (),
+        "qualification-failpoints": (),
+    },
+    "codex-rs/hepta-matrixd/Cargo.toml": {
+        "default": (),
+        "real-synapse-e2e": (
+            "codex-hepta-matrix-sdk/qualification-failpoints",
+        ),
+    },
+    "codex-rs/hepta-supervisor/Cargo.toml": {
+        "default": (),
+        "production-authority": (),
+    },
+    "codex-rs/v8-poc/Cargo.toml": {
+        "sandbox": ("v8/v8_enable_sandbox",),
+    },
 }
-OPTIONAL_DEPENDENCY_EXCEPTIONS = set()
+OPTIONAL_DEPENDENCY_EXCEPTIONS = {
+    ("codex-rs/hepta-contracts/Cargo.toml", "dependencies", "zeroize"),
+}
 INTERNAL_DEPENDENCY_FEATURE_EXCEPTIONS = {}
 
 
@@ -376,11 +409,27 @@ def load_manifest(path: Path) -> dict:
 
 
 def cargo_manifests() -> list[Path]:
-    return sorted(
-        path
-        for path in CARGO_RS_ROOT.rglob("Cargo.toml")
-        if path != CARGO_RS_ROOT / "Cargo.toml"
-    )
+    workspace_manifest = load_manifest(CARGO_RS_ROOT / "Cargo.toml")
+    workspace = workspace_manifest.get("workspace")
+    members = workspace.get("members") if isinstance(workspace, dict) else None
+    if not isinstance(members, list) or not all(
+        isinstance(member, str) for member in members
+    ):
+        raise ValueError(
+            "codex-rs/Cargo.toml must define a list of string workspace members"
+        )
+
+    manifests: set[Path] = set()
+    for member in members:
+        if not member or Path(member).is_absolute() or ".." in Path(member).parts:
+            raise ValueError(f"invalid Cargo workspace member: {member!r}")
+        matches = sorted(CARGO_RS_ROOT.glob(f"{member}/Cargo.toml"))
+        if not matches:
+            raise ValueError(
+                f"Cargo workspace member {member!r} has no matching manifest"
+            )
+        manifests.update(matches)
+    return sorted(manifests)
 
 
 def manifests_to_verify() -> list[Path]:
