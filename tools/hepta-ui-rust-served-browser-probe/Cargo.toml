@@ -1,0 +1,10 @@
+[package]
+name = "hepta-ui-rust-served-browser-probe"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+hepta-core = { path = "../../codex-rs/hepta-core" }
