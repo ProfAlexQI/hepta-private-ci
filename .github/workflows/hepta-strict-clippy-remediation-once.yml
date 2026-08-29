@@ -12,16 +12,17 @@ permissions:
 
 concurrency:
   group: hepta-strict-clippy-remediation-once
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   remediate:
-    if: "${{ github.event.head_commit.message == 'ci: bootstrap Hepta strict-clippy cleanup' }}"
+    if: "${{ github.event.head_commit.message == 'ci: harden Hepta strict-clippy cleanup' }}"
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      EXPECTED_PARENT: a60709f0f1e6221c2cacad3438b68642c8c5d105
+      EXPECTED_PARENT: 941237f58f50271aa484d4cfc5a198d3017ddb75
       BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
+      WORKFLOW_PATH: .github/workflows/hepta-strict-clippy-remediation-once.yml
     steps:
       - name: Checkout guarded bootstrap commit
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -142,7 +143,7 @@ jobs:
           agentd.write_text(source)
           PY
 
-      - name: Verify exact changed-path boundary
+      - name: Verify exact source changed-path boundary
         shell: bash
         run: |
           set -euo pipefail
@@ -177,7 +178,7 @@ jobs:
             -p codex-hepta-agentd \
             -- -D warnings
 
-      - name: Commit and fast-forward exact branch
+      - name: Commit source cleanup and retire bootstrap
         shell: bash
         run: |
           set -euo pipefail
@@ -186,12 +187,15 @@ jobs:
           git add -- \
             codex-rs/hepta-agentd/src/app_runtime.rs \
             codex-rs/hepta-memory/src/local_lease_outbox.rs
+          git rm -- "$WORKFLOW_PATH"
           actual="$(git diff --cached --name-only | LC_ALL=C sort)"
           expected="$(printf '%s\n' \
+            "$WORKFLOW_PATH" \
             codex-rs/hepta-agentd/src/app_runtime.rs \
             codex-rs/hepta-memory/src/local_lease_outbox.rs | LC_ALL=C sort)"
           test "$actual" = "$expected"
-          git commit -m "ci: close Hepta strict-clippy warnings"
+          git diff --cached --check
+          git commit -m "ci: close and retire Hepta strict-clippy remediation"
           git fetch --no-tags origin "refs/heads/$BRANCH"
           test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
           git push origin "HEAD:refs/heads/$BRANCH"
@@ -201,14 +205,16 @@ jobs:
         shell: bash
         run: |
           {
-            echo "schema=hepta_strict_clippy_remediation_once_v1"
+            echo "schema=hepta_strict_clippy_remediation_once_v2"
             echo "bootstrap_head=$GITHUB_SHA"
             echo "expected_parent=$EXPECTED_PARENT"
             echo "job_status=${{ job.status }}"
             echo "changed_paths=hepta-agentd/app_runtime.rs,hepta-memory/local_lease_outbox.rs"
+            echo "bootstrap_retired=true"
             echo "production_authority=false"
             echo "effect_authority=false"
             echo "model_invocation_authority=false"
             echo "operator_acceptance=false"
             echo "promotion=false"
+            echo "release=false"
           } >> "$GITHUB_STEP_SUMMARY"
