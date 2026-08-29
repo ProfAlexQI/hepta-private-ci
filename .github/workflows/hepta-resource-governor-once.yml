@@ -99,6 +99,40 @@ jobs:
               if source.count(old) != 1:
                   raise SystemExit(f"resource governor patch-script anchor drifted: {old[:80]!r}")
               source = source.replace(old, new)
+
+          def qualify_run_params(start_marker: str, end_marker: str) -> None:
+              global source
+              start = source.index(start_marker)
+              end = source.index(end_marker, start)
+              section = source[start:end]
+              lhs = '        "        output_bytes_cap,\\n    } = params;\\n",'
+              lhs_new = (
+                  '        "        expiration,\\n"\n'
+                  '        "        output_bytes_cap,\\n"\n'
+                  '        "    } = params;\\n",'
+              )
+              rhs = (
+                  '        "        output_bytes_cap,\\n"\n'
+                  '        "        tool_process_permit: _tool_process_permit,\\n"'
+              )
+              rhs_new = (
+                  '        "        expiration,\\n"\n'
+                  '        "        output_bytes_cap,\\n"\n'
+                  '        "        tool_process_permit: _tool_process_permit,\\n"'
+              )
+              if section.count(lhs) != 1 or section.count(rhs) != 1:
+                  raise SystemExit(f"run-parameter anchor drifted in {start_marker}")
+              section = section.replace(lhs, lhs_new).replace(rhs, rhs_new)
+              source = source[:start] + section + source[end:]
+
+          qualify_run_params(
+              "def patch_command_exec() -> None:",
+              "\ndef patch_command_exec_processor() -> None:",
+          )
+          qualify_run_params(
+              "def patch_process_exec() -> None:",
+              "\ndef patch_agentd() -> None:",
+          )
           path.write_text(source, encoding="utf-8")
           PY
           python3 scripts/hepta-resource-governor-once.py
