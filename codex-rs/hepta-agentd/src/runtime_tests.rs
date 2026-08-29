@@ -341,6 +341,14 @@ async fn qualification_host_binds_one_local_turn_and_replays_exactly_once() {
     assert_eq!(counts.outbox_rows, 1);
     replayed_input
         .lease
+        .rollback_occurrence(
+            &replayed_input.occurrence_key,
+            "qualification exact-once test has no downstream dispatch",
+        )
+        .await
+        .expect("settle replayed local occurrence");
+    replayed_input
+        .lease
         .release()
         .await
         .expect("release local lease");
