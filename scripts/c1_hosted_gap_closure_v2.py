@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Epoch-12 wrapper for the exact-head WEB-C1 hosted gap closure.
+"""Epoch-13 wrapper for the exact-head WEB-C1 hosted gap closure.
 
 The v1 producer owns bounded Rust 1.95 formatting, Cargo.lock regeneration,
 contract validation, CAS commit, and no-force push. This wrapper makes the
 repair transformations idempotent after partial predecessor commits, binds the
-repository migration across runner evidence contracts, and stages a private
+repository migration across runner evidence contracts, stages a private
 single-link copy of the qualification executable before the artifact-to-browser
-handshake. It does not weaken the artifact gate and grants no source, build,
-runtime, operator, promotion, or release authority.
+handshake, and removes ephemeral Cargo target directories before staging. It
+does not weaken the artifact gate and grants no source, build, runtime,
+operator, promotion, or release authority.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import pathlib
+import shutil
 import sys
 from types import ModuleType
 
@@ -25,6 +27,11 @@ POLICY_PATH = "docs/hepta-vnext/browser/RUNNER_QUALIFICATION_POLICY_V2.json"
 STARTUP_PATH = (
     "tools/hepta-browser-c1-startup-bridge/src/bin/"
     "hepta-browser-c1-startup-bridge-trial.rs"
+)
+EPHEMERAL_TARGETS = (
+    "tools/hepta-browser-c1-protocol/target",
+    "tools/hepta-browser-c1-artifact-gate/target",
+    "tools/hepta-browser-c1-startup-bridge/target",
 )
 
 
@@ -232,6 +239,8 @@ def path_allowed(path: str) -> bool:
 
 
 def commit_and_push() -> None:
+    for relative in EPHEMERAL_TARGETS:
+        shutil.rmtree(ROOT / relative, ignore_errors=True)
     BASE.run("git", "add", "--", COMMON_PATH, CONTRACTS_PATH, POLICY_PATH)
     ORIGINAL_COMMIT_AND_PUSH()
 
