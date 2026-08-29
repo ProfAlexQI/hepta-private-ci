@@ -21,6 +21,9 @@ on:
 permissions:
   contents: read
 
+env:
+  HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 concurrency:
   group: hepta-ui-v4-windows-dwm-ack-producer-${{ github.ref }}
   cancel-in-progress: true
@@ -33,6 +36,10 @@ jobs:
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Validate source formats
         run: |
@@ -82,7 +89,7 @@ jobs:
           ruby -rjson -e '
             receipt = JSON.parse(File.read("artifacts/ui-v4-windows-dwm-ack/source-gate.json"))
             receipt["candidate"] = {
-              "commit" => ENV.fetch("GITHUB_SHA"),
+              "commit" => ENV.fetch("HEPTA_CANDIDATE_SHA"),
               "tree" => ENV.fetch("CANDIDATE_TREE")
             }
             File.write(
@@ -95,7 +102,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-ui-v4-windows-dwm-ack-source-${{ github.sha }}
+          name: hepta-ui-v4-windows-dwm-ack-source-${{ env.HEPTA_CANDIDATE_SHA }}
           path: artifacts/ui-v4-windows-dwm-ack
           if-no-files-found: error
           retention-days: 14
@@ -115,6 +122,10 @@ jobs:
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Install repository Rust toolchain
         uses: dtolnay/rust-toolchain@stable

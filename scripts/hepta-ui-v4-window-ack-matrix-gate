@@ -16,6 +16,8 @@ files = {
   material_matrix: root.join("docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"),
   scenario_schema: root.join("docs/ui/schemas/hepta.ui.v4.native-component-scenario.v1.schema.json"),
   aggregate_schema: root.join("docs/ui/schemas/hepta.ui.v4.native-component-matrix.v1.schema.json"),
+  canonical_workflow: root.join(".github/workflows/hepta-ui-v4-final-gap-closure-v4.yml"),
+  dwm_workflow: root.join(".github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml"),
   workflow: root.join(".github/workflows/hepta-ui-v4-window-ack-matrix.yml")
 }.freeze
 
@@ -64,6 +66,8 @@ control_matrix = JSON.parse(files.fetch(:control_matrix).read)
 material_matrix = JSON.parse(files.fetch(:material_matrix).read)
 scenario_schema = JSON.parse(files.fetch(:scenario_schema).read)
 aggregate_schema = JSON.parse(files.fetch(:aggregate_schema).read)
+canonical_workflow = files.fetch(:canonical_workflow).read
+dwm_workflow = files.fetch(:dwm_workflow).read
 workflow = files.fetch(:workflow).read
 
 checks["shared.ack_declared"] = shared.include?("pub mod hepta_window_visual_ack;")
@@ -161,12 +165,37 @@ checks["matrices.authority_and_runtime_unclaimed"] =
   control_matrix.fetch("items").all? { |item| item.fetch("runtimeStatus") != "PASS" } &&
   material_matrix.fetch("authority").values.none? &&
   material_matrix.fetch("platforms").all? { |platform| platform.fetch("runtimeStatus") != "PASS" }
-checks["workflow.read_only_source_compile_and_manual_matrix"] =
+legacy_workflow =
   workflow.include?("ruby scripts/hepta-ui-v4-window-ack-matrix-gate") &&
   %w[ubuntu-latest windows-latest macos-latest].all? { |os| workflow.include?(os) } &&
   workflow.include?("run_component_matrix") && workflow.include?("xvfb-run") &&
   workflow.include?("contents: read") &&
   !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+archived_workflow =
+  workflow.include?("name: archived-ui-v4-contract") &&
+  workflow.include?("workflow_dispatch:") &&
+  workflow.include?("contents: read") &&
+  !workflow.match?(/^\s*(?:push|pull_request)\s*:/) &&
+  !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+canonical_replacement =
+  archived_workflow &&
+  canonical_workflow.include?("name: hepta-ui-v4-final-gap-closure-v4") &&
+  canonical_workflow.include?("HEPTA_CANDIDATE_SHA") &&
+  canonical_workflow.include?("scripts/hepta-ui-v4-executable-final-gap-closure-v3-gate") &&
+  canonical_workflow.include?("contents: read") &&
+  dwm_workflow.include?("name: hepta-ui-v4-windows-dwm-ack-producer") &&
+  dwm_workflow.include?("ruby scripts/hepta-ui-v4-window-ack-matrix-gate") &&
+  dwm_workflow.include?("HEPTA_CANDIDATE_SHA") &&
+  dwm_workflow.include?('ref: ${{ env.HEPTA_CANDIDATE_SHA }}') &&
+  %w[ubuntu-latest windows-latest macos-latest].all? { |os| dwm_workflow.include?(os) } &&
+  dwm_workflow.include?("contents: read") &&
+  !dwm_workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+checks["workflow.read_only_source_compile_and_manual_matrix"] =
+  legacy_workflow || canonical_replacement
+checks["workflow.archived_legacy_is_manual_only"] =
+  legacy_workflow || archived_workflow
+checks["workflow.canonical_replacement_exact_head"] =
+  legacy_workflow || canonical_replacement
 
 failed = checks.reject { |_name, passed| passed }
 emit(

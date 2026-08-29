@@ -1,9 +1,6 @@
 name: hepta-ui-v4-rust-served-cross-browser-final
 
 on:
-  push:
-    branches:
-      - "codex/ui-v4-executable-final-gap-closure-v3-*"
   pull_request:
     paths:
       - "apps/hepta-control-ui/**"
