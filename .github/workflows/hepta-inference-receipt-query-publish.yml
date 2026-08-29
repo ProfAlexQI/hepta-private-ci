@@ -1,0 +1,182 @@
+name: Hepta inference receipt-query product shadow publisher
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-gap-closure-scratch-check-20260829
+    paths:
+      - ".github/workflows/hepta-inference-receipt-query-publish.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-receipt-query-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Qualify and publish fenced receipt-query lifecycle
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 75
+    env:
+      TARGET_BRANCH: codex/hepta-inference-gap-closure-20260829
+      EXPECTED_PARENT: c5dd83f1e4a17a7934443912180d6150470a8625
+      PATCH_SHA256: e242594350028454a2d43c76df7c63b822523d8a9888712be815fd30256d7641
+      PATCH_GZIP_BASE64: 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
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          ref: ${{ env.EXPECTED_PARENT }}
+          fetch-depth: 0
+
+      - name: Verify exact immutable parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_PARENT"
+          test -z "$(git status --porcelain)"
+          git fetch --no-tags origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_PARENT"
+
+      - name: Materialize exact bounded patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$PATCH_GZIP_BASE64" | base64 --decode | gzip -d > "$RUNNER_TEMP/receipt-query.patch"
+          test "$(sha256sum "$RUNNER_TEMP/receipt-query.patch" | awk '{print $1}')" = "$PATCH_SHA256"
+          git apply --check "$RUNNER_TEMP/receipt-query.patch"
+          git apply "$RUNNER_TEMP/receipt-query.patch"
+          git diff --check
+
+      - name: Enforce exact source allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY2'
+          import subprocess
+          changed = set(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
+          expected = {
+              "codex-rs/hepta-infer-client/src/lib.rs",
+              "codex-rs/hepta-infer-client/src/tests.rs",
+              "codex-rs/hepta-infer-core/src/adapter.rs",
+              "codex-rs/hepta-infer-core/src/controller.rs",
+              "codex-rs/hepta-infer-core/src/lib.rs",
+              "codex-rs/hepta-infer-core/src/protocol.rs",
+              "codex-rs/hepta-infer-core/src/tests.rs",
+              "codex-rs/hepta-inferd/src/lib.rs",
+              "codex-rs/hepta-inferd/src/shadow.rs",
+              "codex-rs/hepta-inferd/src/tests.rs",
+          }
+          if changed != expected:
+              raise SystemExit(f"source allowlist mismatch: {sorted(changed)}")
+          PY2
+          grep -F 'GetReceipt' codex-rs/hepta-infer-core/src/protocol.rs >/dev/null
+          grep -F 'terminal_receipt_fenced' codex-rs/hepta-infer-core/src/controller.rs >/dev/null
+          grep -F 'await_terminal_receipt' codex-rs/hepta-infer-client/src/lib.rs >/dev/null
+          grep -F 'creates_terminal_receipt' codex-rs/hepta-inferd/src/lib.rs >/dev/null
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Format exact inference packages
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
+          cargo fmt \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd -- --check
+
+      - name: Verify source and authority contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-inference-inf0-source-gate.py \
+            scripts/hepta-inference-inf0c-cancel-reclassifier.py
+          python3 scripts/hepta-inference-inf0-source-gate.py
+
+      - name: Locked check
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo check --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
+
+      - name: All-target tests
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo test --locked --all-targets \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd
+
+      - name: Strict Clippy
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          cargo clippy --locked --all-targets --no-deps \
+            -p codex-hepta-infer-core \
+            -p codex-hepta-infer-client \
+            -p codex-hepta-inferd -- -D warnings
+
+      - name: Create bounded source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            codex-rs/hepta-infer-client/src/lib.rs \
+            codex-rs/hepta-infer-client/src/tests.rs \
+            codex-rs/hepta-infer-core/src/adapter.rs \
+            codex-rs/hepta-infer-core/src/controller.rs \
+            codex-rs/hepta-infer-core/src/lib.rs \
+            codex-rs/hepta-infer-core/src/protocol.rs \
+            codex-rs/hepta-infer-core/src/tests.rs \
+            codex-rs/hepta-inferd/src/lib.rs \
+            codex-rs/hepta-inferd/src/shadow.rs \
+            codex-rs/hepta-inferd/src/tests.rs
+          test -z "$(git diff --name-only)"
+          git commit -m "feat(inference): close fenced receipt-query shadow lifecycle"
+          echo "CANDIDATE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "CANDIDATE_TREE=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_ENV"
+
+      - name: Revalidate and fast-forward target branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_PARENT"
+          git push origin HEAD:"$TARGET_BRANCH"
+
+      - name: Record fail-closed publisher result
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Hepta inference receipt-query shadow publisher"
+            echo
+            echo "- expected parent: $EXPECTED_PARENT"
+            echo "- candidate: ${CANDIDATE_SHA:-not-created}"
+            echo "- candidate tree: ${CANDIDATE_TREE:-not-created}"
+            echo "- qualification_only: true"
+            echo "- product default route changed: false"
+            echo "- production authority: false"
+            echo "- operator acceptance: false"
+            echo "- promotion: false"
+            echo "- release: false"
+          } >> "$GITHUB_STEP_SUMMARY"
