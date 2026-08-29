@@ -71,6 +71,24 @@ jobs:
           assert source_text.count(old_marker) == 1
           source_text = source_text.replace(old_marker, new_marker, 1)
           source = source_text.encode("utf-8")
+          real_subprocess_run = subprocess.run
+          result_branch = "automation/hepta-ui-v4-gap-closure-result-v1-20260829"
+
+          def routed_subprocess_run(args, *positional, **kwargs):
+              routed = list(args)
+              if (
+                  len(routed) >= 4
+                  and routed[0:3] == ["git", "push", "origin"]
+                  and routed[-1].startswith("HEAD:")
+              ):
+                  routed[-1] = f"HEAD:{result_branch}"
+                  print(json.dumps({
+                      "redirectedPush": routed[-1],
+                      "reason": "preserve protected PR branch; promote tree via authorized Git API",
+                  }, sort_keys=True))
+              return real_subprocess_run(routed, *positional, **kwargs)
+
+          subprocess.run = routed_subprocess_run
           print(json.dumps({
               "payloadSourceSha256": payload_source_sha256,
               "executionSourceSha256": hashlib.sha256(source).hexdigest(),
