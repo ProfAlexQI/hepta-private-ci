@@ -69,6 +69,16 @@ def require_equal(actual: Any, expected: Any, field: str) -> None:
         fail(f"{field} drift: expected {expected!r}, observed {actual!r}")
 
 
+def require_tracked_checkout_unchanged() -> None:
+    for arguments in (
+        ("diff", "--quiet", "--ignore-submodules", "--"),
+        ("diff", "--cached", "--quiet", "--ignore-submodules", "--"),
+    ):
+        result = subprocess.run(["git", *arguments], cwd=ROOT, check=False)
+        if result.returncode != 0:
+            fail("tracked checkout is not clean")
+
+
 def require_commit_tree(commit: str, expected_tree: str, label: str) -> None:
     try:
         actual_tree = git("rev-parse", f"{commit}^{{tree}}")
@@ -88,8 +98,7 @@ def require_ancestor(commit: str, label: str) -> None:
 
 
 def main() -> None:
-    if git("status", "--porcelain"):
-        fail("checkout is not clean")
+    require_tracked_checkout_unchanged()
 
     receipt = load_receipt()
     require_equal(receipt.get("schema"), EXPECTED["schema"], "schema")
@@ -172,6 +181,13 @@ def main() -> None:
     require_ancestor(EXPECTED["source_binding_commit"], "source binding")
     require_ancestor(EXPECTED["source_candidate_commit"], "source candidate")
     require_ancestor(EXPECTED["parent_stack_receipt_commit"], "parent stack")
+
+    historical_receipt = git(
+        "show",
+        f"93bdd3245c2f3d0685ceae8e2ce1267c40a63685:{RECEIPT_PATH}",
+    )
+    current_receipt = (ROOT / RECEIPT_PATH).read_text(encoding="utf-8").rstrip("\n")
+    require_equal(current_receipt, historical_receipt, "historical receipt content")
 
     raw = (ROOT / RECEIPT_PATH).read_bytes()
     result = {
