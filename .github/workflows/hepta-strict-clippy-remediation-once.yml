@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
-      EXPECTED_PARENT: 04c4d66d208af6a9ae4f5653da2c31931260f34b
+      EXPECTED_PARENT: 0cd36d07f3e22643641c8b6a78ae831d17cb1d83
       BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
       WORKFLOW_PATH: .github/workflows/hepta-strict-clippy-remediation-once.yml
     steps:
@@ -42,6 +42,11 @@ jobs:
       - name: Set up CI environment
         uses: ./.github/actions/setup-ci
 
+      - name: Install pinned Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
         with:
@@ -51,7 +56,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
+          python - <<'PY'
           from pathlib import Path
 
           memory = Path("codex-rs/hepta-memory/src/local_lease_outbox.rs")
@@ -158,14 +163,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          command -v python3.11
-          python3.11 --version
-          python3.11 .github/scripts/verify_cargo_workspace_manifests.py
-          python3.11 scripts/verify-hepta-architecture-convergence-p0-2.py
-          python3.11 scripts/verify-hepta-authority-callers-p0-1.py
-          python3.11 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
-          python3.11 scripts/verify-hepta-cross-owner-operation-wiring.py
-          python3.11 scripts/verify-hepta-architecture-gap-ledger.py
+          python --version
+          python .github/scripts/verify_cargo_workspace_manifests.py
+          python scripts/verify-hepta-architecture-convergence-p0-2.py
+          python scripts/verify-hepta-authority-callers-p0-1.py
+          python scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python scripts/verify-hepta-cross-owner-operation-wiring.py
+          python scripts/verify-hepta-architecture-gap-ledger.py
 
       - name: Run formatting, checks, and strict Clippy
         working-directory: codex-rs
@@ -208,14 +212,14 @@ jobs:
         shell: bash
         run: |
           {
-            echo "schema=hepta_strict_clippy_remediation_once_v5"
+            echo "schema=hepta_strict_clippy_remediation_once_v6"
             echo "bootstrap_head=$GITHUB_SHA"
             echo "expected_parent=$EXPECTED_PARENT"
             echo "job_status=${{ job.status }}"
             echo "changed_paths=hepta-agentd/app_runtime.rs,hepta-memory/local_lease_outbox.rs"
             echo "bootstrap_retired=${{ job.status == 'success' }}"
             echo "bootstrap_runner=ubuntu-22.04"
-            echo "bootstrap_python=python3.11"
+            echo "bootstrap_python=3.12"
             echo "canonical_qualification_runner=ubuntu-24.04"
             echo "production_authority=false"
             echo "effect_authority=false"
