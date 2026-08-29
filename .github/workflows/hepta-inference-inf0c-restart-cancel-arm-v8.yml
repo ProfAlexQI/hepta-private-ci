@@ -1,0 +1,417 @@
+name: Hepta inference INF-0C restart and cancel closure v8
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0c-real-services-arm-20260828
+    paths:
+      - ".github/workflows/hepta-inference-inf0c-restart-cancel-arm-v8.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-inf0c-restart-cancel-arm-v8
+  cancel-in-progress: false
+
+jobs:
+  closure:
+    name: Exact tuple disconnect restart and cancellation closure
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 240
+    env:
+      CANDIDATE_BRANCH: codex/hepta-inference-inf0c-toolcall-restacked-20260829
+      CANDIDATE_RECEIPT: cd3344d767667b177d6d21c7198bade228d010bb
+      CANDIDATE_SOURCE: a45d0b6b1591ed67f6f580879a706849a81c6fe9
+      CANDIDATE_TREE: eb415339159aff6bdf39a2030b55432d89321f2d
+      CANCEL_BRANCH: codex/hepta-inference-inf0c-cancel-capability-v3-20260828
+      CANCEL_SOURCE: cf8b448c4d09d1677519a674126fb7dc61452414
+      CANCEL_RECEIPT: 6109b43cd303253d84c9ef0a16ae4592d9e96cd0
+      EXPECTED_PARENT: e3d36118a3346818512d94c0a5f19c408b8bc33e
+      SELF: .github/workflows/hepta-inference-inf0c-restart-cancel-arm-v8.yml
+      OLLAMA_MODEL: granite4:1b
+      LMSTUDIO_MODEL: ibm/granite-4-micro
+      LMSTUDIO_DOWNLOAD: ibm/granite-4-micro@q4_k_m
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_CONTEXT_LENGTH: "2048"
+      EXPECTED_OLLAMA_INSTALLER_SHA256: 25f64b810b947145095956533e1bdf56eacea2673c55a7e586be4515fc882c9f
+      EXPECTED_LMSTUDIO_INSTALLER_SHA256: f6492caf54327951d55f281133d0d9646efd62985c2465c597bfff8d35b6795f
+      PRIOR_CAPABILITY_RUN: "33235893994"
+      PRIOR_CAPABILITY_ARTIFACT_SHA256: 53d60bb1f990cb6c982d41e8d4597300dabedb5df3b838aa1d91dceecf170d01
+      CI: "1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify isolated workflow and detach exact sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          echo "WORKFLOW_COMMIT=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "WORKFLOW_TREE=$(git rev-parse HEAD^{tree})" >> "$GITHUB_ENV"
+          git fetch --no-tags origin \
+            "refs/heads/$CANDIDATE_BRANCH:refs/remotes/origin/hepta-inf0c-capability-v3" \
+            "refs/heads/$CANCEL_BRANCH:refs/remotes/origin/hepta-inf0c-cancel-v3"
+          test "$(git rev-parse refs/remotes/origin/hepta-inf0c-capability-v3)" = "$CANDIDATE_RECEIPT"
+          test "$(git rev-parse "$CANDIDATE_RECEIPT^")" = "$CANDIDATE_SOURCE"
+          test "$(git rev-parse "$CANDIDATE_SOURCE^{tree}")" = "$CANDIDATE_TREE"
+          test "$(git rev-parse refs/remotes/origin/hepta-inf0c-cancel-v3)" = "$CANCEL_RECEIPT"
+          test "$(git rev-parse "$CANCEL_RECEIPT^")" = "$CANCEL_SOURCE"
+          git checkout --detach "$CANDIDATE_RECEIPT"
+          test -z "$(git status --porcelain)"
+
+      - name: Verify evidence source and materialize cancellation probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-inference-inf0c-real-e2e.py \
+            scripts/hepta-inference-inf0c-evidence-v2.py
+          python3 scripts/hepta-inference-inf0c-evidence-v2.py --self-test \
+            | tee "$RUNNER_TEMP/hepta-inf0c-evidence-v2-selftest.txt"
+          cancel_dir="$RUNNER_TEMP/hepta-inf0c-cancel-v3"
+          install -d -m 700 "$cancel_dir"
+          git show "$CANCEL_SOURCE:scripts/hepta-inference-inf0c-cancel-capability-v3.py" \
+            > "$cancel_dir/hepta-inference-inf0c-cancel-capability-v3.py"
+          cp scripts/hepta-inference-inf0c-real-e2e.py \
+            "$cancel_dir/hepta-inference-inf0c-real-e2e.py"
+          chmod 500 "$cancel_dir"/*.py
+          python3 -m py_compile "$cancel_dir"/*.py
+          sha256sum "$cancel_dir"/*.py > "$RUNNER_TEMP/hepta-inf0c-cancel-v3-source-sha256.txt"
+
+      - name: Prepare private qualification roots
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 \
+            "$RUNNER_TEMP/hepta-inf0c-v8" \
+            "$HOME/.hepta-qualification-v8" \
+            "$HOME/.hepta-qualification-v8/control"
+          echo "$HOME/.lmstudio/bin" >> "$GITHUB_PATH"
+
+      - name: Install exact audited runtimes
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/hepta-inf0c-v8"
+          curl --proto '=https' --tlsv1.2 -fsSL https://ollama.com/install.sh \
+            -o "$root/ollama-install.sh"
+          curl --proto '=https' --tlsv1.2 -fsSL https://lmstudio.ai/install.sh \
+            -o "$root/lmstudio-install.sh"
+          test "$(sha256sum "$root/ollama-install.sh" | awk '{print $1}')" = \
+            "$EXPECTED_OLLAMA_INSTALLER_SHA256"
+          test "$(sha256sum "$root/lmstudio-install.sh" | awk '{print $1}')" = \
+            "$EXPECTED_LMSTUDIO_INSTALLER_SHA256"
+          chmod 500 "$root/ollama-install.sh" "$root/lmstudio-install.sh"
+          sh "$root/ollama-install.sh"
+          bash "$root/lmstudio-install.sh"
+          test -x "$HOME/.lmstudio/bin/lms"
+          sudo systemctl stop ollama.service 2>/dev/null || true
+          sudo systemctl disable ollama.service 2>/dev/null || true
+          ollama --version | tee "$root/ollama-version.txt"
+          "$HOME/.lmstudio/bin/lms" --version | tee "$root/lms-version-before-daemon.txt"
+
+      - name: Start Ollama and explicitly provision exact model
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/hepta-inf0c-v8"
+          state="$HOME/.hepta-qualification-v8"
+          ollama_bin="$(command -v ollama)"
+          nohup env OLLAMA_HOST="$OLLAMA_HOST" OLLAMA_CONTEXT_LENGTH="$OLLAMA_CONTEXT_LENGTH" \
+            "$ollama_bin" serve >"$root/ollama-service.log" 2>&1 &
+          echo $! > "$state/ollama.pid"
+          for attempt in $(seq 1 120); do
+            if curl --noproxy '*' -fsS http://127.0.0.1:11434/api/version >/dev/null; then break; fi
+            test "$attempt" -lt 120
+            sleep 1
+          done
+          ollama pull "$OLLAMA_MODEL"
+          curl --noproxy '*' -fsS http://127.0.0.1:11434/api/tags > "$root/ollama-inventory-before.json"
+
+      - name: Stabilize LM Studio and explicitly provision exact GGUF
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/hepta-inf0c-v8"
+          mutable="$HOME/.lmstudio/bin/lms"
+          run_mutable_lms() {
+            local limit="$1"; shift
+            local error_file="$root/lms-v8-error.txt"
+            local status=0
+            for _ in $(seq 1 120); do
+              : > "$error_file"
+              set +e
+              timeout "$limit" "$mutable" "$@" 2>"$error_file"
+              status=$?
+              set -e
+              if [[ "$status" -eq 0 ]]; then rm -f "$error_file"; return 0; fi
+              if [[ "$status" -ne 126 ]] || ! grep -Fq "Text file busy" "$error_file"; then
+                cat "$error_file" >&2
+                return "$status"
+              fi
+              sleep 1
+            done
+            return "$status"
+          }
+          run_mutable_lms 5m daemon up --json > "$root/lmstudio-daemon.json"
+          previous=""; stable=0
+          for attempt in $(seq 1 120); do
+            current="$(sha256sum "$mutable" | awk '{print $1}')"
+            set +e; "$mutable" --version >/dev/null 2>&1; status=$?; set -e
+            if [[ "$status" -eq 0 && "$current" == "$previous" ]]; then stable=$((stable + 1)); else stable=0; fi
+            if [[ "$stable" -ge 3 ]]; then break; fi
+            previous="$current"
+            test "$attempt" -lt 120
+            sleep 1
+          done
+          mutable="$(realpath "$mutable")"
+          immutable="$HOME/.hepta-qualification-v8/control/lms"
+          install -m 500 "$mutable" "$immutable"
+          immutable="$(realpath "$immutable")"
+          cli_digest="$(sha256sum "$immutable" | awk '{print $1}')"
+          echo "LMS_CLI=$immutable" >> "$GITHUB_ENV"
+          echo "LMS_CLI_SHA256=$cli_digest" >> "$GITHUB_ENV"
+          printf 'sha256:%s\n' "$cli_digest" > "$root/lms-cli-stable-sha256.txt"
+          "$immutable" --version | tee "$root/lms-version-stable.txt"
+          timeout 45m "$immutable" get "$LMSTUDIO_DOWNLOAD" --gguf
+          timeout 5m "$immutable" ls --json > "$root/lmstudio-inventory-before.json"
+          if ! timeout 20m "$immutable" load "$LMSTUDIO_DOWNLOAD" \
+            --identifier "$LMSTUDIO_MODEL" --context-length 2048 --gpu off; then
+            timeout 20m "$immutable" load "$LMSTUDIO_MODEL" \
+              --identifier "$LMSTUDIO_MODEL" --context-length 2048 --gpu off
+          fi
+          timeout 5m "$immutable" ps --json > "$root/lmstudio-loaded-before.json"
+          timeout 5m "$immutable" server start --port 1234 --bind 127.0.0.1
+          for attempt in $(seq 1 180); do
+            if curl --noproxy '*' -fsS http://127.0.0.1:1234/v1/models >/dev/null; then break; fi
+            test "$attempt" -lt 180
+            sleep 1
+          done
+
+      - name: Build asynchronous digest-pinned fixed-argv control helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/hepta-inf0c-v8"
+          state="$HOME/.hepta-qualification-v8"
+          helper="$HOME/.hepta-qualification-v8/control/service-control-v8"
+          ollama_bin="$(command -v ollama)"
+          lms_bin="$LMS_CLI"
+          lms_digest="$LMS_CLI_SHA256"
+          cat > "$helper" <<EOF
+          #!/usr/bin/env bash
+          set -euo pipefail
+          export PATH=/usr/local/bin:/usr/bin:/bin
+          action="\${1:-}"; service="\${2:-}"
+          state_dir='$state'
+          root='$root'
+          lms='$lms_bin'
+          test "\$(sha256sum "\$lms" | awk '{print \$1}')" = '$lms_digest'
+          run_lms() {
+            local limit="\$1"; shift
+            local status=0
+            for _ in \$(seq 1 120); do
+              set +e
+              timeout "\$limit" "\$lms" "\$@" >>"\$root/lmstudio-stop-v8.log" 2>&1
+              status=\$?
+              set -e
+              if [[ "\$status" -eq 0 ]]; then return 0; fi
+              if [[ "\$status" -ne 126 ]]; then return "\$status"; fi
+              sleep 1
+            done
+            return "\$status"
+          }
+          case "\$action:\$service" in
+            stop:ollama)
+              if [[ -s "\$state_dir/ollama.pid" ]]; then
+                pid="\$(cat "\$state_dir/ollama.pid")"; kill "\$pid" 2>/dev/null || true
+                for _ in \$(seq 1 80); do kill -0 "\$pid" 2>/dev/null || break; sleep 0.25; done
+                rm -f "\$state_dir/ollama.pid"
+              fi
+              ;;
+            start:ollama)
+              nohup env OLLAMA_HOST=127.0.0.1:11434 OLLAMA_CONTEXT_LENGTH=2048 \
+                '$ollama_bin' serve >>"\$root/ollama-restart-v8.log" 2>&1 &
+              echo \$! > "\$state_dir/ollama.pid"
+              ;;
+            stop:lmstudio)
+              run_lms 5m server stop || true
+              run_lms 5m unload --all || true
+              run_lms 5m daemon down || true
+              rm -f "\$state_dir/lmstudio-start.pid"
+              ;;
+            start:lmstudio)
+              if [[ -s "\$state_dir/lmstudio-start.pid" ]] && \
+                 kill -0 "\$(cat "\$state_dir/lmstudio-start.pid")" 2>/dev/null; then
+                exit 75
+              fi
+              nohup /usr/bin/bash "\$0" internal-start lmstudio \
+                >>"\$root/lmstudio-start-v8.log" 2>&1 &
+              echo \$! > "\$state_dir/lmstudio-start.pid"
+              ;;
+            internal-start:lmstudio)
+              trap 'rm -f "\$state_dir/lmstudio-start.pid"' EXIT
+              timeout 5m "\$lms" daemon up --json
+              if ! timeout 20m "\$lms" load '$LMSTUDIO_DOWNLOAD' \
+                --identifier '$LMSTUDIO_MODEL' --context-length 2048 --gpu off; then
+                timeout 20m "\$lms" load '$LMSTUDIO_MODEL' \
+                  --identifier '$LMSTUDIO_MODEL' --context-length 2048 --gpu off
+              fi
+              timeout 5m "\$lms" server start --port 1234 --bind 127.0.0.1
+              ;;
+            *) exit 64 ;;
+          esac
+          test "\$(sha256sum "\$lms" | awk '{print \$1}')" = '$lms_digest'
+          EOF
+          chmod 500 "$helper"
+          helper="$(realpath "$helper")"
+          helper_digest="$(sha256sum "$helper" | awk '{print $1}')"
+          echo "HEPTA_INF0C_SERVICE_CONTROL_HELPER=$helper" >> "$GITHUB_ENV"
+          echo "HEPTA_INF0C_SERVICE_CONTROL_HELPER_SHA256=sha256:$helper_digest" >> "$GITHUB_ENV"
+          printf 'sha256:%s\n' "$helper_digest" > "$root/control-helper-sha256.txt"
+          "$helper" stop ollama
+          "$helper" start ollama
+          for attempt in $(seq 1 180); do
+            if curl --noproxy '*' -fsS http://127.0.0.1:11434/api/version >/dev/null; then break; fi
+            test "$attempt" -lt 180
+            sleep 1
+          done
+          test "$(sha256sum "$helper" | awk '{print $1}')" = "$helper_digest"
+
+      - name: Execute bounded disconnect and controlled restart evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/hepta-inf0c-v8"
+          python3 scripts/hepta-inference-inf0c-evidence-v2.py --execute \
+            --run-controlled-restart \
+            --ollama-model "$OLLAMA_MODEL" \
+            --lmstudio-model "$LMSTUDIO_MODEL" \
+            --receipt "$root/disconnect-restart-evidence.json"
+          test -s "$root/disconnect-restart-evidence.json"
+          timeout 5m "$LMS_CLI" ps --json > "$root/lmstudio-loaded-after-restart.json"
+          curl --noproxy '*' -fsS http://127.0.0.1:11434/api/tags > "$root/ollama-inventory-after.json"
+          curl --noproxy '*' -fsS http://127.0.0.1:1234/v1/models > "$root/lmstudio-inventory-after.json"
+
+      - name: Classify explicit provider cancellation fail closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/hepta-inf0c-v8"
+          cancel_dir="$RUNNER_TEMP/hepta-inf0c-cancel-v3"
+          set +e
+          python3 "$cancel_dir/hepta-inference-inf0c-cancel-capability-v3.py" --execute \
+            --ollama-model "$OLLAMA_MODEL" \
+            --lmstudio-model "$LMSTUDIO_MODEL" \
+            --receipt "$root/cancel-capability.json"
+          probe_status=$?
+          set -e
+          test -s "$root/cancel-capability.json"
+          python3 - "$root/cancel-capability.json" "$probe_status" <<'PY'
+          import json, pathlib, sys
+          path=pathlib.Path(sys.argv[1]); status=int(sys.argv[2])
+          data=json.loads(path.read_text())
+          providers=data.get('providers',{})
+          assert set(providers)=={'ollama','lmstudio'}
+          allowed={'explicit_background_cancel_acknowledged','explicit_cancel_unsupported'}
+          for result in providers.values():
+              assert result['classification'] in allowed
+              assert result['provider_cancel_capability_classified'] is True
+              assert result.get('transport_disconnect_used') is False
+          acknowledged=all(result.get('provider_cancel_acknowledged') is True for result in providers.values())
+          summary={
+            'schema':'hepta.inference.inf0c.cancel_capability_classification.v2',
+            'provider_cancel_capability_evidence_complete':True,
+            'backend_cancellation_acknowledged':acknowledged,
+            'compensating_controlled_worker_termination_required':not acknowledged,
+            'probe_exit_status':status,
+            'providers':providers,
+            'qualified':False,
+          }
+          path.with_name('cancel-capability-classification.json').write_text(json.dumps(summary,indent=2)+'\n')
+          PY
+
+      - name: Build and enforce restart cancellation closure receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/hepta-inf0c-v8"
+          python3 - "$root" <<'PY'
+          import hashlib, json, os, pathlib, platform, sys, time
+          root=pathlib.Path(sys.argv[1])
+          restart=json.loads((root/'disconnect-restart-evidence.json').read_text())
+          cancel=json.loads((root/'cancel-capability.json').read_text())
+          classification=json.loads((root/'cancel-capability-classification.json').read_text())
+          assert restart['transport_disconnect_executed'] is True
+          assert restart['controlled_restart_executed'] is True
+          assert restart['cancellation']['ollama']['transport_disconnect_executed'] is True
+          assert restart['cancellation']['lmstudio']['transport_disconnect_executed'] is True
+          assert restart['providers']['ollama']['post_restart_inference']['semantic_output_exact'] is True
+          assert restart['providers']['lmstudio']['post_restart_inference']['semantic_output_exact'] is True
+          assert restart['raw_prompt_persisted'] is False
+          assert restart['raw_model_output_persisted'] is False
+          assert classification['provider_cancel_capability_evidence_complete'] is True
+          files={}
+          for path in sorted(root.iterdir()):
+              if path.is_file():
+                  payload=path.read_bytes()
+                  files[path.name]={'bytes':len(payload),'sha256':hashlib.sha256(payload).hexdigest()}
+          receipt={
+            'schema':'hepta.inference.inf0c.restart_cancel_closure.v1',
+            'candidate_receipt':os.environ['CANDIDATE_RECEIPT'],
+            'candidate_source':os.environ['CANDIDATE_SOURCE'],
+            'candidate_tree':os.environ['CANDIDATE_TREE'],
+            'workflow_commit':os.environ['WORKFLOW_COMMIT'],
+            'workflow_tree':os.environ['WORKFLOW_TREE'],
+            'prior_capability_run':int(os.environ['PRIOR_CAPABILITY_RUN']),
+            'prior_capability_artifact_sha256':os.environ['PRIOR_CAPABILITY_ARTIFACT_SHA256'],
+            'runner':{'system':platform.system(),'machine':platform.machine()},
+            'generated_unix_ms':time.time_ns()//1_000_000,
+            'exact_tuples':{
+              'ollama':{'model':os.environ['OLLAMA_MODEL']},
+              'lmstudio':{'model':os.environ['LMSTUDIO_MODEL'],'artifact':os.environ['LMSTUDIO_DOWNLOAD']},
+            },
+            'transport_disconnect_qualified':True,
+            'controlled_restart_qualified':True,
+            'post_restart_exact_semantic_inference_qualified':True,
+            'provider_cancel_capability_evidence_complete':True,
+            'provider_cancel_acknowledged':classification['backend_cancellation_acknowledged'],
+            'controlled_worker_termination_compensates_when_provider_cancel_unsupported':classification['compensating_controlled_worker_termination_required'],
+            'raw_prompt_persisted':False,
+            'raw_model_output_persisted':False,
+            'files':files,
+            'production_qualified':False,
+            'operator_accepted':False,
+            'promoted':False,
+            'released':False,
+          }
+          (root/'restart-cancel-closure.json').write_text(json.dumps(receipt,indent=2)+'\n')
+          PY
+          find "$root" -type f -print0 | sort -z | xargs -0 sha256sum > "$root/SHA256SUMS"
+          {
+            echo "candidate=$CANDIDATE_RECEIPT"
+            echo "transport_disconnect=PASS"
+            echo "controlled_restart=PASS"
+            echo "post_restart_exact_semantic_inference=PASS"
+            echo "provider_cancel_capability_evidence_complete=true"
+            echo "production_qualified=false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload restart cancellation closure evidence
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0c-restart-cancel-v8-${{ env.CANDIDATE_RECEIPT }}
+          path: |
+            ${{ runner.temp }}/hepta-inf0c-v8
+            ${{ runner.temp }}/hepta-inf0c-cancel-v3-source-sha256.txt
+            ${{ runner.temp }}/hepta-inf0c-cancel-v3
+            ${{ runner.temp }}/hepta-inf0c-evidence-v2-selftest.txt
+          if-no-files-found: error
+          retention-days: 14
