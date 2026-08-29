@@ -1,0 +1,66 @@
+{
+  "schema": "hepta.ui.remaining-external-blockers.v7",
+  "status": "ONLY_NON_SYNTHESIZABLE_EVIDENCE_REMAINS_AFTER_EXECUTABLE_CLOSURE",
+  "sourceControllableGapsClosed": true,
+  "sourceImplementationGaps": [],
+  "resolvedRepositoryBlockers": [
+    "generic UI workflow exact-head checkout",
+    "Rust 1.88/sqlx 0.9 MSRV conflict",
+    "runner-only proof without Rust execution",
+    "unnamed platform device semantics",
+    "missing Chrome human browser coverage"
+  ],
+  "externalEvidence": [
+    {
+      "slot": "runnerExecution",
+      "required": "Same-run exact-head source, served bundle, Native, converged platform, and iOS/Android target jobs execute successfully on assigned runners",
+      "syntheticEvidenceAllowed": false
+    },
+    {
+      "slot": "windowsDevice",
+      "required": "Physical Windows DWM Mica/Acrylic/None rollback and lifecycle receipt",
+      "syntheticEvidenceAllowed": false
+    },
+    {
+      "slot": "operatorAcceptance",
+      "required": "Ed25519-verified candidate-bound non-delegable human operator acceptance within an unexpired review window",
+      "syntheticEvidenceAllowed": false
+    },
+    {
+      "slot": "macosDevice",
+      "required": "Physical macOS AppKit material, active/inactive, accessibility fallback, rollback, suspend, and shutdown receipt",
+      "syntheticEvidenceAllowed": false
+    },
+    {
+      "slot": "iosDevice",
+      "required": "Physical iOS UIKit material, Dynamic Type, safe-area, keyboard, accessibility fallback, rollback, suspend, and shutdown receipt",
+      "syntheticEvidenceAllowed": false
+    },
+    {
+      "slot": "androidDevice",
+      "required": "Physical Android Material 3 dynamic color, IME/navigation inset, animator scale, fallback, rollback, suspend, and shutdown receipt",
+      "syntheticEvidenceAllowed": false
+    },
+    {
+      "slot": "crossBrowserRuntime",
+      "required": "Exact Rust-served Chromium, Edge, Firefox, WebKit/Linux, and WebKit/macOS runtime matrix with screenshot hashes and network audit",
+      "syntheticEvidenceAllowed": false
+    },
+    {
+      "slot": "browserHumanAcceptance",
+      "required": "Ed25519-verified human screenshot and accessibility acceptance on physical Chrome, Edge, Firefox, and Safari",
+      "syntheticEvidenceAllowed": false
+    }
+  ],
+  "allGapsClosed": false,
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

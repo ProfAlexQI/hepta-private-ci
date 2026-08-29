@@ -1,0 +1,79 @@
+{
+  "schema": "hepta.ui.executable-final-gap-closure.v3",
+  "status": "SOURCE_AND_EXECUTABLE_FRAMEWORK_READY_EXTERNAL_EVIDENCE_REQUIRED",
+  "base": {
+    "pullRequest": 62,
+    "branch": "codex/ui-v4-final-source-and-evidence-closure-20260829",
+    "commit": "8fbdc5d126f4893e689bf03b3c26e8a20c3cb463",
+    "tree": "6e38ae44845debc556dbc6ed0f0fc915322fabec"
+  },
+  "rustToolchain": "1.95.0",
+  "genericWorkflow": {
+    "exactHeadCheckout": true,
+    "mergeRefQualificationAllowed": false,
+    "servedBundleCompile": true,
+    "nativeFocusedTests": true
+  },
+  "sameRunExecutableJobs": [
+    "Final gap v3 source contract",
+    "Final gap v3 served and Native contracts",
+    "Final gap v3 platform contracts (ubuntu-latest)",
+    "Final gap v3 platform contracts (windows-latest)",
+    "Final gap v3 platform contracts (macos-latest)",
+    "Final gap v3 mobile target (aarch64-apple-ios)",
+    "Final gap v3 mobile target (aarch64-linux-android)"
+  ],
+  "runnerExecutionRequirements": {
+    "nonzeroRunnerId": true,
+    "nonemptyRunnerName": true,
+    "nonemptySuccessfulSteps": true,
+    "exactHead": true,
+    "servedBundleCompiled": true,
+    "nativeContractsTested": true,
+    "globalPlatformHarnessTested": true,
+    "windowsSafetyHarnessTested": true,
+    "iosTargetCompiled": true,
+    "androidTargetCompiled": true
+  },
+  "requiredEvidenceSlots": [
+    "runnerExecution",
+    "windowsDevice",
+    "operatorAcceptance",
+    "macosDevice",
+    "iosDevice",
+    "androidDevice",
+    "crossBrowserRuntime",
+    "browserHumanAcceptance"
+  ],
+  "humanBrowserCoverage": [
+    "chrome",
+    "edge",
+    "firefox",
+    "safari"
+  ],
+  "sourceControllableGapsClosed": true,
+  "externalEvidenceComplete": false,
+  "allGapsClosed": false,
+  "permanentBoundary": {
+    "productWired": false,
+    "productCargoFeatureDeclared": false,
+    "productModuleRegistered": false,
+    "productLifecycleWired": false,
+    "automaticBindingAllowed": false,
+    "productHostMayBind": false,
+    "productBound": false,
+    "systemMaterialBound": false,
+    "nativeProductRuntime": false,
+    "deviceValidation": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
