@@ -139,7 +139,39 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt
 
+      - name: Install Linux Native build dependencies
+        id: deps
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential \
+            pkg-config \
+            clang \
+            ca-certificates \
+            libssl-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxkbcommon-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxinerama-dev \
+            libasound2-dev \
+            libpulse-dev \
+            libwayland-dev \
+            wayland-protocols \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev \
+            libgles2-mesa-dev \
+            libglx-dev \
+            libdrm-dev \
+            libgbm-dev
+
       - name: Compile digest-bound served bundle path
+        id: served
+        continue-on-error: true
         env:
           CARGO_TERM_COLOR: always
         run: |
@@ -149,9 +181,13 @@ jobs:
           cargo test --manifest-path codex-rs/Cargo.toml -p hepta-core --test control_ui_v4_bundle
 
       - name: Check Native formatting
+        id: format
+        continue-on-error: true
         run: cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
 
       - name: Compile and test fail-closed Native v4 contracts
+        id: native
+        continue-on-error: true
         env:
           CARGO_TERM_COLOR: always
         run: |
@@ -166,11 +202,46 @@ jobs:
       - name: Write exact compile receipt
         if: always()
         shell: bash
+        env:
+          DEPS_OUTCOME: ${{ steps.deps.outcome }}
+          SERVED_OUTCOME: ${{ steps.served.outcome }}
+          FORMAT_OUTCOME: ${{ steps.format.outcome }}
+          NATIVE_OUTCOME: ${{ steps.native.outcome }}
         run: |
+          set -euo pipefail
           mkdir -p artifacts/ui-v4-native
-          printf '{"schema":"hepta.ui.v4.generic-native-compile.v1","candidate":{"commit":"%s","tree":"%s"},"rustToolchain":"1.95.0","productBound":false,"systemMaterialBound":false,"authority":{"network":false,"mutation":false,"effect":false,"liveAdapter":false,"production":false,"operatorAcceptance":false,"promotion":false,"release":false}}\n' \
-            "$HEPTA_CANDIDATE_SHA" "$(git rev-parse 'HEAD^{tree}')" \
-            > artifacts/ui-v4-native/receipt.json
+          ruby -rjson -e '
+            checks = {
+              "linuxNativeDependencies" => ENV.fetch("DEPS_OUTCOME"),
+              "servedBundle" => ENV.fetch("SERVED_OUTCOME"),
+              "nativeFormatting" => ENV.fetch("FORMAT_OUTCOME"),
+              "nativeContracts" => ENV.fetch("NATIVE_OUTCOME")
+            }
+            pass = checks.values.all? { |value| value == "success" }
+            payload = {
+              "schema" => "hepta.ui.v4.generic-native-compile.v2",
+              "status" => pass ? "PASS_GENERIC_NATIVE_COMPILE" : "FAIL_GENERIC_NATIVE_COMPILE",
+              "candidate" => {
+                "commit" => ENV.fetch("HEPTA_CANDIDATE_SHA"),
+                "tree" => `git rev-parse HEAD^{tree}`.strip
+              },
+              "rustToolchain" => "1.95.0",
+              "checks" => checks,
+              "productBound" => false,
+              "systemMaterialBound" => false,
+              "authority" => {
+                "network" => false,
+                "mutation" => false,
+                "effect" => false,
+                "liveAdapter" => false,
+                "production" => false,
+                "operatorAcceptance" => false,
+                "promotion" => false,
+                "release" => false
+              }
+            }
+            File.write("artifacts/ui-v4-native/receipt.json", JSON.pretty_generate(payload) + "\n")
+          '
 
       - name: Upload exact compile receipt
         if: always()
@@ -178,8 +249,23 @@ jobs:
         with:
           name: hepta-ui-v4-native-compile-${{ env.HEPTA_CANDIDATE_SHA }}
           path: artifacts/ui-v4-native/receipt.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
+
+      - name: Enforce exact compile result
+        if: always()
+        shell: bash
+        env:
+          DEPS_OUTCOME: ${{ steps.deps.outcome }}
+          SERVED_OUTCOME: ${{ steps.served.outcome }}
+          FORMAT_OUTCOME: ${{ steps.format.outcome }}
+          NATIVE_OUTCOME: ${{ steps.native.outcome }}
+        run: |
+          set -euo pipefail
+          test "$DEPS_OUTCOME" = success
+          test "$SERVED_OUTCOME" = success
+          test "$FORMAT_OUTCOME" = success
+          test "$NATIVE_OUTCOME" = success
 
   browser-fixture-qualification:
     name: Chromium fixture visual qualification
