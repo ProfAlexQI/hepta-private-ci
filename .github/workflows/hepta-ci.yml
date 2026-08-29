@@ -40,6 +40,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes jq ripgrep
       - name: Verify CI contract
         run: scripts/hepta-ci-baseline contract
+      - name: Materialize immutable upstream intake refs for contract fixtures
+        run: scripts/hepta-ci-materialize-upstream-intake materialize
       - name: Exercise fail-closed contract fixtures
         run: scripts/hepta-ci-baseline contract-self-test
 
@@ -85,9 +87,14 @@ jobs:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Install static gate tools
         run: brew install jq ripgrep
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26
+        with:
+          toolchain: 1.95.0
       - name: Run bounded static gates
         run: scripts/hepta-ci-baseline static
 
@@ -240,12 +247,18 @@ jobs:
       HEPTA_ACTIVE_SERVICE_DEPENDENCY_ISOLATION_LIVE: "0"
       HEPTA_UPSTREAM_CODEX_SYNC_REQUIRE_LIVE: "0"
       HEPTA_CI_CONFIRM_FULL_WORKSPACE: ${{ inputs.confirm_full_workspace }}
-      HEPTA_CI_CACHE_IDENTITY: ${{ runner.os }}-hepta-ci-v2-full-workspace-${{ hashFiles('codex-rs/rust-toolchain.toml', 'codex-rs/Cargo.lock', 'apps/hepta-native/Cargo.lock', 'MODULE.bazel.lock') }}
     steps:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+      - name: Bind full-workspace cache identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'HEPTA_CI_CACHE_IDENTITY=%s\n' \
+            "${RUNNER_OS}-hepta-ci-v2-full-workspace-${{ hashFiles('codex-rs/rust-toolchain.toml', 'codex-rs/Cargo.lock', 'apps/hepta-native/Cargo.lock', 'MODULE.bazel.lock') }}" \
+            >> "$GITHUB_ENV"
       - name: Install Rust 1.95.0
         uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26
         with:
