@@ -2,6 +2,7 @@
 set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+python3 "$script_dir/q0-qualification/normalize-hepta-intelligence-q0-repair-state.py"
 for stage in \
   00-prepare.sh \
   10-source-gates.sh \
