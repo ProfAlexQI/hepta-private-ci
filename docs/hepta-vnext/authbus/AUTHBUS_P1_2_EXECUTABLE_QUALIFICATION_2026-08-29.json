@@ -1,0 +1,104 @@
+{
+  "schema": "hepta.authbus.p1.2.executable-qualification.v1",
+  "date": "2026-08-29",
+  "stage": "P1.2",
+  "branch": "integration/vnext-main-full-ci-authbus-p1-2-20260828",
+  "source_head": "1efd9bcdc946625f2d27c03080840c3638e855c2",
+  "source_tree": "86d0b9ca39c41dd8ffa05f2e94039b31dbb199b8",
+  "qualified": true,
+  "qualification_only": true,
+  "qualification_run_id": 33233070831,
+  "qualification_run_attempt": 1,
+  "qualification_job_ids": [
+    99049152741,
+    99050020546,
+    99052281710
+  ],
+  "qualification_runner_ids": [
+    1000034658,
+    1000034808,
+    1000035026
+  ],
+  "qualification_jobs": [
+    {
+      "id": 99049152741,
+      "name": "Exact source, cleanup, receipt, and negative-authority contracts",
+      "runner_id": 1000034658,
+      "runner_name": "GitHub Actions 1000034658",
+      "labels": ["ubuntu-24.04"],
+      "status": "completed",
+      "conclusion": "success",
+      "steps_non_empty": true
+    },
+    {
+      "id": 99050020546,
+      "name": "Inherited P1.1 signed identity and evidence matrix",
+      "runner_id": 1000034808,
+      "runner_name": "GitHub Actions 1000034808",
+      "labels": ["ubuntu-24.04"],
+      "status": "completed",
+      "conclusion": "success",
+      "steps_non_empty": true
+    },
+    {
+      "id": 99052281710,
+      "name": "AuthBus P1.2 durable replay Rust qualification",
+      "runner_id": 1000035026,
+      "runner_name": "GitHub Actions 1000035026",
+      "labels": ["ubuntu-24.04"],
+      "status": "completed",
+      "conclusion": "success",
+      "steps_non_empty": true
+    }
+  ],
+  "workflow_name": "AuthBus P1.2 exact durable replay qualification",
+  "workflow_path": ".github/workflows/authbus-p1-2-qualification.yml",
+  "rustc": "1.95.0",
+  "cargo": "1.95.0",
+  "source_contract": true,
+  "cleanup_contract": true,
+  "inherited_p1_1": true,
+  "format": true,
+  "default_off": true,
+  "restart_replay_matrix": true,
+  "explicit_precommit_rollback": true,
+  "rollback_sites": 7,
+  "bounded_gc": true,
+  "corruption_reopen_fail_closed": true,
+  "all_targets_check": true,
+  "clippy_deny_warnings": true,
+  "all_jobs_have_nonzero_runner_ids": true,
+  "all_jobs_have_nonempty_steps": true,
+  "artifacts": [
+    {
+      "id": 9709170308,
+      "name": "authbus-p1-2-source-33233070831",
+      "sha256": "82f1d66ff009ffbe7d1872bcdb2ff4dc9f649acd28869fda9f49592bfdb7dd80"
+    },
+    {
+      "id": 9709413682,
+      "name": "authbus-p1-1-inherited-33233070831",
+      "sha256": "ca3e426f744ffa860a7955b6170abec95286cb13564e9a1f676af1ce407e921e"
+    },
+    {
+      "id": 9709747656,
+      "name": "authbus-p1-2-rust-33233070831",
+      "sha256": "5b8710d69716f99b6cecaf39a6d6414c647bf00a5aa807dab40310d45a4b146e"
+    }
+  ],
+  "authority": false,
+  "effect_authority": false,
+  "production_caller": false,
+  "production_writer": false,
+  "operator_acceptance": false,
+  "promotion": false,
+  "g5_allowed": false,
+  "execute_allowed": false,
+  "listener_enabled": false,
+  "provider_call_enabled": false,
+  "openbao_enabled": false,
+  "parent_workspace_wired": false,
+  "private_key_storage": false,
+  "raw_signature_storage": false,
+  "secret_storage": false
+}
