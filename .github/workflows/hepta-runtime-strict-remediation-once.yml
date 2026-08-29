@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-strict-clippy-remediation-once
+  group: hepta-runtime-strict-remediation-once
   cancel-in-progress: true
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
-      EXPECTED_PARENT: 451c160a075c564d51f4d5b67a735acfbe3fd412
+      EXPECTED_PARENT: 85d5c52c839962874c09254389f506ff1b05bc15
       BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
       LEGACY_WORKFLOW: .github/workflows/hepta-strict-clippy-remediation-once.yml
       WORKFLOW_PATH: .github/workflows/hepta-runtime-strict-remediation-once.yml
@@ -73,14 +73,9 @@ jobs:
           if workflow_source.count(end_marker) != 1:
               raise SystemExit("legacy remediation Python end marker is not unique")
           embedded = workflow_source.split(start_marker, 1)[1].split(end_marker, 1)[0]
-          namespace = {"__name__": "__main__"}
           exec(
-              compile(
-                  textwrap.dedent(embedded),
-                  str(legacy),
-                  "exec",
-              ),
-              namespace,
+              compile(textwrap.dedent(embedded), str(legacy), "exec"),
+              {"__name__": "__main__"},
           )
 
           test_path = Path("codex-rs/hepta-agentd/src/runtime_tests.rs")
@@ -123,12 +118,6 @@ jobs:
           test_path.write_text(source.replace(old, new, 1))
           PY
 
-      - name: Retire both bootstrap workflows in the candidate tree
-        shell: bash
-        run: |
-          set -euo pipefail
-          git rm -- "$LEGACY_WORKFLOW" "$WORKFLOW_PATH"
-
       - name: Run compiler-guided mechanical remediation
         working-directory: codex-rs
         shell: bash
@@ -164,12 +153,10 @@ jobs:
           test -n "$(git diff --name-only)"
           while IFS= read -r path; do
             case "$path" in
-              "$LEGACY_WORKFLOW") ;;
-              "$WORKFLOW_PATH") ;;
               codex-rs/hepta-memory/src/*) ;;
               codex-rs/hepta-agentd/src/app_runtime.rs) ;;
-              codex-rs/hepta-agentd/src/runtime_tests.rs) ;;
               codex-rs/hepta-agentd/src/production_writer_host.rs) ;;
+              codex-rs/hepta-agentd/src/runtime_tests.rs) ;;
               codex-rs/hepta-agent-protocol/src/lib.rs) ;;
               codex-rs/app-server-protocol/src/protocol/thread_history.rs) ;;
               *)
@@ -240,7 +227,7 @@ jobs:
             --features qualification-cognitive-write \
             -- -D warnings
 
-      - name: Commit source closure and retire bootstrap
+      - name: Commit source closure
         shell: bash
         run: |
           set -euo pipefail
@@ -248,16 +235,12 @@ jobs:
           git config user.email "hepta-ci-remediation@users.noreply.github.com"
           git add -A
           test -n "$(git diff --cached --name-only)"
-          test "$(git diff --cached --name-only | grep -Fx "$LEGACY_WORKFLOW")" = "$LEGACY_WORKFLOW"
-          test "$(git diff --cached --name-only | grep -Fx "$WORKFLOW_PATH")" = "$WORKFLOW_PATH"
           while IFS= read -r path; do
             case "$path" in
-              "$LEGACY_WORKFLOW") ;;
-              "$WORKFLOW_PATH") ;;
               codex-rs/hepta-memory/src/*) ;;
               codex-rs/hepta-agentd/src/app_runtime.rs) ;;
-              codex-rs/hepta-agentd/src/runtime_tests.rs) ;;
               codex-rs/hepta-agentd/src/production_writer_host.rs) ;;
+              codex-rs/hepta-agentd/src/runtime_tests.rs) ;;
               codex-rs/hepta-agent-protocol/src/lib.rs) ;;
               codex-rs/app-server-protocol/src/protocol/thread_history.rs) ;;
               *)
@@ -277,11 +260,12 @@ jobs:
         shell: bash
         run: |
           {
-            echo "schema=hepta_runtime_strict_remediation_once_v1"
+            echo "schema=hepta_runtime_strict_remediation_once_v2"
             echo "bootstrap_head=$GITHUB_SHA"
             echo "expected_parent=$EXPECTED_PARENT"
             echo "job_status=${{ job.status }}"
-            echo "bootstrap_retired=${{ job.status == 'success' }}"
+            echo "source_closure_committed=${{ job.status == 'success' }}"
+            echo "bootstrap_retired=false"
             echo "bootstrap_runner=ubuntu-24.04"
             echo "bootstrap_python=3.12"
             echo "canonical_qualification_runner=ubuntu-24.04"
