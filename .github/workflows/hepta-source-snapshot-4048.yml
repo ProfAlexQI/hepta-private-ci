@@ -1,0 +1,46 @@
+name: Hepta exact architecture source snapshot 4048
+
+on:
+  push:
+    branches:
+      - codex/hepta-source-snapshot-4048-20260829
+
+permissions:
+  contents: read
+
+env:
+  TARGET_SOURCE: 4048bf71e88ce4ba54424d2d1c73fd2d4262571a
+
+jobs:
+  snapshot:
+    name: Export exact source without mutation
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify exact clean source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+          git diff --exit-code
+          git diff --cached --exit-code
+          printf 'commit=%s\ntree=%s\nsource_mutation=false\nproduction_authority=false\n' \
+            "$(git rev-parse HEAD)" "$(git rev-parse 'HEAD^{tree}')" > "$RUNNER_TEMP/identity.txt"
+      - name: Package exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git -czf "$RUNNER_TEMP/hepta-source-$TARGET_SOURCE.tar.gz" .
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-source-${{ env.TARGET_SOURCE }}
+          path: |
+            ${{ runner.temp }}/hepta-source-${{ env.TARGET_SOURCE }}.tar.gz
+            ${{ runner.temp }}/identity.txt
+          if-no-files-found: error
+          retention-days: 1
