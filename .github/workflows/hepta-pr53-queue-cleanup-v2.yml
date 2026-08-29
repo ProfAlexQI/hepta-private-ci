@@ -18,7 +18,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
       TARGET_BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
-      CURRENT_TARGET_SHA: 32cd8bb7f4345f48eb0575b75ca8ea890ee352b8
+      CURRENT_TARGET_SHA: abb435c263c2967c6ba613c5b8554b4cb45e6153
     steps:
       - name: Cancel active runs on older target identities only
         shell: python
