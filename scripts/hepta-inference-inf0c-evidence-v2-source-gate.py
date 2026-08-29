@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Source-only gate for the stacked INF-0C evidence-v2 tranche."""
+"""Source-only gate for the stacked INF-0C evidence-v2 tranche.
+
+Historical status/matrix documents are immutable evidence.  Later descendant
+heads may add source assertions that did not exist in the v2 matrix schema.
+For those assertions this gate accepts only the corresponding, already-tracked
+v1 implementation-status flag plus direct source-marker proof; execution,
+qualification, authority, promotion, and release claims remain fail-closed.
+"""
 
 from __future__ import annotations
 
@@ -34,6 +41,33 @@ FALSE_AUTHORITY = (
     "promotion",
     "release",
 )
+
+# These assertions were part of the historical stage-matrix.v2 schema.
+LEGACY_MATRIX_SOURCE_FLAGS = (
+    "transport_disconnect_harness_source_complete",
+    "controlled_restart_harness_source_complete",
+    "semantic_output_verification_source_complete",
+)
+
+# These assertions were introduced on descendant heads.  The immutable v2
+# matrix cannot be rewritten to add them, so absence is accepted only when the
+# corresponding immutable implementation-status.v1 flag is true.  Direct
+# source markers are independently required below, preventing a status-only
+# declaration from satisfying this gate.
+DESCENDANT_SOURCE_FLAG_FALLBACKS = {
+    "trusted_control_helper_source_complete": "real_e2e_trusted_control_helper",
+    "loopback_literal_pinning_source_complete": "real_e2e_loopback_literal_pinning",
+    "response_media_type_fence_source_complete": "real_e2e_response_media_type_fence",
+    "control_helper_per_invocation_revalidation_source_complete": (
+        "real_e2e_control_helper_per_invocation_revalidation"
+    ),
+    "control_helper_secure_mode_source_complete": (
+        "real_e2e_control_helper_secure_mode"
+    ),
+    "control_helper_executable_fence_source_complete": (
+        "real_e2e_control_helper_executable_fence"
+    ),
+}
 
 
 class GateError(RuntimeError):
@@ -72,6 +106,41 @@ def require_closed_authority(value: dict[str, Any], label: str) -> None:
         require(authority.get(field) is False, f"{label}.authority.{field} must be false")
 
 
+def require_historical_schema(status: dict[str, Any], matrix: dict[str, Any]) -> None:
+    require(
+        status.get("schema") == "hepta.inference.implementation_status.v1",
+        "unexpected historical implementation-status schema",
+    )
+    require(
+        matrix.get("schema") == "hepta.inference.stage_matrix.v2",
+        "unexpected historical stage-matrix schema",
+    )
+    require(status.get("plan_id") == "HEPTA-INFERENCE-RUNTIME-V2", "status plan drift")
+    require(matrix.get("plan_id") == "HEPTA-INFERENCE-RUNTIME-V2", "matrix plan drift")
+
+
+def require_source_flag_compatibility(
+    inf0c: dict[str, Any], implemented: dict[str, Any]
+) -> None:
+    for flag in LEGACY_MATRIX_SOURCE_FLAGS:
+        require(inf0c.get(flag) is True, f"INF-0C source flag false: {flag}")
+
+    for matrix_flag, status_flag in DESCENDANT_SOURCE_FLAG_FALLBACKS.items():
+        if matrix_flag in inf0c:
+            require(
+                inf0c.get(matrix_flag) is True,
+                f"INF-0C source flag false: {matrix_flag}",
+            )
+        else:
+            require(
+                implemented.get(status_flag) is True,
+                (
+                    f"historical INF-0C matrix lacks {matrix_flag} and "
+                    f"status proof is false: {status_flag}"
+                ),
+            )
+
+
 def main() -> int:
     minimal = text(MINIMAL)
     evidence = text(EVIDENCE)
@@ -80,6 +149,8 @@ def main() -> int:
     workflow = text(WORKFLOW)
     status = object_json(STATUS)
     matrix = object_json(MATRIX)
+
+    require_historical_schema(status, matrix)
 
     require_markers(
         minimal,
@@ -222,19 +293,10 @@ def main() -> int:
         for item in matrix.get("stages", [])
         if isinstance(item, dict)
     }
-    inf0c = stages.get("INF-0C", {})
-    for flag in (
-        "transport_disconnect_harness_source_complete",
-        "controlled_restart_harness_source_complete",
-        "trusted_control_helper_source_complete",
-        "loopback_literal_pinning_source_complete",
-        "semantic_output_verification_source_complete",
-        "response_media_type_fence_source_complete",
-        "control_helper_per_invocation_revalidation_source_complete",
-        "control_helper_secure_mode_source_complete",
-        "control_helper_executable_fence_source_complete",
-    ):
-        require(inf0c.get(flag) is True, f"INF-0C source flag false: {flag}")
+    inf0c_value = stages.get("INF-0C")
+    require(isinstance(inf0c_value, dict), "INF-0C stage missing")
+    require_source_flag_compatibility(inf0c_value, implemented)
+
     for flag in (
         "real_software_e2e_executed",
         "semantic_output_verified_on_real_models",
@@ -242,7 +304,7 @@ def main() -> int:
         "controlled_restart_executed",
         "backend_cancellation_acknowledged",
     ):
-        require(inf0c.get(flag) is False, f"INF-0C execution claimed early: {flag}")
+        require(inf0c_value.get(flag) is False, f"INF-0C execution claimed early: {flag}")
     require(stages.get("INF-1", {}).get("status") == "NOT_STARTED", "INF-1 activated early")
     require(status.get("qualified") is False, "status qualified early")
     require(matrix.get("overall_status") == "SOURCE_PRESENT_NOT_RUN", "matrix status drift")
