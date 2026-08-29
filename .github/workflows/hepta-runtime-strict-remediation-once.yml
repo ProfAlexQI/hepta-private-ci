@@ -1,4 +1,4 @@
-name: Hepta runtime lifecycle and strict-Clippy remediation once
+name: Hepta repository rustfmt remediation once
 
 on:
   push:
@@ -11,25 +11,27 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-strict-clippy-remediation-once
+  group: hepta-repository-rustfmt-remediation-once
   cancel-in-progress: true
 
 jobs:
   remediate:
-    if: "${{ github.event.head_commit.message == 'ci: repair Hepta runtime lifecycle and strict-clippy blockers' }}"
+    if: "${{ github.event.head_commit.message == 'ci: bootstrap repository rustfmt remediation' }}"
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 90
     env:
-      EXPECTED_PARENT: 0c6125884214d576d0a5865b24aea580d1bf32ea
+      EXPECTED_PARENT: bd52e4c3285eda256351a24cf27e9508b75f1231
       BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
-      LEGACY_WORKFLOW: .github/workflows/hepta-strict-clippy-remediation-once.yml
       WORKFLOW_PATH: .github/workflows/hepta-runtime-strict-remediation-once.yml
+      LEGACY_WORKFLOW: .github/workflows/hepta-strict-clippy-remediation-once.yml
+      BOOTSTRAP_MESSAGE: "ci: bootstrap repository rustfmt remediation"
     steps:
       - name: Checkout guarded bootstrap commit
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.sha }}
           fetch-depth: 2
+          persist-credentials: true
 
       - name: Verify immutable bootstrap boundary
         shell: bash
@@ -37,238 +39,106 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
-          test "$(git branch --show-current)" = ""
+          test "$(git log -1 --pretty=%s)" = "$BOOTSTRAP_MESSAGE"
+          test "$GITHUB_REF" = "refs/heads/$BRANCH"
           test -z "$(git status --porcelain)"
 
       - name: Set up CI environment
         uses: ./.github/actions/setup-ci
 
-      - name: Install pinned Python 3.12
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-        with:
-          python-version: '3.12'
-
       - name: Install pinned Rust toolchain
-        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
-          components: rustfmt, clippy
+          components: rustfmt
 
-      - name: Apply bounded compatibility and lifecycle remediation
+      - name: Apply repository-wide Rust formatting
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-          import textwrap
-
-          legacy = Path(".github/workflows/hepta-strict-clippy-remediation-once.yml")
-          workflow_source = legacy.read_text()
-          start_marker = "          python - <<'PY'\n"
-          end_marker = (
-              "          PY\n\n"
-              "      - name: Run compiler-guided mechanical remediation\n"
-          )
-          if workflow_source.count(start_marker) != 1:
-              raise SystemExit("legacy remediation Python start marker is not unique")
-          if workflow_source.count(end_marker) != 1:
-              raise SystemExit("legacy remediation Python end marker is not unique")
-          embedded = workflow_source.split(start_marker, 1)[1].split(end_marker, 1)[0]
-          exec(
-              compile(textwrap.dedent(embedded), str(legacy), "exec"),
-              {"__name__": "__main__"},
+          rm -f "$WORKFLOW_PATH" "$LEGACY_WORKFLOW"
+          (
+            cd codex-rs
+            cargo fmt --all
+            cargo fmt --all -- --check
           )
 
-          test_path = Path("codex-rs/hepta-agentd/src/runtime_tests.rs")
-          source = test_path.read_text()
-          old = """\
-              assert_eq!(counts.event_rows, 1);
-              assert_eq!(counts.outbox_rows, 1);
-              replayed_input
-                  .lease
-                  .release()
-                  .await
-                  .expect("release local lease");
-          """
-          new = """\
-              assert_eq!(counts.event_rows, 1);
-              assert_eq!(counts.outbox_rows, 1);
-              let rolled_back = replayed_input
-                  .lease
-                  .rollback_occurrence(
-                      replayed_input.occurrence_key.clone(),
-                      "qualification replay test cleanup without dispatch",
-                  )
-                  .await
-                  .expect("terminalize replayed local occurrence");
-              assert_eq!(
-                  rolled_back.state,
-                  codex_hepta_memory::LocalOutcomeState::RolledBack
-              );
-              assert!(!rolled_back.external_effect);
-              replayed_input
-                  .lease
-                  .release()
-                  .await
-                  .expect("release local lease");
-          """
-          if source.count(old) != 1:
-              raise SystemExit(
-                  "qualification lifecycle cleanup marker is missing or ambiguous"
-              )
-          test_path.write_text(source.replace(old, new, 1))
-          PY
-
-      - name: Run compiler-guided mechanical remediation
-        working-directory: codex-rs
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo fmt \
-            -p codex-hepta-memory \
-            -p codex-hepta-agentd \
-            -p codex-hepta-agent-protocol \
-            -p codex-app-server-protocol
-          for pass in 1 2; do
-            echo "clippy-fix-pass=$pass"
-            cargo clippy --fix --locked --all-targets \
-              --allow-dirty \
-              --allow-staged \
-              -p codex-hepta-memory \
-              -p codex-hepta-agentd \
-              -p codex-hepta-agent-protocol \
-              -p codex-app-server-protocol \
-              -- -D warnings || true
-          done
-          cargo fmt \
-            -p codex-hepta-memory \
-            -p codex-hepta-agentd \
-            -p codex-hepta-agent-protocol \
-            -p codex-app-server-protocol
-
-      - name: Verify bounded source mutation
+      - name: Verify bounded mechanical mutation
         shell: bash
         run: |
           set -euo pipefail
           git diff --check
-          test -n "$(git diff --name-only)"
-          while IFS= read -r path; do
+          mapfile -d '' changed < <(git diff --name-only -z)
+          test "${#changed[@]}" -gt 0
+          rust_changed=false
+          for path in "${changed[@]}"; do
             case "$path" in
-              codex-rs/hepta-memory/src/*) ;;
-              codex-rs/hepta-agentd/src/app_runtime.rs) ;;
-              codex-rs/hepta-agentd/src/production_writer_host.rs) ;;
-              codex-rs/hepta-agentd/src/runtime_tests.rs) ;;
-              codex-rs/hepta-agent-protocol/src/lib.rs) ;;
-              codex-rs/app-server-protocol/src/protocol/thread_history.rs) ;;
+              codex-rs/*.rs)
+                rust_changed=true
+                ;;
+              "$WORKFLOW_PATH"|"$LEGACY_WORKFLOW")
+                ;;
               *)
-                echo "unexpected remediation path: $path" >&2
+                echo "unexpected rustfmt remediation path: $path" >&2
                 exit 1
                 ;;
             esac
-          done < <(git diff --name-only)
+          done
+          test "$rust_changed" = true
+          test ! -e "$WORKFLOW_PATH"
+          test ! -e "$LEGACY_WORKFLOW"
 
-      - name: Run source and manifest ratchets
+      - name: Run source and authority ratchets
         shell: bash
         run: |
           set -euo pipefail
-          python --version
-          python .github/scripts/verify_cargo_workspace_manifests.py
-          python scripts/verify-hepta-architecture-convergence-p0-2.py
-          python scripts/verify-hepta-authority-callers-p0-1.py
-          python scripts/verify-hepta-memory-runtime-extraction-p0-1.py
-          python scripts/verify-hepta-cross-owner-operation-wiring.py
-          python scripts/verify-hepta-architecture-gap-ledger.py
+          python3 .github/scripts/verify_cargo_workspace_manifests.py
+          python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+          python3 scripts/verify-hepta-authority-callers-p0-1.py
+          python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python3 scripts/verify-hepta-cross-owner-operation-wiring.py
+          python3 scripts/verify-hepta-architecture-gap-ledger.py
 
-      - name: Run lifecycle and changed-package tests
-        working-directory: codex-rs
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo test --locked \
-            -p codex-hepta-agentd \
-            --features qualification-cognitive-write \
-            runtime::tests::qualification_host_binds_one_local_turn_and_replays_exactly_once \
-            -- --exact --nocapture
-          cargo test --locked -p codex-hepta-memory --lib -- --nocapture
-          cargo test --locked -p codex-hepta-agentd --lib -- --nocapture
-          cargo test --locked \
-            -p codex-hepta-agentd \
-            --features qualification-cognitive-write \
-            --lib -- --nocapture
-          cargo test --locked -p codex-hepta-agent-protocol --lib -- --nocapture
-          cargo test --locked -p codex-app-server-protocol --lib -- --nocapture
-
-      - name: Run changed-package compilation and strict Clippy
-        working-directory: codex-rs
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo fmt \
-            -p codex-hepta-memory \
-            -p codex-hepta-agentd \
-            -p codex-hepta-agent-protocol \
-            -p codex-app-server-protocol \
-            -- --check
-          cargo check --locked --all-targets \
-            -p codex-hepta-memory \
-            -p codex-hepta-agentd \
-            -p codex-hepta-agent-protocol \
-            -p codex-app-server-protocol
-          cargo check --locked --all-targets --no-default-features \
-            -p codex-hepta-agentd \
-            --features qualification-cognitive-write
-          cargo clippy --locked --all-targets \
-            -p codex-hepta-memory \
-            -p codex-hepta-agentd \
-            -p codex-hepta-agent-protocol \
-            -p codex-app-server-protocol \
-            -- -D warnings
-          cargo clippy --locked --all-targets --no-default-features \
-            -p codex-hepta-agentd \
-            --features qualification-cognitive-write \
-            -- -D warnings
-
-      - name: Commit source closure
+      - name: Commit and push exact mechanical closure
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "hepta-ci-remediation"
           git config user.email "hepta-ci-remediation@users.noreply.github.com"
           git add -A
-          test -n "$(git diff --cached --name-only)"
-          while IFS= read -r path; do
+          git diff --cached --check
+          mapfile -d '' staged < <(git diff --cached --name-only -z)
+          test "${#staged[@]}" -gt 0
+          rust_staged=false
+          for path in "${staged[@]}"; do
             case "$path" in
-              codex-rs/hepta-memory/src/*) ;;
-              codex-rs/hepta-agentd/src/app_runtime.rs) ;;
-              codex-rs/hepta-agentd/src/production_writer_host.rs) ;;
-              codex-rs/hepta-agentd/src/runtime_tests.rs) ;;
-              codex-rs/hepta-agent-protocol/src/lib.rs) ;;
-              codex-rs/app-server-protocol/src/protocol/thread_history.rs) ;;
+              codex-rs/*.rs)
+                rust_staged=true
+                ;;
+              "$WORKFLOW_PATH"|"$LEGACY_WORKFLOW")
+                ;;
               *)
-                echo "unexpected staged remediation path: $path" >&2
+                echo "unexpected staged rustfmt path: $path" >&2
                 exit 1
                 ;;
             esac
-          done < <(git diff --cached --name-only)
-          git diff --cached --check
-          git commit -m "ci: close runtime lifecycle and strict-clippy blockers"
+          done
+          test "$rust_staged" = true
+          git commit -m "style: normalize Rust workspace formatting"
           git fetch --no-tags origin "refs/heads/$BRANCH"
           test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
           git push origin "HEAD:refs/heads/$BRANCH"
 
-      - name: Record non-authoritative receipt
+      - name: Record non-authoritative remediation receipt
         if: always()
         shell: bash
         run: |
           {
-            echo "schema=hepta_runtime_strict_remediation_once_v3"
+            echo "schema=hepta_repository_rustfmt_remediation_once_v1"
             echo "bootstrap_head=$GITHUB_SHA"
             echo "expected_parent=$EXPECTED_PARENT"
             echo "job_status=${{ job.status }}"
-            echo "source_closure_committed=${{ job.status == 'success' }}"
-            echo "bootstrap_retired=false"
-            echo "bootstrap_runner=ubuntu-24.04"
-            echo "bootstrap_python=3.12"
-            echo "canonical_qualification_runner=ubuntu-24.04"
+            echo "source_mutation_scope=rustfmt_only"
+            echo "workflow_retired=${{ job.status == 'success' }}"
             echo "production_authority=false"
             echo "effect_authority=false"
             echo "model_invocation_authority=false"
