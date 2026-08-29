@@ -21,12 +21,12 @@ env:
 
 concurrency:
   group: hepta-ui-v5-repository-gap-closure-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   apply-and-bind:
     if: github.repository == 'ProfHepta/hepta-private-ci'
-    runs-on: ubuntu-24.04
+    runs-on: macos-15-arm64
     timeout-minutes: 45
     steps:
       - name: Check out exact bootstrap candidate
@@ -55,7 +55,16 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts/ui-v5-gap-closure
-          cat "$HEPTA_V5_BOOTSTRAP_PARTS"/part-* | base64 --decode > "$RUNNER_TEMP/apply-hepta-ui-v5-gap-closure.py"
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          parts = Path(os.environ["HEPTA_V5_BOOTSTRAP_PARTS"])
+          encoded = b"".join(path.read_bytes() for path in sorted(parts.glob("part-*")))
+          output = Path(os.environ["RUNNER_TEMP"]) / "apply-hepta-ui-v5-gap-closure.py"
+          output.write_bytes(base64.b64decode(encoded, validate=True))
+          PY
           python3 -m py_compile "$RUNNER_TEMP/apply-hepta-ui-v5-gap-closure.py"
           python3 - <<'PY'
           from pathlib import Path
