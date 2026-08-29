@@ -42,6 +42,8 @@ jobs:
             codex-rs/core/src/session/handlers.rs \
             codex-rs/core/src/session/inject.rs \
             codex-rs/core/src/session/thread_settings.rs \
+            codex-rs/core/src/session/inject.rs \
+            codex-rs/core/src/session/thread_settings.rs \
             codex-rs/core/src/session/turn.rs \
             codex-rs/core/src/session/turn_input.rs \
             codex-rs/core/src/session/turn_suspension.rs \
@@ -69,7 +71,7 @@ jobs:
             codex-rs/hepta-supervisor/src/daemon_protocol.rs \
             codex-rs/hepta-supervisor/src/main.rs
           rm .github/workflows/hepta-p0-7a-scope-repair.yml
-          git diff --check
+          git diff --check HEAD
 
       - name: Assert repair is limited to the enumerated restore set
         shell: bash
@@ -112,7 +114,7 @@ jobs:
               'codex-rs/hepta-supervisor/src/daemon_protocol.rs',
               'codex-rs/hepta-supervisor/src/main.rs',
           }
-          actual = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          actual = set(subprocess.check_output(['git', 'diff', '--name-only', 'HEAD'], text=True).splitlines())
           unexpected = actual - expected
           missing = expected - actual
           if unexpected or missing:
