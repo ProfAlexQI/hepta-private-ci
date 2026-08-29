@@ -1,0 +1,121 @@
+name: Temporary Hepta A0 V4.5.2 replacement builder
+
+on:
+  push:
+    branches:
+      - "automation/hepta-a0-v4-5-2-replacement-20260830"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-a0-v4-5-2-replacement-once
+  cancel-in-progress: false
+
+jobs:
+  build-replacement:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - name: Checkout builder branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 2
+
+      - name: Set up locked uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: 0.11.3
+
+      - name: Append exact replacement provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import ast
+          import json
+          import pathlib
+          import re
+
+          previous_head = "08e6ed017e8cbfb94f86a5fa8397eb00eb396ed2"
+          previous_tail = "f09972580e7a10781bf48890f7eeeb2d9b9e945e"
+          plan_path = pathlib.Path("plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json")
+          script_path = pathlib.Path("scripts/hepta-intelligence-current-truth.py")
+
+          plan = json.loads(plan_path.read_text(encoding="utf-8"))
+          history = plan["a0_previous_exact_head_provenance"]
+          assert history[-1] == previous_tail, history
+          assert previous_head not in history, history
+          old_history = list(history)
+          history.append(previous_head)
+          plan_path.write_text(
+              json.dumps(plan, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+
+          text = script_path.read_text(encoding="utf-8")
+          pattern = re.compile(
+              r'(require\(current\.get\("a0_previous_exact_head_provenance"\) == )'
+              r'(\[[^\n]+\])'
+              r'(, "A0 provenance drift"\))'
+          )
+          match = pattern.search(text)
+          assert match is not None
+          assert ast.literal_eval(match.group(2)) == old_history
+          replacement = match.group(1) + repr(history) + match.group(3)
+          text, count = pattern.subn(replacement, text, count=1)
+          assert count == 1
+          script_path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Format only A0 Python sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            scripts/hepta-intelligence-current-truth.py
+            scripts/verify-hepta-intelligence-a0-authority.py
+            scripts/verify-hepta-intelligence-document-authority.py
+            scripts/verify-hepta-intelligence-master-plan.py
+          )
+          uv run --frozen --project scripts ruff format "${files[@]}"
+          uv run --frozen --project scripts ruff format --check "${files[@]}"
+          python3 -m py_compile "${files[@]}"
+
+      - name: Validate source contracts and whitelist
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-document-authority.py
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
+            python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
+          done
+          git diff --check
+          mapfile -t changed < <(git diff --name-only)
+          printf '%s\n' "${changed[@]}"
+          test "${#changed[@]}" -eq 5
+          for path in "${changed[@]}"; do
+            case "$path" in
+              plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json|scripts/hepta-intelligence-current-truth.py|scripts/verify-hepta-intelligence-a0-authority.py|scripts/verify-hepta-intelligence-document-authority.py|scripts/verify-hepta-intelligence-master-plan.py) ;;
+              *) echo "unexpected replacement path: $path" >&2; exit 1 ;;
+            esac
+          done
+
+      - name: Commit builder output
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+          git diff --cached --check
+          git commit -m "fix(intelligence): bind and format A0 V4.5.2 replacement"
+          git push origin HEAD:automation/hepta-a0-v4-5-2-replacement-20260830
