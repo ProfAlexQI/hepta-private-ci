@@ -1,0 +1,116 @@
+name: Hepta PR53 owned rustfmt race
+
+on:
+  push:
+    branches:
+      - codex/hepta-pr53-rustfmt-race-20260829
+
+permissions:
+  contents: write
+
+env:
+  TARGET_BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
+  TARGET_HEAD: 795f76da9ca777c380e303ee9e985c556a1a14ec
+
+jobs:
+  format:
+    name: Format canonical owned crates (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, ubuntu-slim, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_HEAD }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Prove exact target and remote CAS
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_HEAD"
+          git fetch --no-tags origin "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          test "$(git rev-parse refs/remotes/origin/$TARGET_BRANCH)" = "$TARGET_HEAD"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt
+
+      - name: Format and verify canonical package surface
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt \
+            -p codex-hepta-contracts \
+            -p codex-hepta-memory \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-automation \
+            -p codex-hepta-agentd \
+            -p codex-hepta-matrix-store \
+            -p codex-hepta-matrixd
+          cargo fmt \
+            -p codex-hepta-contracts \
+            -p codex-hepta-memory \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-automation \
+            -p codex-hepta-agentd \
+            -p codex-hepta-matrix-store \
+            -p codex-hepta-matrixd \
+            -- --check
+
+      - name: Enforce formatting-only path surface
+        shell: python
+        run: |
+          import pathlib
+          import subprocess
+
+          roots = (
+              "codex-rs/hepta-contracts/",
+              "codex-rs/hepta-memory/",
+              "codex-rs/hepta-memory-runtime/",
+              "codex-rs/hepta-automation/",
+              "codex-rs/hepta-agentd/",
+              "codex-rs/hepta-matrix-store/",
+              "codex-rs/hepta-matrixd/",
+          )
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only", "HEAD"], text=True
+          ).splitlines()
+          if not changed:
+              print("already_formatted=true")
+              raise SystemExit(0)
+          unexpected = [
+              path for path in changed
+              if not path.endswith(".rs") or not path.startswith(roots)
+          ]
+          if unexpected:
+              raise SystemExit(f"rustfmt escaped owned Rust surface: {unexpected}")
+          for path in changed:
+              if not pathlib.Path(path).is_file():
+                  raise SystemExit(f"rustfmt changed non-file path: {path}")
+          print(f"formatted_files={len(changed)}")
+
+      - name: Commit formatting after final remote CAS
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          if git diff --quiet; then
+            echo "No formatting delta remains."
+            exit 0
+          fi
+          git fetch --no-tags origin "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          test "$(git rev-parse refs/remotes/origin/$TARGET_BRANCH)" = "$TARGET_HEAD"
+          git config user.name "Hepta canonical rustfmt"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git add -- '*.rs'
+          git diff --cached --check
+          git commit -m "style(hepta): normalize canonical owned crates"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
