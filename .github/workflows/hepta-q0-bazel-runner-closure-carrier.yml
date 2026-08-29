@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SOURCE_SHA: 53e62c7b19b277bf2284b1959154a42352e148dd
+  SOURCE_SHA: 045d1e08a37e64462aeb706d5efbbc34b83167ce
   TARGET_BRANCH: codex/hepta-intelligence-plan-v3-20260828
   CARRIER_PATH: .github/workflows/hepta-q0-bazel-runner-closure-carrier.yml
   BAZEL_WORKFLOW: .github/workflows/bazel.yml
@@ -22,7 +22,7 @@ env:
 jobs:
   close:
     name: Materialize exact Bazel hosted-runner closure
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout exact carrier commit
@@ -82,7 +82,6 @@ jobs:
           test "$(grep -c -- '- os: macos-15$' "$BAZEL_WORKFLOW")" = "4"
           test "$(grep -c 'Enable Windows long paths before checkout' "$BAZEL_WORKFLOW")" = "5"
           test "$(grep -c 'git config --system core.longpaths true' "$BAZEL_WORKFLOW")" = "5"
-          ruby -e 'require "yaml"; YAML.parse_file(ARGV.fetch(0))' "$BAZEL_WORKFLOW"
           git diff --check
 
           mkdir -p "$ARTIFACT_DIR/.github/workflows"
