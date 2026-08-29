@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   diagnose-and-qualify:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     steps:
       - name: Checkout controller branch
@@ -25,6 +25,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
           components: rustfmt, clippy
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: nextest@0.9.143
 
       - name: Apply fail-closed supervisor fixture closure candidate
         shell: bash
@@ -124,11 +129,27 @@ jobs:
               'fleet.test_program("portable-shell")?.as_path()',
           )
           tests.write_text(s)
+
+          nextest = Path("codex-rs/.config/nextest.toml")
+          s = nextest.read_text()
+          s = replace_once(
+              s,
+              '[test-groups.windows_process_heavy]\nmax-threads = 2\n',
+              '[test-groups.windows_process_heavy]\nmax-threads = 2\n\n[test-groups.hepta_supervisor_paired_process]\nmax-threads = 1\n',
+              "nextest paired process group",
+          )
+          s = replace_once(
+              s,
+              '[[profile.default.overrides]]\n# Do not add new tests here\n',
+              '[[profile.default.overrides]]\n# These integration cases spawn real agentd+matrixd process fleets. nextest\n# executes each test in a separate process, so an in-process mutex cannot\n# serialize them. Keep the real process fleets mutually exclusive.\nfilter = \'package(codex-hepta-supervisor) & (test(two_real_pairs_restart_one_without_peer_pid_churn) | test(five_real_pairs_adopt_all_ten_children_and_isolate_one_matrix_crash))\'\ntest-group = \'hepta_supervisor_paired_process\'\n\n[[profile.default.overrides]]\n# Do not add new tests here\n',
+              "nextest paired process override",
+          )
+          nextest.write_text(s)
           PY
 
           python3 scripts/verify-hepta-p0-7a-format.py
           git diff --check
-          git diff -- codex-rs/hepta-fleet/src/registry.rs codex-rs/hepta-supervisor/src/supervisor_tests.rs
+          git diff -- codex-rs/hepta-fleet/src/registry.rs codex-rs/hepta-supervisor/src/supervisor_tests.rs codex-rs/.config/nextest.toml
 
       - name: Run exact supervisor unit closure
         working-directory: codex-rs
@@ -137,12 +158,19 @@ jobs:
           set -euo pipefail
           cargo test --locked -p codex-hepta-supervisor --lib -- --test-threads=1
 
-      - name: Run real paired-process diagnostics
+      - name: Run real paired-process diagnostics serially
         working-directory: codex-rs
         shell: bash
         run: |
           set -euo pipefail
           timeout 240 cargo test --locked -p codex-hepta-supervisor --test paired_process_product -- --nocapture --test-threads=1
+
+      - name: Prove nextest process-level serialization
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          just test -p codex-hepta-supervisor
 
       - name: Check and lint candidate
         working-directory: codex-rs
