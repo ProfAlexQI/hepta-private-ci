@@ -1,0 +1,71 @@
+name: Hepta inference V4 agent exact-head source export
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-gap-closure-20260829
+    paths:
+      - .github/workflows/hepta-inference-v4-agent-source-export.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-v4-agent-source-export
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Verify exact clean source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+
+      - name: Export inference closure source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/hepta-inference-v4-source"
+          printf '%s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/hepta-inference-v4-source/HEAD"
+          git rev-parse 'HEAD^{tree}' > "$RUNNER_TEMP/hepta-inference-v4-source/TREE"
+          git archive --format=tar.gz \
+            --output="$RUNNER_TEMP/hepta-inference-v4-source/repository.tar.gz" \
+            HEAD \
+            codex-rs/hepta-infer-core \
+            codex-rs/hepta-infer-client \
+            codex-rs/hepta-inferd \
+            codex-rs/Cargo.toml \
+            codex-rs/Cargo.lock \
+            codex-rs/rust-toolchain.toml \
+            docs/hepta-vnext/inference \
+            scripts \
+            .github/workflows \
+            .github/actions \
+            .github/scripts \
+            MODULE.bazel \
+            MODULE.bazel.lock \
+            BUILD.bazel \
+            justfile \
+            deny.toml \
+            .codespellignore
+          sha256sum "$RUNNER_TEMP/hepta-inference-v4-source/repository.tar.gz" \
+            > "$RUNNER_TEMP/hepta-inference-v4-source/SHA256SUMS"
+
+      - name: Upload exact source artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-v4-agent-source-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-inference-v4-source
+          if-no-files-found: error
+          retention-days: 7
