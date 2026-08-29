@@ -21,8 +21,6 @@ def patch_applies() -> bool:
 
 
 def verify_absorbed_compile_repair() -> None:
-    """Prove every compile-fix semantic postcondition in the current source."""
-
     failures: list[dict[str, str]] = []
 
     def text(path: str) -> str:
@@ -122,12 +120,13 @@ def verify_absorbed_compile_repair() -> None:
             f'old {function_name} visibility removed',
         )
 
-    schema = 'codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs'
-    forbid(schema, 'use sqlx::Executor;', 'unused Executor import removed')
-
-    shadow = 'codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs'
     forbid(
-        shadow,
+        'codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs',
+        'use sqlx::Executor;',
+        'unused Executor import removed',
+    )
+    forbid(
+        'codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs',
         'use super::intelligence_mutation_state::IntelligenceMutationState;',
         'unused mutation-state import removed',
     )
@@ -162,93 +161,69 @@ def verify_absorbed_compile_repair() -> None:
         )
 
 
-def rewrite_one_function(
-    source: str,
-    *,
-    name: str,
-    following_name: str,
-    replacement: str,
-) -> str:
-    pattern = re.compile(
-        rf'(?ms)^def {re.escape(name)}\(.*?(?=^def {re.escape(following_name)}\(|\Z)'
-    )
-    source, count = pattern.subn(lambda _: replacement.rstrip() + '\n\n', source, count=1)
-    if count != 1:
-        raise RuntimeError(f'frozen v7 helper boundary drifted: {name}')
-    return source
-
-
 def run_manual_repair_idempotently() -> None:
-    """Execute frozen v7 with idempotent, fail-closed mutation helpers."""
+    """Run the governed v7 transformation with injected safe helpers.
 
-    source = MANUAL.read_text(encoding='utf-8')
-    source = rewrite_one_function(
-        source,
-        name='replace_exact',
-        following_name='expect_function',
-        replacement='''def replace_exact(path: str, old: str, new: str, *, expected: int = 1) -> None:
-    file_path, text = load(path)
-    old_count = text.count(old)
-    if old_count == expected:
-        save(file_path, text.replace(old, new, expected))
-        return
-    if old_count == 0:
-        if new == '' or text.count(new) == expected:
+    The immutable v7 tail remains the source of every concrete repair. The
+    wrapper supplies only helper semantics: exact old state is transformed,
+    exact new state is accepted, and partial state fails closed.
+    """
+
+    root = Path('.')
+
+    def load(path: str) -> tuple[Path, str]:
+        file_path = root / path
+        return file_path, file_path.read_text(encoding='utf-8')
+
+    def save(file_path: Path, text: str) -> None:
+        file_path.write_text(text, encoding='utf-8')
+
+    def replace_exact(path: str, old: str, new: str, *, expected: int = 1) -> None:
+        file_path, text = load(path)
+        old_count = text.count(old)
+        if old_count == expected:
+            save(file_path, text.replace(old, new, expected))
             return
-    raise AssertionError(
-        f'{path}: replacement is partial or drifted; '
-        f'old={old_count}, new={text.count(new) if new else "removed"}: {old[:100]!r}'
-    )''',
-    )
-    source = rewrite_one_function(
-        source,
-        name='expect_function',
-        following_name='__NO_NEXT_FUNCTION__',
-        replacement='''def expect_function(path: str, name: str, lint: str, reason: str) -> None:
-    file_path, text = load(path)
-    pattern = re.compile(
-        r'(?m)^(?P<indent>[ \\t]*)(?P<signature>'
-        rf'(?:(?:pub(?:\\([^\\)]*\\))?)[ \\t]+)?'
-        rf'(?:async[ \\t]+)?fn[ \\t]+{re.escape(name)}[ \\t]*\\('
-    )
-    matches = list(pattern.finditer(text))
-    if len(matches) != 1:
-        raise AssertionError(f'{path}: expected one function {name}, found {len(matches)}')
-    match = matches[0]
-    indent = match.group('indent')
-    attribute = (
-        f'{indent}#[expect(\\n'
-        f'{indent}    clippy::{lint},\\n'
-        f'{indent}    reason = "{reason}"\\n'
-        f'{indent})]\\n'
-    )
-    prefix = text[: match.start()]
-    if prefix.endswith(attribute):
-        return
-    existing_expect = re.search(
-        rf'(?ms){re.escape(indent)}#\\[expect\\(.*?clippy::{re.escape(lint)},.*?\\)\\]\\n$',
-        prefix[-1024:],
-    )
-    if existing_expect is not None:
-        return
-    lines = prefix.splitlines(keepends=True)
-    if lines and re.fullmatch(
-        rf'{re.escape(indent)}#\\[allow\\(clippy::{re.escape(lint)}(?:,.*)?\\)\\]\\n',
-        lines[-1],
-    ):
-        prefix = ''.join(lines[:-1])
-    save(file_path, prefix + attribute + text[match.start() :])
+        if old_count == 0 and (new == '' or text.count(new) == expected):
+            return
+        raise AssertionError(
+            f'{path}: replacement is partial or drifted; '
+            f'old={old_count}, new={text.count(new) if new else "removed"}: {old[:100]!r}'
+        )
 
-
-TOO_MANY_ARGUMENTS =''',
-    )
-    # The second replacement intentionally supplies the following top-level
-    # assignment because the frozen script has no third helper function.
-    source = source.replace(
-        'TOO_MANY_ARGUMENTS =\nTOO_MANY_ARGUMENTS =',
-        'TOO_MANY_ARGUMENTS =',
-        1,
-    )
+    def expect_function(path: str, name: str, lint: str, reason: str) -> None:
+        file_path, text = load(path)
+        pattern = re.compile(
+            r'(?m)^(?P<indent>[ \t]*)(?P<signature>'
+            rf'(?:(?:pub(?:\([^\)]*\))?)[ \t]+)?'
+            rf'(?:async[ \t]+)?fn[ \t]+{re.escape(name)}[ \t]*\('
+        )
+        matches = list(pattern.finditer(text))
+        if len(matches) != 1:
+            raise AssertionError(f'{path}: expected one function {name}, found {len(matches)}')
+        match = matches[0]
+        indent = match.group('indent')
+        attribute = (
+            f'{indent}#[expect(\n'
+            f'{indent}    clippy::{lint},\n'
+            f'{indent}    reason = "{reason}"\n'
+            f'{indent})]\n'
+        )
+        prefix = text[: match.start()]
+        if prefix.endswith(attribute):
+            return
+        if re.search(
+            rf'(?ms){re.escape(indent)}#\[expect\(.*?clippy::{re.escape(lint)},.*?\)\]\n$',
+            prefix[-1024:],
+        ):
+            return
+        lines = prefix.splitlines(keepends=True)
+        if lines and re.fullmatch(
+            rf'{re.escape(indent)}#\[allow\(clippy::{re.escape(lint)}(?:,.*)?\)\]\n',
+            lines[-1],
+        ):
+            prefix = ''.join(lines[:-1])
+        save(file_path, prefix + attribute + text[match.start() :])
 
     reservation = Path('codex-rs/hepta-memory/src/logical_turn_registry.rs')
     reservation_text = reservation.read_text(encoding='utf-8')
@@ -279,8 +254,23 @@ TOO_MANY_ARGUMENTS =''',
     elif states not in {(0, 1, 0), (0, 0, 1)}:
         raise RuntimeError(f'logical-turn reservation repair is partial or drifted: {states}')
 
-    namespace = {'__name__': '__main__', '__file__': str(MANUAL)}
-    exec(compile(source, str(MANUAL), 'exec'), namespace)
+    source = MANUAL.read_text(encoding='utf-8')
+    marker = 'TOO_MANY_ARGUMENTS ='
+    if source.count(marker) != 1:
+        raise RuntimeError('frozen v7 repair tail marker drifted')
+    tail = source[source.index(marker) :]
+    namespace = {
+        '__name__': '__main__',
+        '__file__': str(MANUAL),
+        'Path': Path,
+        're': re,
+        'ROOT': root,
+        'load': load,
+        'save': save,
+        'replace_exact': replace_exact,
+        'expect_function': expect_function,
+    }
+    exec(compile(tail, str(MANUAL), 'exec'), namespace)
 
 
 if patch_applies():
