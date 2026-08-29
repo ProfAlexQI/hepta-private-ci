@@ -104,7 +104,7 @@ def main() -> int:
         run(("git", "bundle", "verify", str(bundle)), target)
         run(("git", "fetch", str(bundle), f"{BUNDLE_REF}:refs/remotes/p034/candidate"), target)
         candidate = run(("git", "rev-parse", "refs/remotes/p034/candidate"), target).stdout.strip()
-        tree = run(("git", "rev-parse", "refs/remotes/p034/candidate^{{tree}}"), target).stdout.strip()
+        tree = run(("git", "rev-parse", "refs/remotes/p034/candidate^{tree}"), target).stdout.strip()
         parent = run(("git", "rev-parse", "refs/remotes/p034/candidate^"), target).stdout.strip()
         count = run(("git", "rev-list", "--count", f"{P033_HEAD}..refs/remotes/p034/candidate"), target).stdout.strip()
         if candidate != expected_head or parent != P033_HEAD or count != "1" or tree != paired.get("tree"):
