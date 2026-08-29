@@ -1,6 +1,8 @@
 name: Hepta UI Rustfmt Remediation
 
 on:
+  pull_request:
+    types: [synchronize]
   push:
     branches:
       - codex/ui-v4-executable-final-gap-closure-v3-20260829
@@ -16,8 +18,14 @@ concurrency:
 
 jobs:
   rustfmt:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.head.ref == 'codex/ui-v4-executable-final-gap-closure-v3-20260829')
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      HEPTA_REMEDIATION_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Checkout exact remediation commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -36,7 +44,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test "$(git rev-parse HEAD)" = "$HEPTA_REMEDIATION_SHA"
 
           cargo fmt --manifest-path tools/hepta-ui-global-platform-source-closure/Cargo.toml
           git rm -- .github/workflows/hepta-ui-rustfmt-remediation.yml
