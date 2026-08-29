@@ -1,0 +1,41 @@
+{
+  "schema": "hepta.inference.inf2a_adapter_contract_status.v1",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
+  "stage": "INF-2A",
+  "status": "SOURCE_PRESENT_NOT_RUN",
+  "activated": false,
+  "qualified": false,
+  "implemented": {
+    "backend_neutral_adapter_trait": true,
+    "exact_model_tuple_registry": true,
+    "capability_profile": true,
+    "unsupported_reject_before_dispatch": true,
+    "normalized_event_validation": true,
+    "terminal_receipt_normalization": true,
+    "explicit_cancel_capability_gate": true,
+    "loopback_only_profile_fence": true,
+    "implicit_model_install": false,
+    "remote_fallback": false,
+    "text_fallback_for_tools": false,
+    "real_ollama_adapter": false,
+    "real_lmstudio_adapter": false,
+    "daemon_uds_fixture_route": false,
+    "product_caller_wiring": false
+  },
+  "authority": {
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

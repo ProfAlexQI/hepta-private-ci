@@ -1,0 +1,23 @@
+[package]
+name = "codex-hepta-infer-adapter"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+name = "codex_hepta_infer_adapter"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+codex-hepta-infer-core = { path = "../hepta-infer-core" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
+
+[lints.clippy]
+expect_used = "deny"
+unwrap_used = "deny"
+
+[workspace]
