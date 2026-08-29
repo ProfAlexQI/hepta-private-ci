@@ -1,0 +1,78 @@
+name: Hepta inference exact source snapshot
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-gap-closure-scratch-check-20260829
+    paths:
+      - ".github/workflows/hepta-inference-gap-closure-source-snapshot.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    name: Export exact inference source snapshot
+    runs-on: macos-15-intel
+    timeout-minutes: 15
+    env:
+      TARGET_HEAD: 83f675720bee198f7e2524a447ab1177fcb99ef6
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ env.TARGET_HEAD }}
+          fetch-depth: 0
+
+      - name: Verify exact target and build snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_HEAD"
+          root="$RUNNER_TEMP/hepta-inference-source-snapshot"
+          mkdir -p "$root/codex-rs"
+          cp -R codex-rs/hepta-infer-core "$root/codex-rs/"
+          cp -R codex-rs/hepta-infer-client "$root/codex-rs/"
+          cp -R codex-rs/hepta-inferd "$root/codex-rs/"
+          cp codex-rs/Cargo.toml codex-rs/Cargo.lock "$root/codex-rs/"
+          mkdir -p "$root/docs/hepta-vnext/inference" "$root/scripts" "$root/.github/workflows"
+          cp docs/hepta-vnext/inference/HEPTA_INFERENCE_CURRENT_STATUS_V2.json "$root/docs/hepta-vnext/inference/"
+          cp docs/hepta-vnext/inference/HEPTA_INFERENCE_STAGE_MATRIX_V3.json "$root/docs/hepta-vnext/inference/"
+          cp docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_RUNTIME_CLOSURE_RECEIPT_2026-08-29.json "$root/docs/hepta-vnext/inference/"
+          cp scripts/hepta-inference-inf0-source-gate.py "$root/scripts/"
+          cp scripts/hepta-inference-inf0c-cancel-reclassifier.py "$root/scripts/"
+          cp .github/workflows/hepta-inference-gap-closure.yml "$root/.github/workflows/"
+          python3 - "$root" <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import subprocess
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          files = []
+          for path in sorted(p for p in root.rglob("*") if p.is_file()):
+              data = path.read_bytes()
+              files.append({
+                  "path": str(path.relative_to(root)),
+                  "bytes": len(data),
+                  "sha256": hashlib.sha256(data).hexdigest(),
+              })
+          manifest = {
+              "schema": "hepta.inference.source-snapshot.v1",
+              "commit": os.environ["TARGET_HEAD"],
+              "tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(),
+              "files": files,
+          }
+          (root / "SNAPSHOT_MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
+
+      - name: Upload exact snapshot
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-source-snapshot-${{ env.TARGET_HEAD }}
+          path: ${{ runner.temp }}/hepta-inference-source-snapshot
+          if-no-files-found: error
+          retention-days: 7
