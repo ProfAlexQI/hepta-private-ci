@@ -32,7 +32,7 @@ jobs:
         env:
           EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
           EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-          EXPECTED_PARENT: 6aadaebdaaaa6001b151ded4e2f2c19d7e792eb4
+          EXPECTED_PARENT: 6fec513775a8a4fbabf2b3800775a87ac5c1e029
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
@@ -53,7 +53,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          def replace_exact(path: str, old: str, new: str) -> None:
+          def replace_once(path: str, old: str, new: str) -> None:
               file = Path(path)
               text = file.read_text(encoding="utf-8")
               count = text.count(old)
@@ -63,7 +63,7 @@ jobs:
                   )
               file.write_text(text.replace(old, new, 1), encoding="utf-8")
 
-          def replace_all_exact(
+          def replace_count(
               path: str, old: str, new: str, expected_count: int
           ) -> None:
               file = Path(path)
@@ -75,7 +75,7 @@ jobs:
                   )
               file.write_text(text.replace(old, new), encoding="utf-8")
 
-          replace_exact(
+          replace_once(
               "codex-rs/hepta-agentd/src/app_runtime.rs",
               '''#[expect(
               dead_code,
@@ -98,7 +98,7 @@ jobs:
               "scripts/verify-hepta-intelligence-mutation-state.py",
               "scripts/verify-hepta-intelligence-mutation-journal.py",
           ):
-              replace_exact(path, old_clippy, new_clippy)
+              replace_once(path, old_clippy, new_clippy)
 
           prepare = (
               "codex-rs/hepta-memory/src/fact_grounding/"
@@ -111,7 +111,7 @@ jobs:
               "prepare",
               "validate_canonical_identity_binding",
           ):
-              replace_exact(
+              replace_once(
                   prepare,
                   f"pub(super) fn {function}(",
                   f"pub(in super::super) fn {function}(",
@@ -121,14 +121,14 @@ jobs:
               "codex-rs/hepta-memory/src/fact_grounding/"
               "durable/grounding/ledger/insert.rs"
           )
-          replace_exact(
+          replace_once(
               insert,
               "use super::*;\n",
               "use super::*;\n"
               "use super::support::durable_receipt_digest;\n"
               "use super::support::to_i64_len;\n",
           )
-          replace_exact(
+          replace_once(
               insert,
               "pub(super) async fn insert_tx(",
               "pub(in super::super::super) async fn insert_tx(",
@@ -138,7 +138,7 @@ jobs:
               "codex-rs/hepta-memory/src/fact_grounding/"
               "durable/grounding/ledger/verify.rs"
           )
-          replace_exact(
+          replace_once(
               verify,
               "use super::*;\n",
               "use super::*;\n"
@@ -148,7 +148,7 @@ jobs:
               "use super::support::stored_fact_supports;\n"
               "use super::support::validate_span_range_corrupt;\n",
           )
-          replace_exact(
+          replace_once(
               verify,
               "pub(super) async fn verify_receipts(",
               "pub(in super::super::super) async fn verify_receipts(",
@@ -158,12 +158,12 @@ jobs:
               "codex-rs/hepta-memory/src/fact_grounding/"
               "durable/grounding/ledger.rs"
           )
-          replace_exact(
+          replace_once(
               ledger,
               "pub(super) use insert::insert_tx;",
               "pub(in super::super) use insert::insert_tx;",
           )
-          replace_exact(
+          replace_once(
               ledger,
               "pub(super) use verify::verify_receipts;",
               "pub(in super::super) use verify::verify_receipts;",
@@ -173,12 +173,12 @@ jobs:
               "codex-rs/hepta-memory/src/fact_grounding/"
               "durable/grounding/ledger/support.rs"
           )
-          replace_exact(
+          replace_once(
               support,
               "use super::*;\n",
               "use super::*;\nuse crate::framing::frame_part;\n",
           )
-          replace_exact(
+          replace_once(
               support,
               "async fn stored_fact_supports(",
               "pub(super) async fn stored_fact_supports(",
@@ -190,57 +190,43 @@ jobs:
               "to_i64_len",
               "limit_plus_one",
           ):
-              replace_exact(
+              replace_once(
                   support,
                   f"fn {function}(",
                   f"pub(super) fn {function}(",
               )
-          replace_all_exact(
+          replace_count(
               support,
               "super::super::frame_part",
               "frame_part",
               16,
           )
 
-          replace_exact(
+          replace_once(
               "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
               "use sqlx::Executor;\n",
               "",
           )
-          replace_exact(
+          replace_once(
               "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
               "use super::intelligence_mutation_state::IntelligenceMutationState;\n",
               "",
           )
 
-          replace_exact(
-              "codex-rs/hepta-memory/src/intelligence_mutation_state.rs",
-              '''        let request = IntelligenceMutationTransitionRequest {
-              binding: drifted,
-              sequence: 0,
-              causal_parent_sha256: None,
-              action: IntelligenceMutationAction::WitnessSource {
-                  source_sha256: digest("source"),
-              },
-          };
-          assert_eq!(
-              state.apply(request),
-              Err(IntelligenceMutationStateError::BindingDrift)
-          );
-          ''',
-              '''        let drifted_request = IntelligenceMutationTransitionRequest {
-              binding: drifted,
-              sequence: 0,
-              causal_parent_sha256: None,
-              action: IntelligenceMutationAction::WitnessSource {
-                  source_sha256: digest("source"),
-              },
-          };
-          assert_eq!(
-              state.apply(drifted_request),
-              Err(IntelligenceMutationStateError::BindingDrift)
-          );
-          ''',
+          state = "codex-rs/hepta-memory/src/intelligence_mutation_state.rs"
+          replace_once(
+              state,
+              "        let request = IntelligenceMutationTransitionRequest {\n"
+              "            binding: drifted,",
+              "        let drifted_request = IntelligenceMutationTransitionRequest {\n"
+              "            binding: drifted,",
+          )
+          replace_once(
+              state,
+              "            state.apply(request),\n"
+              "            Err(IntelligenceMutationStateError::BindingDrift)",
+              "            state.apply(drifted_request),\n"
+              "            Err(IntelligenceMutationStateError::BindingDrift)",
           )
           PY
 
