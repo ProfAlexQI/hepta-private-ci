@@ -198,7 +198,9 @@ jobs:
               "codex-rs/hepta-automation/migrations/0004_operation_identity.sql",
               "codex-rs/hepta-agentd/src/automation.rs",
               "codex-rs/hepta-matrix-store/src/operation.rs",
+              "codex-rs/hepta-matrix-store/tests/sqlite_full.rs",
               "codex-rs/hepta-contracts/src/provider_operation.rs",
+              "codex-rs/hepta-contracts/tests/cross_owner_fault_matrix.rs",
           }
           tracked = set(subprocess.check_output(
               ["git", "diff", "--name-only", "--diff-filter=ACMRTUXB"], text=True
@@ -254,7 +256,9 @@ jobs:
             codex-rs/hepta-automation/migrations/0004_operation_identity.sql \
             codex-rs/hepta-agentd/src/automation.rs \
             codex-rs/hepta-matrix-store/src/operation.rs \
-            codex-rs/hepta-contracts/src/provider_operation.rs
+            codex-rs/hepta-matrix-store/tests/sqlite_full.rs \
+            codex-rs/hepta-contracts/src/provider_operation.rs \
+            codex-rs/hepta-contracts/tests/cross_owner_fault_matrix.rs
           git diff --cached --check
           git fetch --no-tags origin "refs/heads/$BRANCH_NAME:refs/remotes/origin/$BRANCH_NAME"
           test "$(git rev-parse refs/remotes/origin/$BRANCH_NAME)" = "$SOURCE_HEAD"
