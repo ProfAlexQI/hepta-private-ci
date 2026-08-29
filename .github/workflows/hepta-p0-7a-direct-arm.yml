@@ -63,48 +63,47 @@ jobs:
 
           tests = Path("codex-rs/hepta-supervisor/src/supervisor_tests.rs")
           s = tests.read_text()
-          old_impl = '''        Ok(Self {
-            _temp: temp,
-            registry,
-            first,
-            second,
-        })
-    }
-}
-
-fn register_agent(
-'''
-          new_impl = '''        Ok(Self {
-            _temp: temp,
-            registry,
-            first,
-            second,
-        })
-    }
-
-    fn test_program(&self, label: &str) -> Result<PathBuf, SupervisorError> {
-        let root = self._temp.path().join("programs");
-        std::fs::create_dir_all(&root)?;
-        let file_name: String = label
-            .as_bytes()
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect();
-        let path = root.join(file_name);
-        if !path.exists() {
-            std::fs::write(&path, b"#!/bin/sh\\nexit 0\\n")?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))?;
-            }
-        }
-        Ok(path.canonicalize()?)
-    }
-}
-
-fn register_agent(
-'''
+          old_impl = (
+              '        Ok(Self {\n'
+              '            _temp: temp,\n'
+              '            registry,\n'
+              '            first,\n'
+              '            second,\n'
+              '        })\n'
+              '    }\n'
+              '}\n\n'
+              'fn register_agent(\n'
+          )
+          new_impl = (
+              '        Ok(Self {\n'
+              '            _temp: temp,\n'
+              '            registry,\n'
+              '            first,\n'
+              '            second,\n'
+              '        })\n'
+              '    }\n\n'
+              '    fn test_program(&self, label: &str) -> Result<PathBuf, SupervisorError> {\n'
+              '        let root = self._temp.path().join("programs");\n'
+              '        std::fs::create_dir_all(&root)?;\n'
+              '        let file_name: String = label\n'
+              '            .as_bytes()\n'
+              '            .iter()\n'
+              '            .map(|byte| format!("{byte:02x}"))\n'
+              '            .collect();\n'
+              '        let path = root.join(file_name);\n'
+              '        if !path.exists() {\n'
+              '            std::fs::write(&path, b"#!/bin/sh\\nexit 0\\n")?;\n'
+              '            #[cfg(unix)]\n'
+              '            {\n'
+              '                use std::os::unix::fs::PermissionsExt;\n'
+              '                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))?;\n'
+              '            }\n'
+              '        }\n'
+              '        Ok(path.canonicalize()?)\n'
+              '    }\n'
+              '}\n\n'
+              'fn register_agent(\n'
+          )
           s = replace_once(s, old_impl, new_impl, "test program fixture")
           s = replace_once(
               s,
