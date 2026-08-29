@@ -1,16 +1,27 @@
 #!/usr/bin/env python3
-"""Run the P0.3.4 publisher with the forward-compatibility repair hook."""
+"""Run P0.3.4 publication with monotonic predecessor-gate enforcement."""
 
 from __future__ import annotations
 
 import importlib.util
-import subprocess
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 PUBLISHER = HERE / "p034-qualified-publisher.py"
 FORWARD_COMPAT = HERE / "p034-forward-compat.py"
+P02_RUST_FILES = (
+    "hepta-memory/src/framing.rs",
+    "hepta-memory/src/fact_grounding/durable.rs",
+    "hepta-memory/src/fact_grounding/durable/schema.rs",
+    "hepta-memory/src/fact_grounding/durable/grounding.rs",
+    "hepta-memory/src/fact_grounding/durable/grounding/prepare.rs",
+    "hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
+    "hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
+    "hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs",
+    "hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs",
+    "hepta-memory/src/fact_grounding/durable/tests.rs",
+)
 
 
 def main() -> int:
@@ -24,12 +35,25 @@ def main() -> int:
     def decode_with_forward_compat(destination: Path) -> Path:
         original_apply = original_decode(destination)
         wrapper = destination / "p034_apply_with_forward_compat.py"
+        predecessor_format = [
+            "rustfmt",
+            "--edition",
+            "2024",
+            "--config",
+            "skip_children=true",
+            "--check",
+            *P02_RUST_FILES,
+        ]
         wrapper.write_text(
             "from __future__ import annotations\n"
             "import subprocess\n"
             "import sys\n"
             f"subprocess.run([sys.executable, {str(original_apply)!r}], check=True)\n"
-            f"subprocess.run([sys.executable, {str(FORWARD_COMPAT)!r}], check=True)\n",
+            f"subprocess.run([sys.executable, {str(FORWARD_COMPAT)!r}], check=True)\n"
+            "subprocess.run([sys.executable, "
+            "'scripts/verify-hepta-intelligence-grounding-ledger.py'], "
+            "check=True)\n"
+            f"subprocess.run({predecessor_format!r}, cwd='codex-rs', check=True)\n",
             encoding="utf-8",
         )
         return wrapper
