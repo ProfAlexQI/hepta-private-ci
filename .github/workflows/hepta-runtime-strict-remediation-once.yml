@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-runtime-strict-remediation-once
+  group: hepta-strict-clippy-remediation-once
   cancel-in-progress: true
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
-      EXPECTED_PARENT: 85d5c52c839962874c09254389f506ff1b05bc15
+      EXPECTED_PARENT: 0c6125884214d576d0a5865b24aea580d1bf32ea
       BRANCH: codex/hepta-architecture-convergence-p0-2-20260828
       LEGACY_WORKFLOW: .github/workflows/hepta-strict-clippy-remediation-once.yml
       WORKFLOW_PATH: .github/workflows/hepta-runtime-strict-remediation-once.yml
@@ -260,7 +260,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo "schema=hepta_runtime_strict_remediation_once_v2"
+            echo "schema=hepta_runtime_strict_remediation_once_v3"
             echo "bootstrap_head=$GITHUB_SHA"
             echo "expected_parent=$EXPECTED_PARENT"
             echo "job_status=${{ job.status }}"
