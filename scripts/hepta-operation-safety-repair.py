@@ -71,6 +71,92 @@ def apply_matrix() -> None:
     )
 
 
+def apply_matrix_fault_injection() -> None:
+    path = ROOT / "codex-rs/hepta-matrix-store/src/store.rs"
+    replace_once(
+        path,
+        """use sqlx::Row;
+use sqlx::Sqlite;
+""",
+        """#[cfg(feature = "qualification-fault-injection")]
+use sqlx::AssertSqlSafe;
+#[cfg(feature = "qualification-fault-injection")]
+use sqlx::Connection;
+use sqlx::Row;
+use sqlx::Sqlite;
+""",
+        "Matrix qualification fault imports",
+    )
+    replace_once(
+        path,
+        """    pub async fn close(&self) {
+        self.pool.close().await;
+    }
+
+    pub async fn bind_room(
+""",
+        """    pub async fn close(&self) {
+        self.pool.close().await;
+    }
+
+    /// Execute one normal inbox transaction on a connection whose SQLite
+    /// page-growth limit is temporarily pinned to the supplied value.
+    ///
+    /// This is compiled only for qualification. The limit and the product
+    /// transaction share the same pooled connection, so the test cannot pass
+    /// by constraining an unrelated control connection. The connection is
+    /// reset before it returns to the pool, including after a failed write.
+    #[cfg(feature = "qualification-fault-injection")]
+    pub async fn ingest_inbox_with_max_page_count_for_qualification(
+        &self,
+        draft: &InboxDraft,
+        max_page_count: u64,
+    ) -> Result<InboxDisposition, MatrixDurableError> {
+        if max_page_count == 0 {
+            return Err(MatrixDurableError::Invalid);
+        }
+        let expected_limit = to_i64(max_page_count)?;
+        let mut connection = self.pool.acquire().await.map_err(unavailable)?;
+        let pragma = format!("PRAGMA max_page_count = {max_page_count}");
+        let applied_limit: i64 = sqlx::query_scalar(AssertSqlSafe(pragma))
+            .fetch_one(&mut *connection)
+            .await
+            .map_err(unavailable)?;
+        if applied_limit != expected_limit {
+            return Err(MatrixDurableError::Unavailable);
+        }
+
+        let write_result = async {
+            let mut transaction = (&mut *connection).begin().await.map_err(unavailable)?;
+            match self.ingest_inbox_tx(&mut transaction, draft).await {
+                Ok(disposition) => {
+                    transaction.commit().await.map_err(unavailable)?;
+                    Ok(disposition)
+                }
+                Err(error) => {
+                    transaction.rollback().await.map_err(unavailable)?;
+                    Err(error)
+                }
+            }
+        }
+        .await;
+
+        let reset_limit: i64 = sqlx::query_scalar("PRAGMA max_page_count = 2147483646")
+            .fetch_one(&mut *connection)
+            .await
+            .map_err(unavailable)?;
+        if reset_limit < applied_limit {
+            return Err(MatrixDurableError::Unavailable);
+        }
+        write_result
+    }
+
+    pub async fn bind_room(
+""",
+        "Matrix same-connection SQLITE_FULL fault seam",
+    )
+
+
 def apply_provider() -> None:
     path = ROOT / "codex-rs/hepta-contracts/src/provider_operation.rs"
     replace_once(
@@ -208,6 +294,7 @@ def apply_verifier() -> None:
 def main() -> None:
     apply_automation()
     apply_matrix()
+    apply_matrix_fault_injection()
     apply_provider()
     apply_verifier()
     print("PASS_HEPTA_OPERATION_SAFETY_REPAIR_SOURCE")
