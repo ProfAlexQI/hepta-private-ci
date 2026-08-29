@@ -1,0 +1,46 @@
+name: p034 exact source export
+
+on:
+  push:
+    branches:
+      - codex/p034-exact-source-export-20260829
+    paths:
+      - .github/workflows/p034-exact-source-export.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    name: Export exact PR64 source tree
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Bind and archive exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          mkdir -p artifacts/p034-source
+          printf '%s\n' "${GITHUB_SHA}" > artifacts/p034-source/HEAD
+          tar \
+            --exclude=.git \
+            --exclude=artifacts/p034-source/p034-source.tar.gz \
+            -czf artifacts/p034-source/p034-source.tar.gz .
+          sha256sum artifacts/p034-source/p034-source.tar.gz \
+            > artifacts/p034-source/p034-source.tar.gz.sha256
+
+      - name: Upload exact source
+        uses: actions/upload-artifact@v4
+        with:
+          name: p034-exact-source-${{ github.sha }}
+          path: artifacts/p034-source
+          if-no-files-found: error
+          retention-days: 1
