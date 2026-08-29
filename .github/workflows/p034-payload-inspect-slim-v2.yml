@@ -1,4 +1,4 @@
-name: p034-payload-inspect-windows-v5
+name: p034-payload-inspect-windows-v6
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: p034-payload-inspect-windows-v5-${{ github.sha }}
+  group: p034-payload-inspect-windows-v6-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -25,6 +25,9 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
+          sparse-checkout: |
+            ci/p034-payload
+          sparse-checkout-cone-mode: false
 
       - name: Decode, verify, and safely extract exact payload
         shell: bash
@@ -88,7 +91,7 @@ jobs:
                       }
                   )
           receipt = {
-              "schema": "hepta_intelligence_p0_3_4_payload_inspection_v5",
+              "schema": "hepta_intelligence_p0_3_4_payload_inspection_v6",
               "payload_sha256": actual,
               "member_count": len(members),
               "file_count": len(files),
