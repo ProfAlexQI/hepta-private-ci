@@ -12,12 +12,12 @@ permissions:
 
 concurrency:
   group: hepta-q0-format-deny-diagnostic
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   repair:
     name: Format workspace and diagnose cargo-deny
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     steps:
       - name: Checkout exact carrier
@@ -31,7 +31,7 @@ jobs:
         shell: bash
         env:
           EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-          EXPECTED_PARENT: 8208b24a68a63ef7bb1dd1683f7573045ead616a
+          EXPECTED_PARENT: 97dfafae48eeb0f600a4e5252e8d24703511b182
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "ProfHepta/hepta-private-ci"
@@ -98,27 +98,39 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd codex-rs
-          cargo fmt --all
-          cargo fmt --all -- --check
-          cd ..
+          (
+            cd codex-rs
+            cargo fmt --all
+            cargo fmt --all -- --check
+          )
           git diff --check
+          python3 - <<'PY'
+          import subprocess
+          from pathlib import Path
 
-          mapfile -t changed < <(git diff --name-only | LC_ALL=C sort)
-          test "${#changed[@]}" -gt 1
-          for path in "${changed[@]}"; do
-            case "$path" in
-              .github/scripts/verify_cargo_workspace_manifests.py|codex-rs/*.rs|codex-rs/*/*.rs|codex-rs/*/*/*.rs|codex-rs/*/*/*/*.rs|codex-rs/*/*/*/*/*.rs|codex-rs/*/*/*/*/*/*.rs) ;;
-              *) printf 'unexpected formatter change: %s\n' "$path" >&2; exit 1 ;;
-            esac
-          done
-          printf 'FORMAT_CHANGED_FILES=%s\n' "${#changed[@]}"
-          printf '%s\n' "${changed[@]}"
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only"], text=True
+          ).splitlines()
+          required = ".github/scripts/verify_cargo_workspace_manifests.py"
+          if required not in changed:
+              raise AssertionError(f"missing expected scanner repair: {changed}")
+          unexpected = [
+              path
+              for path in changed
+              if path != required
+              and not (path.startswith("codex-rs/") and Path(path).suffix == ".rs")
+          ]
+          if unexpected:
+              raise AssertionError(f"unexpected formatter changes: {unexpected}")
+          print(f"FORMAT_CHANGED_FILES={len(changed)}")
+          print("\n".join(changed))
+          PY
 
       - name: Diagnose exact all-features dependency graph
         shell: bash
         run: |
           set -euo pipefail
+          printf 'CHECKOUT_SHA=%s\n' "$(git rev-parse HEAD)"
           printf '%s\n' '--- direct manifest matches ---'
           rg -n --hidden --glob 'Cargo.toml' 'aws-lc-rs|1\.13\.3' codex-rs || true
           printf '%s\n' '--- locked aws-lc entries ---'
@@ -134,7 +146,8 @@ jobs:
           set +e
           (
             cd codex-rs
-            cargo metadata --all-features --format-version=1 --no-deps >/tmp/hepta-metadata.json
+            cargo metadata --locked --all-features --format-version=1 --no-deps \
+              >/tmp/hepta-metadata.json
           ) 2>&1 | tee /tmp/hepta-metadata.log
           metadata_code=${PIPESTATUS[0]}
           set -e
@@ -162,20 +175,33 @@ jobs:
           set -euo pipefail
           rm .github/workflows/hepta-q0-format-deny-diagnostic.yml
           rm -rf .github/scripts/__pycache__
-          cargo_fmt_status=0
-          (cd codex-rs && cargo fmt --all -- --check) || cargo_fmt_status=$?
-          test "$cargo_fmt_status" = 0
+          (cd codex-rs && cargo fmt --all -- --check)
           python3 .github/scripts/verify_cargo_workspace_manifests.py
           git diff --check
 
-          mapfile -t changed < <(git diff --name-only | LC_ALL=C sort)
-          test "${#changed[@]}" -gt 2
-          for path in "${changed[@]}"; do
-            case "$path" in
-              .github/scripts/verify_cargo_workspace_manifests.py|.github/workflows/hepta-q0-format-deny-diagnostic.yml|codex-rs/*.rs|codex-rs/*/*.rs|codex-rs/*/*/*.rs|codex-rs/*/*/*/*.rs|codex-rs/*/*/*/*/*.rs|codex-rs/*/*/*/*/*/*.rs) ;;
-              *) printf 'unexpected commit path: %s\n' "$path" >&2; exit 1 ;;
-            esac
-          done
+          python3 - <<'PY'
+          import subprocess
+          from pathlib import Path
+
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only"], text=True
+          ).splitlines()
+          required = {
+              ".github/scripts/verify_cargo_workspace_manifests.py",
+              ".github/workflows/hepta-q0-format-deny-diagnostic.yml",
+          }
+          missing = required.difference(changed)
+          if missing:
+              raise AssertionError(f"missing expected changes: {sorted(missing)}")
+          unexpected = [
+              path
+              for path in changed
+              if path not in required
+              and not (path.startswith("codex-rs/") and Path(path).suffix == ".rs")
+          ]
+          if unexpected:
+              raise AssertionError(f"unexpected commit paths: {unexpected}")
+          PY
 
           remote_head="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1)"
           test "$remote_head" = "$GITHUB_SHA"
