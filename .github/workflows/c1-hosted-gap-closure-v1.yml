@@ -14,16 +14,22 @@ concurrency:
   group: c1-hosted-gap-closure-v1-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
-# Exact-head closure epoch 7. The ubuntu-slim pool has already produced a
-# positive runner ID and executed this producer. The closure remains single-lane
-# and refuses to push if the remote branch moves during validation.
+# Exact-head closure epoch 8. Two independently allocated Unix pools run the
+# same producer. Both bind EXPECTED_HEAD and use a final compare-and-swap before
+# a normal push, so at most one lane can update the branch.
 jobs:
   close-current-gaps:
-    name: Close current hosted qualification gaps
+    name: Close current hosted qualification gaps (${{ matrix.runner }})
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.base.ref == 'integration/vnext-main-20260811'
-    runs-on: ubuntu-slim
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-slim
+          - macos-15
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
