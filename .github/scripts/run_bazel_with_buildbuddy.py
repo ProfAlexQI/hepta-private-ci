@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Compatibility wrapper plus Q0.17-Q0.29 qualification ratchets."""
+"""Compatibility wrapper plus Q0.17-Q0.30 qualification ratchets."""
 
 import os
 import subprocess
@@ -22,17 +22,21 @@ from run_bazel_q027_lane_semantics import (
 from run_bazel_q028_startup_contract import (
     validate_keyless_windows_gnullvm_final_args,
 )
-from run_bazel_q029_job_executable import bind_verified_bazelisk
-from run_bazel_q029_job_executable import prepare_bazelisk_environment
 from run_bazel_q029_job_executable import (
+    prepare_bazelisk_environment as _prepare_q029_compatibility_base,
+)
+from run_bazel_q030_direct_bazel import prepare_bazelisk_environment
+from run_bazel_q030_direct_bazel import resolve_verified_bazel_command
+from run_bazel_q030_direct_bazel import (
     validate_keyless_windows_gnullvm_command,
 )
 from run_bazel_with_buildbuddy_base import *  # noqa: F403
 
-# Keep both selected compatibility layers machine-visible while Q0.28 composes
-# and invokes them transitively through its exact startup-vector contract.
+# Keep selected compatibility layers machine-visible while Q0.30 composes
+# Q0.29 internally and invokes the complete direct-Bazel contract.
 assert _validate_q026_compatibility_base is not None
 assert _validate_q027_compatibility_base is not None
+assert _prepare_q029_compatibility_base is not None
 
 
 def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]:
@@ -58,7 +62,14 @@ def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]
         raise ValueError(
             "credential-free Windows gnullvm qualification rejects caller rc controls"
         )
+
+    output_base = env.get("BAZEL_OUTPUT_BASE")
+    if not output_base:
+        raise ValueError(
+            "credential-free Windows gnullvm qualification requires BAZEL_OUTPUT_BASE"
+        )
     strict_rc = [
+        f"--output_base={output_base}",
         "--nomaster_bazelrc",
         "--nosystem_rc",
         "--noworkspace_rc",
@@ -91,7 +102,7 @@ def main() -> None:
         command = bazel_command(*sys.argv[1:])
         if _is_keyless_windows_gnullvm(command[1:], os.environ):
             prepare_bazelisk_environment(os.environ)
-            command = bind_verified_bazelisk(command, os.environ)
+            command = resolve_verified_bazel_command(command, os.environ)
             validate_keyless_windows_gnullvm_command(command, os.environ)
     except ValueError as error:
         print(
@@ -102,7 +113,7 @@ def main() -> None:
     if os.name == "nt":
         result = subprocess.run(command, check=False)
         raise SystemExit(result.returncode)
-    os.execvp(command[0], command)
+    os.execvpe(command[0], command, os.environ)
 
 
 if __name__ == "__main__":

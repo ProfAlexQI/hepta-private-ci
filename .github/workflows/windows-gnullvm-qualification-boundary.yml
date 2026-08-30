@@ -29,6 +29,7 @@ jobs:
           python3 scripts/verify-windows-gnullvm-qualification-boundary.py
           python3 scripts/verify-windows-gnullvm-option-grammar.py
           python3 scripts/verify-windows-gnullvm-job-executable.py
+          python3 scripts/verify-windows-gnullvm-direct-bazel.py
 
       - name: Exercise default, diagnostic and authenticated branches
         shell: bash
@@ -56,6 +57,8 @@ jobs:
               "qualification_mode": "qualifying_gnullvm_only",
               "keyless_msvc_fallback_allowed_in_github_actions": False,
               "msvc_diagnostic_eligible_for_repository_admission": False,
+              "bazelisk_and_cached_bazel_source_contract": True,
+              "cached_bazel_executed_on_this_linux_source_job": False,
               "source_writeback": False,
               "runtime_authority": False,
               "production_authority": False,

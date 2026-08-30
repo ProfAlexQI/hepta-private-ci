@@ -1,4 +1,4 @@
-"""Q0.28 exact startup-vector contract for keyless Windows gnullvm."""
+"""Q0.28/Q0.30 exact startup-vector contract for keyless Windows gnullvm."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from run_bazel_q027_lane_semantics import (
 
 DISABLED_REPO_CONTENTS_CACHE = "--noexperimental_remote_repo_contents_cache"
 OUTPUT_USER_ROOT_PREFIX = "--output_user_root="
+OUTPUT_BASE_PREFIX = "--output_base="
 STRICT_STARTUP_FLAGS = (
     "--nomaster_bazelrc",
     "--nosystem_rc",
@@ -38,19 +39,23 @@ def _canonical_workspace(env: Mapping[str, str]) -> Path:
     return canonical_workspace
 
 
-def _expected_startup(env: Mapping[str, str]) -> list[str]:
-    expected: list[str] = []
-    output_user_root = env.get("BAZEL_OUTPUT_USER_ROOT")
-    if output_user_root:
-        expected.append(f"{OUTPUT_USER_ROOT_PREFIX}{output_user_root}")
-    expected.extend(
-        (
-            DISABLED_REPO_CONTENTS_CACHE,
-            *STRICT_STARTUP_FLAGS,
-            f"--bazelrc={_canonical_workspace(env) / '.bazelrc'}",
+def _required_env(env: Mapping[str, str], name: str) -> str:
+    value = env.get(name)
+    if not value:
+        raise ValueError(
+            f"credential-free Windows gnullvm qualification requires {name}"
         )
-    )
-    return expected
+    return value
+
+
+def _expected_startup(env: Mapping[str, str]) -> list[str]:
+    return [
+        f"{OUTPUT_USER_ROOT_PREFIX}{_required_env(env, 'BAZEL_OUTPUT_USER_ROOT')}",
+        DISABLED_REPO_CONTENTS_CACHE,
+        f"{OUTPUT_BASE_PREFIX}{_required_env(env, 'BAZEL_OUTPUT_BASE')}",
+        *STRICT_STARTUP_FLAGS,
+        f"--bazelrc={_canonical_workspace(env) / '.bazelrc'}",
+    ]
 
 
 def _validate_exact_startup(
