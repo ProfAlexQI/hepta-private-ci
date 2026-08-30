@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from verify_windows_gnullvm_q039_contract import main
+from verify_windows_gnullvm_q040_composition import main
 
 
 if __name__ == "__main__":
