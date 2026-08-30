@@ -1,0 +1,70 @@
+name: Hepta A0 repair input export macOS
+
+on:
+  push:
+    branches:
+      - "automation/hepta-a0-repair-export-macos-20260831"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-a0-repair-export-macos-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact temporary export head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify source ancestry and export scope
+        shell: bash
+        env:
+          EXPECTED_PARENT: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = ".github/workflows/hepta-a0-repair-export-macos.yml"
+
+      - name: Build content-addressed repair input
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf repair-input
+          mkdir -p repair-input/.github/workflows repair-input/plans repair-input/scripts
+          cp -a plans/hepta-intelligence repair-input/plans/
+          cp .github/workflows/hepta-intelligence-*.yml repair-input/.github/workflows/
+          cp scripts/hepta-intelligence-current-truth.py repair-input/scripts/
+          cp scripts/verify-hepta-intelligence-*.py repair-input/scripts/
+          git rev-parse HEAD^ > repair-input/EXACT-A0-HEAD
+          git rev-parse HEAD^^ > repair-input/EXACT-Q0-HEAD
+          git rev-parse HEAD^^\{tree\} > repair-input/EXACT-Q0-TREE
+          git ls-tree -r HEAD^ -- \
+            .github/workflows/hepta-intelligence-a0-authority.yml \
+            .github/workflows/hepta-intelligence-execution-spec.yml \
+            .github/workflows/hepta-intelligence-master-plan.yml \
+            plans/hepta-intelligence \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py \
+            > repair-input/GIT-TREE-MANIFEST.txt
+          tar -czf hepta-a0-repair-input.tar.gz -C repair-input .
+          shasum -a 256 hepta-a0-repair-input.tar.gz > SHA256SUMS
+
+      - name: Upload immutable repair input
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-a0-repair-input-macos-${{ github.sha }}
+          path: |
+            hepta-a0-repair-input.tar.gz
+            SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
