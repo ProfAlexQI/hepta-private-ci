@@ -1,0 +1,53 @@
+name: Hepta inference V4 exact 5507 source export
+
+on:
+  push:
+    branches:
+      - ops/hepta-inference-v4-5507-source-export-20260830
+    paths:
+      - .github/workflows/hepta-inference-v4-5507-source-export.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-v4-5507-source-export
+  cancel-in-progress: true
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Verify exact clean source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "5507d7202b0f29c631789e6c35975e0cf74a2be3"
+          test -z "$(git status --porcelain)"
+
+      - name: Export exact repository tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/hepta-inference-v4-5507-source"
+          mkdir -p "$out"
+          printf '%s\n' "$GITHUB_SHA" > "$out/HEAD"
+          git rev-parse 'HEAD^{tree}' > "$out/TREE"
+          git archive --format=tar.gz --output="$out/repository.tar.gz" HEAD
+          sha256sum "$out/repository.tar.gz" > "$out/SHA256SUMS"
+
+      - name: Upload exact source artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-v4-5507-source-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-inference-v4-5507-source
+          if-no-files-found: error
+          retention-days: 7
