@@ -1,0 +1,41 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v14",
+  "observation": {
+    "state": "observed_and_classified",
+    "observed_at": "2026-08-30T14:40:05Z",
+    "upstream_repository": "https://github.com/openai/codex.git",
+    "target_branch": "main",
+    "target_ref": "refs/remotes/upstream/main",
+    "observed_upstream_head": "88f776588f5e73467e7659c268f8358a9a2378b6",
+    "range_start_exclusive": "da23e131e68b171909407f469da1b2f72d9c4f4a",
+    "range_end_inclusive": "88f776588f5e73467e7659c268f8358a9a2378b6",
+    "commit_count": 1,
+    "merge_commit_count": 0,
+    "net_changed_file_count": 9,
+    "net_insertions": 47,
+    "net_deletions": 14,
+    "predecessor_relationship": "linear_ancestor",
+    "ordinary_merge_allowed": false,
+    "ordinary_rebase_allowed": false,
+    "direct_cherry_pick_default": false,
+    "required_integration_mode": "selective_semantic_transplant_with_behavioral_evidence",
+    "fetch_command": "git fetch --no-tags https://github.com/openai/codex.git 88f776588f5e73467e7659c268f8358a9a2378b6:refs/remotes/upstream/hepta-intake-20260830-r14"
+  },
+  "commit_inventory": [
+    {
+      "upstream_commit": "88f776588f5e73467e7659c268f8358a9a2378b6",
+      "title": "Set working directories for environment MCP tests (#41683)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    }
+  ],
+  "claims": {
+    "upstream_fully_consumed": false,
+    "source_imported_at_observation": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "deployment_performed": false,
+    "live_enablement_performed": false
+  }
+}
