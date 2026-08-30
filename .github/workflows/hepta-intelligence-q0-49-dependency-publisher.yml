@@ -170,7 +170,7 @@ jobs:
           )
           replace_once(
               "codex-rs/hepta-matrix-protocol/Cargo.toml",
-              "[dev-dependencies]\npretty_assertions = { workspace = true }\n",
+              "\n[dev-dependencies]\npretty_assertions = { workspace = true }\n",
               "",
           )
 
