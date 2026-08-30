@@ -1,0 +1,215 @@
+name: Hepta A0+Q0.7 exact targeted admission
+
+on:
+  push:
+    branches:
+      - "diagnostic/hepta-a0-q0-targeted-de596-20260830"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_SHA: de59679aad4461f14280c032d4334666f5f28e37
+  TARGET_TREE: e96c9b2750685d40118f65b5a7a05ef556520018
+
+jobs:
+  policy:
+    name: Exact cargo-deny policy
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact integration candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify exact candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: cargo-deny@0.19.0
+      - name: Run checked repository policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo deny --manifest-path ./codex-rs/Cargo.toml --all-features check --config ./codex-rs/deny.toml
+      - name: Prove clean tracked source
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+  hygiene:
+    name: Exact format, shear and UDS
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact integration candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify exact candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: cargo-shear@1.11.2
+      - name: Run canonical format gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          just fmt-check
+      - name: Run cargo-shear fail closed
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo shear --deny-warnings
+      - name: Verify Matrixd remains a workspace member
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(p["name"]=="codex-hepta-matrixd" for p in d["packages"])'
+      - name: Test UDS crate
+        working-directory: codex-rs
+        shell: bash
+        run: cargo test -p codex-uds --locked
+      - name: Strict Clippy for UDS crate
+        working-directory: codex-rs
+        shell: bash
+        run: cargo clippy -p codex-uds --all-targets --locked -- -D warnings
+      - name: Prove clean tracked source
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+  automation:
+    name: Exact Automation compile, tests and Clippy
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact integration candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify exact candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+      - name: Check Automation package
+        working-directory: codex-rs
+        shell: bash
+        run: cargo check -p codex-hepta-automation --locked
+      - name: Test Automation package
+        working-directory: codex-rs
+        shell: bash
+        run: cargo test -p codex-hepta-automation --locked
+      - name: Strict Clippy for Automation package
+        working-directory: codex-rs
+        shell: bash
+        run: cargo clippy -p codex-hepta-automation --all-targets --locked -- -D warnings
+      - name: Prove clean tracked source
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+  receipt:
+    name: Exact targeted admission receipt
+    needs: [policy, hygiene, automation]
+    if: always()
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - name: Emit authority-negative receipt
+        shell: bash
+        env:
+          POLICY_RESULT: ${{ needs.policy.result }}
+          HYGIENE_RESULT: ${{ needs.hygiene.result }}
+          AUTOMATION_RESULT: ${{ needs.automation.result }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          receipt = {
+              "schema": "hepta_a0_q0_7_targeted_admission_v1",
+              "target": {"head": os.environ["TARGET_SHA"], "tree": os.environ["TARGET_TREE"]},
+              "checks": {
+                  "cargo_deny": os.environ["POLICY_RESULT"],
+                  "format_shear_uds": os.environ["HYGIENE_RESULT"],
+                  "automation": os.environ["AUTOMATION_RESULT"],
+              },
+              "authority": {
+                  "a0_candidate_qualified": False,
+                  "selected": False,
+                  "full_repository_merge_green": False,
+                  "runtime_wired": False,
+                  "production_authority": False,
+                  "operator_acceptance": False,
+                  "promotion": False,
+                  "release_authority": False,
+                  "callers_ratchet": False,
+              },
+          }
+          canonical = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+          receipt["receipt_binding_sha256"] = hashlib.sha256(
+              b"hepta.a0-q0.7.targeted-admission.v1\0" + canonical
+          ).hexdigest()
+          Path("artifacts/receipt.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+          PY
+      - name: Upload diagnostic receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-a0-q0-7-targeted-${{ env.TARGET_SHA }}
+          path: artifacts/receipt.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Enforce targeted gates
+        shell: bash
+        env:
+          POLICY_RESULT: ${{ needs.policy.result }}
+          HYGIENE_RESULT: ${{ needs.hygiene.result }}
+          AUTOMATION_RESULT: ${{ needs.automation.result }}
+        run: |
+          set -euo pipefail
+          test "$POLICY_RESULT" = success
+          test "$HYGIENE_RESULT" = success
+          test "$AUTOMATION_RESULT" = success
