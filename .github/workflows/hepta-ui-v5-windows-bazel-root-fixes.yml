@@ -1,0 +1,311 @@
+name: Hepta UI v5 Windows Bazel root fixes
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-windows-bazel-root-fixes-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-windows-bazel-root-fixes.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-windows-bazel-root-fixes
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-slim
+    timeout-minutes: 20
+    env:
+      TARGET_BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_HEAD: 1e6f7cf3db498153fd52250dee1112f89489e094
+    steps:
+      - name: Check out exact publisher commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Materialize and validate the exact source fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$TARGET_BRANCH"
+          test "$(git rev-parse "origin/$TARGET_BRANCH")" = "$EXPECTED_HEAD"
+          git checkout --detach "$EXPECTED_HEAD"
+          test -z "$(git status --porcelain)"
+
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import pathlib
+          import tomllib
+
+          root = pathlib.Path.cwd()
+
+          def replace_once(path: pathlib.Path, old: str, new: str, label: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one anchor, found {count}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
+
+          outbound_path = root / "codex-rs/http-client/src/outbound_proxy_tests.rs"
+          replace_once(
+              outbound_path,
+              '''            };
+              stream
+                  .set_read_timeout(Some(Duration::from_secs(10)))
+                  .expect("HTTP stream should get a read timeout");
+          ''',
+              '''            };
+              stream
+                  .set_nonblocking(false)
+                  .expect("accepted HTTP stream should become blocking");
+              stream
+                  .set_read_timeout(Some(Duration::from_secs(10)))
+                  .expect("HTTP stream should get a read timeout");
+          ''',
+              "Windows accepted-socket blocking repair",
+          )
+
+          manager_path = root / "codex-rs/core-plugins/src/manager_tests.rs"
+          manager_text = manager_path.read_text(encoding="utf-8")
+          start_marker = (
+              "async fn remote_installed_cache_adds_plugin_skill_roots_without_remote_plugin_flag() {\n"
+          )
+          end_marker = (
+              "\n#[tokio::test]\n"
+              "async fn plugins_for_config_routes_curated_plugins_by_auth_mode() {"
+          )
+          if manager_text.count(start_marker) != 1 or manager_text.count(end_marker) != 1:
+              raise SystemExit("remote installed plugin test boundary drift")
+          start = manager_text.index(start_marker)
+          end = manager_text.index(end_marker, start)
+          block = manager_text[start:end]
+          block = block.replace(
+              start_marker,
+              "async fn remote_installed_cache_adds_plugin_skill_roots_in_chatgpt_remote_mode() {\n",
+              1,
+          )
+          old_features = 'r#"[features]\nplugins = true\n"#,'
+          new_features = 'r#"[features]\nplugins = true\nremote_plugin = true\n"#,'
+          if block.count(old_features) != 1:
+              raise SystemExit("remote plugin feature fixture anchor drift")
+          block = block.replace(old_features, new_features, 1)
+          old_manager = '''    let manager = PluginsManager::new_with_restriction_product(
+              codex_home.path().to_path_buf(),
+              /*restriction_product*/ None,
+          );
+          manager.write_remote_installed_plugins_cache'''
+          new_manager = '''    let manager = PluginsManager::new_with_restriction_product(
+              codex_home.path().to_path_buf(),
+              /*restriction_product*/ None,
+          );
+          assert!(manager.set_auth_mode(Some(AuthMode::Chatgpt)));
+          manager.write_remote_installed_plugins_cache'''
+          if block.count(old_manager) != 1:
+              raise SystemExit("remote plugin manager fixture anchor drift")
+          block = block.replace(old_manager, new_manager, 1)
+          manager_path.write_text(
+              manager_text[:start] + block + manager_text[end:],
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          cli_build = root / "codex-rs/cli/BUILD.bazel"
+          replace_once(
+              cli_build,
+              '''multiplatform_binaries(
+              name = "codex",
+          )''',
+              '''multiplatform_binaries(
+              name = "hepta-codex-compat",
+          )''',
+              "CLI multiplatform binary label repair",
+          )
+
+          rmcp_build = root / "codex-rs/rmcp-client/BUILD.bazel"
+          replace_once(
+              rmcp_build,
+              '        "//codex-rs/cli:codex",',
+              '        "//codex-rs/cli:hepta-codex-compat",',
+              "RMCP extra binary label repair",
+          )
+
+          specs = {
+              "ext/executor-skills": ("executor-skills", "codex_executor_skills_extension"),
+              "hepta-authority": ("hepta-authority", "hepta_authority"),
+              "hepta-cli": ("hepta-cli", "hepta_cli"),
+              "hepta-contracts": ("hepta-contracts", "hepta_contracts"),
+              "hepta-core": ("hepta-core", "hepta_core"),
+              "hepta-durable-store": ("hepta-durable-store", "hepta_durable_store"),
+              "hepta-egress": ("hepta-egress", "hepta_egress"),
+              "hepta-gateway": ("hepta-gateway", "hepta_gateway"),
+              "hepta-intelligence": ("hepta-intelligence", "hepta_intelligence"),
+              "hepta-kernel": ("hepta-kernel", "hepta_kernel"),
+              "hepta-kg": ("hepta-kg", "hepta_kg"),
+              "hepta-mcp-pagination": ("hepta-mcp-pagination", "hepta_mcp_pagination"),
+              "hepta-memory": ("hepta-memory", "hepta_memory"),
+              "hepta-native-gateway": ("hepta-native-gateway", "hepta_native_gateway"),
+              "hepta-paths": ("hepta-paths", "hepta_paths"),
+              "hepta-plugins": ("hepta-plugins", "hepta_plugins"),
+              "hepta-runtime": ("hepta-runtime", "hepta_runtime"),
+          }
+
+          cargo_root = root / "codex-rs"
+          workspace = tomllib.loads((cargo_root / "Cargo.toml").read_text(encoding="utf-8"))
+          members = workspace["workspace"]["members"]
+          missing_before = {
+              member
+              for member in members
+              if not (cargo_root / member / "BUILD.bazel").is_file()
+              and not (cargo_root / member / "BUILD").is_file()
+          }
+          if missing_before != set(specs):
+              raise SystemExit(
+                  "workspace/Bazel package set drift: "
+                  f"expected={sorted(specs)} actual={sorted(missing_before)}"
+              )
+
+          for member, (target_name, crate_name) in specs.items():
+              member_dir = cargo_root / member
+              cargo_path = member_dir / "Cargo.toml"
+              cargo = tomllib.loads(cargo_path.read_text(encoding="utf-8"))
+              package_name = cargo.get("package", {}).get("name")
+              if not isinstance(package_name, str) or not package_name:
+                  raise SystemExit(f"missing Cargo package identity for {member}")
+              if not (member_dir / "src/lib.rs").is_file() and not (member_dir / "src/main.rs").is_file():
+                  raise SystemExit(f"missing Rust crate root for {member}")
+              build_path = member_dir / "BUILD.bazel"
+              if build_path.exists():
+                  raise SystemExit(f"refusing to overwrite existing Bazel package for {member}")
+
+              if member == "hepta-cli":
+                  content = f'''load("//:defs.bzl", "codex_rust_crate", "multiplatform_binaries")
+
+          codex_rust_crate(
+              name = "{target_name}",
+              crate_name = "{crate_name}",
+          )
+
+          multiplatform_binaries(
+              name = "hepta",
+          )
+          '''
+              elif member == "hepta-runtime":
+                  if not (member_dir / "build.rs").is_file():
+                      raise SystemExit("hepta-runtime build script missing")
+                  if not (member_dir / "codegen/workgraph-v3/modules.bundle.gz").is_file():
+                      raise SystemExit("hepta-runtime WorkGraph bundle missing")
+                  if not (member_dir / "src/work_graph_control_plane_tests.rs").is_file():
+                      raise SystemExit("hepta-runtime control-plane source missing")
+                  content = f'''load("//:defs.bzl", "codex_rust_crate")
+
+          codex_rust_crate(
+              name = "{target_name}",
+              crate_name = "{crate_name}",
+              build_script_data = glob([
+                  "codegen/workgraph-v3/**",
+                  "src/work_graph_control_plane_tests.rs",
+              ]),
+          )
+          '''
+              else:
+                  content = f'''load("//:defs.bzl", "codex_rust_crate")
+
+          codex_rust_crate(
+              name = "{target_name}",
+              crate_name = "{crate_name}",
+          )
+          '''
+              build_path.write_text(content, encoding="utf-8", newline="\n")
+
+          missing_after = [
+              member
+              for member in members
+              if not (cargo_root / member / "BUILD.bazel").is_file()
+              and not (cargo_root / member / "BUILD").is_file()
+          ]
+          if missing_after:
+              raise SystemExit(f"workspace members still missing Bazel packages: {missing_after}")
+
+          if "//codex-rs/cli:codex" in rmcp_build.read_text(encoding="utf-8"):
+              raise SystemExit("stale RMCP binary label remains")
+          if 'name = "codex"' in cli_build.read_text(encoding="utf-8"):
+              raise SystemExit("stale CLI multiplatform binary name remains")
+          PY
+
+          git diff --check
+
+          python3 - <<'PY'
+          from __future__ import annotations
+          import pathlib, subprocess
+          expected = sorted([
+              "codex-rs/cli/BUILD.bazel",
+              "codex-rs/core-plugins/src/manager_tests.rs",
+              "codex-rs/ext/executor-skills/BUILD.bazel",
+              "codex-rs/hepta-authority/BUILD.bazel",
+              "codex-rs/hepta-cli/BUILD.bazel",
+              "codex-rs/hepta-contracts/BUILD.bazel",
+              "codex-rs/hepta-core/BUILD.bazel",
+              "codex-rs/hepta-durable-store/BUILD.bazel",
+              "codex-rs/hepta-egress/BUILD.bazel",
+              "codex-rs/hepta-gateway/BUILD.bazel",
+              "codex-rs/hepta-intelligence/BUILD.bazel",
+              "codex-rs/hepta-kernel/BUILD.bazel",
+              "codex-rs/hepta-kg/BUILD.bazel",
+              "codex-rs/hepta-mcp-pagination/BUILD.bazel",
+              "codex-rs/hepta-memory/BUILD.bazel",
+              "codex-rs/hepta-native-gateway/BUILD.bazel",
+              "codex-rs/hepta-paths/BUILD.bazel",
+              "codex-rs/hepta-plugins/BUILD.bazel",
+              "codex-rs/hepta-runtime/BUILD.bazel",
+              "codex-rs/http-client/src/outbound_proxy_tests.rs",
+              "codex-rs/rmcp-client/BUILD.bazel",
+          ])
+          actual = sorted(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
+          if actual != expected:
+              raise SystemExit(f"exact change surface drift: expected={expected} actual={actual}")
+          for relative in actual:
+              data = pathlib.Path(relative).read_bytes()
+              if b"\r\n" in data:
+                  raise SystemExit(f"CRLF introduced: {relative}")
+              if not data.endswith(b"\n"):
+                  raise SystemExit(f"missing final LF: {relative}")
+          PY
+
+          git config user.name "Hepta UI governed source publisher"
+          git config user.email "hepta-ui-source-publisher@users.noreply.github.com"
+          git add -- \
+            codex-rs/cli/BUILD.bazel \
+            codex-rs/core-plugins/src/manager_tests.rs \
+            codex-rs/ext/executor-skills/BUILD.bazel \
+            codex-rs/hepta-authority/BUILD.bazel \
+            codex-rs/hepta-cli/BUILD.bazel \
+            codex-rs/hepta-contracts/BUILD.bazel \
+            codex-rs/hepta-core/BUILD.bazel \
+            codex-rs/hepta-durable-store/BUILD.bazel \
+            codex-rs/hepta-egress/BUILD.bazel \
+            codex-rs/hepta-gateway/BUILD.bazel \
+            codex-rs/hepta-intelligence/BUILD.bazel \
+            codex-rs/hepta-kernel/BUILD.bazel \
+            codex-rs/hepta-kg/BUILD.bazel \
+            codex-rs/hepta-mcp-pagination/BUILD.bazel \
+            codex-rs/hepta-memory/BUILD.bazel \
+            codex-rs/hepta-native-gateway/BUILD.bazel \
+            codex-rs/hepta-paths/BUILD.bazel \
+            codex-rs/hepta-plugins/BUILD.bazel \
+            codex-rs/hepta-runtime/BUILD.bazel \
+            codex-rs/http-client/src/outbound_proxy_tests.rs \
+            codex-rs/rmcp-client/BUILD.bazel
+          test "$(git diff --cached --name-only | wc -l | tr -d ' ')" = 21
+          git commit -m "fix(ui): close exact-head Windows Bazel source blockers"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_HEAD"
+
+          remote_head="$(git ls-remote --exit-code origin "refs/heads/$TARGET_BRANCH" | awk 'NR == 1 { print $1 }')"
+          test "$remote_head" = "$EXPECTED_HEAD"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
