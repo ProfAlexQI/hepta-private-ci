@@ -1,0 +1,22 @@
+name: Reap conclusively failed blocking-ci PR 89
+
+on:
+  push:
+    branches:
+      - ops/reap-failed-blocking-ci-pr89-20260830
+    paths:
+      - .github/workflows/reap-failed-blocking-ci-pr89.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blocking-ci-89
+  cancel-in-progress: true
+
+jobs:
+  superseded:
+    if: ${{ false }}
+    runs-on: ubuntu-slim
+    steps:
+      - run: echo existing-run-is-already-conclusively-failed
