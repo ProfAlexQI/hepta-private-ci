@@ -1,0 +1,96 @@
+name: Hepta Rust 1.95 portable cache refresh
+
+on:
+  push:
+    branches:
+      - codex/hepta-rust-toolchain-cache-20260829
+    paths:
+      - .github/workflows/hepta-rust-toolchain-refresh-gpt56.yml
+
+permissions:
+  contents: read
+
+env:
+  TARGET_SOURCE: 1a6c453884835937c802de7e90b2a7f47160725e
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.TARGET_SOURCE }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify immutable source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SOURCE"
+          test -z "$(git status --porcelain)"
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy, rust-src
+
+      - name: Fetch exact locked workspace dependencies
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fetch --locked
+
+      - name: Package and shard portable cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache="$RUNNER_TEMP/hepta-rust-cache"
+          mkdir -p "$cache/raw" "$cache/parts" "$cache/meta"
+          sysroot="$(rustc --print sysroot)"
+          tar -C "$sysroot" -czf "$cache/raw/rust-1.95.0-x86_64-unknown-linux-gnu.tar.gz" .
+          tar -C "$HOME/.cargo" -czf "$cache/raw/cargo-registry-git.tar.gz" --ignore-failed-read registry git
+          {
+            echo "schema=hepta.rust-toolchain-cache.v3"
+            echo "source_head=$TARGET_SOURCE"
+            echo "rustc=$(rustc --version)"
+            echo "cargo=$(cargo --version)"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "source_mutation=false"
+          } > "$cache/meta/identity.txt"
+          sha256sum "$cache"/raw/*.tar.gz "$cache"/meta/identity.txt > "$cache/meta/SHA256SUMS"
+          split -b 175m -d -a 2 "$cache/raw/rust-1.95.0-x86_64-unknown-linux-gnu.tar.gz" "$cache/parts/toolchain.part-"
+          split -b 175m -d -a 2 "$cache/raw/cargo-registry-git.tar.gz" "$cache/parts/cargo.part-"
+          rm -rf "$cache/raw"
+          find "$cache" -maxdepth 2 -type f -print -exec ls -lh {} \;
+
+      - name: Upload metadata
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-rust-cache-v3-meta-${{ env.TARGET_SOURCE }}
+          path: ${{ runner.temp }}/hepta-rust-cache/meta
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload toolchain shards
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-rust-cache-v3-toolchain-${{ env.TARGET_SOURCE }}
+          path: ${{ runner.temp }}/hepta-rust-cache/parts/toolchain.part-*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload cargo shards
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-rust-cache-v3-cargo-${{ env.TARGET_SOURCE }}
+          path: ${{ runner.temp }}/hepta-rust-cache/parts/cargo.part-*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
