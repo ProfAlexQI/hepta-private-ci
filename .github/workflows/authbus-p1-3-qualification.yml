@@ -4,268 +4,194 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - integration/vnext-main-full-ci-authbus-p1-3-20260829
+      - codex/authbus-p1-3-clean-replay-v5-macos-x64-20260830
     paths:
-      - .github/workflows/authbus-p1-3-materialize.yml
       - .github/workflows/authbus-p1-3-qualification.yml
-      - codex-rs/hepta-contracts/src/authbus_b4.rs
-      - codex-rs/hepta-contracts/src/lib.rs
-      - codex-rs/hepta-contracts/src/quota_registry.rs
-      - codex-rs/hepta-authbus-qualification/src/model.rs
-      - codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
-      - codex-rs/hepta-authbus-p0-3-qualification/tests/p0_3.rs
-      - codex-rs/hepta-authbus-p1-3-qualification/**
-      - scripts/authbus-p1-3-finalize.py
+      - codex-rs/hepta-contracts/**
+      - codex-rs/hepta-authbus-*/**
+      - scripts/verify-authbus-p0-2.py
+      - scripts/verify-authbus-p0-3.py
+      - scripts/verify-authbus-p1-1.py
+      - scripts/verify-authbus-p1-2.py
       - scripts/verify-authbus-p1-3.py
       - docs/hepta-vnext/authbus/AUTHBUS_P1_3_**
+
+concurrency:
+  group: authbus-p1-3-v5-macos-x64-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
   actions: read
 
 env:
+  BASE_SHA: 6b7aa91d7702a92a50297b1b1bd8170ffb7cb184
+  REGISTRY_SHA256: dfcab028e1a135a0895b3f9eddec9f5f99cf5f392701b98ad14180058a284bf1
   P02: codex-rs/hepta-authbus-qualification/Cargo.toml
   P03: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
+  P11: codex-rs/hepta-authbus-p1-qualification/Cargo.toml
+  P12: codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
   P13: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
+  RECEIPT_JSON: docs/hepta-vnext/authbus/AUTHBUS_P1_3_EXECUTABLE_QUALIFICATION_2026-08-29.json
+  RECEIPT_MD: docs/hepta-vnext/authbus/AUTHBUS_P1_3_EXECUTABLE_QUALIFICATION_2026-08-29.md
   CARGO_INCREMENTAL: "0"
   CARGO_BUILD_JOBS: "1"
   CARGO_PROFILE_DEV_DEBUG: "0"
   CARGO_NET_RETRY: "10"
   CARGO_HTTP_TIMEOUT: "120"
+  CARGO_TARGET_DIR: /tmp/authbus-p1-3-v5-target
+  RUST_BACKTRACE: "1"
 
 jobs:
-  source:
-    name: Exact registry, cleanup, receipt, and negative-authority contracts
-    runs-on: ubuntu-slim
-    timeout-minutes: 20
-    outputs:
-      ready: ${{ steps.mode.outputs.ready }}
+  qualify:
+    name: Exact source, inherited matrices, strict lint, and receipt verification
+    runs-on: macos-14
+    timeout-minutes: 180
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 2
+          fetch-depth: 3
           persist-credentials: false
 
-      - name: Detect final clean candidate
+      - name: Bind exact source or receipt-only child
         id: mode
         shell: bash
         run: |
           set -euo pipefail
-          if test ! -e scripts/authbus-p1-3-finalize.py \
-            && test ! -e .github/workflows/authbus-p1-3-materialize.yml
-          then
-            echo "ready=true" >> "${GITHUB_OUTPUT}"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test ! -e scripts/authbus-p1-3-finalize.py
+          test ! -e scripts/authbus-p1-3-semantic-completion.py
+          test ! -e .github/workflows/authbus-p1-3-materialize.yml
+          if test -f "${RECEIPT_JSON}"; then
+            test -f "${RECEIPT_MD}"
+            echo "receipt=true" >> "${GITHUB_OUTPUT}"
           else
-            echo "ready=false" >> "${GITHUB_OUTPUT}"
+            test ! -e "${RECEIPT_MD}"
+            test "$(git rev-parse HEAD^)" = "${BASE_SHA}"
+            echo "receipt=false" >> "${GITHUB_OUTPUT}"
           fi
+          git diff --check
 
-      - name: Verify exact source and optional receipt
-        if: steps.mode.outputs.ready == 'true'
+      - name: Verify source contracts and authority posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          for phase in p0-2 p0-3 p1-1 p1-2 p1-3; do
+            python3 "scripts/verify-authbus-${phase}.py" | tee "${phase}-source.json"
+          done
+          grep -q PASS_AUTHBUS_P1_2_SOURCE_ONLY p1-2-source.json
+          grep -q PASS_AUTHBUS_P1_3_SOURCE_ONLY p1-3-source.json
+          ! grep -q 'pub struct CanonicalQuotaVector' codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
+          ! grep -q 'pub struct CanonicalQuotaLimits' codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
+          python3 - <<'PY'
+          import json
+          value = json.load(open("p1-3-source.json"))
+          assert value["qualification_only"] is True
+          assert value["dimensions"] == 6 and value["projection_surfaces"] == 6
+          for key in ("authority","effect_authority","production_caller","production_writer","provider_call_enabled","listener_enabled","openbao_enabled","wired"):
+              assert value[key] is False, key
+          PY
+          git diff --check
+
+      - name: Verify receipt against prior hosted run
+        if: steps.mode.outputs.receipt == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          python3 scripts/verify-authbus-p1-2.py | tee p1-2-source.json
-          grep -q PASS_AUTHBUS_P1_2_SOURCE_ONLY p1-2-source.json
-          python3 scripts/verify-authbus-p1-3.py | tee p1-3-source.json
-          grep -q PASS_AUTHBUS_P1_3_SOURCE_ONLY p1-3-source.json
-          ! grep -q 'pub struct CanonicalQuotaVector' \
-            codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
-          ! grep -q 'pub struct CanonicalQuotaLimits' \
-            codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
-          git diff --check
           python3 - <<'PY'
           import json, os, subprocess, urllib.request
           from pathlib import Path
-          p = Path("docs/hepta-vnext/authbus/AUTHBUS_P1_3_EXECUTABLE_QUALIFICATION_2026-08-29.json")
-          if p.exists():
-              r = json.loads(p.read_text())
-              assert r["schema"] == "hepta.authbus.p1.3.executable-qualification.v1"
-              assert r["qualified"] is True and r["qualification_only"] is True
-              assert r["registry_sha256"] == "f6702be58c499d853d273f3174a2556481a3f5b4284cd9cd0b0a247160d7ac08"
-              for k in ("authority","effect_authority","production_caller","production_writer",
-                        "operator_acceptance","promotion","g5_allowed","execute_allowed",
-                        "listener_enabled","provider_call_enabled","openbao_enabled",
-                        "parent_workspace_wired","private_key_storage","raw_signature_storage",
-                        "secret_storage"):
-                  assert r[k] is False, k
-              head, run_id = r["source_head"], int(r["qualification_run_id"])
-              ids = {int(x) for x in r["qualification_job_ids"]}
-              assert len(head) == 40 and run_id > 0 and len(ids) == 4
-              changed = set(subprocess.check_output(
-                  ["git","diff","--name-only",f"{head}..HEAD"], text=True
-              ).splitlines())
-              assert changed <= {str(p), str(p.with_suffix(".md"))}, changed
-              token, repo = os.environ["GH_TOKEN"], os.environ["GITHUB_REPOSITORY"]
-              def api(path):
-                  q = urllib.request.Request(
-                      f"https://api.github.com/repos/{repo}{path}",
-                      headers={"Accept":"application/vnd.github+json",
-                               "Authorization":f"Bearer {token}",
-                               "X-GitHub-Api-Version":"2022-11-28"})
-                  with urllib.request.urlopen(q, timeout=30) as response:
-                      return json.load(response)
-              run = api(f"/actions/runs/{run_id}")
-              assert run["head_sha"] == head and run["conclusion"] == "success"
-              jobs = api(f"/actions/runs/{run_id}/jobs?filter=latest&per_page=100")["jobs"]
-              by_id = {int(j["id"]): j for j in jobs}
-              assert ids <= set(by_id)
-              for job_id in ids:
-                  j = by_id[job_id]
-                  assert j["status"] == "completed" and j["conclusion"] == "success"
-                  assert int(j.get("runner_id") or 0) > 0 and (j.get("steps") or [])
-                  assert all(s.get("conclusion") in {"success","skipped"} for s in j["steps"])
-          Path("p1-3-source-contract.json").write_text(json.dumps({
-              "schema":"hepta.authbus.p1.3.source-contract.v1",
-              "commit":os.environ["GITHUB_SHA"],
-              "registry_sha256":"f6702be58c499d853d273f3174a2556481a3f5b4284cd9cd0b0a247160d7ac08",
-              "dimensions":6,"projection_surfaces":6,"legacy_adapter_count":2,
-              "qualification_only":True,"authority":False,"effect_authority":False,
-              "production_caller":False,"production_writer":False
-          }, sort_keys=True, separators=(",",":")) + "\n")
+          p, md = Path(os.environ["RECEIPT_JSON"]), Path(os.environ["RECEIPT_MD"])
+          r = json.loads(p.read_text())
+          assert r["schema"] == "hepta.authbus.p1.3.executable-qualification.v1"
+          assert r["qualified"] is True and r["qualification_only"] is True
+          assert r["registry_sha256"] == os.environ["REGISTRY_SHA256"]
+          for k in ("authority","effect_authority","production_caller","production_writer","operator_acceptance","promotion","g5_allowed","execute_allowed","listener_enabled","provider_call_enabled","openbao_enabled","parent_workspace_wired","private_key_storage","raw_signature_storage","secret_storage"):
+              assert r[k] is False, k
+          head, tree = r["source_head"], r["source_tree"]
+          run_id = int(r["qualification_run_id"])
+          ids = {int(x) for x in r["qualification_job_ids"]}
+          assert len(head) == 40 and len(tree) == 40 and run_id > 0 and len(ids) == 1
+          assert subprocess.check_output(["git","rev-parse","HEAD^"], text=True).strip() == head
+          assert subprocess.check_output(["git","rev-parse","HEAD^^"], text=True).strip() == os.environ["BASE_SHA"]
+          changed = set(subprocess.check_output(["git","diff","--name-only",f"{head}..HEAD"], text=True).splitlines())
+          assert changed == {str(p), str(md)}, changed
+          token, repo = os.environ["GH_TOKEN"], os.environ["GITHUB_REPOSITORY"]
+          def api(path):
+              request = urllib.request.Request(f"https://api.github.com/repos/{repo}{path}", headers={"Accept":"application/vnd.github+json","Authorization":f"Bearer {token}","X-GitHub-Api-Version":"2022-11-28"})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+          commit = api(f"/git/commits/{head}")
+          assert commit["tree"]["sha"] == tree and commit["parents"][0]["sha"] == os.environ["BASE_SHA"]
+          run = api(f"/actions/runs/{run_id}")
+          assert run["head_sha"] == head and run["event"] == "push" and run["status"] == "completed" and run["conclusion"] == "success"
+          assert run["path"] == ".github/workflows/authbus-p1-3-qualification.yml"
+          jobs = api(f"/actions/runs/{run_id}/jobs?filter=latest&per_page=100")["jobs"]
+          by_id = {int(j["id"]): j for j in jobs}
+          assert ids <= set(by_id)
+          for job_id in ids:
+              job = by_id[job_id]
+              assert job["head_sha"] == head and job["status"] == "completed" and job["conclusion"] == "success"
+              assert int(job.get("runner_id") or 0) > 0 and (job.get("steps") or [])
+              assert all(s.get("conclusion") in {"success","skipped"} for s in job["steps"])
           PY
 
-      - name: Upload source receipt
-        if: steps.mode.outputs.ready == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: authbus-p1-3-source-${{ github.run_id }}
-          path: |
-            p1-2-source.json
-            p1-3-source.json
-            p1-3-source-contract.json
-          retention-days: 14
-
-  contracts-p0-3:
-    name: Contract registry and inherited P0.3 scheduler matrix
-    needs: source
-    if: needs.source.outputs.ready == 'true'
-    runs-on: ubuntu-slim
-    timeout-minutes: 90
-    env:
-      CARGO_TARGET_DIR: /tmp/p13-contracts
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: 1.95.0
           components: rustfmt, clippy
-      - name: Run contract and P0.3 gates
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          test "$(rustc -V | awk '{print $2}')" = "1.95.0"
-          cargo fmt --manifest-path codex-rs/Cargo.toml -p codex-hepta-contracts -- --check
-          cargo fmt --manifest-path "${P03}" --all -- --check
-          cargo test --manifest-path codex-rs/Cargo.toml --locked \
-            -p codex-hepta-contracts --features authbus-local-qualification --lib
-          cargo test --manifest-path "${P03}" --locked --no-default-features --lib
-          cargo test --manifest-path "${P03}" --locked --features p0-3-qualification --tests
-          cargo check --manifest-path codex-rs/Cargo.toml --locked \
-            -p codex-hepta-contracts --features authbus-local-qualification --all-targets
-          cargo check --manifest-path "${P03}" --locked \
-            --features p0-3-qualification --all-targets
-          cargo clippy --manifest-path codex-rs/Cargo.toml --locked \
-            -p codex-hepta-contracts --features authbus-local-qualification \
-            --all-targets -- -D warnings
-          cargo clippy --manifest-path "${P03}" --locked \
-            --features p0-3-qualification --all-targets -- -D warnings
-          printf '%s\n' \
-            '{"schema":"hepta.authbus.p1.3.contracts-p0.3-rust-receipt.v1","qualified":true,"qualification_only":true,"authority":false,"effect_authority":false,"production_caller":false,"production_writer":false}' \
-            > contracts-p0-3.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: authbus-p1-3-contracts-p0-3-${{ github.run_id }}
-          path: contracts-p0-3.json
-          retention-days: 14
 
-  p0-2:
-    name: Inherited P0.2 SQLite WAL compatibility matrix
-    needs: source
-    if: needs.source.outputs.ready == 'true'
-    runs-on: ubuntu-slim
-    timeout-minutes: 90
-    env:
-      CARGO_TARGET_DIR: /tmp/p13-p02
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
-        with:
-          toolchain: 1.95.0
-          components: rustfmt, clippy
-      - name: Run P0.2 gates
+      - name: Run exact full-stack gates
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          test "$(rustc -V | awk '{print $2}')" = "1.95.0"
-          cargo metadata --manifest-path "${P02}" --locked --format-version 1 --no-deps >/dev/null
-          cargo fmt --manifest-path "${P02}" --all -- --check
-          cargo test --manifest-path "${P02}" --locked --no-default-features --lib
-          cargo test --manifest-path "${P02}" --locked --features sqlite-qualification --tests
-          cargo check --manifest-path "${P02}" --locked \
-            --features sqlite-qualification --all-targets
-          cargo clippy --manifest-path "${P02}" --locked \
-            --features sqlite-qualification --all-targets -- -D warnings
-          printf '%s\n' \
-            '{"schema":"hepta.authbus.p1.3.p0.2-rust-receipt.v1","qualified":true,"qualification_only":true,"authority":false,"effect_authority":false,"production_caller":false,"production_writer":false}' \
-            > p0-2.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: authbus-p1-3-p0-2-${{ github.run_id }}
-          path: p0-2.json
-          retention-days: 14
-
-  p1-3:
-    name: AuthBus P1.3 registry and adapter qualification
-    needs:
-      - source
-      - contracts-p0-3
-      - p0-2
-    if: needs.source.outputs.ready == 'true'
-    runs-on: ubuntu-slim
-    timeout-minutes: 90
-    env:
-      CARGO_TARGET_DIR: /tmp/p13
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
-        with:
-          toolchain: 1.95.0
-          components: rustfmt, clippy
-      - name: Run P1.3 gates
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
           test "$(rustc -V | awk '{print $2}')" = "1.95.0"
           cargo metadata --manifest-path "${P13}" --locked --format-version 1 --no-deps >/dev/null
-          cargo fmt --manifest-path "${P13}" --all -- --check
-          cargo test --manifest-path "${P13}" --locked --no-default-features --lib
-          cargo test --manifest-path "${P13}" --locked --features p1-3-qualification --tests
-          cargo check --manifest-path "${P13}" --locked \
-            --features p1-3-qualification --all-targets
-          cargo clippy --manifest-path "${P13}" --locked \
-            --features p1-3-qualification --all-targets -- -D warnings
-          printf '%s\n' \
-            '{"schema":"hepta.authbus.p1.3.rust-receipt.v1","qualified":true,"qualification_only":true,"registry_sha256":"f6702be58c499d853d273f3174a2556481a3f5b4284cd9cd0b0a247160d7ac08","dimensions":6,"projection_surfaces":6,"legacy_adapter_count":2,"p0_3_duplicate_removed":true,"missing_request_count_default":"reject","lossy_downgrade_rejected":true,"authority":false,"effect_authority":false,"production_caller":false,"production_writer":false,"listener_enabled":false,"provider_call_enabled":false,"openbao_enabled":false}' \
-            > p1-3.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+          cargo fmt --manifest-path codex-rs/Cargo.toml --package codex-hepta-contracts -- --check
+          for manifest in "${P02}" "${P03}" "${P11}" "${P12}" "${P13}"; do cargo fmt --manifest-path "${manifest}" --all -- --check; done
+
+          cargo test --manifest-path codex-rs/Cargo.toml --locked -p codex-hepta-contracts --features authbus-local-qualification --lib -- --nocapture
+          cargo test --manifest-path "${P02}" --locked --no-default-features --lib -- --nocapture
+          cargo test --manifest-path "${P02}" --locked --features sqlite-qualification --tests -- --nocapture
+          cargo test --manifest-path "${P03}" --locked --no-default-features --lib -- --nocapture
+          cargo test --manifest-path "${P03}" --locked --features p0-3-qualification --tests -- --nocapture
+          cargo test --manifest-path "${P11}" --locked --no-default-features --lib -- --nocapture
+          cargo test --manifest-path "${P11}" --locked --features p1-qualification --tests -- --nocapture
+          cargo test --manifest-path "${P12}" --locked --no-default-features --lib -- --nocapture
+          cargo test --manifest-path "${P12}" --locked --features p1-2-qualification --tests -- --nocapture
+          cargo test --manifest-path "${P13}" --locked --no-default-features --lib -- --nocapture
+          cargo test --manifest-path "${P13}" --locked --features p1-3-qualification --tests -- --nocapture
+
+          cargo check --manifest-path codex-rs/Cargo.toml --locked -p codex-hepta-contracts --features authbus-local-qualification --all-targets
+          cargo clippy --manifest-path codex-rs/Cargo.toml --locked -p codex-hepta-contracts --features authbus-local-qualification --all-targets -- -D warnings
+          check_lint() { cargo check --manifest-path "$1" --locked --features "$2" --all-targets; cargo clippy --manifest-path "$1" --locked --features "$2" --all-targets -- -D warnings; }
+          check_lint "${P02}" sqlite-qualification
+          check_lint "${P03}" p0-3-qualification
+          check_lint "${P11}" p1-qualification
+          check_lint "${P12}" p1-2-qualification
+          check_lint "${P13}" p1-3-qualification
+
+          for phase in p0-2 p0-3 p1-1 p1-2 p1-3; do python3 "scripts/verify-authbus-${phase}.py"; done
+          git diff --check
+          cat > authbus-p1-3-gate-summary.json <<EOF
+          {"schema":"hepta.authbus.p1.3.aggregate-gate.v1","head":"${GITHUB_SHA}","qualified":true,"qualification_only":true,"registry_sha256":"${REGISTRY_SHA256}","authority":false,"effect_authority":false,"production_caller":false,"production_writer":false,"provider_call_enabled":false,"listener_enabled":false,"openbao_enabled":false}
+          EOF
+
+      - name: Upload aggregate evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: authbus-p1-3-rust-${{ github.run_id }}
-          path: p1-3.json
+          name: authbus-p1-3-aggregate-${{ github.run_id }}
+          path: |
+            p0-2-source.json
+            p0-3-source.json
+            p1-1-source.json
+            p1-2-source.json
+            p1-3-source.json
+            authbus-p1-3-gate-summary.json
+          if-no-files-found: error
           retention-days: 14

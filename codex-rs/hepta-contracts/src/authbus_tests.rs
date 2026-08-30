@@ -112,11 +112,13 @@ fn source_manifest_requires_exact_observed_candidate_binding() {
         )
         .expect_err("stale candidate binding must fail closed");
     assert!(error.to_string().contains("candidate commit"));
-    assert!(embedded_source_manifest_for_candidate(
-        "4d5b0b2d082ddbe0abb6d2fc880d9d9448434ab2",
-        "a3988c2d4624437080a2cdb65185ce74e7cee488",
-    )
-    .is_err());
+    assert!(
+        embedded_source_manifest_for_candidate(
+            "4d5b0b2d082ddbe0abb6d2fc880d9d9448434ab2",
+            "a3988c2d4624437080a2cdb65185ce74e7cee488",
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -132,12 +134,16 @@ fn source_manifest_accepts_matching_observed_candidate_binding() {
 #[test]
 fn source_manifest_rejects_malformed_expected_candidate_binding() {
     let manifest = embedded_source_manifest().expect("embedded manifest");
-    assert!(manifest
-        .validate_for_candidate("not-a-commit", &manifest.candidate.tree)
-        .is_err());
-    assert!(manifest
-        .validate_for_candidate(&manifest.candidate.commit, "not-a-tree")
-        .is_err());
+    assert!(
+        manifest
+            .validate_for_candidate("not-a-commit", &manifest.candidate.tree)
+            .is_err()
+    );
+    assert!(
+        manifest
+            .validate_for_candidate(&manifest.candidate.commit, "not-a-tree")
+            .is_err()
+    );
 }
 
 #[test]
