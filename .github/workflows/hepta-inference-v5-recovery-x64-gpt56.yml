@@ -1,0 +1,80 @@
+name: Hepta inference V5 recovery x64
+
+on:
+  push:
+    branches:
+      - ops/hepta-inference-v5-source-publisher-gpt56-20260830
+    paths:
+      - .github/workflows/hepta-inference-v5-recovery-x64-gpt56.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-v5-recovery-x64-gpt56
+  cancel-in-progress: true
+
+env:
+  TARGET_SHA: 1a6c453884835937c802de7e90b2a7f47160725e
+  TARGET_BRANCH: codex/hepta-inference-v5-runtime-integration-20260830
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout immutable recovery head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Recover exact blobs and exact target source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+          git fetch --force --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          test "$(git rev-parse "refs/remotes/origin/$TARGET_BRANCH")" = "$TARGET_SHA"
+
+          root=.github/qualification/hepta-inference-v5-gpt56
+          out="$RUNNER_TEMP/hepta-inference-v5-recovery-x64"
+          mkdir -p "$out/recovered" "$out/target-base"
+          : > "$out/FOUND_BLOBS.sha1"
+          : > "$out/MISSING_BLOBS.sha1"
+
+          while read -r expected path; do
+            test -n "$expected"
+            test -n "$path"
+            if git cat-file -e "${expected}^{blob}" 2>/dev/null; then
+              mkdir -p "$out/recovered/$(dirname "$path")"
+              git cat-file blob "$expected" > "$out/recovered/$path"
+              test "$(git hash-object -- "$out/recovered/$path")" = "$expected"
+              printf '%s %s\n' "$expected" "$path" >> "$out/FOUND_BLOBS.sha1"
+            else
+              printf '%s %s\n' "$expected" "$path" >> "$out/MISSING_BLOBS.sha1"
+            fi
+          done < "$root/BLOB_MANIFEST.sha1"
+
+          cp "$root/BLOB_MANIFEST.sha1" "$out/BLOB_MANIFEST.sha1"
+          cp "$root/EXPECTED_PATHS.txt" "$out/EXPECTED_PATHS.txt"
+          cp "$root/DELETE_PATHS.txt" "$out/DELETE_PATHS.txt"
+          printf '%s\n' "$GITHUB_SHA" > "$out/RECOVERY_HEAD"
+          git rev-parse 'HEAD^{tree}' > "$out/RECOVERY_TREE"
+          wc -l "$out/FOUND_BLOBS.sha1" "$out/MISSING_BLOBS.sha1" > "$out/COUNTS.txt"
+          find "$out/recovered" -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum > "$out/RECOVERED_SHA256SUMS"
+
+          printf '%s\n' "$TARGET_SHA" > "$out/target-base/HEAD"
+          git rev-parse "$TARGET_SHA^{tree}" > "$out/target-base/TREE"
+          git archive --format=tar.gz --output="$out/target-base/repository.tar.gz" "$TARGET_SHA"
+          sha256sum "$out/target-base/repository.tar.gz" > "$out/target-base/SHA256SUMS"
+
+      - name: Upload recovery bundle
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-v5-recovery-x64-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-inference-v5-recovery-x64
+          if-no-files-found: error
+          retention-days: 14
