@@ -20,7 +20,7 @@ jobs:
     runs-on: macos-15-xlarge
     timeout-minutes: 90
     env:
-      DRIVER_PARENT: 79cf70112da4ca61b2615a80807d6b37f9dc14e0
+      DRIVER_PARENT: cdb6825ee89b8a282365ccfa008c0ac8f4bf700f
       DRIVER_PATH: .github/workflows/hepta-ui-v5-final-canonical-r14-v2-macos-xlarge-replay.yml
       PUBLISHER_PATH: .github/workflows/hepta-ui-v5-final-canonical-r14-v2-publisher.yml
       SOURCE_BRANCH: codex/ui-v5-final-repository-blockers-v2-20260830
