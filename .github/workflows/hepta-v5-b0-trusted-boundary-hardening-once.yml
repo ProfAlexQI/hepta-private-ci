@@ -104,16 +104,16 @@ jobs:
           set -euo pipefail
           expected="$RUNNER_TEMP/expected.txt"
           actual="$RUNNER_TEMP/actual.txt"
-          cat > "$expected" <<'EOF'
-.github/workflows/hepta-v5-b0-trusted-boundary-hardening-once.yml
-codex-rs/hepta-contracts/src/lib.rs
-codex-rs/hepta-contracts/src/verified_use.rs
-codex-rs/hepta-contracts/src/verified_use_tests.rs
-docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md
-docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json
-scripts/apply-hepta-v5-b0-trusted-hardening.py
-scripts/verify-hepta-architecture-plan-v5.py
-EOF
+          printf '%s\n' \
+            '.github/workflows/hepta-v5-b0-trusted-boundary-hardening-once.yml' \
+            'codex-rs/hepta-contracts/src/lib.rs' \
+            'codex-rs/hepta-contracts/src/verified_use.rs' \
+            'codex-rs/hepta-contracts/src/verified_use_tests.rs' \
+            'docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md' \
+            'docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json' \
+            'scripts/apply-hepta-v5-b0-trusted-hardening.py' \
+            'scripts/verify-hepta-architecture-plan-v5.py' \
+            > "$expected"
           git diff --name-only | sort > "$actual"
           diff -u "$expected" "$actual"
           test -z "$(git ls-files --others --exclude-standard)"
