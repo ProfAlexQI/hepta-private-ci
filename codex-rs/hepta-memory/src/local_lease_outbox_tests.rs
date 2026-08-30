@@ -1891,7 +1891,10 @@ async fn verifier_accepts_direct_queued_apply_and_reject_after_reopen() {
 /// Insert one validly hashed event after a normal admission.  This models a
 /// higher-level apply/reject writer that shares the append-only event table
 /// but is not present in this qualification-only branch.
-#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the signature is an explicit ordered protocol or test-harness contract"
+)]
 async fn insert_test_transition(
     store: &CognitiveStore,
     lease_id: &str,
@@ -1958,7 +1961,10 @@ async fn insert_test_transition(
     .expect("insert direct terminal transition");
 }
 
-#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the signature is an explicit ordered protocol or test-harness contract"
+)]
 fn test_event_digest(
     lease_id: &str,
     sequence: u64,
@@ -1993,9 +1999,15 @@ fn frame_test_part(hasher: &mut Sha256, part: &[u8]) {
 
 #[test]
 fn local_lease_outbox_has_no_production_authority() {
-    const { assert!(!LOCAL_LEASE_OUTBOX_EXTERNAL_EFFECTS); }
-    const { assert!(!LOCAL_LEASE_OUTBOX_KG_WRITE_AUTHORITY); }
-    const { assert!(!LOCAL_LEASE_OUTBOX_PRODUCTION_CALLER); }
+    const {
+        assert!(!LOCAL_LEASE_OUTBOX_EXTERNAL_EFFECTS);
+    }
+    const {
+        assert!(!LOCAL_LEASE_OUTBOX_KG_WRITE_AUTHORITY);
+    }
+    const {
+        assert!(!LOCAL_LEASE_OUTBOX_PRODUCTION_CALLER);
+    }
 }
 
 // H4 qualification probe constants. These are test-only and deliberately
