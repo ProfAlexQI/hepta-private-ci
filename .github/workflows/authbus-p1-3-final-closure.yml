@@ -47,21 +47,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cp scripts/authbus-p1-3-final-closure.sh /tmp/authbus-p1-3-final-closure.sh
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('/tmp/authbus-p1-3-final-closure.sh')
-          s = p.read_text()
-          replacements = (
-              ('EXPECTED_PARENT=556c314bf345fb218f3fcf533643bdb48eab2aa2',
-               'EXPECTED_PARENT=9c460525ac48293baff9275df03aaf258e454b62'),
-              ("'runs-on: ubuntu-24.04-arm'", "'runs-on: ubuntu-slim'"),
-          )
-          for before, after in replacements:
-              count = s.count(before)
-              if count != 1:
-                  raise SystemExit(f'expected exactly one {before!r}, found {count}')
-              s = s.replace(before, after)
-          p.write_text(s)
-          PY
-          bash /tmp/authbus-p1-3-final-closure.sh
+          bash scripts/authbus-p1-3-final-closure.sh

@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "${GITHUB_WORKSPACE:?}"
 
-EXPECTED_PARENT=556c314bf345fb218f3fcf533643bdb48eab2aa2
+EXPECTED_PARENT=f1830f3a7153210f5ca8294baa89f74e299a4668
 BASE_BRANCH=integration/vnext-main-full-ci-authbus-p1-3-20260829
 BASE_SHA=6b7aa91d7702a92a50297b1b1bd8170ffb7cb184
 BASE_TREE=f46fa8c6d541742eaea62d70ea62c0fe316dbaf9
@@ -107,7 +107,7 @@ run_gate() {
     failures+=("${name}")
   fi
 }
-run_gate contracts 'cargo check --manifest-path codex-rs/Cargo.toml --locked -p codex-hepta-contracts --features authbus-local-qualification --all-targets && cargo clippy --manifest-path codex-rs/Cargo.toml --locked -p codex-hepta-contracts --featurs authbus-local-qualification --all-targets -- -D warnings'
+run_gate contracts 'cargo check --manifest-path codex-rs/Cargo.toml --locked -p codex-hepta-contracts --features authbus-local-qualification --all-targets && cargo clippy --manifest-path codex-rs/Cargo.toml --locked -p codex-hepta-contracts --features authbus-local-qualification --all-targets -- -D warnings'
 run_gate p0_2 'cargo check --manifest-path "$P02" --locked --features sqlite-qualification --all-targets && cargo clippy --manifest-path "$P02" --locked --features sqlite-qualification --all-targets -- -D warnings'
 run_gate p0_3 'cargo check --manifest-path "$P03" --locked --features p0-3-qualification --all-targets && cargo clippy --manifest-path "$P03" --locked --features p0-3-qualification --all-targets -- -D warnings'
 run_gate p1_1 'cargo check --manifest-path "$P11" --locked --features p1-qualification --all-targets && cargo clippy --manifest-path "$P11" --locked --features p1-qualification --all-targets -- -D warnings'
@@ -134,10 +134,107 @@ source = path.read_text(encoding='utf-8')
 for before, after, expected, label in (
     ('      - integration/vnext-main-full-ci-authbus-p1-3-20260829',
      '      - codex/authbus-p1-3-clean-replay-20260830', 1, 'target branch'),
-    ('runs-on: ubuntu-slim', 'runs-on: ubuntu-24.04-arm', 4, 'hosted runner'),
+    ('runs-on: ubuntu-slim', 'runs-on: ubuntu-slim', 4, 'hosted runner'),
     ('f6702be58c499d853d273f3174a2556481a3f5b4284cd9cd0b0a247160d7ac08',
      'dfcab028e1a135a0895b3f9eddec9f5f99cf5f392701b98ad14180058a284bf1',
      3, 'registry digest'),
 ):
     count = source.count(before)
-    if count€„ô•áÁ•Ñ•è(€€€€€€€É…¥Í”MåÍÑ•µá¥Ð¡˜í±…‰•±ôè•áÁ•Ñ•í•áÁ•Ñ•‘ô…¹¡½ÉÌ°™½Õ¹í½Õ¹Ñôœ¤(€€€Í½ÕÉ”€ôÍ½ÕÉ”¹É•Á±…”¡‰•™½É”°…™Ñ•È¤)Á…Ñ ¹ÝÉ¥Ñ•}Ñ•áÐ¡Í½ÕÉ”°•¹½‘¥¹œôÕÑ˜´àœ¤)Ad()%91}AQ!Lô (€½‘•àµÉÌ½¡•ÁÑ„µ½¹ÑÉ…ÑÌ½ÍÉŒ½…ÕÑ¡‰ÕÍ}ˆÄ¹ÉÌ(€½‘•àµÉÌ½¡•ÁÑ„µ½¹ÑÉ…ÑÌ½ÍÉŒ½…ÕÑ¡‰ÕÍ}ˆÅ}Ñ•ÍÑÌ¹ÉÌ(€½‘•àµÉÌ½¡•ÁÑ„µ½¹ÑÉ…ÑÌ½ÍÉŒ½…ÕÑ¡‰ÕÍ}ˆÈ¹ÉÌ(€½‘•àµÉÌ½¡•ÁÑ„µ½¹ÑÉ…ÑÌ½ÍÉŒ½…ÕÑ¡‰ÕÍ}ˆÌ¹ÉÌ(€½‘•àµÉÌ½¡•ÁÑ„µ½¹ÑÉ…ÑÌ½ÍÉŒ½…ÕÑ¡‰ÕÍ}ˆÍ}…‘…ÁÑ•È¹ÉÌ(€½‘•àµÉÌ½¡•ÁÑ„µ½¹ÑÉ…ÑÌ½ÍÉŒ½…ÕÑ¡‰ÕÍ}ˆÐ¹ÉÌ(€½‘•àµÉÌ½¡•ÁÑ„µ½¹ÑÉ…ÑÌ½ÍÉŒ½…ÕÑ¡‰ÕÍ}Ñ•ÍÑÌ¹ÉÌ(€½‘•àµÉÌ½¡•ÁÑ„µ½¹ÑÉ…ÑÌ½ÍÉŒ½±¥ˆ¹ÉÌ(€½‘•àµÉÌ½¡•ÁÑ„µ½¹ÑÉ…ÑÌ½ÍÉŒ½ÅÕ½Ñ…}É•¥ÍÑÉä¹ÉÌ(€½‘•àµÉÌ½¡•ÁÑ„µ½¹ÑÉ…ÑÌ½Ñ•ÍÑÌ½…ÕÑ¡‰ÕÍ}ˆÍ}ÀÁ|Ä¹ÉÌ(€½‘•àµÉÌ½¡•ÁÑ„µ…ÕÑ¡‰ÕÌµÅÕ…±¥™¥…Ñ¥½¸½ÍÉŒ½µ½‘•°¹ÉÌ(€½‘•àµÉÌ½¡•ÁÑ„µ…ÕÑ¡‰ÕÌµÅÕ…±¥™¥…Ñ¥½¸½ÍÉŒ½ÍÑ½É”¹ÉÌ(€½‘•àµÉÌ½¡•ÁÑ„µ…ÕÑ¡‰ÕÌµÀÀ´ÌµÅÕ…±¥™¥…Ñ¥½¸½ÍÉŒ½±¥ˆ¹ÉÌ(€½‘•àµÉÌ½¡•ÁÑ„µ…ÕÑ¡‰ÕÌµÀÀ´ÌµÅÕ…±¥™¥…Ñ¥½¸½ÍÉŒ½Í¡•‘Õ±•È¹ÉÌ(€½‘•àµÉÌ½¡•ÁÑ„µ…ÕÑ¡‰ÕÌµÀÀ´ÌµÅÕ…±¥™¥…Ñ¥½¸½Ñ•ÍÑÌ½ÀÁ|Ì¹ÉÌ(€½‘•àµÉÌ½¡•ÁÑ„µ…ÕÑ¡‰ÕÌµÀÄ´ÌµÅÕ…±¥™¥…Ñ¥½¸½…É¼¹Ñ½µ°(€½‘•àµÉÌ½¡•ÁÑ„µ…ÕÑ¡‰ÕÌµÀÄ´ÌµÅÕ…±¥™¥…Ñ¥½¸½…É¼¹±½¬(€½‘•àµÉÌ½¡•ÁÑ„µ…ÕÑ¡‰ÕÌµÀÄ´ÌµÅÕ…±¥™¥…Ñ¥½¸½I5¹µ(€½‘•àµÉÌ½¡•ÁÑ„µ…ÕÑ¡‰ÕÌµÀÄ´ÌµÅÕ…±¥™¥…Ñ¥½¸½ÍÉŒ½±¥ˆ¹ÉÌ(€½‘•àµÉÌ½¡•ÁÑ„µ…ÕÑ¡‰ÕÌµÀÄ´ÌµÅÕ…±¥™¥…Ñ¥½¸½Ñ•ÍÑÌ½ÀÅ|Ì¹ÉÌ(€‘½Ì½¡•ÁÑ„µÙ¹•áÐ½…ÕÑ¡‰ÕÌ½UQ!	UM}@Å|Í}Y1=A59Q}A19|ÈÀÈØ´Àà´Èä¹µ(€‘½Ì½¡•ÁÑ„µÙ¹•áÐ½…ÕÑ¡‰ÕÌ½UQ!	UM}@Å|Í}%5A159QQ%=9}MQQUM|ÈÀÈØ´Àà´Èä¹©Í½¸(€‘½Ì½¡•ÁÑ„µÙ¹•áÐ½…ÕÑ¡‰ÕÌ½UQ!	UM}@Å|Í}%5A159QQ%=9}MQQUM|ÈÀÈØ´Àà´Èä¹µ(€ÍÉ¥ÁÑÌ½Ù•É¥™äµ…ÕÑ¡‰ÕÌµÀÄ´Ì¹Áä(¤)1Q%=9Lô (€€¹¥Ñ¡Õˆ½Ý½É­™±½ÝÌ½…ÕÑ¡‰ÕÌµÀÄ´Ìµ…Àµ‘¥…¹½ÍÑ¥Œ¹åµ°(€€¹¥Ñ¡Õˆ½Ý½É­™±½ÝÌ½…ÕÑ¡‰ÕÌµÀÄ´Ìµµ…Ñ•É¥…±¥é”¹åµ°(€ÍÉ¥ÁÑÌ½…ÕÑ¡‰ÕÌµÀÄ´Ìµ™¥¹…±¥é”¹Áä(€ÍÉ¥ÁÑÌ½…ÕÑ¡‰ÕÌµÀÄ´ÌµÍ•µ…¹Ñ¥Œµ½µÁ±•Ñ¥½¸¹Áä(¤()Ñ…È€µ˜€½ÑµÀ½…ÕÑ¡‰ÕÌµÀÄ´Ìµ™¥¹…°µÍ½ÕÉ”¹Ñ…Èp(€€¹¥Ñ¡Õˆ½Ý½É­™±½ÝÌ½…ÕÑ¡‰ÕÌµÀÄ´ÌµÅÕ…±¥™¥…Ñ¥½¸¹åµ°€ˆ‘í%91}AQ!Mmuôˆ)¥ÐÉ•Í•Ð€´µ¡…É)¥Ð±•…¸€µ™‘à)¥Ð¡•­½ÕÐ€´µ‘•Ñ… €ˆ‘í	M}M!ôˆ)Ñ•ÍÐ€ˆ¡¥ÐÉ•ØµÁ…ÉÍ”!è¤ˆ€ô€ˆ‘í	M}M!ôˆ)Ñ•ÍÐ€ˆ¡¥ÐÉ•ØµÁ…ÉÍ”!yíÑÉ••ô¤ˆ€ô€ˆ‘í	M}QIôˆ)Ñ…È€µá˜€½ÑµÀ½…ÕÑ¡‰ÕÌµÀÄ´Ìµ™¥¹…°µÍ½ÕÉ”¹Ñ…È)¥ÐÉ´€µ˜€ˆ‘í1Q%=9Mmuôˆ)¥Ð…‘€´´€¹¥Ñ¡Õˆ½Ý½É­™±½ÝÌ½…ÕÑ¡‰ÕÌµÀÄ´ÌµÅÕ…±¥™¥…Ñ¥½¸¹åµ°€ˆ‘í%91}AQ!Mmuôˆ)ÁÉ¥¹Ñ˜€œ•Íq¸œ€ˆ‘í1Q%=9Mmuôˆ€¹¥Ñ¡Õˆ½Ý½É­™±½ÝÌ½…ÕÑ¡‰ÕÌµÀÄ´ÌµÅÕ…±¥™¥…Ñ¥½¸¹åµ°p(€€ˆ‘í%91}AQ!Mmuôˆð1}10õÍ½ÉÐ€µÔ€ø€½ÑµÀ½ÀÄÌµ•áÁ•Ñ•µÁ…Ñ¡Ì¹ÑáÐ)¥Ð‘¥™˜€´µ…¡•€´µ¹…µ”µ½¹±äð1}10õÍ½ÉÐ€ø€½ÑµÀ½ÀÄÌµ…ÑÕ…°µÁ…Ñ¡Ì¹ÑáÐ)Ñ•ÍÐ€ˆ¡ÝŒ€µ°€ð€½ÑµÀ½ÀÄÌµ•áÁ•Ñ•µÁ…Ñ¡Ì¹ÑáÐ¤ˆ€ô€ˆÈäˆ)Ñ•ÍÐ€ˆ¡ÝŒ€µ°€ð€½ÑµÀ½ÀÄÌµ…ÑÕ…°µÁ…Ñ¡Ì¹ÑáÐ¤ˆ€ô€ˆÈäˆ)‘¥™˜€µÔ€½ÑµÀ½ÀÄÌµ•áÁ•Ñ•µÁ…Ñ¡Ì¹ÑáÐ€½ÑµÀ½ÀÄÌµ…ÑÕ…°µÁ…Ñ¡Ì¹ÑáÐ)™½ÈÁ…Ñ ¥¸p(€€¹¥Ñ¡Õˆ½Ý½É­™±½ÝÌ½…ÕÑ¡‰ÕÌµÀÄ´Ìµ…Àµ‘¥…¹½ÍÑ¥Œ¹åµ°p(€€¹¥Ñ¡Õˆ½Ý½É­™±½ÝÌ½…ÕÑ¡‰ÕÌµÀÄ´Ìµµ…Ñ•É¥…±¥é”¹åµ°p(€€¹¥Ñ¡Õˆ½Ý½É­™±½ÝÌ½…ÕÑ¡‰ÕÌµÀÄ´Ìµ±•…¸µÉ•Á±…äµµ…Ñ•É¥…±¥é”¹åµ°p(€€¹¥Ñ¡Õˆ½Ý½É­™±½ÝÌ½…ÕÑ¡‰ÕÌµÀÄ´Ìµ™¥¹…°µ±½ÍÕÉ”¹åµ°p(€ÍÉ¥ÁÑÌ½…ÕÑ¡‰ÕÌµÀÄ´Ìµ™¥¹…±¥é”¹Áäp(€ÍÉ¥ÁÑÌ½…ÕÑ¡‰ÕÌµÀÄ´ÌµÍ•µ…¹Ñ¥Œµ½µÁ±•Ñ¥½¸¹Áäp(€ÍÉ¥ÁÑÌ½…ÕÑ¡‰ÕÌµÀÄ´Ìµ…Àµ±½ÍÕÉ”¹Áäp(€ÍÉ¥ÁÑÌ½…ÕÑ¡‰ÕÌµÀÄ´Ìµ±¥ÁÁäµ½µÁ±•Ñ¥½¸¹Áäp(€ÍÉ¥ÁÑÌ½…ÕÑ¡‰ÕÌµÀÄ´Ìµ™¥¹…°µ±½ÍÕÉ”¹Í )‘¼(€Ñ•ÍÐ€„€µ”€ˆ‘íÁ…Ñ¡ôˆ)‘½¹”)ÁåÑ¡½¸ÌÍÉ¥ÁÑÌ½Ù•É¥™äµ…ÕÑ¡‰ÕÌµÀÄ´È¹ÁäðÑ•”€½ÑµÀ½ÀÄÈµ±•…¸µÍ½ÕÉ”¹©Í½¸)É•ÅÕ¥É•}±¥¹”AMM}UQ!	UM}@Å|É}M=UI}=91d€½ÑµÀ½ÀÄÈµ±•…¸µÍ½ÕÉ”¹©Í½¸)ÁåÑ¡½¸ÌÍÉ¥ÁÑÌ½Ù•É¥™äµ…ÕÑ¡‰ÕÌµÀÄ´Ì¹ÁäðÑ•”€½ÑµÀ½ÀÄÌµ±•…¸µÍ½ÕÉ”¹©Í½¸)É•ÅÕ¥É•}±¥¹”AMM}UQ!	UM}@Å|Í}M=UI}=91d€½ÑµÀ½ÀÄÌµ±•…¸µÍ½ÕÉ”¹©Í½¸)¥Ð‘¥™˜€´µ…¡•€´µ¡•¬()¥Ð½¹™¥œÕÍ•È¹¹…µ”€¥Ñ¡Õˆµ…Ñ¥½¹Ím‰½Ñtœ)¥Ð½¹™¥œÕÍ•È¹•µ…¥°€œÐÄàäàÈàÈ­¥Ñ¡Õˆµ…Ñ¥½¹Ím‰½ÑuÕÍ•ÉÌ¹¹½É•Á±ä¹¥Ñ¡Õˆ¹½´œ)¥Ð½µµ¥Ð€µ´€™•…Ð¡…ÕÑ¡‰ÕÌ¤è±½Í”™Õ±°µÍÑ…¬@Ä¸Ì…ÁÌœ)Í½ÕÉ•}Í¡„ô¡¥ÐÉ•ØµÁ…ÉÍ”!¤)Í½ÕÉ•}ÑÉ•”ô¡¥ÐÉ•ØµÁ…ÉÍ”!yíÑÉ••ô¤)Ñ•ÍÐ€ˆ¡¥ÐÉ•ØµÁ…ÉÍ”!x¤ˆ€ô€ˆ‘í	M}M!ôˆ)Ñ•ÍÐ€ˆ‘íÍ½ÕÉ•}ÑÉ••ôˆ€„ô€ˆ‘í	M}QIôˆ(„¥Ð±ÌµÉ•µ½Ñ”€´µ•á¥Ðµ½‘”€´µ¡•…‘Ì½É¥¥¸€‰É•™Ì½¡•…‘Ì¼‘íQIQ}	I9!ôˆ€ø½‘•Ø½¹Õ±°€Èø˜Ä)¥ÐÁÕÍ ½É¥¥¸€‰!éÉ•™Ì½¡•…‘Ì¼‘íQIQ}	I9!ôˆ)ì(€•¡¼€‰Í½ÕÉ•}Í¡„ô‘íÍ½ÕÉ•}Í¡…ôˆ(€•¡¼€‰Í½ÕÉ•}ÑÉ•”ô‘íÍ½ÕÉ•}ÑÉ••ôˆ(€•¡¼€‰Í½ÕÉ•}Á…É•¹Ðô‘í	M}M!ôˆ(€•¡¼€¡…¹•‘}Á…Ñ¡ÌôÈäœ(€•¡¼€‰Ñ…É•Ñ}‰É…¹ ô‘íQIQ}	I9!ôˆ(€•¡¼€Í½ÕÉ•}Ý½É­¥¹}ÑÉ••}ÅÕ…±¥™¥•õÑÉÕ”œ(€•¡¼€…ÕÑ¡½É¥Ñäõ™…±Í”œ(€•¡¼€•™™•Ñ}…ÕÑ¡½É¥Ñäõ™…±Í”œ(€•¡¼€ÁÉ½‘ÕÑ¥½¹}…±±•Èõ™…±Í”œ(€•¡¼€ÁÉ½‘ÕÑ¥½¹}ÝÉ¥Ñ•Èõ™…±Í”œ(€•¡¼€ÁÉ½Ù¥‘•É}…±±}•¹…‰±•õ™…±Í”œ(€•¡¼€±¥ÍÑ•¹•É}•¹…‰±•õ™…±Í”œ(€•¡¼€½Á•¹‰…½}•¹…‰±•õ™…±Í”œ)ôðÑ•”€µ„€ˆ‘í%Q!U	}MQA}MU55Ieôˆ(
+    if count != expected:
+        raise SystemExit(f'{label}: expected {expected} anchors, found {count}')
+    source = source.replace(before, after)
+path.write_text(source, encoding='utf-8')
+PY
+
+FINAL_PATHS=(
+  codex-rs/hepta-contracts/src/authbus_b1.rs
+  codex-rs/hepta-contracts/src/authbus_b1_tests.rs
+  codex-rs/hepta-contracts/src/authbus_b2.rs
+  codex-rs/hepta-contracts/src/authbus_b3.rs
+  codex-rs/hepta-contracts/src/authbus_b3_adapter.rs
+  codex-rs/hepta-contracts/src/authbus_b4.rs
+  codex-rs/hepta-contracts/src/authbus_tests.rs
+  codex-rs/hepta-contracts/src/lib.rs
+  codex-rs/hepta-contracts/src/quota_registry.rs
+  codex-rs/hepta-contracts/tests/authbus_b3_p0_1.rs
+  codex-rs/hepta-authbus-qualification/src/model.rs
+  codex-rs/hepta-authbus-qualification/src/store.rs
+  codex-rs/hepta-authbus-p0-3-qualification/src/lib.rs
+  codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
+  codex-rs/hepta-authbus-p0-3-qualification/tests/p0_3.rs
+  codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
+  codex-rs/hepta-authbus-p1-3-qualification/Cargo.lock
+  codex-rs/hepta-authbus-p1-3-qualification/README.md
+  codex-rs/hepta-authbus-p1-3-qualification/src/lib.rs
+  codex-rs/hepta-authbus-p1-3-qualification/tests/p1_3.rs
+  docs/hepta-vnext/authbus/AUTHBUS_P1_3_DEVELOPMENT_PLAN_2026-08-29.md
+  docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.json
+  docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.md
+  scripts/verify-authbus-p1-3.py
+)
+DELETIONS=(
+  .github/workflows/authbus-p1-3-gap-diagnostic.yml
+  .github/workflows/authbus-p1-3-materialize.yml
+  scripts/authbus-p1-3-finalize.py
+  scripts/authbus-p1-3-semantic-completion.py
+)
+
+tar -cf /tmp/authbus-p1-3-final-source.tar \
+  .github/workflows/authbus-p1-3-qualification.yml "${FINAL_PATHS[@]}"
+git reset --hard
+git clean -fdx
+git checkout --detach "${BASE_SHA}"
+test "$(git rev-parse HEAD)" = "${BASE_SHA}"
+test "$(git rev-parse HEAD^{tree})" = "${BASE_TREE}"
+tar -xf /tmp/authbus-p1-3-final-source.tar
+git rm -f "${DELETIONS[@]}"
+git add -- .github/workflows/authbus-p1-3-qualification.yml "${FINAL_PATHS[@]}"
+printf '%s\n' "${DELETIONS[@]}" .github/workflows/authbus-p1-3-qualification.yml \
+  "${FINAL_PATHS[@]}" | LC_ALL=C sort -u > /tmp/p13-expected-paths.txt
+git diff --cached --name-only | LC_ALL=C sort > /tmp/p13-actual-paths.txt
+test "$(wc -l < /tmp/p13-expected-paths.txt)" = "29"
+test "$(wc -l < /tmp/p13-actual-paths.txt)" = "29"
+diff -u /tmp/p13-expected-paths.txt /tmp/p13-actual-paths.txt
+for path in \
+  .github/workflows/authbus-p1-3-gap-diagnostic.yml \
+  .github/workflows/authbus-p1-3-materialize.yml \
+  .github/workflows/authbus-p1-3-clean-replay-materialize.yml \
+  .github/workflows/authbus-p1-3-final-closure.yml \
+  scripts/authbus-p1-3-finalize.py \
+  scripts/authbus-p1-3-semantic-completion.py \
+  scripts/authbus-p1-3-gap-closure.py \
+  scripts/authbus-p1-3-clippy-completion.py \
+  scripts/authbus-p1-3-final-closure.sh
+do
+  test ! -e "${path}"
+done
+python3 scripts/verify-authbus-p1-2.py | tee /tmp/p12-clean-source.json
+require_line PASS_AUTHBUS_P1_2_SOURCE_ONLY /tmp/p12-clean-source.json
+python3 scripts/verify-authbus-p1-3.py | tee /tmp/p13-clean-source.json
+require_line PASS_AUTHBUS_P1_3_SOURCE_ONLY /tmp/p13-clean-source.json
+git diff --cached --check
+
+git config user.name 'github-actions[bot]'
+git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+git commit -m 'feat(authbus): close full-stack P1.3 gaps'
+source_sha=$(git rev-parse HEAD)
+source_tree=$(git rev-parse HEAD^{tree})
+test "$(git rev-parse HEAD^)" = "${BASE_SHA}"
+test "${source_tree}" != "${BASE_TREE}"
+! git ls-remote --exit-code --heads origin "refs/heads/${TARGET_BRANCH}" >/dev/null 2>&1
+git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
+{
+  echo "source_sha=${source_sha}"
+  echo "source_tree=${source_tree}"
+  echo "source_parent=${BASE_SHA}"
+  echo 'changed_paths=29'
+  echo "target_branch=${TARGET_BRANCH}"
+  echo 'source_working_tree_qualified=true'
+  echo 'authority=false'
+  echo 'effect_authority=false'
+  echo 'production_caller=false'
+  echo 'production_writer=false'
+  echo 'provider_call_enabled=false'
+  echo 'listener_enabled=false'
+  echo 'openbao_enabled=false'
+} | tee -a "${GITHUB_STEP_SUMMARY}"
