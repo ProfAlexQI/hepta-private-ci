@@ -1,4 +1,4 @@
-name: Hepta P0.7a immutable inode closure (one shot)
+name: Hepta P0.7a source and inode closure (one shot)
 
 on:
   push:
@@ -11,17 +11,17 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-p0-7a-inode-closure-once
+  group: hepta-p0-7a-source-and-inode-closure-once
   cancel-in-progress: true
 
 jobs:
   repair:
-    name: Repair and qualify immutable publication
+    name: Repair and qualify P0.7a source closure
     if: >-
       github.repository == 'ProfHepta/hepta-private-ci' &&
       github.ref == 'refs/heads/codex/hepta-architecture-v4-p0-7a-executable-closure-20260830'
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 90
+    timeout-minutes: 180
     steps:
       - name: Checkout exact repair source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -36,6 +36,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(git hash-object codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs)" = \
             "74abd3aa3ece1fc63f36a09acfe719b5a6f9528f"
+          test "$(git hash-object codex-rs/hepta-agentd/src/lib.rs)" = \
+            "c534860e75ec422d05da4f6d553b3e80c3ed6904"
           git diff --exit-code
           git diff --cached --exit-code
 
@@ -53,15 +55,15 @@ jobs:
         with:
           tool: nextest@0.9.143
 
-      - name: Apply refreshed-handle inode identity repair
+      - name: Apply bounded source repairs
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path("codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs")
-          text = path.read_text(encoding="utf-8")
+          fleet = Path("codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs")
+          text = fleet.read_text(encoding="utf-8")
           replacements = (
               (
                   "    let linked = std::fs::symlink_metadata(path)?;\n",
@@ -93,22 +95,101 @@ jobs:
               if count != 1:
                   raise SystemExit(f"expected exactly one {label}, found {count}")
               text = text.replace(old, new, 1)
-          path.write_text(text, encoding="utf-8")
+          fleet.write_text(text, encoding="utf-8")
+
+          agentd = Path("codex-rs/hepta-agentd/src/lib.rs")
+          agentd.write_text(
+              '''#![forbid(unsafe_code)]
+
+//! One-process-per-workspace Hepta agent host.
+//!
+//! `agentd` binds exactly one fleet `AgentId`, embeds the existing Codex App
+//! Server execution path, and exposes a small local lifecycle/control socket.
+//! It does not implement a second runtime kernel or a fleet-wide message bus.
+
+#[cfg(not(unix))]
+compile_error!("codex-hepta-agentd requires Unix domain sockets");
+
+mod app_runtime;
+mod automation;
+mod automation_service;
+mod client;
+mod composition;
+mod config;
+mod control;
+mod error;
+mod event_buffer;
+mod memory_service;
+mod production_authority_adapter;
+mod production_writer_host;
+mod qualification_writer;
+mod runtime;
+mod runtime_bootstrap;
+mod runtime_profile;
+mod state;
+
+pub use client::AgentdClient;
+pub use codex_hepta_agent_protocol::AGENTD_CONTROL_SCHEMA_VERSION;
+pub use codex_hepta_agent_protocol::AgentdEvent;
+pub use codex_hepta_agent_protocol::AgentdEventKind;
+pub use codex_hepta_agent_protocol::AgentdMethod;
+pub use codex_hepta_agent_protocol::AgentdPayload;
+pub use codex_hepta_agent_protocol::AgentdRequest;
+pub use codex_hepta_agent_protocol::AgentdResponse;
+pub use codex_hepta_agent_protocol::EventBatch;
+pub use codex_hepta_agent_protocol::HealthSnapshot;
+pub use codex_hepta_agent_protocol::LifecycleSnapshot;
+pub use codex_hepta_agent_protocol::MAX_CONTROL_FRAME_BYTES;
+pub use codex_hepta_agent_protocol::MAX_EVENT_BATCH;
+pub use codex_hepta_agent_protocol::MAX_FEDERATION_CONTROL_LIST;
+pub use codex_hepta_agent_protocol::MemoryFederationCapabilityId;
+pub use codex_hepta_agent_protocol::MemoryFederationCapabilitySnapshot;
+pub use codex_hepta_agent_protocol::MemoryFederationCapabilityState;
+pub use codex_hepta_agent_protocol::MemoryFederationScopeKind;
+pub use codex_hepta_agent_protocol::SessionIngress;
+pub use codex_hepta_agent_protocol::SessionTransport;
+pub use codex_hepta_automation::AutomationSchedule;
+pub use codex_hepta_automation::AutomationTask;
+pub use codex_hepta_automation::AutomationTaskDraft;
+pub use codex_hepta_automation::AutomationTaskId;
+pub use config::AgentdConfig;
+pub use config::AgentdIdentity;
+pub use config::HEPTA_AGENT_GENERATION_ENV;
+pub use config::HEPTA_AGENT_HOME_ENV;
+pub use config::HEPTA_AGENT_ID_ENV;
+pub use config::HEPTA_AGENT_RUN_ROOT_ENV;
+pub use error::AgentdError;
+pub use production_writer_host::AgentdProductionWriterHost;
+pub use runtime::run;
+pub use runtime_bootstrap::RuntimeBootstrapAdmission;
+
+use control::AgentdControlServer;
+use event_buffer::EventBuffer;
+use state::AgentdState;
+''',
+              encoding="utf-8",
+          )
           PY
 
           rm .github/workflows/hepta-p0-7a-inode-closure-once.yml
 
-      - name: Format repaired fleet crate
+      - name: Format repaired crates
         working-directory: codex-rs
         shell: bash
         run: |
           set -euo pipefail
-          cargo fmt --package codex-hepta-fleet
-          cargo fmt --package codex-hepta-fleet -- --check
+          cargo fmt --package codex-hepta-fleet --package codex-hepta-agentd
+          cargo fmt --package codex-hepta-fleet --package codex-hepta-agentd -- --check
 
-      - name: Run repaired fleet tests
+      - name: Run P0.7a package tests
         working-directory: codex-rs
-        run: just test -p codex-hepta-fleet
+        shell: bash
+        run: |
+          set -euo pipefail
+          just test -p codex-hepta-contracts
+          just test -p codex-hepta-fleet
+          just test -p codex-hepta-supervisor
+          just test -p codex-hepta-agentd
 
       - name: Check all P0.7a targets
         working-directory: codex-rs
@@ -149,6 +230,7 @@ jobs:
           mapfile -t changed < <(git diff --name-only | sort)
           expected=(
             ".github/workflows/hepta-p0-7a-inode-closure-once.yml"
+            "codex-rs/hepta-agentd/src/lib.rs"
             "codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs"
           )
           test "${#changed[@]}" -eq "${#expected[@]}"
@@ -164,7 +246,7 @@ jobs:
           git config user.name "hepta-closure-bot"
           git config user.email "hepta-closure-bot@users.noreply.github.com"
           git add -A
-          git commit -m "fix(hepta): refresh inode identity across publication links"
+          git commit -m "fix(hepta): restore Agentd source closure and inode binding"
           repaired_sha="$(git rev-parse HEAD)"
           repaired_tree="$(git rev-parse 'HEAD^{tree}')"
           printf 'repaired_commit=%s\nrepaired_tree=%s\n' "$repaired_sha" "$repaired_tree" >> "$GITHUB_STEP_SUMMARY"
