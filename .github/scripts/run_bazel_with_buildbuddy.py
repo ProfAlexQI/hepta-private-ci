@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Compatibility wrapper plus Q0.17-Q0.28 qualification ratchets."""
+"""Compatibility wrapper plus Q0.17-Q0.29 qualification ratchets."""
 
 import os
 import subprocess
@@ -8,9 +8,8 @@ import sys
 from collections.abc import Mapping
 
 import run_bazel_with_buildbuddy_base as _base
-from run_bazel_with_buildbuddy_base import *  # noqa: F403
 from run_bazel_q017_policy import QUALIFICATION_BAZELRC_GIT_BLOB_SHA1
-from run_bazel_q017_policy import _git_blob_sha1
+from run_bazel_q017_policy import _has_rc_control
 from run_bazel_q017_policy import _insert_before_separator
 from run_bazel_q017_policy import _is_keyless_windows_gnullvm
 from run_bazel_q017_policy import _qualification_workspace_bazelrc
@@ -23,6 +22,12 @@ from run_bazel_q027_lane_semantics import (
 from run_bazel_q028_startup_contract import (
     validate_keyless_windows_gnullvm_final_args,
 )
+from run_bazel_q029_job_executable import bind_verified_bazelisk
+from run_bazel_q029_job_executable import prepare_bazelisk_environment
+from run_bazel_q029_job_executable import (
+    validate_keyless_windows_gnullvm_command,
+)
+from run_bazel_with_buildbuddy_base import *  # noqa: F403
 
 # Keep both selected compatibility layers machine-visible while Q0.28 composes
 # and invokes them transitively through its exact startup-vector contract.
@@ -49,8 +54,6 @@ def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]
         len(command),
     )
     startup = command[1:command_idx]
-    from run_bazel_q017_policy import _has_rc_control
-
     if any(_has_rc_control(arg) for arg in startup):
         raise ValueError(
             "credential-free Windows gnullvm qualification rejects caller rc controls"
@@ -78,12 +81,18 @@ def main() -> None:
         )
     else:
         host = (
-            "OpenAI tenant" if uses_openai_host(os.environ) else "generic"  # noqa: F405
+            "OpenAI tenant"
+            if uses_openai_host(os.environ)  # noqa: F405
+            else "generic"
         )
         print(f"Using {host} BuildBuddy configuration: {config}.", file=sys.stderr)
 
     try:
         command = bazel_command(*sys.argv[1:])
+        if _is_keyless_windows_gnullvm(command[1:], os.environ):
+            prepare_bazelisk_environment(os.environ)
+            command = bind_verified_bazelisk(command, os.environ)
+            validate_keyless_windows_gnullvm_command(command, os.environ)
     except ValueError as error:
         print(
             f"Bazel qualification boundary rejected invocation: {error}",
