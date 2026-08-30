@@ -94,15 +94,24 @@ jobs:
             python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
           done
           git diff --check
-          mapfile -t changed < <(git diff --name-only)
-          printf '%s\n' "${changed[@]}"
-          test "${#changed[@]}" -eq 5
-          for path in "${changed[@]}"; do
-            case "$path" in
-              plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json|scripts/hepta-intelligence-current-truth.py|scripts/verify-hepta-intelligence-a0-authority.py|scripts/verify-hepta-intelligence-document-authority.py|scripts/verify-hepta-intelligence-master-plan.py) ;;
-              *) echo "unexpected replacement path: $path" >&2; exit 1 ;;
-            esac
-          done
+          python3 - <<'PY'
+          import subprocess
+
+          expected = {
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
+              "scripts/hepta-intelligence-current-truth.py",
+              "scripts/verify-hepta-intelligence-a0-authority.py",
+              "scripts/verify-hepta-intelligence-document-authority.py",
+              "scripts/verify-hepta-intelligence-master-plan.py",
+          }
+          changed = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only"], text=True
+              ).splitlines()
+          )
+          print("\n".join(sorted(changed)))
+          assert changed == expected, {"changed": sorted(changed), "expected": sorted(expected)}
+          PY
 
       - name: Commit builder output
         shell: bash
