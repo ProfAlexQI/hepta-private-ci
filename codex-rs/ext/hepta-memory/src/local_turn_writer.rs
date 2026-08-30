@@ -1129,7 +1129,9 @@ impl TurnLifecycleContributor for QualificationTurnLifecycleContributor {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::time::{Instant, SystemTime, UNIX_EPOCH};
+    use std::time::Instant;
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
 
     use codex_extension_api::ExtensionData;
     use codex_extension_api::ThreadStartInput;
@@ -1153,7 +1155,9 @@ mod tests {
     use codex_hepta_memory::RetrievalRequest;
     use codex_hepta_memory::SourceDraft;
     use codex_hepta_paths::HeptaFleetRoot;
-    use codex_protocol::config_types::{CollaborationMode, ModeKind, Settings};
+    use codex_protocol::config_types::CollaborationMode;
+    use codex_protocol::config_types::ModeKind;
+    use codex_protocol::config_types::Settings;
     use codex_protocol::protocol::SessionSource;
     use codex_protocol::protocol::TokenUsage;
     use codex_state::SqliteConfig;
@@ -2005,9 +2009,15 @@ mod tests {
             .await
             .expect("terminalize Saga lease");
         assert_eq!(released.state, LocalLeaseState::Released);
-        const { assert!(!QUALIFICATION_TURN_WRITER_EXTERNAL_EFFECTS); }
-        const { assert!(!QUALIFICATION_TURN_WRITER_KG_WRITE_AUTHORITY); }
-        const { assert!(!QUALIFICATION_TURN_WRITER_PRODUCTION_CALLER); }
+        const {
+            assert!(!QUALIFICATION_TURN_WRITER_EXTERNAL_EFFECTS);
+        }
+        const {
+            assert!(!QUALIFICATION_TURN_WRITER_KG_WRITE_AUTHORITY);
+        }
+        const {
+            assert!(!QUALIFICATION_TURN_WRITER_PRODUCTION_CALLER);
+        }
     }
 
     #[tokio::test]
