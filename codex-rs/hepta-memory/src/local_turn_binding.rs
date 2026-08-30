@@ -304,7 +304,8 @@ fn hash_part(hasher: &mut Sha256, value: &[u8]) {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
 
     use crate::CognitiveStore;
     use crate::CompactFence;
