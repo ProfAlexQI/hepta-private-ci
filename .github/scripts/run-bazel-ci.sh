@@ -16,8 +16,16 @@ for arg in "$@"; do
   fi
 done
 
+# A non-qualifying MSVC fallback is a local diagnostic only. Never permit an
+# ambient workflow variable to turn a gnullvm-labelled GitHub check into MSVC
+# evidence.
+if [[ "${GITHUB_ACTIONS:-}" == "true" && "${ALLOW_WINDOWS_MSVC_FALLBACK:-}" == "1" ]]; then
+  echo "ALLOW_WINDOWS_MSVC_FALLBACK is forbidden in GitHub Actions qualification jobs." >&2
+  exit 1
+fi
+
 # Authenticated jobs keep the existing Linux-RBE path. An explicit MSVC
-# fallback remains a non-qualifying diagnostic. Only the keyless Windows
+# fallback remains a non-qualifying local diagnostic. Only the keyless Windows
 # gnullvm lane is rewritten below.
 if [[ "${RUNNER_OS:-}" != "Windows" || $windows_cross_compile -ne 1 || -n "${BUILDBUDDY_API_KEY:-}" || "${ALLOW_WINDOWS_MSVC_FALLBACK:-}" == "1" ]]; then
   exec "$delegate" "$@"
@@ -77,6 +85,62 @@ has_bazel_arg_prefix() {
   return 1
 }
 
+require_exact_ci_arg() {
+  local prefix="$1"
+  local expected="$2"
+  local arg
+  for arg in "${bazel_args[@]}"; do
+    if [[ "$arg" == "$prefix"* && "$arg" != "$expected" ]]; then
+      echo "GitHub Actions Windows gnullvm qualification rejects conflicting argument '$arg'; expected '$expected'." >&2
+      exit 1
+    fi
+  done
+}
+
+require_ci_list_contains() {
+  local prefix="$1"
+  local required="$2"
+  local arg value entry found
+  for arg in "${bazel_args[@]}"; do
+    if [[ "$arg" != "$prefix"* ]]; then
+      continue
+    fi
+    value="${arg#${prefix}}"
+    found=0
+    IFS=',' read -r -a entries <<< "$value"
+    for entry in "${entries[@]}"; do
+      if [[ "$entry" == "$required" ]]; then
+        found=1
+        break
+      fi
+    done
+    if [[ $found -ne 1 ]]; then
+      echo "GitHub Actions Windows gnullvm qualification requires '$required' in '$arg'." >&2
+      exit 1
+    fi
+  done
+}
+
+# GitHub qualification must retain one exact target/host/effect boundary. Local
+# callers may still override these defaults for diagnostics, but a required CI
+# check may not silently change ABI or omit the dedicated execution toolchain.
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  require_exact_ci_arg --host_platform= --host_platform=//:local_windows_msvc
+  require_exact_ci_arg --platforms= --platforms=//:windows_x86_64_gnullvm
+  require_exact_ci_arg --strategy=TestRunner= --strategy=TestRunner=local
+  require_exact_ci_arg --strategy=V8Mksnapshot= --strategy=V8Mksnapshot=local
+  require_exact_ci_arg --test_env=RUST_TEST_THREADS= --test_env=RUST_TEST_THREADS=1
+  require_exact_ci_arg \
+    --test_env=CODEX_BAZEL_TEST_SKIP_FILTERS= \
+    --test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=command_safety::powershell_parser::tests::,suite::code_mode::code_mode_can_call_hidden_dynamic_tools,tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child
+  require_ci_list_contains \
+    --extra_execution_platforms= \
+    //:windows_x86_64_msvc
+  require_ci_list_contains \
+    --extra_toolchains= \
+    //:windows_gnullvm_tests_on_msvc_host_toolchain
+fi
+
 local_defaults=(
   --config=ci-windows
   --build_metadata=TAG_windows_cross_compile=true
@@ -116,8 +180,9 @@ if ! has_bazel_arg_prefix --test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=; then
   )
 fi
 
-# Put the local CI contract immediately after the Bazel command. Explicit
-# caller flags remain later on the command line and therefore stay authoritative.
+# Put the local CI contract immediately after the Bazel command. Explicit local
+# caller flags remain later on the command line and stay authoritative outside
+# GitHub Actions; CI conflicts were rejected above.
 local_bazel_args=(
   "${bazel_args[@]:0:$((command_index + 1))}"
   "${local_defaults[@]}"

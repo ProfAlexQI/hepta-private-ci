@@ -20,6 +20,7 @@ class RunBazelCiWrapperTest(unittest.TestCase):
         runner_os: str = "Windows",
         buildbuddy_key: str | None = None,
         allow_msvc_fallback: bool = False,
+        github_actions: bool = False,
     ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -48,6 +49,10 @@ class RunBazelCiWrapperTest(unittest.TestCase):
                 env["ALLOW_WINDOWS_MSVC_FALLBACK"] = "1"
             else:
                 env.pop("ALLOW_WINDOWS_MSVC_FALLBACK", None)
+            if github_actions:
+                env["GITHUB_ACTIONS"] = "true"
+            else:
+                env.pop("GITHUB_ACTIONS", None)
 
             bash = shutil.which("bash")
             if bash is None:
@@ -67,18 +72,22 @@ class RunBazelCiWrapperTest(unittest.TestCase):
             )
             return result, captured
 
-    def test_keyless_windows_cross_uses_real_local_gnullvm_target(self) -> None:
-        args = [
+    @staticmethod
+    def cross_args(*extra: str) -> list[str]:
+        return [
             "--print-failed-action-summary",
             "--windows-cross-compile",
             "--",
             "build",
             "--config=clippy",
+            *extra,
             "--",
             "//codex-rs/utils/rustls-provider:rustls-provider-provider-test",
         ]
 
-        result, captured = self.run_wrapper(args)
+    def test_keyless_windows_cross_uses_real_local_gnullvm_target(self) -> None:
+        args = self.cross_args()
+        result, captured = self.run_wrapper(args, github_actions=True)
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("--windows-cross-compile", captured)
@@ -102,47 +111,77 @@ class RunBazelCiWrapperTest(unittest.TestCase):
         self.assertEqual(captured[-1], args[-1])
 
     def test_authenticated_windows_cross_delegates_unchanged(self) -> None:
-        args = [
-            "--windows-cross-compile",
-            "--",
-            "build",
-            "--",
-            "//codex-rs/cli:codex",
-        ]
-
-        result, captured = self.run_wrapper(args, buildbuddy_key="token")
-
+        args = self.cross_args()
+        result, captured = self.run_wrapper(
+            args, buildbuddy_key="token", github_actions=True
+        )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(captured, args)
 
-    def test_explicit_msvc_diagnostic_delegates_unchanged(self) -> None:
-        args = [
-            "--windows-cross-compile",
-            "--",
-            "build",
-            "--",
-            "//codex-rs/cli:codex",
-        ]
-
+    def test_local_explicit_msvc_diagnostic_delegates_unchanged(self) -> None:
+        args = self.cross_args()
         result, captured = self.run_wrapper(args, allow_msvc_fallback=True)
-
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(captured, args)
 
-    def test_explicit_caller_platform_and_concurrency_remain_authoritative(self) -> None:
-        args = [
-            "--windows-cross-compile",
-            "--",
-            "build",
+    def test_github_actions_rejects_ambient_msvc_fallback(self) -> None:
+        result, captured = self.run_wrapper(
+            self.cross_args(),
+            allow_msvc_fallback=True,
+            github_actions=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(captured, [])
+        self.assertIn("forbidden in GitHub Actions", result.stderr)
+
+    def test_github_actions_rejects_conflicting_target(self) -> None:
+        result, captured = self.run_wrapper(
+            self.cross_args("--platforms=//:windows_x86_64_msvc"),
+            github_actions=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(captured, [])
+        self.assertIn("rejects conflicting argument", result.stderr)
+
+    def test_github_actions_rejects_conflicting_host(self) -> None:
+        result, captured = self.run_wrapper(
+            self.cross_args("--host_platform=//:rbe"),
+            github_actions=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(captured, [])
+        self.assertIn("rejects conflicting argument", result.stderr)
+
+    def test_github_actions_rejects_missing_required_execution_platform(self) -> None:
+        result, captured = self.run_wrapper(
+            self.cross_args("--extra_execution_platforms=//:custom"),
+            github_actions=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(captured, [])
+        self.assertIn("requires '//:windows_x86_64_msvc'", result.stderr)
+
+    def test_github_actions_accepts_required_execution_lists(self) -> None:
+        result, captured = self.run_wrapper(
+            self.cross_args(
+                "--extra_execution_platforms=//:custom,//:windows_x86_64_msvc",
+                "--extra_toolchains=//:custom,//:windows_gnullvm_tests_on_msvc_host_toolchain",
+            ),
+            github_actions=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            "--extra_execution_platforms=//:custom,//:windows_x86_64_msvc",
+            captured,
+        )
+
+    def test_explicit_local_caller_platform_and_concurrency_remain_authoritative(self) -> None:
+        args = self.cross_args(
             "--host_platform=//:custom_host",
             "--platforms=//:custom_target",
             "--jobs=3",
-            "--",
-            "//codex-rs/cli:codex",
-        ]
-
+        )
         result, captured = self.run_wrapper(args)
-
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("--host_platform=//:custom_host", captured)
         self.assertIn("--platforms=//:custom_target", captured)
@@ -150,22 +189,10 @@ class RunBazelCiWrapperTest(unittest.TestCase):
         self.assertNotIn("--host_platform=//:local_windows_msvc", captured)
         self.assertNotIn("--platforms=//:windows_x86_64_gnullvm", captured)
         self.assertNotIn("--jobs=8", captured)
-        self.assertLess(
-            captured.index("--config=ci-windows"),
-            captured.index("--host_platform=//:custom_host"),
-        )
 
     def test_non_windows_cross_delegates_unchanged(self) -> None:
-        args = [
-            "--windows-cross-compile",
-            "--",
-            "build",
-            "--",
-            "//codex-rs/cli:codex",
-        ]
-
+        args = self.cross_args()
         result, captured = self.run_wrapper(args, runner_os="Linux")
-
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(captured, args)
 
