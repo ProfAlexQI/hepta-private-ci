@@ -12,13 +12,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: authbus-semantic-source-export-${{ github.ref }}
+  group: authbus-semantic-source-export-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
   export:
     name: Export exact committed source tree
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout exact export head
