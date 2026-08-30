@@ -1,0 +1,331 @@
+name: Hepta Intelligence A0 + Q0.13 exact diagnostic
+
+on:
+  push:
+    branches:
+      - "diagnostic/hepta-intelligence-a0-q0-13-exact-20260830"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-a0-q0-13-exact-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+  EXPECTED_HEAD: 8a07054a4ec55be33cda1c0cccd28bc354247be8
+  EXPECTED_TREE: e77911c0e38a54666d01d937a24e98f22b929ee3
+  EXPECTED_FIRST_PARENT: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
+  EXPECTED_SECOND_PARENT: 220c875613a334ea7435445d38962340d7087830
+  EXPECTED_SYNTHETIC_MERGE: ac69dd3d2d00162010ec9d53c2cb7cc93c5d1f43
+  EXPECTED_SYNTHETIC_TREE: e77911c0e38a54666d01d937a24e98f22b929ee3
+  REPORT_DIR: /tmp/hepta-intelligence-a0-q0-13-exact
+  PYTHONPYCACHEPREFIX: /tmp/hepta-intelligence-python-cache
+
+jobs:
+  exact-control-gates:
+    name: Exact Q0.13 identity and fail-closed control gates
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact integration candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.EXPECTED_HEAD }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify exact head, tree, parents and signed synthetic merge
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          read -r first second extra <<< "$(git show -s --format=%P HEAD)"
+          test "$first" = "$EXPECTED_FIRST_PARENT"
+          test "$second" = "$EXPECTED_SECOND_PARENT"
+          test -z "${extra:-}"
+
+          git -c http.extraheader="AUTHORIZATION: bearer ${GITHUB_TOKEN}" \
+            fetch --no-tags --depth=2 \
+            "https://github.com/${GITHUB_REPOSITORY}.git" \
+            refs/pull/93/merge
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_SYNTHETIC_MERGE"
+          test "$(git rev-parse FETCH_HEAD^{tree})" = "$EXPECTED_SYNTHETIC_TREE"
+          read -r merge_base merge_head merge_extra <<< "$(git show -s --format=%P FETCH_HEAD)"
+          test "$merge_base" = "$EXPECTED_FIRST_PARENT"
+          test "$merge_head" = "$EXPECTED_HEAD"
+          test -z "${merge_extra:-}"
+
+          rm -rf "$REPORT_DIR"
+          mkdir -p "$REPORT_DIR"
+          {
+            echo "repository=$GITHUB_REPOSITORY"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "candidate_head=$(git rev-parse HEAD)"
+            echo "candidate_tree=$(git rev-parse HEAD^{tree})"
+            echo "candidate_parents=$(git show -s --format=%P HEAD)"
+            echo "synthetic_merge=$(git rev-parse FETCH_HEAD)"
+            echo "synthetic_tree=$(git rev-parse FETCH_HEAD^{tree})"
+            echo "synthetic_parents=$(git show -s --format=%P FETCH_HEAD)"
+          } > "$REPORT_DIR/identity.txt"
+
+      - name: Verify all canonical A0 blobs remain exact
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$EXPECTED_FIRST_PARENT" <<'PY'
+          import json
+          import pathlib
+          import subprocess
+          import sys
+
+          a0 = sys.argv[1]
+          root = pathlib.Path.cwd()
+          candidate = json.loads(
+              (root / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          paths = candidate["allowed_changed_paths"]
+          if len(paths) != 17 or len(set(paths)) != 17:
+              raise SystemExit(f"unexpected A0 allowlist: {paths!r}")
+          for path in paths:
+              current = subprocess.check_output(
+                  ["git", "rev-parse", f"HEAD:{path}"], text=True
+              ).strip()
+              canonical = subprocess.check_output(
+                  ["git", "rev-parse", f"{a0}:{path}"], text=True
+              ).strip()
+              if current != canonical:
+                  raise SystemExit(f"A0 blob drift: {path}: {current} != {canonical}")
+          print("PASS_A0_BLOB_IDENTITY")
+          PY
+
+      - name: Verify Q0.11 ABI fence and Q0.12 default fail-closed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n .github/scripts/run-bazel-ci.sh
+          python3 - <<'PY'
+          from pathlib import Path
+
+          patch = Path("patches/llvm_windows_mingw_compat.patch").read_text(encoding="utf-8")
+          launcher = Path(".github/scripts/run-bazel-ci.sh").read_text(encoding="utf-8")
+          required_patch = [
+              'target_compatible_with.append("//constraints/windows/abi:gnullvm")',
+              'target_compatible_with = target_compatible_with,',
+          ]
+          required_launcher = [
+              'ALLOW_WINDOWS_MSVC_FALLBACK:-',
+              'refusing to substitute an MSVC result for a gnullvm check',
+              'this result is never gnullvm evidence',
+              'windows_msvc_host_platform=1',
+              'windows_msvc_target_platform=1',
+          ]
+          for token in required_patch:
+              if token not in patch:
+                  raise SystemExit(f"missing Q0.11 token: {token}")
+          for token in required_launcher:
+              if token not in launcher:
+                  raise SystemExit(f"missing Q0.12 token: {token}")
+          print("PASS_Q0_11_Q0_12_SOURCE_CONTRACT")
+          PY
+
+      - name: Compile and run BuildBuddy wrapper regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            .github/scripts/run_bazel_with_buildbuddy.py \
+            .github/scripts/test_run_bazel_with_buildbuddy.py \
+            .github/scripts/test_run_bazel_local_windows_fallback.py
+          (
+            cd .github/scripts
+            python3 -m unittest -v \
+              test_run_bazel_with_buildbuddy.py \
+              test_run_bazel_local_windows_fallback.py
+          ) | tee "$REPORT_DIR/python-wrapper-tests.txt"
+
+      - name: Exercise default refusal, explicit diagnostic and authenticated paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture=/tmp/hepta-q0-13-launcher-fixture
+          rm -rf "$fixture"
+          mkdir -p "$fixture/.github/scripts"
+          cp .github/scripts/run-bazel-ci.sh "$fixture/.github/scripts/run-bazel-ci.sh"
+          cat > "$fixture/.github/scripts/run_bazel_with_buildbuddy.py" <<'PY'
+          #!/usr/bin/env python3
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          Path(os.environ["ARG_CAPTURE"]).write_text(
+              json.dumps(sys.argv[1:], indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+          chmod +x \
+            "$fixture/.github/scripts/run-bazel-ci.sh" \
+            "$fixture/.github/scripts/run_bazel_with_buildbuddy.py"
+
+          refused_args="$REPORT_DIR/default-refusal-args.json"
+          refused_err="$REPORT_DIR/default-refusal-stderr.txt"
+          set +e
+          (
+            cd "$fixture"
+            env -u BUILDBUDDY_API_KEY -u ALLOW_WINDOWS_MSVC_FALLBACK \
+              RUNNER_OS=Windows \
+              CODEX_BAZEL_WINDOWS_PATH='C:\\Windows\\System32' \
+              ARG_CAPTURE="$refused_args" \
+              ./.github/scripts/run-bazel-ci.sh \
+                --windows-cross-compile -- \
+                build --config=clippy -- //codex-rs/uds:uds-unit-tests-bin
+          ) 2>"$refused_err"
+          refusal_status=$?
+          set -e
+          test "$refusal_status" -eq 1
+          test ! -e "$refused_args"
+          grep -F "refusing to substitute an MSVC result for a gnullvm check" "$refused_err"
+
+          opted_args="$REPORT_DIR/explicit-msvc-diagnostic-args.json"
+          (
+            cd "$fixture"
+            env -u BUILDBUDDY_API_KEY \
+              ALLOW_WINDOWS_MSVC_FALLBACK=1 \
+              RUNNER_OS=Windows \
+              CODEX_BAZEL_WINDOWS_PATH='C:\\Windows\\System32' \
+              ARG_CAPTURE="$opted_args" \
+              ./.github/scripts/run-bazel-ci.sh \
+                --windows-cross-compile -- \
+                build --config=clippy -- //codex-rs/uds:uds-unit-tests-bin
+          )
+
+          rbe_args="$REPORT_DIR/authenticated-rbe-args.json"
+          (
+            cd "$fixture"
+            BUILDBUDDY_API_KEY=fixture-key \
+              RUNNER_OS=Windows \
+              CODEX_BAZEL_WINDOWS_PATH='C:\\Windows\\System32' \
+              ARG_CAPTURE="$rbe_args" \
+              ./.github/scripts/run-bazel-ci.sh \
+                --windows-cross-compile -- \
+                build --config=clippy -- //codex-rs/uds:uds-unit-tests-bin
+          )
+
+          python3 - "$opted_args" "$rbe_args" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          opted, rbe = [
+              json.loads(Path(path).read_text(encoding="utf-8")) for path in sys.argv[1:]
+          ]
+
+          def require(args, value):
+              if value not in args:
+                  raise SystemExit(f"missing {value!r} in {args!r}")
+
+          require(opted, "--host_platform=//:local_windows_msvc")
+          require(opted, "--platforms=//:local_windows_msvc")
+          require(opted, "--jobs=8")
+          if "--config=ci-windows-cross" in opted:
+              raise SystemExit("explicit local diagnostic retained remote-only config")
+
+          require(rbe, "--config=ci-windows-cross")
+          require(rbe, "--host_platform=//:rbe")
+          require(rbe, "--shell_executable=/bin/bash")
+          if "--platforms=//:local_windows_msvc" in rbe:
+              raise SystemExit("authenticated gnullvm path received local MSVC target")
+          print("PASS_Q0_12_Q0_13_CONTROL_FLOW")
+          PY
+
+      - name: Verify Q0.13 ci-windows injection semantics directly
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=.github/scripts python3 - <<'PY'
+          import run_bazel_with_buildbuddy as wrapper
+
+          pair = [
+              "build",
+              "--config=clippy",
+              "--host_platform=//:local_windows_msvc",
+              "--platforms=//:local_windows_msvc",
+              "--jobs=8",
+              "--",
+              "//codex-rs/uds:uds-unit-tests-bin",
+          ]
+          configured = wrapper.bazel_args_with_remote_config(
+              pair, {"RUNNER_OS": "Windows"}
+          )
+          if configured.count("--config=ci-windows") != 1:
+              raise SystemExit(f"expected one ci-windows config: {configured!r}")
+          if configured.index("--config=ci-windows") != 1:
+              raise SystemExit(f"ci-windows is not immediately after command: {configured!r}")
+
+          authenticated = wrapper.bazel_args_with_remote_config(
+              ["build", "--config=ci-windows-cross", "--", "//:target"],
+              {
+                  "RUNNER_OS": "Windows",
+                  "BUILDBUDDY_API_KEY": "fixture-key",
+              },
+          )
+          if "--config=ci-windows" in authenticated:
+              raise SystemExit(f"authenticated path gained local policy: {authenticated!r}")
+          if not any(arg.startswith("--config=buildbuddy-generic-rbe") for arg in authenticated):
+              raise SystemExit(f"authenticated path lost RBE wrapper config: {authenticated!r}")
+          print("PASS_Q0_13_POLICY_INJECTION")
+          PY
+
+      - name: Execute canonical source validators
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/hepta-intelligence-status-compat.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-document-authority.py
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
+            python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
+          done
+
+      - name: Verify clean exact checkout and emit negative authority receipt
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test -z "$(git status --porcelain=v1 --untracked-files=normal --ignore-submodules=none)"
+          {
+            echo "completed_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "job_status=${{ job.status }}"
+            echo "source_writeback=false"
+            echo "a0_candidate_qualified=false"
+            echo "selected=false"
+            echo "full_repository_merge_green=false"
+            echo "runtime_authority=false"
+            echo "production_authority=false"
+            echo "promotion=false"
+            echo "release=false"
+          } > "$REPORT_DIR/outcome.txt"
+
+      - name: Upload exact diagnostic evidence
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4
+        with:
+          name: hepta-intelligence-a0-q0-13-exact-${{ github.run_id }}
+          path: /tmp/hepta-intelligence-a0-q0-13-exact/**
+          if-no-files-found: error
+          retention-days: 30
