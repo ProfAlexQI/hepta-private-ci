@@ -28,6 +28,9 @@ REMOTE_REPO_CONTENTS_CACHE_STARTUP_OPTIONS = {
     "--experimental_remote_repo_contents_cache",
     "--noexperimental_remote_repo_contents_cache",
 }
+LOCAL_WINDOWS_CI_CONFIG = "--config=ci-windows"
+LOCAL_WINDOWS_MSVC_HOST_PLATFORM = "--host_platform=//:local_windows_msvc"
+LOCAL_WINDOWS_MSVC_TARGET_PLATFORM = "--platforms=//:local_windows_msvc"
 
 
 def startup_args(args: Sequence[str], env: Mapping[str, str]) -> list[str]:
@@ -128,6 +131,35 @@ def bazel_args_without_remote_execution(args: Sequence[str]) -> list[str]:
     ]
 
 
+def local_windows_msvc_fallback_config(
+    args: Sequence[str], env: Mapping[str, str]
+) -> str | None:
+    """Return the non-remote Windows CI policy for the coherent local MSVC pair.
+
+    `run-bazel-ci.sh` selects the local MSVC host and target platforms when a
+    Windows cross-compile job has no BuildBuddy credential. The remote wrapper
+    removes RBE-only CI configurations in that case, but it must retain the
+    non-remote `ci-windows` policy so deterministic CI, cache, and test-filter
+    settings remain active.
+    """
+    if env.get("BUILDBUDDY_API_KEY") or env.get("RUNNER_OS") != "Windows":
+        return None
+
+    try:
+        separator_idx = args.index("--")
+    except ValueError:
+        separator_idx = len(args)
+    bazel_options = args[:separator_idx]
+    if LOCAL_WINDOWS_CI_CONFIG in bazel_options:
+        return None
+    if (
+        LOCAL_WINDOWS_MSVC_HOST_PLATFORM in bazel_options
+        and LOCAL_WINDOWS_MSVC_TARGET_PLATFORM in bazel_options
+    ):
+        return LOCAL_WINDOWS_CI_CONFIG
+    return None
+
+
 def bazel_args_with_remote_config(
     args: Sequence[str], env: Mapping[str, str]
 ) -> list[str]:
@@ -141,6 +173,18 @@ def bazel_args_with_remote_config(
     config = remote_config(args, env)
     if config is None:
         configured_args = bazel_args_without_remote_execution(args)
+        local_config = local_windows_msvc_fallback_config(configured_args, env)
+        if local_config is not None:
+            local_command_idx = next(
+                idx
+                for idx, arg in enumerate(configured_args)
+                if not arg.startswith("-")
+            )
+            configured_args = [
+                *configured_args[: local_command_idx + 1],
+                local_config,
+                *configured_args[local_command_idx + 1 :],
+            ]
     else:
         # `remote_config()` returns a configuration only when this key is present.
         api_key = env["BUILDBUDDY_API_KEY"]
