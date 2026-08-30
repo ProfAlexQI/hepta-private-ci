@@ -30,7 +30,7 @@ env:
 jobs:
   publish-staging:
     name: Build and validate Q0-single-parent drift closure
-    runs-on: macos-15
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Checkout immutable publisher source
