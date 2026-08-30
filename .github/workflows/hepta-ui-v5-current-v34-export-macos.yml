@@ -1,0 +1,296 @@
+name: Hepta UI v5 current v34 verified-tree export
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-current-v34-export-macos-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-current-v34-export-macos.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v5-current-v34-export-macos
+  cancel-in-progress: false
+
+jobs:
+  export-verified-trees:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: macos-14
+    timeout-minutes: 120
+    env:
+      BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_PARENT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
+      BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-current-v34-export-macos.yml
+      ORIGINAL_BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-blocker-remediation-bootstrap.yml
+      UPSTREAM_URL: https://github.com/openai/codex.git
+      UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
+      UPSTREAM_ROLE: current_r12
+      UPSTREAM_FROZEN_REF: refs/remotes/upstream/hepta-intake-20260830-r12
+      UPSTREAM_INTAKE_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R12.json
+      UPSTREAM_RECORD_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+      PINNED_UPSTREAM_HEAD: dde85b435b16994f956bce08e5fb796ed94c27fd
+      V12_DRIVER_COMMIT: 554d710f6a561166553f3c01fafc5b27cd8c28b9
+      V14_DRIVER_COMMIT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
+      V18_DRIVER_COMMIT: 022b91a04f443d7fe4ca2bce853bc26bccf99f84
+      V20_DRIVER_COMMIT: 781c237dbc81f49d3f22432b341d904aaa929291
+      V24_X64_DRIVER_COMMIT: 9a1fc8005bab27e668e9cba98235fc21a3021a0d
+      V25_X64_DRIVER_COMMIT: 3dbb216e9c03784f5e3175bccecd77ba808c54fc
+      HEPTA_UI_EXPORT_DIR: ${{ runner.temp }}/hepta-ui-v34-export
+    steps:
+      - name: Check out exact v34 export driver
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install deterministic GNU remediation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install bash coreutils findutils gnu-sed jq ripgrep
+          printf '%s\n' \
+            "$(brew --prefix bash)/bin" \
+            "$(brew --prefix coreutils)/libexec/gnubin" \
+            "$(brew --prefix findutils)/libexec/gnubin" \
+            "$(brew --prefix gnu-sed)/libexec/gnubin" \
+            >> "$GITHUB_PATH"
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+
+      - name: Convert canonical publish into a verified-tree export
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix bash)/bin:$(brew --prefix coreutils)/libexec/gnubin:$(brew --prefix findutils)/libexec/gnubin:$(brew --prefix gnu-sed)/libexec/gnubin:$PATH"
+          test -f "$ORIGINAL_BOOTSTRAP_PATH"
+          export V34_BOOTSTRAP_PATH="$ORIGINAL_BOOTSTRAP_PATH"
+          python3 <<'PY'
+          from __future__ import annotations
+
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["V34_BOOTSTRAP_PATH"])
+          text = path.read_text(encoding="utf-8")
+
+          old_write = '          plan_path.write_text(plan.rstrip() + appendix + "\\n", encoding="utf-8")\n'
+          new_write = '''          normalized_appendix = __import__("textwrap").dedent(appendix).strip()
+                    if not normalized_appendix.startswith(
+                        "## Remediation round 2 — exact-head failures observed on PR #78"
+                    ):
+                        raise SystemExit("remediation appendix heading normalization failed")
+                    if any(line.startswith("          ") for line in normalized_appendix.splitlines()):
+                        raise SystemExit("remediation appendix retained generator indentation")
+                    plan_path.write_text(
+                        plan.rstrip() + "\\n\\n" + normalized_appendix + "\\n",
+                        encoding="utf-8",
+                    )
+          '''
+          if text.count(old_write) != 1:
+              raise SystemExit(
+                  f"v34 appendix writer anchor: expected 1 match, found {text.count(old_write)}"
+              )
+          text = text.replace(old_write, new_write, 1)
+
+          old_upstream = (
+              '          upstream_head="$(git ls-remote --exit-code "$UPSTREAM_URL" '
+              'refs/heads/main | awk \'NR == 1 { print $1 }\')"\n'
+          )
+          new_upstream = '          upstream_head="${PINNED_UPSTREAM_HEAD:?}"\n'
+          if text.count(old_upstream) != 1:
+              raise SystemExit(
+                  f"v34 upstream anchor: expected 1 match, found {text.count(old_upstream)}"
+              )
+          text = text.replace(old_upstream, new_upstream, 1)
+
+          old_push = '          git push origin "HEAD:refs/heads/$BRANCH"\n'
+          new_publish = '''          test -n "${HEPTA_UI_EXPORT_DIR:-}"
+                    rm -rf "$HEPTA_UI_EXPORT_DIR"
+                    mkdir -p "$HEPTA_UI_EXPORT_DIR"
+                    export HEPTA_UI_IMPLEMENTATION_COMMIT="$implementation_commit"
+                    export HEPTA_UI_IMPLEMENTATION_TREE="$implementation_tree"
+                    python3 <<'V34_EXPORT'
+          from __future__ import annotations
+
+          import base64
+          import hashlib
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          root = Path.cwd()
+          output = Path(os.environ["HEPTA_UI_EXPORT_DIR"])
+          base_commit = os.environ["EXPECTED_PARENT"]
+          implementation_commit = os.environ["HEPTA_UI_IMPLEMENTATION_COMMIT"]
+          implementation_tree = os.environ["HEPTA_UI_IMPLEMENTATION_TREE"]
+
+          def git_bytes(*args: str) -> bytes:
+              return subprocess.check_output(["git", *args])
+
+          def git_text(*args: str) -> str:
+              return git_bytes(*args).decode("utf-8").strip()
+
+          def sha256(data: bytes) -> str:
+              return hashlib.sha256(data).hexdigest()
+
+          def export_delta(base: str, commit: str) -> list[dict[str, object]]:
+              raw_paths = git_bytes("diff", "--name-only", "-z", base, commit)
+              paths = [value.decode("utf-8") for value in raw_paths.split(b"\\0") if value]
+              if len(paths) != len(set(paths)):
+                  raise SystemExit(f"duplicate paths in exported delta {base}..{commit}")
+              entries: list[dict[str, object]] = []
+              for relative in sorted(paths):
+                  tree_row = git_bytes("ls-tree", "-z", commit, "--", relative)
+                  if not tree_row:
+                      entries.append({"path": relative, "delete": True})
+                      continue
+                  rows = [row for row in tree_row.split(b"\\0") if row]
+                  if len(rows) != 1:
+                      raise SystemExit(f"unexpected ls-tree cardinality for {relative}: {len(rows)}")
+                  metadata, encoded_path = rows[0].split(b"\\t", 1)
+                  mode, object_type, object_sha = metadata.decode("ascii").split(" ")
+                  actual_path = encoded_path.decode("utf-8")
+                  if actual_path != relative:
+                      raise SystemExit(f"ls-tree path drift for {relative}: {actual_path}")
+                  if object_type != "blob":
+                      raise SystemExit(f"unsupported exported object type {object_type} for {relative}")
+                  payload = git_bytes("cat-file", "blob", object_sha)
+                  entries.append(
+                      {
+                          "path": relative,
+                          "delete": False,
+                          "mode": mode,
+                          "type": object_type,
+                          "source_blob_sha": object_sha,
+                          "size": len(payload),
+                          "sha256": sha256(payload),
+                          "content_base64": base64.b64encode(payload).decode("ascii"),
+                      }
+                  )
+              return entries
+
+          final_commit = git_text("rev-parse", "HEAD")
+          final_tree = git_text("rev-parse", "HEAD^{tree}")
+          if git_text("rev-parse", f"{implementation_commit}^{{tree}}") != implementation_tree:
+              raise SystemExit("implementation tree binding drifted before export")
+          if git_text("rev-parse", f"{final_commit}^") != implementation_commit:
+              raise SystemExit("truth commit is not directly based on the implementation commit")
+          if git_text("status", "--porcelain=v1"):
+              raise SystemExit("working tree is dirty at verified export boundary")
+
+          manifest = {
+              "schema": "hepta.ui.verified-tree-export.v1",
+              "repository": "ProfHepta/hepta-private-ci",
+              "target_branch": os.environ["BRANCH"],
+              "base": {
+                  "commit": base_commit,
+                  "tree": git_text("rev-parse", f"{base_commit}^{{tree}}"),
+              },
+              "upstream": {
+                  "commit": os.environ["PINNED_UPSTREAM_HEAD"],
+                  "previous": os.environ["UPSTREAM_PREVIOUS"],
+              },
+              "implementation": {
+                  "runner_commit": implementation_commit,
+                  "tree": implementation_tree,
+                  "message": git_text("show", "-s", "--format=%B", implementation_commit),
+                  "delta_from_base": export_delta(base_commit, implementation_commit),
+              },
+              "truth": {
+                  "runner_commit": final_commit,
+                  "tree": final_tree,
+                  "message": git_text("show", "-s", "--format=%B", final_commit),
+                  "delta_from_implementation": export_delta(implementation_commit, final_commit),
+              },
+              "claims": {
+                  "all_repository_gates_passed_before_export": True,
+                  "runner_push_attempted": False,
+                  "production_authority": False,
+                  "promotion_authority": False,
+                  "release_authority": False,
+              },
+          }
+          manifest_path = output / "verified-tree-manifest.json"
+          manifest_path.write_text(
+              json.dumps(manifest, indent=2, ensure_ascii=False) + "\\n",
+              encoding="utf-8",
+          )
+          (output / "implementation.patch").write_bytes(
+              git_bytes("diff", "--binary", base_commit, implementation_commit)
+          )
+          (output / "truth.patch").write_bytes(
+              git_bytes("diff", "--binary", implementation_commit, final_commit)
+          )
+          (output / "commit-log.txt").write_bytes(
+              git_bytes("log", "--format=raw", "--reverse", f"{base_commit}..{final_commit}")
+          )
+          readme = (
+              "Hepta UI v34 verified-tree export\\n"
+              f"base={base_commit}\\n"
+              f"implementation_runner_commit={implementation_commit}\\n"
+              f"implementation_tree={implementation_tree}\\n"
+              f"truth_runner_commit={final_commit}\\n"
+              f"truth_tree={final_tree}\\n"
+              "No Git ref was updated by this workflow.\\n"
+          )
+          (output / "README.txt").write_text(readme, encoding="utf-8")
+          checksums = []
+          for artifact in sorted(output.iterdir()):
+              if artifact.name == "SHA256SUMS":
+                  continue
+              checksums.append(f"{sha256(artifact.read_bytes())}  {artifact.name}")
+          (output / "SHA256SUMS").write_text("\\n".join(checksums) + "\\n", encoding="utf-8")
+          V34_EXPORT
+                    test -s "$HEPTA_UI_EXPORT_DIR/verified-tree-manifest.json"
+                    test -s "$HEPTA_UI_EXPORT_DIR/SHA256SUMS"
+                    (cd "$HEPTA_UI_EXPORT_DIR" && sha256sum -c SHA256SUMS)
+          '''
+          if text.count(old_push) != 1:
+              raise SystemExit(
+                  f"v34 publish anchor: expected 1 match, found {text.count(old_push)}"
+              )
+          text = text.replace(old_push, new_publish, 1)
+
+          if old_write in text or old_upstream in text or old_push in text:
+              raise SystemExit("v34 canonical bootstrap patch left a superseded anchor")
+          if text.count("V34_EXPORT") != 2:
+              raise SystemExit("v34 export heredoc is not uniquely bounded")
+          with path.open("w", encoding="utf-8", newline="\n") as output:
+              output.write(text)
+          PY
+
+          ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0), aliases: true)' "$ORIGINAL_BOOTSTRAP_PATH" >/dev/null
+          git diff --check -- "$ORIGINAL_BOOTSTRAP_PATH"
+
+      - name: Execute immutable v25 remediation and export verified trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix bash)/bin:$(brew --prefix coreutils)/libexec/gnubin:$(brew --prefix findutils)/libexec/gnubin:$(brew --prefix gnu-sed)/libexec/gnubin:$PATH"
+          source_workflow="$RUNNER_TEMP/hepta-ui-v5-remediation-v25-x64.yml"
+          generated_driver="$RUNNER_TEMP/hepta-ui-v5-current-v34-export.sh"
+          if ! git cat-file -e "$V25_X64_DRIVER_COMMIT^{commit}"; then
+            git fetch --no-tags origin "$V25_X64_DRIVER_COMMIT"
+          fi
+          git show "$V25_X64_DRIVER_COMMIT:.github/workflows/hepta-ui-v5-remediation-v25-x64.yml" > "$source_workflow"
+          awk '
+            /      - name: Execute v24 remediation with semantic addon self-test/ { found=1; next }
+            found && /        shell: bash/ { next }
+            found && /        run: \|/ { in_run=1; next }
+            in_run { sub(/^          /, ""); print }
+          ' "$source_workflow" > "$generated_driver"
+          test -s "$generated_driver"
+          bash -n "$generated_driver"
+          bash -x "$generated_driver"
+
+      - name: Upload verified tree export
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-ui-v34-verified-tree-export
+          path: ${{ runner.temp }}/hepta-ui-v34-export
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 6
