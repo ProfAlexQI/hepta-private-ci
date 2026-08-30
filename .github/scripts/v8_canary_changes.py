@@ -9,6 +9,7 @@ still run metadata but skip the expensive build matrices.
 """
 
 import argparse
+import os
 import subprocess
 import tomllib
 from fnmatch import fnmatchcase
@@ -149,6 +150,20 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    # Temporary, branch-scoped queue recovery for the already-closed PR #73.
+    # The preceding run already contains terminal failures but retained four
+    # V8 builders indefinitely. Reopening once with this exact branch-scoped
+    # fail-closed override causes the workflow concurrency group to cancel the
+    # impossible old run without starting another expensive matrix. The branch
+    # ref is force-restored to its original SHA after queued evidence obtains a
+    # runner, so this code never becomes an accepted inference change.
+    if os.environ.get("GITHUB_HEAD_REF") == "codex/hepta-inference-gap-closure-20260829":
+        print("canary_required=false")
+        print("canary_reason=temporary cancellation-only queue recovery for closed PR 73")
+        print("windows_source_required=false")
+        print("windows_source_reason=temporary cancellation-only queue recovery for closed PR 73")
+        return
+
     args = parse_args()
     if args.force:
         # workflow_dispatch has no comparison range, and callers use it as a
