@@ -42,10 +42,8 @@ use crate::QuotaReservationState;
 use crate::QuotaSnapshot;
 use crate::RecoveryAction;
 use crate::StatusObservation;
-use crate::VerifiedNoEffectTerminal;
 use crate::WriteDisposition;
 use crate::WriterIdentity;
-use crate::digest_length_delimited;
 use crate::digest_serializable;
 use crate::validate_identifier;
 
@@ -128,7 +126,7 @@ impl QualificationStore {
                 .await?
         {
             verify_operation_row(&existing)?;
-            if existing.intent_sha256 == admission_sha256.to_string() {
+            if existing.intent_sha256 == admission_sha256.as_str() {
                 let snapshot = existing.snapshot()?;
                 return Ok((AdmissionDisposition::AlreadyPresent, snapshot));
             }
@@ -146,12 +144,12 @@ impl QualificationStore {
             return Err(QualificationError::Conflict);
         }
 
-        let claim_key = claim_sha256.to_string();
+        let claim_key = claim_sha256.as_str().to_owned();
         if let Some((existing_operation, active)) = load_claim(&mut transaction, &claim_key).await?
+            && active
+            && existing_operation != admission.intent.operation_id
         {
-            if active && existing_operation != admission.intent.operation_id {
-                return Err(QualificationError::ActiveClaim);
-            }
+            return Err(QualificationError::ActiveClaim);
         }
 
         let row = OperationRow {
@@ -164,7 +162,7 @@ impl QualificationStore {
             profile_id: admission.intent.profile_id.clone(),
             token_family_id: admission.intent.token_family_id.clone(),
             intent_json,
-            intent_sha256: admission_sha256.to_string(),
+            intent_sha256: admission_sha256.as_str().to_owned(),
             state: OperationState::IntentDurable,
             revision: 1,
             attempt: 0,
@@ -328,7 +326,7 @@ impl QualificationStore {
             return Err(QualificationError::Conflict);
         }
         if let Some(existing) = attempt.marker_sha256.as_deref() {
-            if existing == marker_sha256.to_string() {
+            if existing == marker_sha256.as_str() {
                 return Ok((WriteDisposition::AlreadyPresent, current.snapshot()?));
             }
             return Err(QualificationError::Conflict);
@@ -431,7 +429,7 @@ impl QualificationStore {
         )
         .await?
         {
-            if existing_sha256 == observation_sha256.to_string() {
+            if existing_sha256 == observation_sha256.as_str() {
                 return Ok((WriteDisposition::AlreadyPresent, current.snapshot()?));
             }
             return Err(QualificationError::ObservationConflict);
@@ -649,7 +647,7 @@ impl QualificationStore {
         let current = load_outbox(&mut transaction, outbox_id).await?;
         verify_outbox_row(&current)?;
         if current.state == "ACKED" {
-            if current.ack_sha256.as_deref() == Some(ack_sha256.to_string().as_str()) {
+            if current.ack_sha256.as_deref() == Some(ack_sha256.as_str()) {
                 return Ok(WriteDisposition::AlreadyPresent);
             }
             return Err(QualificationError::Conflict);
@@ -672,12 +670,15 @@ impl QualificationStore {
         let next_cursor_revision = cursor_revision
             .checked_add(1)
             .ok_or(QualificationError::InvalidInput)?;
+        let current_sequence = current.sequence;
+        let current_operation_id = current.operation_id.clone();
+        let current_operation_revision = current.operation_revision;
         let next = current.with_ack(ack_sha256.clone(), acked_at_ms)?;
         sqlx::query(
             "UPDATE outbox SET state = 'ACKED', ack_sha256 = ?, acked_at_ms = ?, row_sha256 = ? \
              WHERE outbox_id = ? AND state = 'PENDING'",
         )
-        .bind(ack_sha256.to_string())
+        .bind(ack_sha256.as_str().to_owned())
         .bind(to_i64(acked_at_ms)?)
         .bind(&next.row_sha256)
         .bind(outbox_id)
@@ -689,7 +690,7 @@ impl QualificationStore {
              WHERE singleton = 1 AND revision = ?",
         )
         .bind(to_i64(next_cursor_revision)?)
-        .bind(to_i64(last_sequence.max(current.sequence))?)
+        .bind(to_i64(last_sequence.max(current_sequence))?)
         .bind(to_i64(acked_at_ms)?)
         .bind(to_i64(cursor_revision)?)
         .execute(&mut *transaction)
@@ -697,9 +698,9 @@ impl QualificationStore {
         .map_err(map_sqlx)?;
         append_fsync_receipt(
             &mut transaction,
-            &current.operation_id,
+            &current_operation_id,
             "OUTBOX_ACK_DURABLE",
-            current.operation_revision,
+            current_operation_revision,
             &ack_sha256,
             &self.writer,
             acked_at_ms,
@@ -737,11 +738,13 @@ impl QualificationStore {
         if page_count <= 0 {
             return Err(QualificationError::Corrupt);
         }
-        let statement = format!("PRAGMA max_page_count = {page_count}");
-        let applied: i64 = sqlx::query_scalar(&statement)
+        let applied: i64 = sqlx::query_scalar("PRAGMA max_page_count = 1")
             .fetch_one(&self.pool)
             .await
             .map_err(map_sqlx)?;
+        if applied < page_count {
+            return Err(QualificationError::Corrupt);
+        }
         to_u64(applied)
     }
 
@@ -774,19 +777,18 @@ impl QualificationStore {
     }
 
     pub async fn qualification_schema_columns(&self) -> QualificationResult<Vec<String>> {
-        let tables = [
-            "operations",
-            "token_family_claims",
-            "quota_reservations",
-            "dispatch_attempts",
-            "status_observations",
-            "outbox",
-            "fsync_receipts",
+        let statements = [
+            "PRAGMA table_info(operations)",
+            "PRAGMA table_info(token_family_claims)",
+            "PRAGMA table_info(quota_reservations)",
+            "PRAGMA table_info(dispatch_attempts)",
+            "PRAGMA table_info(status_observations)",
+            "PRAGMA table_info(outbox)",
+            "PRAGMA table_info(fsync_receipts)",
         ];
         let mut columns = Vec::new();
-        for table in tables {
-            let statement = format!("PRAGMA table_info({table})");
-            let rows = sqlx::query(&statement)
+        for statement in statements {
+            let rows = sqlx::query(statement)
                 .fetch_all(&self.pool)
                 .await
                 .map_err(map_sqlx)?;
@@ -841,7 +843,7 @@ impl QualificationStore {
                 .map_err(map_sqlx)?;
             let observation: StatusObservation =
                 serde_json::from_str(&json).map_err(|_| QualificationError::Corrupt)?;
-            if observation.digest()?.to_string() != stored {
+            if observation.digest()?.as_str() != stored {
                 return Err(QualificationError::Corrupt);
             }
         }
@@ -1017,7 +1019,7 @@ impl OperationRow {
     }
 
     fn with_digest(mut self) -> QualificationResult<Self> {
-        self.row_sha256 = self.digest()?.to_string();
+        self.row_sha256 = self.digest()?.as_str().to_owned();
         Ok(self)
     }
 
@@ -1261,7 +1263,7 @@ impl DispatchAttemptRow {
     }
 
     fn with_digest(mut self) -> QualificationResult<Self> {
-        self.row_sha256 = self.digest()?.to_string();
+        self.row_sha256 = self.digest()?.as_str().to_owned();
         Ok(self)
     }
 
@@ -1274,7 +1276,7 @@ impl DispatchAttemptRow {
     ) -> QualificationResult<Self> {
         self.marker_kind = Some(marker_kind);
         self.marker_json = Some(marker_json);
-        self.marker_sha256 = Some(marker_sha256.to_string());
+        self.marker_sha256 = Some(marker_sha256.as_str().to_owned());
         self.marked_at_ms = Some(marked_at_ms);
         self.with_digest()
     }
@@ -1385,10 +1387,10 @@ impl OutboxRow {
     }
 
     fn with_ack(mut self, ack_sha256: Sha256Digest, acked_at_ms: u64) -> QualificationResult<Self> {
-        self.ack_sha256 = Some(ack_sha256.to_string());
+        self.ack_sha256 = Some(ack_sha256.as_str().to_owned());
         self.acked_at_ms = Some(acked_at_ms);
         self.state = "ACKED".to_string();
-        self.row_sha256 = self.digest()?.to_string();
+        self.row_sha256 = self.digest()?.as_str().to_owned();
         Ok(self)
     }
 
@@ -1609,7 +1611,7 @@ async fn insert_operation(
     .bind(to_i64(row.fence.authority_epoch)?)
     .bind(to_i64(row.fence.owner_epoch)?)
     .bind(to_i64(row.fence.generation)?)
-    .bind(row.fence.fencing_token_sha256.to_string())
+    .bind(row.fence.fencing_token_sha256.as_str().to_owned())
     .bind(&row.writer.boot_id)
     .bind(to_i64(row.writer.generation)?)
     .bind(to_i64(row.created_at_ms)?)
@@ -1748,7 +1750,7 @@ async fn upsert_active_claim(
     .bind(to_i64(fence.authority_epoch)?)
     .bind(to_i64(fence.owner_epoch)?)
     .bind(to_i64(fence.generation)?)
-    .bind(fence.fencing_token_sha256.to_string())
+    .bind(fence.fencing_token_sha256.as_str().to_owned())
     .bind(to_i64(acquired_at_ms)?)
     .execute(&mut **transaction)
     .await
@@ -1785,7 +1787,7 @@ async fn insert_quota_reservation(
         operation_id: admission.intent.operation_id.clone(),
         permit_id: admission.permit.permit_id.clone(),
         resource_id: admission.permit.resource_id.clone(),
-        resource_sha256: admission.permit.resource_sha256.to_string(),
+        resource_sha256: admission.permit.resource_sha256.as_str().to_owned(),
         reserved: admission.permit.reserved,
         used: QualificationQuota::default(),
         state: "HELD".to_string(),
@@ -1793,7 +1795,7 @@ async fn insert_quota_reservation(
         updated_at_ms: now_ms,
         row_sha256: String::new(),
     };
-    let digest = row.digest()?.to_string();
+    let digest = row.digest()?.as_str().to_owned();
     sqlx::query(
         "INSERT INTO quota_reservations (operation_id, permit_id, resource_id, resource_sha256, \
             reserved_rpm, reserved_tpm, reserved_concurrency, reserved_day_budget, reserved_context, \
@@ -1896,7 +1898,7 @@ async fn update_quota(
     current: &QuotaRow,
     next: &QuotaRow,
 ) -> QualificationResult<()> {
-    let digest = next.digest()?.to_string();
+    let digest = next.digest()?.as_str().to_owned();
     let result = sqlx::query(
         "UPDATE quota_reservations SET used_rpm = ?, used_tpm = ?, used_concurrency = ?, \
             used_day_budget = ?, used_context = ?, state = ?, revision = ?, updated_at_ms = ?, \
@@ -1940,7 +1942,7 @@ async fn insert_attempt(
     .bind(to_i64(row.fence.authority_epoch)?)
     .bind(to_i64(row.fence.owner_epoch)?)
     .bind(to_i64(row.fence.generation)?)
-    .bind(row.fence.fencing_token_sha256.to_string())
+    .bind(row.fence.fencing_token_sha256.as_str().to_owned())
     .bind(to_i64(row.started_at_ms)?)
     .bind(&row.row_sha256)
     .execute(&mut **transaction)
@@ -2020,9 +2022,9 @@ async fn insert_status_observation(
     .bind(&observation.operation_id)
     .bind(to_i64(observation.status_revision)?)
     .bind(to_i64(observation.observed_at_ms)?)
-    .bind(observation.binding_sha256.to_string())
+    .bind(observation.binding_sha256.as_str().to_owned())
     .bind(observation_json)
-    .bind(observation_sha256.to_string())
+    .bind(observation_sha256.as_str().to_owned())
     .bind(&writer.boot_id)
     .bind(to_i64(writer.generation)?)
     .bind(to_i64(observation.observed_at_ms)?)
@@ -2077,7 +2079,7 @@ async fn insert_outbox(
     let payload_json =
         serde_json::to_string(&payload).map_err(|_| QualificationError::InvalidInput)?;
     let payload_sha256 = digest_serializable("hepta.authbus.p0.2.outbox-payload.v1", &payload)?;
-    let outbox_id = format!("authbus-outbox:v1:{payload_sha256}");
+    let outbox_id = format!("authbus-outbox:v1:{}", payload_sha256.as_str());
     let idempotency_key = format!(
         "authbus-p0.2:{}:{}:{}",
         operation.operation_id, operation.revision, event_kind
@@ -2093,7 +2095,7 @@ async fn insert_outbox(
     .bind(to_i64(operation.revision)?)
     .bind(event_kind)
     .bind(&idempotency_key)
-    .bind(payload_sha256.to_string())
+    .bind(payload_sha256.as_str().to_owned())
     .bind(&payload_json)
     .bind(to_i64(now_ms)?)
     .execute(&mut **transaction)
@@ -2110,7 +2112,7 @@ async fn insert_outbox(
         operation_revision: operation.revision,
         event_kind: event_kind.to_string(),
         idempotency_key,
-        payload_sha256: payload_sha256.to_string(),
+        payload_sha256: payload_sha256.as_str().to_owned(),
         payload_json,
         ack_sha256: None,
         created_at_ms: now_ms,
@@ -2118,7 +2120,7 @@ async fn insert_outbox(
         state: "PENDING".to_string(),
         row_sha256: String::new(),
     };
-    let digest = row.digest()?.to_string();
+    let digest = row.digest()?.as_str().to_owned();
     sqlx::query("UPDATE outbox SET row_sha256 = ? WHERE sequence = ?")
         .bind(digest)
         .bind(sequence)
@@ -2155,7 +2157,7 @@ async fn append_fsync_receipt(
         operation_id: operation_id.to_string(),
         phase: phase.to_string(),
         operation_revision,
-        payload_sha256: payload_sha256.to_string(),
+        payload_sha256: payload_sha256.as_str().to_owned(),
         writer: writer.clone(),
         recorded_at_ms,
         witness_sha256: String::new(),
@@ -2169,11 +2171,11 @@ async fn append_fsync_receipt(
     .bind(operation_id)
     .bind(phase)
     .bind(to_i64(operation_revision)?)
-    .bind(payload_sha256.to_string())
+    .bind(payload_sha256.as_str().to_owned())
     .bind(&writer.boot_id)
     .bind(to_i64(writer.generation)?)
     .bind(to_i64(recorded_at_ms)?)
-    .bind(witness_sha256.to_string())
+    .bind(witness_sha256.as_str().to_owned())
     .execute(&mut **transaction)
     .await
     .map_err(map_sqlx)?;
@@ -2233,13 +2235,13 @@ fn verify_operation_row(row: &OperationRow) -> QualificationResult<()> {
     if row.revision == 0
         || row.created_at_ms == 0
         || row.updated_at_ms < row.created_at_ms
-        || row.digest()?.to_string() != row.row_sha256
+        || row.digest()?.as_str() != row.row_sha256
     {
         return Err(QualificationError::Corrupt);
     }
     let admission: QualificationAdmission =
         serde_json::from_str(&row.intent_json).map_err(|_| QualificationError::Corrupt)?;
-    if admission.intent_sha256()?.to_string() != row.intent_sha256
+    if admission.intent_sha256()?.as_str() != row.intent_sha256
         || admission.intent.operation_id != row.operation_id
         || admission.intent.operation_key != row.operation_key
         || admission.intent.effect_key != row.effect_key
@@ -2257,7 +2259,7 @@ fn verify_operation_row(row: &OperationRow) -> QualificationResult<()> {
 fn verify_quota_row(row: &QuotaRow) -> QualificationResult<()> {
     if !row.used.fits_within(row.reserved)
         || row.revision == 0
-        || row.digest()?.to_string() != row.row_sha256
+        || row.digest()?.as_str() != row.row_sha256
     {
         return Err(QualificationError::Corrupt);
     }
@@ -2268,7 +2270,7 @@ fn verify_attempt_row(row: &DispatchAttemptRow) -> QualificationResult<()> {
     if row.attempt == 0
         || row.operation_revision == 0
         || row.started_at_ms == 0
-        || row.digest()?.to_string() != row.row_sha256
+        || row.digest()?.as_str() != row.row_sha256
     {
         return Err(QualificationError::Corrupt);
     }
@@ -2288,7 +2290,7 @@ fn verify_outbox_row(row: &OutboxRow) -> QualificationResult<()> {
     if row.sequence == 0
         || row.operation_revision == 0
         || row.created_at_ms == 0
-        || row.digest()?.to_string() != row.row_sha256
+        || row.digest()?.as_str() != row.row_sha256
     {
         return Err(QualificationError::Corrupt);
     }
@@ -2303,14 +2305,14 @@ fn verify_receipt_row(row: &FsyncReceiptRow) -> QualificationResult<()> {
     if row.sequence == 0
         || row.operation_revision == 0
         || row.recorded_at_ms == 0
-        || row.digest()?.to_string() != row.witness_sha256
+        || row.digest()?.as_str() != row.witness_sha256
     {
         return Err(QualificationError::Corrupt);
     }
     Ok(())
 }
 
-async fn count_query(pool: &SqlitePool, statement: &str) -> QualificationResult<u64> {
+async fn count_query(pool: &SqlitePool, statement: &'static str) -> QualificationResult<u64> {
     let count: i64 = sqlx::query_scalar(statement)
         .fetch_one(pool)
         .await

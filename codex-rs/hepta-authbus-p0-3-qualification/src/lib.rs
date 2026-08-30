@@ -44,14 +44,16 @@ mod tests {
 
     #[test]
     fn default_posture_never_grants_authority() {
-        assert!(AUTHBUS_B4_P0_3_QUALIFICATION_ONLY);
-        assert!(!AUTHBUS_B4_P0_3_AUTHORITY);
-        assert!(!AUTHBUS_B4_P0_3_EFFECT_AUTHORITY);
-        assert!(!AUTHBUS_B4_P0_3_PRODUCTION_CALLER);
-        assert!(!AUTHBUS_B4_P0_3_PRODUCTION_WRITER);
-        assert!(!AUTHBUS_B4_P0_3_OPERATOR_ACCEPTANCE);
-        assert!(!AUTHBUS_B4_P0_3_PROMOTION);
-        assert!(!AUTHBUS_B4_P0_3_G5_ALLOWED);
-        assert!(!AUTHBUS_B4_P0_3_EXECUTE_ALLOWED);
+        const {
+            assert!(AUTHBUS_B4_P0_3_QUALIFICATION_ONLY);
+            assert!(!AUTHBUS_B4_P0_3_AUTHORITY);
+            assert!(!AUTHBUS_B4_P0_3_EFFECT_AUTHORITY);
+            assert!(!AUTHBUS_B4_P0_3_PRODUCTION_CALLER);
+            assert!(!AUTHBUS_B4_P0_3_PRODUCTION_WRITER);
+            assert!(!AUTHBUS_B4_P0_3_OPERATOR_ACCEPTANCE);
+            assert!(!AUTHBUS_B4_P0_3_PROMOTION);
+            assert!(!AUTHBUS_B4_P0_3_G5_ALLOWED);
+            assert!(!AUTHBUS_B4_P0_3_EXECUTE_ALLOWED);
+        }
     }
 }

@@ -903,15 +903,11 @@ where
         request: &RefreshWithSecretRefRequest,
         error: SecretBackendError,
     ) -> Result<RefreshWithSecretRefResponse, B3AdapterError> {
-        let response = local_refresh_error_response(
-            request,
-            error.outcome(),
-            error.status(),
-            "backend-error",
-        );
-        response
-            .validate_against(request)
-            .map_err(|validation| B3AdapterError::ProviderResponseInvalid(validation.to_string()))?;
+        let response =
+            local_refresh_error_response(request, error.outcome(), error.status(), "backend-error");
+        response.validate_against(request).map_err(|validation| {
+            B3AdapterError::ProviderResponseInvalid(validation.to_string())
+        })?;
         self.apply_event(request.operation_id.as_str(), request, error.event())?;
         self.mark_retry_exhausted_if_needed(request.operation_id.as_str())?;
         self.set_response(
@@ -932,9 +928,9 @@ where
             error.status(),
             "provider-error",
         );
-        response
-            .validate_against(request)
-            .map_err(|validation| B3AdapterError::ProviderResponseInvalid(validation.to_string()))?;
+        response.validate_against(request).map_err(|validation| {
+            B3AdapterError::ProviderResponseInvalid(validation.to_string())
+        })?;
         self.apply_event(request.operation_id.as_str(), request, error.event())?;
         self.mark_retry_exhausted_if_needed(request.operation_id.as_str())?;
         self.set_response(
@@ -1006,9 +1002,9 @@ where
     ) -> Result<RotateSecretRefResponse, B3AdapterError> {
         let response =
             local_rotate_error_response(request, error.outcome(), error.status(), "backend-error");
-        response
-            .validate_against(request)
-            .map_err(|validation| B3AdapterError::ProviderResponseInvalid(validation.to_string()))?;
+        response.validate_against(request).map_err(|validation| {
+            B3AdapterError::ProviderResponseInvalid(validation.to_string())
+        })?;
         self.apply_event(request.operation_id.as_str(), request, error.event())?;
         self.mark_retry_exhausted_if_needed(request.operation_id.as_str())?;
         self.set_response(
@@ -1025,9 +1021,9 @@ where
     ) -> Result<RotateSecretRefResponse, B3AdapterError> {
         let response =
             local_rotate_error_response(request, error.outcome(), error.status(), "provider-error");
-        response
-            .validate_against(request)
-            .map_err(|validation| B3AdapterError::ProviderResponseInvalid(validation.to_string()))?;
+        response.validate_against(request).map_err(|validation| {
+            B3AdapterError::ProviderResponseInvalid(validation.to_string())
+        })?;
         self.apply_event(request.operation_id.as_str(), request, error.event())?;
         self.mark_retry_exhausted_if_needed(request.operation_id.as_str())?;
         self.set_response(
@@ -1090,9 +1086,7 @@ where
             evidence_profile: "local-qualification-provider-status".to_string(),
             provider_query_receipt_digest: result.provider_query_receipt_digest,
             execution_mode: request.expected_execution_mode.clone(),
-            mode_attestation_digest: Sha256Digest::for_bytes(
-                b"hepta-authbus-b3-local-status-mode",
-            ),
+            mode_attestation_digest: Sha256Digest::for_bytes(b"hepta-authbus-b3-local-status-mode"),
             policy_digest: request.policy_digest.clone(),
             audience: request.audience.clone(),
             key_epoch: 0,
@@ -1205,9 +1199,9 @@ where
                     generation: request.generation,
                     fencing_token: request.fencing_token.clone(),
                 };
-                response.validate_against(request).map_err(|error| {
-                    B3AdapterError::ProviderResponseInvalid(error.to_string())
-                })?;
+                response
+                    .validate_against(request)
+                    .map_err(|error| B3AdapterError::ProviderResponseInvalid(error.to_string()))?;
                 Ok(StoredResponse::Refresh(response))
             }
             StoredRequest::Rotate(request) => {
@@ -1231,9 +1225,9 @@ where
                     generation: request.generation,
                     fencing_token: request.fencing_token.clone(),
                 };
-                response.validate_against(request).map_err(|error| {
-                    B3AdapterError::ProviderResponseInvalid(error.to_string())
-                })?;
+                response
+                    .validate_against(request)
+                    .map_err(|error| B3AdapterError::ProviderResponseInvalid(error.to_string()))?;
                 Ok(StoredResponse::Rotate(response))
             }
         }
@@ -1329,16 +1323,12 @@ where
         Ok(())
     }
 
-    fn mark_retry_exhausted_if_needed(
-        &mut self,
-        operation_id: &str,
-    ) -> Result<(), B3AdapterError> {
+    fn mark_retry_exhausted_if_needed(&mut self, operation_id: &str) -> Result<(), B3AdapterError> {
         let entry = self
             .operations
             .get_mut(operation_id)
             .ok_or(B3AdapterError::OperationNotFound)?;
-        if entry.record.state == SecretRefState::TransientFailure
-            && !retry_available(&entry.record)
+        if entry.record.state == SecretRefState::TransientFailure && !retry_available(&entry.record)
         {
             entry
                 .record
@@ -1417,9 +1407,7 @@ fn retry_available(record: &SecretRefOperationRecord) -> bool {
 /// transport loss, or schema-invalid response after crossing that boundary is
 /// an unknown effect even when a provider implementation encoded it inside an
 /// `Ok` result rather than returning [`ProviderAdapterError`].
-fn dispatch_projection(
-    status: SecretProviderStatus,
-) -> (SecretRefOutcome, SecretProviderStatus) {
+fn dispatch_projection(status: SecretProviderStatus) -> (SecretRefOutcome, SecretProviderStatus) {
     match status {
         SecretProviderStatus::Succeeded | SecretProviderStatus::Rotated => {
             (SecretRefOutcome::Succeeded, status)
@@ -1430,16 +1418,15 @@ fn dispatch_projection(
         SecretProviderStatus::Timeout
         | SecretProviderStatus::Unavailable
         | SecretProviderStatus::SchemaInvalid
-        | SecretProviderStatus::Unknown => {
-            (SecretRefOutcome::Indeterminate, SecretProviderStatus::Unknown)
-        }
+        | SecretProviderStatus::Unknown => (
+            SecretRefOutcome::Indeterminate,
+            SecretProviderStatus::Unknown,
+        ),
         SecretProviderStatus::Unauthorized
         | SecretProviderStatus::Conflict
         | SecretProviderStatus::Sealed
         | SecretProviderStatus::StaleFence
-        | SecretProviderStatus::TransientFailure => {
-            (SecretRefOutcome::TransientFailure, status)
-        }
+        | SecretProviderStatus::TransientFailure => (SecretRefOutcome::TransientFailure, status),
     }
 }
 
@@ -1500,11 +1487,7 @@ fn local_refresh_error_response(
         secret_revision: None,
         refresh_operation_key: request.refresh_operation_key.clone(),
         provider_status: status,
-        response_digest: local_response_digest(
-            source,
-            request.operation_id.as_str(),
-            status,
-        ),
+        response_digest: local_response_digest(source, request.operation_id.as_str(), status),
         idempotency_key: request.idempotency_key.clone(),
         payload_digest: request.payload_digest.clone(),
         expected_secret_revision: request.expected_secret_revision,
@@ -1532,11 +1515,7 @@ fn local_rotate_error_response(
         new_refresh_secret_ref: None,
         secret_revision: None,
         refresh_operation_key: request.refresh_operation_key.clone(),
-        response_digest: local_response_digest(
-            source,
-            request.operation_id.as_str(),
-            status,
-        ),
+        response_digest: local_response_digest(source, request.operation_id.as_str(), status),
         idempotency_key: request.idempotency_key.clone(),
         payload_digest: request.payload_digest.clone(),
         expected_secret_revision: request.expected_secret_revision,

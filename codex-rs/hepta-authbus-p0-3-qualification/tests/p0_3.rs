@@ -22,6 +22,8 @@ use codex_hepta_authbus_p0_3_qualification::P03ResourceState;
 use codex_hepta_authbus_p0_3_qualification::P03SchedulerError;
 use codex_hepta_authbus_p0_3_qualification::P03SchedulerResource;
 use codex_hepta_authbus_p0_3_qualification::P03WriteDisposition;
+use codex_hepta_contracts::LegacyRequestCountPolicy;
+use codex_hepta_contracts::QuotaProjectionError;
 use codex_hepta_contracts::QuotaVector;
 use codex_hepta_contracts::Sha256Digest;
 use pretty_assertions::assert_eq;
@@ -125,27 +127,39 @@ fn prepare_old_fence_unknown(
 
 #[test]
 fn authority_posture_is_statically_closed() {
-    assert!(AUTHBUS_B4_P0_3_QUALIFICATION_ONLY);
-    assert!(!AUTHBUS_B4_P0_3_AUTHORITY);
-    assert!(!AUTHBUS_B4_P0_3_EFFECT_AUTHORITY);
-    assert!(!AUTHBUS_B4_P0_3_PRODUCTION_CALLER);
-    assert!(!AUTHBUS_B4_P0_3_PRODUCTION_WRITER);
-    assert!(!AUTHBUS_B4_P0_3_OPERATOR_ACCEPTANCE);
-    assert!(!AUTHBUS_B4_P0_3_PROMOTION);
-    assert!(!AUTHBUS_B4_P0_3_G5_ALLOWED);
-    assert!(!AUTHBUS_B4_P0_3_EXECUTE_ALLOWED);
+    const {
+        assert!(AUTHBUS_B4_P0_3_QUALIFICATION_ONLY);
+        assert!(!AUTHBUS_B4_P0_3_AUTHORITY);
+        assert!(!AUTHBUS_B4_P0_3_EFFECT_AUTHORITY);
+        assert!(!AUTHBUS_B4_P0_3_PRODUCTION_CALLER);
+        assert!(!AUTHBUS_B4_P0_3_PRODUCTION_WRITER);
+        assert!(!AUTHBUS_B4_P0_3_OPERATOR_ACCEPTANCE);
+        assert!(!AUTHBUS_B4_P0_3_PROMOTION);
+        assert!(!AUTHBUS_B4_P0_3_G5_ALLOWED);
+        assert!(!AUTHBUS_B4_P0_3_EXECUTE_ALLOWED);
+    }
 }
 
 #[test]
-fn six_dimensional_quota_has_stable_legacy_projection() {
+fn six_dimensional_quota_has_stable_explicit_legacy_projection() {
     let legacy = QuotaVector::new(2, 300, 1, 400, 512);
-    let canonical = CanonicalQuotaVector::from_legacy_b4(legacy);
+    assert_eq!(
+        legacy.try_into_canonical(LegacyRequestCountPolicy::RejectMissing),
+        Err(QuotaProjectionError::MissingRequestCount)
+    );
+    let canonical = legacy
+        .try_into_canonical(LegacyRequestCountPolicy::AssumeOnePerPermit)
+        .expect("explicit legacy migration");
     assert_eq!(canonical.request_count, 1);
-    assert_eq!(canonical.to_legacy_b4(), legacy);
+    assert_eq!(QuotaVector::try_from_canonical(canonical), Ok(legacy));
     assert_eq!(canonical.digest(), canonical.digest());
     assert_ne!(
         canonical.digest(),
         CanonicalQuotaVector::new(2, 2, 300, 1, 400, 512).digest()
+    );
+    assert_eq!(
+        QuotaVector::try_from_canonical(CanonicalQuotaVector::new(2, 2, 300, 1, 400, 512)),
+        Err(QuotaProjectionError::LossyLegacyDowngrade { request_count: 2 })
     );
 }
 

@@ -17,6 +17,9 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
+use crate::CanonicalQuotaVector;
+use crate::LegacyRequestCountPolicy;
+use crate::QuotaProjectionError;
 use crate::{Sha256Digest, SubjectRef};
 
 /// This qualification model never grants authority or executes an effect.
@@ -44,9 +47,9 @@ const _: () = {
 
 const FAIRNESS_SCALE: u64 = 1_000_000;
 
-/// A non-negative integer quota vector.  `context` is included even though
-/// the earlier B2 wire type only carried request/token/concurrency/day budget;
-/// B4 uses the five-dimensional AUTHBUS.11 vector.
+/// Legacy five-dimensional B4 compatibility projection. The canonical
+/// registry-owned vector is [`CanonicalQuotaVector`]; this shape cannot be
+/// upgraded or downgraded without an explicit request-count policy.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct QuotaVector {
     pub rpm: u64,
@@ -65,6 +68,35 @@ impl QuotaVector {
             day_budget,
             context,
         }
+    }
+
+    /// Upgrade this legacy five-dimensional B4 value under an explicit
+    /// request-count policy.
+    pub fn try_into_canonical(
+        self,
+        policy: LegacyRequestCountPolicy,
+    ) -> Result<CanonicalQuotaVector, QuotaProjectionError> {
+        CanonicalQuotaVector::from_legacy_dimensions(
+            self.rpm,
+            self.tpm,
+            self.concurrency,
+            self.day_budget,
+            self.context,
+            policy,
+        )
+    }
+
+    /// Downgrade a canonical vector only when no request-count information is
+    /// lost.
+    pub fn try_from_canonical(value: CanonicalQuotaVector) -> Result<Self, QuotaProjectionError> {
+        let legacy = value.try_to_legacy()?;
+        Ok(Self::new(
+            legacy.rpm,
+            legacy.tpm,
+            legacy.concurrency,
+            legacy.day_budget,
+            legacy.context,
+        ))
     }
 
     fn is_zero(self) -> bool {
