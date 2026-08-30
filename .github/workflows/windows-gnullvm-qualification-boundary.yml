@@ -1,0 +1,130 @@
+name: Windows gnullvm qualification boundary
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  qualification-boundary:
+    name: Windows gnullvm qualification boundary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up pinned Bazel parser
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          target: x86_64-unknown-linux-gnu
+
+      - name: Validate shell sources
+        shell: bash
+        run: |
+          bash -n .github/scripts/run-bazel-ci.sh
+          bash -n .github/scripts/run-windows-msvc-diagnostic.sh
+          bash -n .github/scripts/test_run_bazel_qualification_boundary.sh
+          bash -n scripts/list-bazel-clippy-targets.sh
+
+      - name: Verify source ratchet
+        shell: bash
+        run: |
+          python3 scripts/verify-windows-gnullvm-qualification-boundary.py
+          python3 scripts/verify-windows-gnullvm-option-grammar.py
+          python3 scripts/verify-windows-gnullvm-job-executable.py
+          python3 scripts/verify-windows-gnullvm-direct-bazel.py
+          python3 scripts/verify-windows-gnullvm-setup-action-yaml.py
+          python3 scripts/verify-windows-gnullvm-bazel-query-vector.py
+
+      - name: Exercise default, diagnostic and authenticated branches
+        shell: bash
+        run: .github/scripts/test_run_bazel_qualification_boundary.sh
+
+      - name: Execute pinned Bazel 9 query parser smoke
+        shell: bash
+        run: python3 scripts/verify-windows-gnullvm-bazel-query-vector.py --execute
+
+      - name: Emit qualification-boundary receipt
+        shell: bash
+        run: |
+          mkdir -p artifacts/windows-gnullvm-qualification-boundary
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          receipt = {
+              "schema": "hepta_windows_gnullvm_qualification_boundary_v3",
+              "status": (
+                  "PASS_WINDOWS_GNULLVM_QUALIFICATION_BOUNDARY_SOURCE_"
+                  "AND_BAZEL_QUERY_PARSER"
+              ),
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "commit": os.environ["GITHUB_SHA"],
+              "workflow": os.environ["GITHUB_WORKFLOW"],
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "workflow_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "workflow_job": os.environ["GITHUB_JOB"],
+              "qualification_mode": "qualifying_gnullvm_only",
+              "bazel_version": "9.0.0",
+              "bazel_linux_x86_64_sha256": (
+                  "c44a93f25398c68f904fa1d19b61d321de6c0d2f09dca375d7bc0dc9b9428403"
+              ),
+              "bazel_query_parser_executed": True,
+              "bazel_query_options": ["--noshow_progress", "--output=label"],
+              "query_build_only_options_allowed": False,
+              "query_nonexistent_analysis_cache_option_allowed": False,
+              "setup_action_yaml_duplicate_key_parser_executed": True,
+              "quoted_or_spaced_duplicate_yaml_keys_allowed": False,
+              "keyless_msvc_fallback_allowed_in_github_actions": False,
+              "msvc_diagnostic_eligible_for_repository_admission": False,
+              "bazelisk_and_cached_bazel_source_contract": True,
+              "setup_bazel_token_available_only_inside_pinned_setup_action": True,
+              "setup_bazel_token_scrubbed_before_repository_steps": True,
+              "repository_steps_receive_nonempty_setup_bazel_token": False,
+              "setup_bazel_transport_token_consumed_before_resolution": True,
+              "setup_bazel_transport_token_reaches_bazelisk": False,
+              "setup_bazel_transport_token_reaches_direct_bazel": False,
+              "bazelisk_failure_output_echoed": False,
+              "final_child_path_head_source_bound": True,
+              "final_bazel_cwd_bound_to_canonical_workspace": True,
+              "windows_test_target_manifest_recomputed_before_launch": True,
+              "windows_clippy_target_manifest_recomputed_before_launch": True,
+              "windows_release_target_manifest_exact_before_launch": True,
+              "cached_bazel_executed_on_this_linux_source_job": False,
+              "target_manifest_executed_on_this_linux_source_job": False,
+              "source_writeback": False,
+              "runtime_authority": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "release_authority": False,
+              "callers_ratchet": False,
+          }
+          canonical = json.dumps(
+              receipt,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode()
+          receipt["receipt_binding_sha256"] = hashlib.sha256(canonical).hexdigest()
+          path = Path(
+              "artifacts/windows-gnullvm-qualification-boundary/receipt.json"
+          )
+          path.write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(path.read_text(encoding="utf-8"))
+          PY
+
+      - name: Upload qualification-boundary receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-gnullvm-qualification-boundary-${{ github.sha }}
+          path: artifacts/windows-gnullvm-qualification-boundary/receipt.json
+          if-no-files-found: error
+          retention-days: 30
