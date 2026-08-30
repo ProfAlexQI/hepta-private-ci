@@ -15,10 +15,14 @@ Q029_POLICY = SCRIPTS / "run_bazel_q029_job_executable.py"
 Q030_POLICY = SCRIPTS / "run_bazel_q030_direct_bazel.py"
 WRAPPER = SCRIPTS / "run_bazel_with_buildbuddy.py"
 TEST = SCRIPTS / "test_run_bazel_direct_bazel.py"
+SETUP_TOKEN_TEST = SCRIPTS / "test_run_bazel_setup_token_boundary.py"
 STARTUP_TEST = SCRIPTS / "test_run_bazel_startup_contract.py"
 BOUNDARY = SCRIPTS / "test_run_bazel_qualification_boundary.sh"
 WORKFLOW = (
     ROOT / ".github" / "workflows" / "windows-gnullvm-qualification-boundary.yml"
+)
+SETUP_BAZEL_ACTION = (
+    ROOT / ".github" / "actions" / "setup-bazel-ci" / "action.yml"
 )
 BAZELVERSION = ROOT / ".bazelversion"
 
@@ -28,8 +32,19 @@ EXPECTED_Q029_BLOB = "2d57d5e222b87a89b2f8b1c93c476f450b03e646"
 EXPECTED_Q030_BLOB = "1614f53c9572cdda3b1d7cf227f3a730e27b2adb"
 EXPECTED_WRAPPER_BLOB = "233d98f151b897caa42f4d762d119645cb13e641"
 EXPECTED_TEST_BLOB = "f03bb5d31ce5bca1c82f9a6349b506387e43b8e7"
-EXPECTED_WORKFLOW_BLOB = "854acc3f53c86ada494f83e7212b1cc55448cc86"
+EXPECTED_SETUP_TOKEN_TEST_BLOB = "5778dd884ef087362a99b665fbb1c60cf2dce5f0"
+EXPECTED_BOUNDARY_BLOB = "f33a5411f26d9159e764c029cb02db29208e29fa"
+EXPECTED_WORKFLOW_BLOB = "3f30d90a7fffca2cc8057bf371575e3eb85502d6"
+EXPECTED_SETUP_BAZEL_ACTION_BLOB = "890567be46f3fd78c11b89a20950bef2f7af4bf6"
 EXPECTED_BAZELVERSION_BLOB = "f7ee06693c17a06e2a0f51ef7eb2a61866e77b8e"
+PINNED_SETUP_BAZEL = (
+    "bazel-contrib/setup-bazel@"
+    "c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86"
+)
+SETUP_SCRUB_STEP = "- name: Scrub setup-only Bazelisk GitHub token"
+SETUP_EMPTY_EXPORT = (
+    "printf '%s\\n' 'BAZELISK_GITHUB_TOKEN=' >> \"$GITHUB_ENV\""
+)
 
 
 def fail(message: str) -> None:
@@ -38,7 +53,7 @@ def fail(message: str) -> None:
 
 def read(path: Path) -> str:
     if not path.is_file():
-        fail(f"missing Q0.30/Q0.32 contract path: {path.relative_to(ROOT)}")
+        fail(f"missing Q0.30-Q0.33 contract path: {path.relative_to(ROOT)}")
     return path.read_text(encoding="utf-8")
 
 
@@ -54,7 +69,7 @@ def require(condition: bool, message: str) -> None:
 
 
 def require_token(text: str, token: str, owner: str) -> None:
-    require(token in text, f"{owner} lacks Q0.30/Q0.32 token: {token}")
+    require(token in text, f"{owner} lacks Q0.30-Q0.33 token: {token}")
 
 
 def reject_token(text: str, token: str, owner: str) -> None:
@@ -84,11 +99,19 @@ def main() -> None:
     q030 = read(Q030_POLICY)
     wrapper = read(WRAPPER)
     test = read(TEST)
+    setup_token_test = read(SETUP_TOKEN_TEST)
     startup_test = read(STARTUP_TEST)
     boundary = read(BOUNDARY)
     workflow = read(WORKFLOW)
+    setup_bazel_action = read(SETUP_BAZEL_ACTION)
 
-    for path in (WRAPPER, TEST, STARTUP_TEST, BOUNDARY):
+    for path in (
+        WRAPPER,
+        TEST,
+        SETUP_TOKEN_TEST,
+        STARTUP_TEST,
+        BOUNDARY,
+    ):
         require_executable(path)
 
     for path, expected, owner in (
@@ -98,7 +121,18 @@ def main() -> None:
         (Q030_POLICY, EXPECTED_Q030_BLOB, "Q0.32 direct Bazel policy"),
         (WRAPPER, EXPECTED_WRAPPER_BLOB, "public Bazel wrapper"),
         (TEST, EXPECTED_TEST_BLOB, "Q0.32 direct Bazel regression"),
+        (
+            SETUP_TOKEN_TEST,
+            EXPECTED_SETUP_TOKEN_TEST_BLOB,
+            "Q0.33 setup-token regression",
+        ),
+        (BOUNDARY, EXPECTED_BOUNDARY_BLOB, "qualification fixture"),
         (WORKFLOW, EXPECTED_WORKFLOW_BLOB, "qualification workflow"),
+        (
+            SETUP_BAZEL_ACTION,
+            EXPECTED_SETUP_BAZEL_ACTION_BLOB,
+            "setup-bazel-ci action",
+        ),
     ):
         require(git_blob_sha(path) == expected, f"{owner} drifted")
 
@@ -208,6 +242,55 @@ def main() -> None:
         require_token(test, token, "Q0.32 regression")
 
     for token in (
+        "test_setup_bazel_is_centralized_in_scrubbed_composite_action",
+        "test_scrub_step_is_immediately_after_setup_bazel",
+        "test_scrub_exports_only_an_empty_value_without_reading_secret",
+        "test_setup_download_retains_default_token_only_inside_upstream_action",
+        PINNED_SETUP_BAZEL,
+        SETUP_SCRUB_STEP,
+        SETUP_EMPTY_EXPORT,
+    ):
+        require_token(setup_token_test, token, "Q0.33 setup-token regression")
+
+    for token in (
+        PINNED_SETUP_BAZEL,
+        "bazelisk-version: 1.28.1",
+        SETUP_SCRUB_STEP,
+        SETUP_EMPTY_EXPORT,
+        "unset BAZELISK_GITHUB_TOKEN",
+        "- name: Configure Bazel repository cache",
+    ):
+        require_token(setup_bazel_action, token, "setup-bazel-ci action")
+    require_order(
+        setup_bazel_action,
+        "- name: Set up Bazel",
+        SETUP_SCRUB_STEP,
+        "setup-bazel-ci action",
+    )
+    require_order(
+        setup_bazel_action,
+        SETUP_SCRUB_STEP,
+        "- name: Configure Bazel repository cache",
+        "setup-bazel-ci action",
+    )
+    scrub_start = setup_bazel_action.index(SETUP_SCRUB_STEP)
+    scrub_end = setup_bazel_action.index(
+        "- name: Configure Bazel repository cache",
+        scrub_start,
+    )
+    scrub_block = setup_bazel_action[scrub_start:scrub_end]
+    reject_token(
+        scrub_block,
+        "${BAZELISK_GITHUB_TOKEN",
+        "setup-bazel-ci scrub step",
+    )
+    reject_token(
+        scrub_block,
+        "$BAZELISK_GITHUB_TOKEN",
+        "setup-bazel-ci scrub step",
+    )
+
+    for token in (
         "test_canonical_startup_vector_passes",
         "test_missing_output_user_root_fails_closed",
         "test_missing_output_base_fails_closed",
@@ -217,12 +300,16 @@ def main() -> None:
 
     for token in (
         "python3 .github/scripts/test_run_bazel_direct_bazel.py",
+        "python3 .github/scripts/test_run_bazel_setup_token_boundary.py",
         "python3 scripts/verify-windows-gnullvm-direct-bazel.py",
     ):
         require_token(boundary, token, "qualification boundary fixture")
 
     for token in (
         "python3 scripts/verify-windows-gnullvm-direct-bazel.py",
+        '"setup_bazel_token_available_only_inside_pinned_setup_action": True',
+        '"setup_bazel_token_scrubbed_before_repository_steps": True',
+        '"repository_steps_receive_nonempty_setup_bazel_token": False',
         '"setup_bazel_transport_token_consumed_before_resolution": True',
         '"setup_bazel_transport_token_reaches_bazelisk": False',
         '"setup_bazel_transport_token_reaches_direct_bazel": False',
@@ -243,6 +330,7 @@ def main() -> None:
 
     print("PASS_WINDOWS_GNULLVM_Q0_30_DIRECT_BAZEL_SOURCE")
     print("PASS_WINDOWS_GNULLVM_Q0_32_TRANSPORT_AND_PATH_SOURCE")
+    print("PASS_WINDOWS_GNULLVM_Q0_33_SETUP_TOKEN_JOB_BOUNDARY_SOURCE")
 
 
 if __name__ == "__main__":

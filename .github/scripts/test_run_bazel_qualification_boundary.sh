@@ -12,6 +12,7 @@ python3 .github/scripts/test_run_bazel_lane_semantics.py
 python3 .github/scripts/test_run_bazel_startup_contract.py
 python3 .github/scripts/test_run_bazel_job_executable.py
 python3 .github/scripts/test_run_bazel_direct_bazel.py
+python3 .github/scripts/test_run_bazel_setup_token_boundary.py
 python3 scripts/verify-windows-gnullvm-final-command.py
 python3 scripts/verify-windows-gnullvm-lane-policy.py
 python3 scripts/verify-windows-gnullvm-lane-semantics.py
