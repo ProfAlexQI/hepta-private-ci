@@ -1,0 +1,127 @@
+name: Hepta Intelligence integration admission identity
+
+on:
+  pull_request:
+    branches:
+      - codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  workflow_dispatch:
+    inputs:
+      expected_head:
+        description: Exact two-parent integration head to verify
+        required: true
+        type: string
+      expected_base:
+        description: Exact canonical A0 first parent
+        required: true
+        type: string
+      expected_base_branch:
+        description: Canonical A0 base branch
+        required: true
+        type: string
+      expected_head_branch:
+        description: Integration admission branch
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hi-admission-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-integration-identity:
+    name: Signed A0-first integration identity
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.head_ref, 'integration/hepta-intelligence-a0-q0-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || inputs.expected_head }}
+      EXPECTED_BASE: ${{ github.event.pull_request.base.sha || inputs.expected_base }}
+      EXPECTED_BASE_BRANCH: ${{ github.base_ref || inputs.expected_base_branch }}
+      EXPECTED_HEAD_BRANCH: ${{ github.head_ref || inputs.expected_head_branch }}
+      ARTIFACT_DIR: artifacts/hepta-intelligence-integration-admission
+    steps:
+      - name: Checkout exact integration candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.EXPECTED_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compile strict admission verifier and fixtures
+        run: |
+          python3 -m py_compile \
+            scripts/verify-hepta-intelligence-integration-admission.py \
+            scripts/test-hepta-intelligence-integration-admission.py
+
+      - name: Exercise fail-closed admission fixtures
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          python3 scripts/hepta_q046_git_context.py \
+            | tee "$ARTIFACT_DIR/trusted-git-context-fixtures.txt"
+          python3 scripts/test-hepta-intelligence-integration-admission.py \
+            | tee "$ARTIFACT_DIR/admission-negative-fixtures.txt"
+
+      - name: Verify signed A0-first composition twice
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          python3 scripts/hepta_q046_git_context.py \
+            | tee "$ARTIFACT_DIR/trusted-git-context-runtime.txt"
+
+          clean_home="$RUNNER_TEMP/hepta-intelligence-admission-home"
+          mkdir -p "$clean_home"
+          for suffix in a b; do
+            env -i \
+              PATH=/usr/bin:/bin \
+              HOME="$clean_home" \
+              LANG=C \
+              LC_ALL=C \
+              PYTHONHASHSEED=0 \
+              GIT_CONFIG_NOSYSTEM=1 \
+              GIT_CONFIG_GLOBAL=/dev/null \
+              GIT_OPTIONAL_LOCKS=0 \
+              GH_TOKEN="$GH_TOKEN" \
+              /usr/bin/python3 \
+              scripts/verify-hepta-intelligence-integration-admission.py \
+                --repository "$GITHUB_REPOSITORY" \
+                --expected-head "$EXPECTED_HEAD" \
+                --expected-base "$EXPECTED_BASE" \
+                --expected-base-branch "$EXPECTED_BASE_BRANCH" \
+                --expected-head-branch "$EXPECTED_HEAD_BRANCH" \
+                --token-env GH_TOKEN \
+                --output "$ARTIFACT_DIR/identity-$suffix.json"
+          done
+          cmp "$ARTIFACT_DIR/identity-a.json" "$ARTIFACT_DIR/identity-b.json"
+          cp "$ARTIFACT_DIR/identity-a.json" "$ARTIFACT_DIR/identity.json"
+          sha256sum "$ARTIFACT_DIR/identity.json" > "$ARTIFACT_DIR/identity.json.sha256"
+
+      - name: Require clean tracked source through canonical Git
+        run: |
+          set -euo pipefail
+          clean_home="$RUNNER_TEMP/hepta-intelligence-admission-home"
+          env -i \
+            PATH=/usr/bin:/bin \
+            HOME="$clean_home" \
+            LANG=C \
+            LC_ALL=C \
+            GIT_CONFIG_NOSYSTEM=1 \
+            GIT_CONFIG_GLOBAL=/dev/null \
+            GIT_OPTIONAL_LOCKS=0 \
+            /usr/bin/git diff --exit-code
+
+      - name: Upload exact admission identity receipt
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-intelligence-integration-admission-${{ env.EXPECTED_HEAD }}
+          path: artifacts/hepta-intelligence-integration-admission
+          if-no-files-found: error
+          retention-days: 30
