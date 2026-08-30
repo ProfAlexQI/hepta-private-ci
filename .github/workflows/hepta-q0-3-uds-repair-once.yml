@@ -1,0 +1,111 @@
+name: Hepta Q0.3 UDS repair source publisher
+
+on:
+  push:
+    branches:
+      - codex/hepta-intelligence-q0-3-uds-clippy-20260830
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-q0-3-uds-repair-once-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Repair and qualify Q0.3 UDS source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact staging branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: codex/hepta-intelligence-q0-3-uds-clippy-20260830
+          fetch-depth: 3
+          persist-credentials: true
+
+      - name: Verify one-shot staging topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "883505e18ca42411a2c66ead9b05f942e32df077"
+          test "$(git rev-parse HEAD^^)" = "be4e5675bd2f7142cca5a141f3c050547f9a8bd6"
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/hepta-q0-3-uds-repair-once.yml"
+
+      - name: Move production item before the Unix test module
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/uds/src/lib.rs")
+          text = path.read_text(encoding="utf-8")
+          unix_start = text.index("#[cfg(unix)]\nmod platform {")
+          windows_start = text.index("\n#[cfg(windows)]", unix_start)
+          unix = text[unix_start:windows_start]
+          test_marker = "    #[cfg(test)]\n    mod tests {"
+          function = """    pub(super) async fn is_stale_socket_path(socket_path: &Path) -> IoResult<bool> {
+              Ok(fs::symlink_metadata(socket_path)
+                  .await?
+                  .file_type()
+                  .is_socket())
+          }
+          """
+          test_pos = unix.index(test_marker)
+          function_pos = unix.index(function)
+          if function_pos < test_pos:
+              raise SystemExit("Q0.3 Unix item ordering was already repaired; refusing ambiguous rewrite")
+          unix_without = unix[:function_pos] + unix[function_pos + len(function):]
+          new_test_pos = unix_without.index(test_marker)
+          repaired = unix_without[:new_test_pos] + function + "\n" + unix_without[new_test_pos:]
+          if repaired.index(function) > repaired.index(test_marker):
+              raise SystemExit("production item still follows the test module")
+          tests = repaired[repaired.index(test_marker):]
+          if ".expect(" in tests or ".expect_err(" in tests:
+              raise SystemExit("denied expect API remains in Unix test module")
+          path.write_text(text[:unix_start] + repaired + text[windows_start:], encoding="utf-8")
+          PY
+
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt,clippy
+
+      - name: Verify formatting and focused behavior
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +1.95.0 fmt --all -- --check
+          cargo +1.95.0 test -p codex-uds --locked
+          cargo +1.95.0 clippy -p codex-uds --all-targets --locked -- -D warnings
+
+      - name: Publish a clean source-only repair commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Hepta governed source publisher"
+          git config user.email "hepta-source-publisher@users.noreply.github.com"
+          git rm .github/workflows/hepta-q0-3-uds-repair-once.yml
+          git add codex-rs/uds/src/lib.rs
+          git diff --cached --check
+          python3 - <<'PY'
+          import subprocess
+
+          changed = set(
+              subprocess.check_output(
+                  ["git", "diff", "--cached", "--name-only"], text=True
+              ).splitlines()
+          )
+          expected = {
+              ".github/workflows/hepta-q0-3-uds-repair-once.yml",
+              "codex-rs/uds/src/lib.rs",
+          }
+          if changed != expected:
+              raise SystemExit(f"unexpected staged paths: {sorted(changed)}")
+          PY
+          git commit -m "fix(uds): close Q0.3 strict Clippy blockers"
+          git push origin HEAD:codex/hepta-intelligence-q0-3-uds-clippy-20260830
