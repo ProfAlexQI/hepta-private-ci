@@ -1,4 +1,4 @@
-name: Hepta A0 V4.5.1 provenance replacement publisher macOS v2
+name: Hepta A0 V4.5.1 provenance replacement publisher Ubuntu v2
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-a0-v451-provenance-publisher-macos-v2-20260830-0055
+  group: hepta-a0-v451-provenance-publisher-ubuntu-v2-20260830-0055
   cancel-in-progress: true
 
 env:
@@ -20,13 +20,13 @@ env:
   Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
   Q0_TREE: ca455a9ef797cd95164c880c7b8faba80b305589
   PREDECESSOR_HEADS_JSON: '["08e6ed017e8cbfb94f86a5fa8397eb00eb396ed2","7a8052aa8949c8b1be361b5231389ee193baec3c"]'
-  STAGING_BRANCH: staging/hepta-a0-v451-provenance-ruff-macos-v2-20260830-0055
+  STAGING_BRANCH: staging/hepta-a0-v451-provenance-ruff-ubuntu-v2-20260830-0055
   REPORT_DIR: artifacts/hepta-a0-v451-ruff-replacement
 
 jobs:
   publish:
-    name: Build and validate one Ruff-clean Q0-single-parent replacement on macOS
-    runs-on: macos-15
+    name: Build and validate one Ruff-clean Q0-single-parent replacement on Ubuntu
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - name: Checkout publisher source
@@ -49,23 +49,16 @@ jobs:
         with:
           version: 0.11.3
 
-      - name: Install modern Bash
-        shell: bash
-        run: |
-          set -euo pipefail
-          brew list bash >/dev/null 2>&1 || brew install bash
-
       - name: Build, validate and publish immutable staging candidate
         shell: bash
         run: |
           set -euo pipefail
-          "$(brew --prefix bash)/bin/bash" \
-            publisher/automation/run-hepta-a0-v451-provenance-publisher-v3.sh
+          bash publisher/automation/run-hepta-a0-v451-provenance-publisher-v3.sh
 
       - name: Upload deterministic publisher evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: hepta-a0-v451-provenance-macos-v2-${{ github.sha }}
+          name: hepta-a0-v451-provenance-ubuntu-v2-${{ github.sha }}
           path: target/artifacts/hepta-a0-v451-ruff-replacement/**
           if-no-files-found: error
           retention-days: 30
