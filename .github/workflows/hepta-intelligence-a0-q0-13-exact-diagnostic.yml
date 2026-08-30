@@ -1,4 +1,4 @@
-name: Hepta Intelligence A0 + Q0.13 exact diagnostic
+name: Hepta Intelligence A0 + Q0.14 exact diagnostic
 
 on:
   push:
@@ -10,25 +10,26 @@ permissions:
   contents: read
 
 concurrency:
-  group: hepta-intelligence-a0-q0-13-exact-${{ github.ref_name }}
+  group: hepta-intelligence-a0-q0-14-exact
   cancel-in-progress: true
 
 env:
   EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
-  EXPECTED_HEAD: 7282cdc83f66393a904d5d56d8672b2ca947df01
-  EXPECTED_TREE: e77911c0e38a54666d01d937a24e98f22b929ee3
+  EXPECTED_HEAD: 0c238342c77e667928a8ed1ea57e47c5d87b14d0
+  EXPECTED_TREE: c6e70d7794b467efd3d0fab1c7795a7ad1b9fd14
   EXPECTED_FIRST_PARENT: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
-  EXPECTED_SECOND_PARENT: 7a7380578f67412d79218909d975d710b96cf686
-  EXPECTED_SYNTHETIC_MERGE: 28c91f01b8b3e4fff82215eaa06bb7c2710717fc
-  EXPECTED_SYNTHETIC_TREE: e77911c0e38a54666d01d937a24e98f22b929ee3
-  REPORT_DIR: /tmp/hepta-intelligence-a0-q0-13-exact
+  EXPECTED_SECOND_PARENT: 695f64119f5eca58dbd5ef2c3047dde00c03afd7
+  EXPECTED_SYNTHETIC_MERGE: db9986f701566971b4b44e0e5d279b3f4c783e84
+  EXPECTED_SYNTHETIC_TREE: c6e70d7794b467efd3d0fab1c7795a7ad1b9fd14
+  Q0_13_HEAD: 7a7380578f67412d79218909d975d710b96cf686
+  REPORT_DIR: /tmp/hepta-intelligence-a0-q0-14-exact
   PYTHONPYCACHEPREFIX: /tmp/hepta-intelligence-python-cache
 
 jobs:
-  exact-control-gates:
-    name: Exact Q0.13 identity and fail-closed control gates
+  exact-control-and-toolchain-gates:
+    name: Exact Q0.14 source and Windows toolchain analysis
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 75
     steps:
       - name: Checkout exact integration candidate
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -108,194 +109,52 @@ jobs:
           print("PASS_A0_BLOB_IDENTITY")
           PY
 
-      - name: Verify Q0.11 policy, Q0.12 ABI fence and Q0.13 fail-closed source
+      - name: Verify Q0.14 immutable core and source contract
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD:.github/scripts/run-bazel-ci-core.sh)" = \
+            "$(git rev-parse "$Q0_13_HEAD:.github/scripts/run-bazel-ci.sh")"
           bash -n .github/scripts/run-bazel-ci.sh
-          python3 - <<'PY'
-          from pathlib import Path
-
-          wrapper = Path(".github/scripts/run_bazel_with_buildbuddy.py").read_text(encoding="utf-8")
-          patch = Path("patches/llvm_windows_mingw_compat.patch").read_text(encoding="utf-8")
-          launcher = Path(".github/scripts/run-bazel-ci.sh").read_text(encoding="utf-8")
-          required_wrapper = [
-              'LOCAL_WINDOWS_CI_CONFIG = "--config=ci-windows"',
-              'LOCAL_WINDOWS_MSVC_HOST_PLATFORM',
-              'LOCAL_WINDOWS_MSVC_TARGET_PLATFORM',
-              'local_windows_msvc_fallback_config',
-          ]
-          required_patch = [
-              'target_compatible_with.append("//constraints/windows/abi:gnullvm")',
-              'target_compatible_with = target_compatible_with,',
-          ]
-          required_launcher = [
-              'ALLOW_WINDOWS_MSVC_FALLBACK:-',
-              'refusing to substitute an MSVC result for a gnullvm check',
-              'this result is never gnullvm evidence',
-              'windows_msvc_host_platform=1',
-              'windows_msvc_target_platform=1',
-          ]
-          for token in required_wrapper:
-              if token not in wrapper:
-                  raise SystemExit(f"missing Q0.11 token: {token}")
-          for token in required_patch:
-              if token not in patch:
-                  raise SystemExit(f"missing Q0.12 token: {token}")
-          for token in required_launcher:
-              if token not in launcher:
-                  raise SystemExit(f"missing Q0.13 token: {token}")
-          print("PASS_Q0_11_Q0_12_Q0_13_SOURCE_CONTRACT")
-          PY
-
-      - name: Compile and run BuildBuddy wrapper regressions
-        shell: bash
-        run: |
-          set -euo pipefail
+          bash -n .github/scripts/run-bazel-ci-core.sh
           python3 -m py_compile \
             .github/scripts/run_bazel_with_buildbuddy.py \
             .github/scripts/test_run_bazel_with_buildbuddy.py \
-            .github/scripts/test_run_bazel_local_windows_fallback.py
+            .github/scripts/test_run_bazel_local_windows_fallback.py \
+            .github/scripts/test_run_bazel_ci_wrapper.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          wrapper = Path(".github/scripts/run-bazel-ci.sh").read_text(encoding="utf-8")
+          required = [
+              "--config=ci-windows",
+              "--host_platform=//:local_windows_msvc",
+              "--platforms=//:windows_x86_64_gnullvm",
+              "--extra_execution_platforms=//:windows_x86_64_msvc",
+              "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain",
+              "--strategy=TestRunner=local",
+              "--strategy=V8Mksnapshot=local",
+              "--build_metadata=TAG_windows_gnullvm_local=true",
+          ]
+          for token in required:
+              if token not in wrapper:
+                  raise SystemExit(f"missing Q0.14 token: {token}")
+          print("PASS_Q0_14_SOURCE_CONTRACT")
+          PY
+
+      - name: Run all Bazel launcher regressions
+        shell: bash
+        run: |
+          set -euo pipefail
           (
             cd .github/scripts
             python3 -m unittest -v \
               test_run_bazel_with_buildbuddy.py \
-              test_run_bazel_local_windows_fallback.py
-          ) 2>&1 | tee "$REPORT_DIR/python-wrapper-tests.txt"
+              test_run_bazel_local_windows_fallback.py \
+              test_run_bazel_ci_wrapper.py
+          ) 2>&1 | tee "$REPORT_DIR/bazel-launcher-tests.txt"
 
-      - name: Exercise default refusal, explicit diagnostic and authenticated paths
-        shell: bash
-        run: |
-          set -euo pipefail
-          fixture=/tmp/hepta-q0-13-launcher-fixture
-          rm -rf "$fixture"
-          mkdir -p "$fixture/.github/scripts"
-          cp .github/scripts/run-bazel-ci.sh "$fixture/.github/scripts/run-bazel-ci.sh"
-          cat > "$fixture/.github/scripts/run_bazel_with_buildbuddy.py" <<'PY'
-          #!/usr/bin/env python3
-          import json
-          import os
-          import sys
-          from pathlib import Path
-
-          Path(os.environ["ARG_CAPTURE"]).write_text(
-              json.dumps(sys.argv[1:], indent=2) + "\n", encoding="utf-8"
-          )
-          PY
-          chmod +x \
-            "$fixture/.github/scripts/run-bazel-ci.sh" \
-            "$fixture/.github/scripts/run_bazel_with_buildbuddy.py"
-
-          refused_args="$REPORT_DIR/default-refusal-args.json"
-          refused_err="$REPORT_DIR/default-refusal-stderr.txt"
-          set +e
-          (
-            cd "$fixture"
-            env -u BUILDBUDDY_API_KEY -u ALLOW_WINDOWS_MSVC_FALLBACK \
-              RUNNER_OS=Windows \
-              CODEX_BAZEL_WINDOWS_PATH='C:\\Windows\\System32' \
-              ARG_CAPTURE="$refused_args" \
-              ./.github/scripts/run-bazel-ci.sh \
-                --windows-cross-compile -- \
-                build --config=clippy -- //codex-rs/uds:uds-unit-tests-bin
-          ) 2>"$refused_err"
-          refusal_status=$?
-          set -e
-          test "$refusal_status" -eq 1
-          test ! -e "$refused_args"
-          grep -F "refusing to substitute an MSVC result for a gnullvm check" "$refused_err"
-
-          opted_args="$REPORT_DIR/explicit-msvc-diagnostic-args.json"
-          (
-            cd "$fixture"
-            env -u BUILDBUDDY_API_KEY \
-              ALLOW_WINDOWS_MSVC_FALLBACK=1 \
-              RUNNER_OS=Windows \
-              CODEX_BAZEL_WINDOWS_PATH='C:\\Windows\\System32' \
-              ARG_CAPTURE="$opted_args" \
-              ./.github/scripts/run-bazel-ci.sh \
-                --windows-cross-compile -- \
-                build --config=clippy -- //codex-rs/uds:uds-unit-tests-bin
-          )
-
-          rbe_args="$REPORT_DIR/authenticated-rbe-args.json"
-          (
-            cd "$fixture"
-            BUILDBUDDY_API_KEY=fixture-key \
-              RUNNER_OS=Windows \
-              CODEX_BAZEL_WINDOWS_PATH='C:\\Windows\\System32' \
-              ARG_CAPTURE="$rbe_args" \
-              ./.github/scripts/run-bazel-ci.sh \
-                --windows-cross-compile -- \
-                build --config=clippy -- //codex-rs/uds:uds-unit-tests-bin
-          )
-
-          python3 - "$opted_args" "$rbe_args" <<'PY'
-          import json
-          import sys
-          from pathlib import Path
-
-          opted, rbe = [
-              json.loads(Path(path).read_text(encoding="utf-8")) for path in sys.argv[1:]
-          ]
-
-          def require(args, value):
-              if value not in args:
-                  raise SystemExit(f"missing {value!r} in {args!r}")
-
-          require(opted, "--host_platform=//:local_windows_msvc")
-          require(opted, "--platforms=//:local_windows_msvc")
-          require(opted, "--jobs=8")
-          if "--config=ci-windows-cross" in opted:
-              raise SystemExit("explicit local diagnostic retained remote-only config")
-
-          require(rbe, "--config=ci-windows-cross")
-          require(rbe, "--host_platform=//:rbe")
-          require(rbe, "--shell_executable=/bin/bash")
-          if "--platforms=//:local_windows_msvc" in rbe:
-              raise SystemExit("authenticated gnullvm path received local MSVC target")
-          print("PASS_Q0_13_CONTROL_FLOW")
-          PY
-
-      - name: Verify Q0.11 ci-windows injection semantics directly
-        shell: bash
-        run: |
-          set -euo pipefail
-          PYTHONPATH=.github/scripts python3 - <<'PY'
-          import run_bazel_with_buildbuddy as wrapper
-
-          pair = [
-              "build",
-              "--config=clippy",
-              "--host_platform=//:local_windows_msvc",
-              "--platforms=//:local_windows_msvc",
-              "--jobs=8",
-              "--",
-              "//codex-rs/uds:uds-unit-tests-bin",
-          ]
-          configured = wrapper.bazel_args_with_remote_config(
-              pair, {"RUNNER_OS": "Windows"}
-          )
-          if configured.count("--config=ci-windows") != 1:
-              raise SystemExit(f"expected one ci-windows config: {configured!r}")
-          if configured.index("--config=ci-windows") != 1:
-              raise SystemExit(f"ci-windows is not immediately after command: {configured!r}")
-
-          authenticated = wrapper.bazel_args_with_remote_config(
-              ["build", "--config=ci-windows-cross", "--", "//:target"],
-              {
-                  "RUNNER_OS": "Windows",
-                  "BUILDBUDDY_API_KEY": "fixture-key",
-              },
-          )
-          if "--config=ci-windows" in authenticated:
-              raise SystemExit(f"authenticated path gained local policy: {authenticated!r}")
-          if not any(arg.startswith("--config=buildbuddy-generic-rbe") for arg in authenticated):
-              raise SystemExit(f"authenticated path lost RBE wrapper config: {authenticated!r}")
-          print("PASS_Q0_11_POLICY_INJECTION")
-          PY
-
-      - name: Execute canonical source validators
+      - name: Execute canonical Hepta Intelligence source validators
         shell: bash
         run: |
           set -euo pipefail
@@ -310,6 +169,50 @@ jobs:
           for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
             python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
           done
+
+      - name: Set up Bazel analysis environment
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          target: x86_64-unknown-linux-gnu
+
+      - name: Verify patched module lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          scripts/check-module-bazel-lock.sh
+          git diff --exit-code -- MODULE.bazel.lock
+
+      - name: Compare mixed-host and all-gnullvm Windows toolchain analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          target=//codex-rs/utils/rustls-provider:rustls-provider-provider-test
+          mixed_log="$REPORT_DIR/mixed-msvc-host-gnullvm-target.log"
+          gnullvm_log="$REPORT_DIR/all-gnullvm-host-target.log"
+
+          set +e
+          bazel --noexperimental_remote_repo_contents_cache build \
+            --nobuild \
+            --host_platform=//:windows_x86_64_msvc \
+            --platforms=//:windows_x86_64_gnullvm \
+            --extra_execution_platforms=//:windows_x86_64_msvc \
+            --extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain \
+            "$target" 2>&1 | tee "$mixed_log"
+          mixed_status=${PIPESTATUS[0]}
+
+          bazel --noexperimental_remote_repo_contents_cache build \
+            --nobuild \
+            --host_platform=//:windows_x86_64_gnullvm \
+            --platforms=//:windows_x86_64_gnullvm \
+            "$target" 2>&1 | tee "$gnullvm_log"
+          gnullvm_status=${PIPESTATUS[0]}
+          set -e
+
+          {
+            echo "mixed_msvc_host_gnullvm_target_status=$mixed_status"
+            echo "all_gnullvm_status=$gnullvm_status"
+          } > "$REPORT_DIR/toolchain-analysis-status.txt"
+          test "$mixed_status" -eq 0
 
       - name: Verify clean exact checkout and emit negative authority receipt
         if: always() && !cancelled()
@@ -335,7 +238,7 @@ jobs:
         if: always() && !cancelled()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4
         with:
-          name: hepta-intelligence-a0-q0-13-exact-${{ github.run_id }}
-          path: /tmp/hepta-intelligence-a0-q0-13-exact/**
+          name: hepta-intelligence-a0-q0-14-exact-${{ github.run_id }}
+          path: /tmp/hepta-intelligence-a0-q0-14-exact/**
           if-no-files-found: error
           retention-days: 30
