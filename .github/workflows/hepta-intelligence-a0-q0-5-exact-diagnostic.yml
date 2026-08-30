@@ -1,4 +1,4 @@
-name: Hepta Intelligence A0 + Q0.8 exact integration diagnostic
+name: Hepta Intelligence A0 + Q0.13 exact integration diagnostic
 
 on:
   push:
@@ -9,22 +9,29 @@ on:
 permissions:
   contents: read
 
+# Reuse the previous exact-diagnostic concurrency group so obsolete queued
+# Q0.8 attempts are cancelled rather than consuming another runner.
 concurrency:
   group: hepta-intelligence-a0-q0-8-exact-${{ github.ref_name }}
   cancel-in-progress: true
 
 env:
   EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
-  EXPECTED_HEAD_SHA: e4e6a05c5e44b66a211dcc31435eb6021d69499b
-  EXPECTED_TREE_SHA: 142f4517284d1b2ba822bfdbff461c3ebecaef6b
+  EXPECTED_HEAD_SHA: 7282cdc83f66393a904d5d56d8672b2ca947df01
+  EXPECTED_TREE_SHA: e77911c0e38a54666d01d937a24e98f22b929ee3
+  EXPECTED_SYNTHETIC_MERGE: 28c91f01b8b3e4fff82215eaa06bb7c2710717fc
   A0_SOURCE_HEAD: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
-  Q0_8_SECOND_PARENT: 5c69de275a18ff319d9453b781ef9442ddc5dce8
+  Q0_10_HEAD: 8d7960f1805c6b2cda0d6274bf2541a535a4d30c
+  Q0_11_HEAD: 4ebb22ef9f46a8b50e5072e58041ea27f0a6caf7
+  Q0_12_HEAD: fb24739dcc415c0dc0dd06ecac9762ac19f45471
+  Q0_13_HEAD: 7a7380578f67412d79218909d975d710b96cf686
+  PYTHONPYCACHEPREFIX: ${{ runner.temp }}/hepta-python-cache
 
 jobs:
   exact-integration-diagnostic:
-    name: Exact e4e6a05 integration high-risk gates
-    runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    name: Exact 7282cdc integration high-risk gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
     steps:
       - name: Checkout exact integration candidate
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -33,20 +40,35 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
 
-      - name: Verify exact immutable identity
+      - name: Verify exact immutable identity and linear source topology
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
           test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE_SHA"
-          read -r first_parent second_parent extra <<< "$(git show -s --format=%P HEAD)"
-          test "$first_parent" = "$A0_SOURCE_HEAD"
-          test "$second_parent" = "$Q0_8_SECOND_PARENT"
-          test -z "${extra:-}"
-          git cat-file -e "$A0_SOURCE_HEAD^{commit}"
-          git cat-file -e "$Q0_8_SECOND_PARENT^{commit}"
-          mkdir -p "$RUNNER_TEMP/hepta-intelligence-a0-q0-8-diagnostic"
+          test "$(git show -s --format=%P HEAD)" = "$A0_SOURCE_HEAD $Q0_13_HEAD"
+
+          git fetch --no-tags --depth=1 origin \
+            "+$Q0_10_HEAD:refs/remotes/hepta/q0-10" \
+            "+$Q0_11_HEAD:refs/remotes/hepta/q0-11" \
+            "+$Q0_12_HEAD:refs/remotes/hepta/q0-12" \
+            "+$Q0_13_HEAD:refs/remotes/hepta/q0-13" \
+            "+refs/pull/93/merge:refs/remotes/pull/93/merge"
+
+          test "$(git show -s --format=%P "$Q0_11_HEAD")" = "$Q0_10_HEAD"
+          test "$(git show -s --format=%P "$Q0_12_HEAD")" = "$Q0_11_HEAD"
+          test "$(git show -s --format=%P "$Q0_13_HEAD")" = "$Q0_12_HEAD"
+          test "$(git rev-parse refs/remotes/pull/93/merge)" = "$EXPECTED_SYNTHETIC_MERGE"
+          test "$(git rev-parse refs/remotes/pull/93/merge^{tree})" = "$EXPECTED_TREE_SHA"
+          test "$(git show -s --format=%P refs/remotes/pull/93/merge)" = "$A0_SOURCE_HEAD $EXPECTED_HEAD_SHA"
+
+          test "$(git diff --name-only "$Q0_10_HEAD" "$Q0_11_HEAD")" = $'.github/scripts/run_bazel_with_buildbuddy.py\n.github/scripts/test_run_bazel_local_windows_fallback.py'
+          test "$(git diff --name-only "$Q0_11_HEAD" "$Q0_12_HEAD")" = "patches/llvm_windows_mingw_compat.patch"
+          test "$(git diff --name-only "$Q0_12_HEAD" "$Q0_13_HEAD")" = ".github/scripts/run-bazel-ci.sh"
+
+          evidence_dir="$RUNNER_TEMP/hepta-intelligence-a0-q0-13-diagnostic"
+          mkdir -p "$evidence_dir"
           {
             echo "repository=$GITHUB_REPOSITORY"
             echo "workflow_run_id=$GITHUB_RUN_ID"
@@ -54,11 +76,12 @@ jobs:
             echo "candidate_head=$(git rev-parse HEAD)"
             echo "candidate_tree=$(git rev-parse HEAD^{tree})"
             echo "candidate_parents=$(git show -s --format=%P HEAD)"
-            echo "a0_source_head=$A0_SOURCE_HEAD"
-            echo "q0_8_second_parent=$Q0_8_SECOND_PARENT"
+            echo "synthetic_merge=$(git rev-parse refs/remotes/pull/93/merge)"
+            echo "synthetic_tree=$(git rev-parse refs/remotes/pull/93/merge^{tree})"
+            echo "source_stack=$Q0_10_HEAD,$Q0_11_HEAD,$Q0_12_HEAD,$Q0_13_HEAD"
             echo "runner_os=$RUNNER_OS"
             echo "runner_arch=$RUNNER_ARCH"
-          } > "$RUNNER_TEMP/hepta-intelligence-a0-q0-8-diagnostic/identity.txt"
+          } > "$evidence_dir/identity.txt"
 
       - name: Verify all A0-owned blobs are byte-identical to the first parent
         shell: bash
@@ -89,29 +112,76 @@ jobs:
           print("PASS_A0_FIRST_PARENT_BLOB_IDENTITY")
           PY
 
-      - name: Verify compile-required dependency restorations and no redundant ignores
+      - name: Compile and run Windows Bazel policy regression tests
         shell: bash
         run: |
           set -euo pipefail
-          automation=codex-rs/hepta-automation/Cargo.toml
-          contracts=codex-rs/hepta-contracts/Cargo.toml
-          fleet=codex-rs/hepta-fleet/Cargo.toml
+          bash -n .github/scripts/run-bazel-ci.sh
+          python3 -m py_compile \
+            .github/scripts/run_bazel_with_buildbuddy.py \
+            .github/scripts/test_run_bazel_with_buildbuddy.py \
+            .github/scripts/test_run_bazel_local_windows_fallback.py
+          (
+            cd .github/scripts
+            python3 -m unittest -v \
+              test_run_bazel_with_buildbuddy.py \
+              test_run_bazel_local_windows_fallback.py
+          )
 
-          grep -Fqx 'sha2 = { workspace = true }' "$automation"
-          grep -Fqx 'pretty_assertions = { workspace = true }' "$contracts"
-          grep -Fqx 'pretty_assertions = { workspace = true }' "$fleet"
+      - name: Prove default gnullvm fail-closed and explicit MSVC diagnostic construction
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-intelligence-a0-q0-13-diagnostic"
 
-          for manifest in "$automation" "$contracts" "$fleet"; do
-            ! grep -Fq '[package.metadata.cargo-shear]' "$manifest"
-          done
+          set +e
+          fail_output="$(
+            env -i \
+              HOME="$HOME" \
+              PATH="$PATH" \
+              RUNNER_OS=Windows \
+              CODEX_BAZEL_WINDOWS_PATH='C:\Windows\System32' \
+              bash .github/scripts/run-bazel-ci.sh \
+                --windows-cross-compile -- build -- //:must-not-run 2>&1
+          )"
+          fail_status=$?
+          set -e
+          test "$fail_status" -ne 0
+          grep -F "refusing to substitute an MSVC result for a gnullvm check" <<< "$fail_output"
+          printf '%s\n' "$fail_output" > "$evidence_dir/default-fail-closed.txt"
 
-          grep -Fqx 'mod taskflow;' codex-rs/hepta-automation/src/lib.rs
-          grep -Fqx 'use sha2::Digest;' codex-rs/hepta-automation/src/taskflow.rs
-          grep -Fqx 'use sha2::Sha256;' codex-rs/hepta-automation/src/taskflow.rs
-          grep -Fqx 'use pretty_assertions::assert_eq;' \
-            codex-rs/hepta-contracts/src/agent_id_tests.rs
-          grep -Fqx 'use pretty_assertions::assert_eq;' \
-            codex-rs/hepta-fleet/src/registry_tests.rs
+          fixture_dir="$RUNNER_TEMP/hepta-bazel-wrapper-fixture"
+          capture="$evidence_dir/explicit-msvc-diagnostic-args.txt"
+          mkdir -p "$fixture_dir"
+          cp .github/scripts/run-bazel-ci.sh "$fixture_dir/run-bazel-ci.sh"
+          cat > "$fixture_dir/run_bazel_with_buildbuddy.py" <<'SH'
+          #!/usr/bin/env bash
+          printf '%s\n' "$@" > "$ARG_CAPTURE"
+          SH
+          chmod +x "$fixture_dir/run_bazel_with_buildbuddy.py"
+
+          env -i \
+            HOME="$HOME" \
+            PATH="$PATH" \
+            RUNNER_OS=Windows \
+            GITHUB_ACTIONS=true \
+            GITHUB_JOB=diagnostic \
+            ALLOW_WINDOWS_MSVC_FALLBACK=1 \
+            CODEX_BAZEL_WINDOWS_PATH='C:\Windows\System32' \
+            ARG_CAPTURE="$capture" \
+            bash "$fixture_dir/run-bazel-ci.sh" \
+              --windows-cross-compile -- build -- //:diagnostic-fixture
+
+          grep -Fqx -- "--host_platform=//:local_windows_msvc" "$capture"
+          grep -Fqx -- "--platforms=//:local_windows_msvc" "$capture"
+          grep -Fqx -- "--jobs=8" "$capture"
+
+          grep -Fq 'LOCAL_WINDOWS_CI_CONFIG = "--config=ci-windows"' \
+            .github/scripts/run_bazel_with_buildbuddy.py
+          grep -Fq '//constraints/windows/abi:gnullvm' \
+            patches/llvm_windows_mingw_compat.patch
+          grep -Fq 'common:ci-windows-cross --platforms=//:windows_x86_64_gnullvm' \
+            .bazelrc
 
       - name: Set up repository CI tools
         uses: ./.github/actions/setup-ci
@@ -127,7 +197,7 @@ jobs:
         with:
           tool: cargo-shear@1.11.2
 
-      - name: Compile strict Hepta Intelligence validators
+      - name: Verify canonical plan, truth, A0 authority, and compatibility
         shell: bash
         run: |
           set -euo pipefail
@@ -137,11 +207,6 @@ jobs:
             scripts/verify-hepta-intelligence-a0-authority.py \
             scripts/verify-hepta-intelligence-document-authority.py \
             scripts/verify-hepta-intelligence-master-plan.py
-
-      - name: Verify integration plan, document authority, truth, and compatibility
-        shell: bash
-        run: |
-          set -euo pipefail
           python3 scripts/verify-hepta-intelligence-master-plan.py
           python3 scripts/verify-hepta-intelligence-document-authority.py
           python3 scripts/hepta-intelligence-current-truth.py --verify
@@ -149,10 +214,6 @@ jobs:
             python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
           done
 
-      - name: Re-verify canonical A0 source in an isolated first-parent worktree
-        shell: bash
-        run: |
-          set -euo pipefail
           a0_dir="$RUNNER_TEMP/hepta-intelligence-a0-source"
           git worktree add --detach "$a0_dir" "$A0_SOURCE_HEAD"
           (
@@ -161,33 +222,38 @@ jobs:
               GITHUB_SHA="$A0_SOURCE_HEAD" \
               GITHUB_REPOSITORY="$EXPECTED_REPOSITORY" \
               python3 scripts/verify-hepta-intelligence-a0-authority.py \
-              > "$RUNNER_TEMP/hepta-intelligence-a0-q0-8-diagnostic/a0-authority-receipt.json"
+              > "$RUNNER_TEMP/hepta-intelligence-a0-q0-13-diagnostic/a0-authority-receipt.json"
           )
           git worktree remove --force "$a0_dir"
 
-      - name: Repository format gate
+      - name: Verify Bazel module patch and exact lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'target_settings = target_settings + ["//constraints/windows/abi:gnullvm"]' \
+            patches/llvm_windows_mingw_compat.patch
+          ./scripts/check-module-bazel-lock.sh
+
+      - name: Repository and Rust format gates
         shell: bash
         run: |
           set -euo pipefail
           just fmt-check
+          (
+            cd codex-rs
+            cargo +1.95.0 fmt -- --config imports_granularity=Item --check
+          )
 
-      - name: Canonical Rust format gate
-        working-directory: codex-rs
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo fmt -- --config imports_granularity=Item --check
-
-      - name: Cargo shear strict gate
+      - name: Cargo shear strict gate and Matrixd membership
         working-directory: codex-rs
         shell: bash
         run: |
           set -euo pipefail
           cargo shear --deny-warnings
-          cargo metadata --locked --no-deps --format-version 1 \
+          cargo +1.95.0 metadata --locked --no-deps --format-version 1 \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(p["name"] == "codex-hepta-matrixd" for p in d["packages"])'
 
-      - name: Compile every Q0.3 affected package and all test targets
+      - name: Compile all Q0 manifest-affected packages and test targets
         working-directory: codex-rs
         shell: bash
         run: |
@@ -207,8 +273,8 @@ jobs:
           for package in "${packages[@]}"; do
             cargo_args+=(--package "$package")
           done
-          cargo check --all-targets --locked "${cargo_args[@]}"
-          cargo test --all-targets --locked --no-run "${cargo_args[@]}"
+          cargo +1.95.0 check --all-targets --locked "${cargo_args[@]}"
+          cargo +1.95.0 test --all-targets --locked --no-run "${cargo_args[@]}"
 
       - name: Run repaired package tests and strict Clippy
         working-directory: codex-rs
@@ -216,13 +282,14 @@ jobs:
         run: |
           set -euo pipefail
           packages=(
+            codex-uds
             codex-hepta-automation
             codex-hepta-contracts
             codex-hepta-fleet
           )
           for package in "${packages[@]}"; do
-            cargo test -p "$package" --all-targets --locked
-            cargo clippy -p "$package" --all-targets --locked -- -D warnings
+            cargo +1.95.0 test -p "$package" --all-targets --locked
+            cargo +1.95.0 clippy -p "$package" --all-targets --locked -- -D warnings
           done
 
       - name: Cargo deny checked policy gate
@@ -233,42 +300,36 @@ jobs:
           arguments: --all-features
           command-arguments: --config ./codex-rs/deny.toml
 
-      - name: UDS package tests
-        working-directory: codex-rs
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo test -p codex-uds --all-targets --locked
-
-      - name: UDS strict Clippy
-        working-directory: codex-rs
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo clippy -p codex-uds --all-targets --all-features --locked -- -D warnings
-
-      - name: Verify no source mutation
+      - name: Verify no source mutation and emit negative-authority outcome
         if: always() && !cancelled()
         shell: bash
         run: |
           set -euo pipefail
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
           git diff --check
           test -z "$(git status --porcelain=v1 --untracked-files=normal --ignore-submodules=none)"
+          evidence_dir="$RUNNER_TEMP/hepta-intelligence-a0-q0-13-diagnostic"
+          mkdir -p "$evidence_dir"
           {
             echo "completed_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "job_status=${{ job.status }}"
             echo "source_writeback=false"
             echo "a0_candidate_qualified=false"
             echo "selected=false"
+            echo "full_repository_merge_green=false"
             echo "runtime_authority=false"
             echo "production_authority=false"
-          } > "$RUNNER_TEMP/hepta-intelligence-a0-q0-8-diagnostic/outcome.txt"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release_authority=false"
+            echo "callers_ratchet=false"
+          } > "$evidence_dir/outcome.txt"
 
       - name: Upload diagnostic evidence
         if: always() && !cancelled()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-intelligence-a0-q0-8-exact-e4e6a05-${{ github.run_id }}
-          path: ${{ runner.temp }}/hepta-intelligence-a0-q0-8-diagnostic/**
+          name: hepta-intelligence-a0-q0-13-exact-7282cdc-${{ github.run_id }}
+          path: ${{ runner.temp }}/hepta-intelligence-a0-q0-13-diagnostic/**
           if-no-files-found: error
           retention-days: 30
