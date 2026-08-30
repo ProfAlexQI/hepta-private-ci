@@ -281,7 +281,10 @@ fn identity_digest(kind: &[u8], value: &str) -> Sha256Digest {
     Sha256Digest::for_bytes(&hasher.finalize())
 }
 
-#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the signature is an explicit ordered protocol or test-harness contract"
+)]
 fn binding_digest(
     lease_id: &Sha256Digest,
     fencing_token: &Sha256Digest,
