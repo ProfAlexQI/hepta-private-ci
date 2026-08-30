@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Compatibility wrapper plus Q0.17-Q0.29 qualification ratchets."""
+"""Compatibility wrapper plus Q0.17-Q0.29 qualification ratchets and Q0.30 closure."""
 
 import os
 import subprocess
@@ -28,9 +28,16 @@ from run_bazel_q029_execution_context import prepare_bazelisk_environment
 from run_bazel_q029_execution_context import (
     validate_keyless_windows_gnullvm_execution_context,
 )
+from run_bazel_q030_cached_bazel import bind_output_base_startup
+from run_bazel_q030_cached_bazel import clear_setup_bazel_transport_token
+from run_bazel_q030_cached_bazel import resolve_verified_cached_bazel
+from run_bazel_q030_cached_bazel import (
+    validate_keyless_windows_gnullvm_cached_bazel_context,
+)
 
 # Keep the selected compatibility layers machine-visible while Q0.28 composes
-# them transitively and Q0.29 binds the process-launch execution context.
+# them transitively, Q0.29 binds the launch context, and Q0.30 closes the
+# cached-Bazel and explicit-output-base boundary.
 assert _validate_q026_compatibility_base is not None
 assert _validate_q027_compatibility_base is not None
 
@@ -85,12 +92,26 @@ def executable_command(
     if not _is_keyless_windows_gnullvm(command[1:], env):
         return command
 
+    # setup-bazel requires a GitHub token only while it locates/downloads
+    # Bazelisk. Never expose that setup-only credential to repository code,
+    # Bazel repository rules, build actions, tests, or the final process.
+    if env.get("GITHUB_ACTIONS") == "true":
+        clear_setup_bazel_transport_token(env)
+
     # Q0.28 has already bound the complete startup and command semantics.
-    # Bind the remaining job, runner, path, launcher and downloaded Bazel
-    # authority immediately before process launch.
+    # Q0.29 binds the job, runner, path and Bazelisk launch context before
+    # Q0.30 adds the explicit output base and resolves the actual cached Bazel.
     prepare_bazelisk_environment(env)
     command = bind_verified_bazelisk(command, env)
     validate_keyless_windows_gnullvm_execution_context(command, env)
+
+    # Existing source-only wrapper fixtures deliberately use an empty synthetic
+    # environment while patching the Q0.29 boundary. The real keyless GitHub
+    # lane always has GITHUB_ACTIONS=true and therefore takes this final closure.
+    if env.get("GITHUB_ACTIONS") == "true":
+        command = bind_output_base_startup(command, env)
+        command = resolve_verified_cached_bazel(command, env)
+        validate_keyless_windows_gnullvm_cached_bazel_context(command, env)
     return command
 
 
