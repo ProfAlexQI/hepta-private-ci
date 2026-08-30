@@ -1,0 +1,122 @@
+name: Hepta V5 B0 v2 compile closure (one shot)
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-v5-b0-hardening-staging-20260830
+    paths:
+      - .github/workflows/hepta-v5-b0-v2-compile-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-v5-b0-v2-compile-once
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    name: Compile and test B0 v2 kernel
+    if: >-
+      github.repository == 'ProfHepta/hepta-private-ci' &&
+      github.ref == 'refs/heads/codex/hepta-architecture-v5-b0-hardening-staging-20260830'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact materializer source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Verify exact base inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git hash-object codex-rs/hepta-contracts/src/verified_use.rs)" = \
+            "47fc6aae3c0f911bcaa3d0ad1c59ee826dbd4dbc"
+          test "$(git hash-object codex-rs/hepta-contracts/src/verified_use_tests.rs)" = \
+            "569c813b4370eff04c220ab1cbc6ca60ca0d3a32"
+          test "$(git hash-object codex-rs/hepta-contracts/src/lib.rs)" = \
+            "ac8b331e60fff8d2882b988f2c39b3e3ed27182d"
+          python3 -m py_compile scripts/hepta-b0-v2-materialize.py
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Configure CI environment
+        uses: ./.github/actions/setup-ci
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: nextest@0.9.143
+
+      - name: Materialize B0 v2 kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-b0-v2-materialize.py
+          rm scripts/hepta-b0-v2-materialize.py
+          rm .github/workflows/hepta-v5-b0-v2-compile-once.yml
+
+      - name: Rust 1.95 format
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --package codex-hepta-contracts
+          cargo fmt --package codex-hepta-contracts -- --check
+
+      - name: Focused verified-use tests
+        working-directory: codex-rs
+        run: just test -p codex-hepta-contracts verified_use
+
+      - name: Complete hepta-contracts tests
+        working-directory: codex-rs
+        run: just test -p codex-hepta-contracts
+
+      - name: Locked all-target check
+        working-directory: codex-rs
+        run: cargo check --locked --all-targets -p codex-hepta-contracts
+
+      - name: Strict Clippy
+        working-directory: codex-rs
+        run: cargo clippy --locked --all-targets -p codex-hepta-contracts -- -D warnings
+
+      - name: Verify bounded diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          mapfile -t changed < <(git diff --name-only | sort)
+          expected=(
+            ".github/workflows/hepta-v5-b0-v2-compile-once.yml"
+            "codex-rs/hepta-contracts/src/lib.rs"
+            "codex-rs/hepta-contracts/src/verified_use.rs"
+            "codex-rs/hepta-contracts/src/verified_use_tests.rs"
+            "scripts/hepta-b0-v2-materialize.py"
+          )
+          test "${#changed[@]}" -eq "${#expected[@]}"
+          for index in "${!expected[@]}"; do
+            test "${changed[$index]}" = "${expected[$index]}"
+          done
+          test -z "$(git ls-files --others --exclude-standard)"
+
+      - name: Publish compiled candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "hepta-closure-bot"
+          git config user.email "hepta-closure-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(hepta): harden verified-use boundary kernel v2"
+          printf 'candidate_commit=%s\ncandidate_tree=%s\n' \
+            "$(git rev-parse HEAD)" "$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_STEP_SUMMARY"
+          git push --force origin HEAD:refs/heads/automation/hepta-v5-b0-v2-compile-candidate-20260830
