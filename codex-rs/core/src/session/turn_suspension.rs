@@ -1,6 +1,7 @@
 use super::handlers;
 use super::session::Session;
-use crate::state::{RunningTask, TaskKind};
+use crate::state::RunningTask;
+use crate::state::TaskKind;
 use crate::tasks::SuspensionHandoff;
 use crate::tasks::SuspensionHandoffPhase;
 use crate::tasks::SuspensionHandoffSlot;
