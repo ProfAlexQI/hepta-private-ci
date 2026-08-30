@@ -93,6 +93,7 @@ jobs:
         run: brew install jq ripgrep
       - name: Install Rust 1.95.0
         shell: bash
+        run: |
           set -euo pipefail
           rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
           rustup default 1.95.0
@@ -142,6 +143,7 @@ jobs:
           printf '%s\n' "$HEPTA_CHECK_JSONSCHEMA_VENV/bin" >> "$GITHUB_PATH"
       - name: Install Rust 1.95.0 with pinned mobile targets
         shell: bash
+        run: |
           set -euo pipefail
           rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
           rustup target add --toolchain 1.95.0 aarch64-apple-ios aarch64-apple-ios-sim aarch64-linux-android
@@ -208,6 +210,7 @@ jobs:
         run: scripts/hepta-ci-materialize-upstream-intake materialize
       - name: Install Rust 1.95.0
         shell: bash
+        run: |
           set -euo pipefail
           rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
           rustup default 1.95.0
@@ -279,6 +282,7 @@ jobs:
             >> "$GITHUB_ENV"
       - name: Install Rust 1.95.0
         shell: bash
+        run: |
           set -euo pipefail
           rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
           rustup default 1.95.0
