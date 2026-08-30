@@ -17,7 +17,7 @@ concurrency:
 jobs:
   format-patch:
     name: Produce deterministic repository format patch
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
       ARTIFACT_DIR: artifacts/hepta-repository-repair
@@ -36,7 +36,7 @@ jobs:
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "ProfHepta/hepta-private-ci"
           test "$(git rev-parse HEAD)" = "$EXPECTED_BASE_SHA"
-          test "$EXPECTED_BASE_SHA" = "08e6ed017e8cbfb94f86a5fa8397eb00eb396ed2"
+          test "$EXPECTED_BASE_SHA" = "7a8052aa8949c8b1be361b5231389ee193baec3c"
           test -z "$(git status --porcelain --untracked-files=no)"
 
       - name: Set up repository CI tools
