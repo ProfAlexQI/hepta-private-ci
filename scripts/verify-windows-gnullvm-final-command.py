@@ -83,6 +83,7 @@ def main() -> None:
         "from run_bazel_with_buildbuddy_base import *",
         "from run_bazel_q017_policy import QUALIFICATION_BAZELRC_GIT_BLOB_SHA1",
         "from run_bazel_q022_negative_targets import (",
+        "from run_bazel_q027_closed_world import (",
         "validate_keyless_windows_gnullvm_final_args(command[1:], env)",
         '"--nomaster_bazelrc"',
         '"--nosystem_rc"',
@@ -115,7 +116,8 @@ def main() -> None:
         '"-//codex-rs/core/tests/remote_env_windows:smoke-test"',
         '"-//codex-rs/v8-poc:all"',
         "the exact canonical target set",
-        "rejects negative targets outside the release lane",
+        "test qualification rejects ",
+        "clippy qualification rejects ",
         "validate_keyless_windows_gnullvm_final_args as _validate_q021",
     ):
         require_token(
@@ -144,15 +146,15 @@ def main() -> None:
         require_token(test, token, "test_run_bazel_final_command.py")
 
     for token in (
-        "test_non_release_positive_targets_pass",
+        "test_canonical_test_lane_passes",
+        "test_canonical_clippy_lane_passes",
         "test_exact_release_target_set_passes",
-        "test_non_release_exclude_all_fails_closed",
-        "test_non_release_arbitrary_exclusion_fails_closed",
+        "test_test_exclude_all_fails_closed",
+        "test_clippy_arbitrary_exclusion_fails_closed",
         "test_release_target_drop_fails_closed",
         "test_release_target_addition_fails_closed",
         "test_release_metadata_on_test_command_fails_closed",
-        "test_release_script_matches_policy_constant",
-        "test_wrapper_imports_q022_validator",
+        "test_unclassified_build_fails_closed",
     ):
         require_token(
             negative_test,

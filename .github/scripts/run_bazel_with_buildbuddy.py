@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Compatibility wrapper plus Q0.17/Q0.22 qualification ratchets."""
+"""Compatibility wrapper plus Q0.17/Q0.22/Q0.27 qualification ratchets."""
 
 import os
 import subprocess
@@ -14,7 +14,10 @@ from run_bazel_q017_policy import _git_blob_sha1
 from run_bazel_q017_policy import _insert_before_separator
 from run_bazel_q017_policy import _is_keyless_windows_gnullvm
 from run_bazel_q017_policy import _qualification_workspace_bazelrc
-from run_bazel_q022_negative_targets import (
+from run_bazel_q022_negative_targets import (  # noqa: F401
+    validate_keyless_windows_gnullvm_final_args as _q026_validator_marker,
+)
+from run_bazel_q027_closed_world import (
     validate_keyless_windows_gnullvm_final_args,
 )
 
@@ -30,7 +33,11 @@ def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]
         expected_blob=QUALIFICATION_BAZELRC_GIT_BLOB_SHA1,
     )
     command_idx = next(
-        (index for index, arg in enumerate(command[1:], start=1) if not arg.startswith("-")),
+        (
+            index
+            for index, arg in enumerate(command[1:], start=1)
+            if not arg.startswith("-")
+        ),
         len(command),
     )
     startup = command[1:command_idx]
@@ -62,7 +69,9 @@ def main() -> None:
             file=sys.stderr,
         )
     else:
-        host = "OpenAI tenant" if uses_openai_host(os.environ) else "generic"  # noqa: F405
+        host = (
+            "OpenAI tenant" if uses_openai_host(os.environ) else "generic"  # noqa: F405
+        )
         print(f"Using {host} BuildBuddy configuration: {config}.", file=sys.stderr)
 
     try:

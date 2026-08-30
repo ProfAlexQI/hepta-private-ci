@@ -8,7 +8,9 @@ python3 .github/scripts/test_run_bazel_option_grammar.py
 python3 .github/scripts/test_run_bazel_final_command.py
 python3 .github/scripts/test_run_bazel_negative_targets.py
 python3 .github/scripts/test_run_bazel_lane_policy.py
+python3 .github/scripts/test_run_bazel_closed_world.py
 python3 scripts/verify-windows-gnullvm-final-command.py
 python3 scripts/verify-windows-gnullvm-lane-policy.py
+python3 scripts/verify-windows-gnullvm-closed-world.py
 
 echo "PASS_WINDOWS_GNULLVM_QUALIFICATION_BOUNDARY_FIXTURES"
