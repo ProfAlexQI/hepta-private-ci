@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
-"""Compatibility wrapper plus Q0.17-Q0.30 qualification ratchets."""
+"""Q0.17-Q0.30 qualification ratchets plus Q0.34 execution binding."""
 
 import os
 import subprocess
 import sys
 from collections.abc import Mapping
+from pathlib import Path
 
 import run_bazel_with_buildbuddy_base as _base
 from run_bazel_q017_policy import QUALIFICATION_BAZELRC_GIT_BLOB_SHA1
@@ -30,10 +31,13 @@ from run_bazel_q030_direct_bazel import resolve_verified_bazel_command
 from run_bazel_q030_direct_bazel import (
     validate_keyless_windows_gnullvm_command,
 )
+from run_bazel_q034_execution_manifest import (
+    validate_keyless_windows_gnullvm_execution,
+)
 from run_bazel_with_buildbuddy_base import *  # noqa: F403
 
-# Keep selected compatibility layers machine-visible while Q0.30 composes
-# Q0.29 internally and invokes the complete direct-Bazel contract.
+# Keep selected compatibility layers machine-visible while Q0.34 composes the
+# direct-Bazel and exact execution-manifest contracts.
 assert _validate_q026_compatibility_base is not None
 assert _validate_q027_compatibility_base is not None
 assert _prepare_q029_compatibility_base is not None
@@ -98,12 +102,17 @@ def main() -> None:
         )
         print(f"Using {host} BuildBuddy configuration: {config}.", file=sys.stderr)
 
+    launch_cwd: Path | None = None
     try:
         command = bazel_command(*sys.argv[1:])
         if _is_keyless_windows_gnullvm(command[1:], os.environ):
             prepare_bazelisk_environment(os.environ)
             command = resolve_verified_bazel_command(command, os.environ)
             validate_keyless_windows_gnullvm_command(command, os.environ)
+            launch_cwd = validate_keyless_windows_gnullvm_execution(
+                command,
+                os.environ,
+            )
     except ValueError as error:
         print(
             f"Bazel qualification boundary rejected invocation: {error}",
@@ -111,7 +120,10 @@ def main() -> None:
         )
         raise SystemExit(2) from error
     if os.name == "nt":
-        result = subprocess.run(command, check=False)
+        if launch_cwd is None:
+            result = subprocess.run(command, check=False)
+        else:
+            result = subprocess.run(command, check=False, cwd=launch_cwd)
         raise SystemExit(result.returncode)
     os.execvpe(command[0], command, os.environ)
 

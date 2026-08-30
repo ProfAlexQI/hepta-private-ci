@@ -22,6 +22,7 @@ jobs:
           bash -n .github/scripts/run-bazel-ci.sh
           bash -n .github/scripts/run-windows-msvc-diagnostic.sh
           bash -n .github/scripts/test_run_bazel_qualification_boundary.sh
+          bash -n scripts/list-bazel-clippy-targets.sh
 
       - name: Verify source ratchet
         shell: bash
@@ -66,7 +67,12 @@ jobs:
               "setup_bazel_transport_token_reaches_direct_bazel": False,
               "bazelisk_failure_output_echoed": False,
               "final_child_path_head_source_bound": True,
+              "final_bazel_cwd_bound_to_canonical_workspace": True,
+              "windows_test_target_manifest_recomputed_before_launch": True,
+              "windows_clippy_target_manifest_recomputed_before_launch": True,
+              "windows_release_target_manifest_exact_before_launch": True,
               "cached_bazel_executed_on_this_linux_source_job": False,
+              "target_manifest_executed_on_this_linux_source_job": False,
               "source_writeback": False,
               "runtime_authority": False,
               "production_authority": False,
