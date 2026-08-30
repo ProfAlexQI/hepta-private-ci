@@ -1,0 +1,354 @@
+name: Hepta UI v38 exact-head repository closure
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-exact-head-closure-v38-20260830
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v38-exact-head-repository-closure
+  cancel-in-progress: false
+
+env:
+  EXPECTED_PARENT: 1e6f7cf3db498153fd52250dee1112f89489e094
+  TARGET_BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+  DRIVER_BRANCH: ops/ui-v5-exact-head-closure-v38-20260830
+  PAYLOAD_PATH: .github/scripts/hepta-ui-v38-exact-head-closure.py.gz.b64
+  WORKFLOW_PATH: .github/workflows/hepta-ui-v38-exact-head-closure.yml
+  PATCH_ARTIFACT: hepta-ui-v38-candidate-${{ github.sha }}
+
+jobs:
+  candidate:
+    name: Generate and focused-qualify immutable candidate patch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify driver boundary and reconstruct patcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$DRIVER_BRANCH"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          mapfile -t actual < <(git diff-tree --no-commit-id --name-only -r HEAD | sort)
+          mapfile -t expected < <(printf '%s\n' "$PAYLOAD_PATH" "$WORKFLOW_PATH" | sort)
+          test "${#actual[@]}" -eq 2
+          diff -u <(printf '%s\n' "${expected[@]}") <(printf '%s\n' "${actual[@]}")
+          git diff --check HEAD^ HEAD
+          base64 -d "$PAYLOAD_PATH" | gzip -d > "$RUNNER_TEMP/hepta-ui-v38.py"
+          chmod +x "$RUNNER_TEMP/hepta-ui-v38.py"
+          python3 -m py_compile "$RUNNER_TEMP/hepta-ui-v38.py"
+
+      - name: Check out exact audited parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout --detach "$EXPECTED_PARENT"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_PARENT"
+          test -z "$(git status --porcelain=v1)"
+
+      - name: Install exact Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --no-self-update
+          rustup default 1.95.0
+          rustc --version --verbose
+
+      - name: Apply, focused-qualify, and freeze candidate
+        shell: bash
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+        run: |
+          set -euo pipefail
+          python3 "$RUNNER_TEMP/hepta-ui-v38.py" \
+            --repo "$GITHUB_WORKSPACE" \
+            --emit-patch-dir "$RUNNER_TEMP/hepta-ui-v38-candidate"
+          python3 -m json.tool "$RUNNER_TEMP/hepta-ui-v38-candidate/manifest.json" >/dev/null
+          (
+            cd "$RUNNER_TEMP/hepta-ui-v38-candidate"
+            sha256sum -c candidate.patch.sha256
+          )
+
+      - name: Upload immutable candidate patch
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ env.PATCH_ARTIFACT }}
+          path: ${{ runner.temp }}/hepta-ui-v38-candidate
+          if-no-files-found: error
+          retention-days: 14
+
+  windows-bazel:
+    name: Complete Windows MSVC Bazel qualification
+    needs: candidate
+    runs-on: windows-2025
+    timeout-minutes: 150
+    steps:
+      - name: Enable deterministic Windows checkout
+        shell: pwsh
+        run: |
+          git config --global core.longpaths true
+          git config --global core.autocrlf false
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.EXPECTED_PARENT }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ${{ env.PATCH_ARTIFACT }}
+          path: ${{ runner.temp }}/hepta-ui-v38-candidate
+
+      - name: Apply exact qualified candidate bytes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python (Join-Path $env:RUNNER_TEMP "hepta-ui-v38-candidate/patcher.py") `
+            --repo $env:GITHUB_WORKSPACE `
+            --apply-patch-dir (Join-Path $env:RUNNER_TEMP "hepta-ui-v38-candidate")
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install Windows toolchain
+        shell: pwsh
+        run: |
+          choco install bazelisk --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --no-self-update
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup default 1.95.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustc --version --verbose
+
+      - name: Set up sandboxed rusty_v8
+        shell: bash
+        run: bash .github/workflows/scripts/setup-rusty-v8.sh x86_64-pc-windows-msvc "$RUNNER_TEMP/rusty-v8/x86_64-pc-windows-msvc" "$GITHUB_ENV"
+
+      - name: Export x64 MSVC environment
+        shell: pwsh
+        run: .github/workflows/scripts/export-msvc-env.ps1
+
+      - name: Run complete native Windows Bazel suite
+        id: bazel
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $rustfmtPath = (& rustup which --toolchain 1.95.0 rustfmt).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $rustfmtPath) { throw "Unable to resolve rustfmt" }
+          $env:RUSTFMT = $rustfmtPath
+          $root = Join-Path $env:RUNNER_TEMP "hepta-ui-v38-windows"
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          $names = @(
+            "RUSTFMT", "BAZEL_SH", "BAZEL_VC", "INCLUDE", "LIB", "LIBPATH", "Path",
+            "UCRTVersion", "UniversalCRTSdkDir", "VCINSTALLDIR", "VCToolsInstallDir",
+            "WindowsLibPath", "WindowsSdkBinPath", "WindowsSdkDir",
+            "WindowsSDKLibVersion", "WindowsSDKVersion"
+          )
+          $envArgs = foreach ($name in $names) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if ($value) {
+              "--action_env=$name=$value"
+              "--host_action_env=$name=$value"
+            }
+          }
+          $args = @(
+            "test", "--config=ci-windows", "--platforms=//:windows_x86_64_msvc",
+            "--host_platform=//:windows_x86_64_msvc",
+            "--extra_execution_platforms=//:windows_x86_64_msvc",
+            "--extra_toolchains=//:windows_msvc_tests_on_msvc_host_toolchain",
+            "--jobs=8", "--test_tag_filters=-argument-comment-lint",
+            "--test_verbose_timeout_warnings", "--test_output=errors",
+            "--test_summary=detailed", "--keep_going",
+            "--execution_log_compact_file=$root/execution-log.zst",
+            "--build_event_json_file=$root/build-events.json",
+            "--repo_contents_cache=$env:RUNNER_TEMP/bazel-repo-contents-cache",
+            "--", "//...", "-//third_party/v8:all",
+            "-//codex-rs/v8-poc:v8-poc-unit-tests", "-//codex-rs/code-mode:all"
+          )
+          & bazelisk @args @envArgs 2>&1 | Tee-Object -FilePath (Join-Path $root "bazel-output.txt")
+          "exit_code=$LASTEXITCODE" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          exit 0
+
+      - name: Collect Windows evidence
+        if: always() && !cancelled()
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "hepta-ui-v38-windows"
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          if (Test-Path bazel-testlogs) {
+            Copy-Item bazel-testlogs (Join-Path $root "bazel-testlogs") -Recurse -Force
+          }
+          git diff --cached --name-status | Out-File (Join-Path $root "candidate-paths.txt") -Encoding utf8
+
+      - name: Upload Windows evidence
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-ui-v38-windows-bazel-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-ui-v38-windows
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce complete Windows success
+        shell: pwsh
+        env:
+          EXIT_CODE: ${{ steps.bazel.outputs.exit_code }}
+        run: |
+          if ($env:EXIT_CODE -ne "0") {
+            throw "complete Windows Bazel suite failed: $($env:EXIT_CODE)"
+          }
+
+  webkit-runtime:
+    name: Rust-served macOS WebKit qualification
+    needs: candidate
+    runs-on: macos-14
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.EXPECTED_PARENT }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ${{ env.PATCH_ARTIFACT }}
+          path: ${{ runner.temp }}/hepta-ui-v38-candidate
+
+      - name: Apply exact qualified candidate bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$RUNNER_TEMP/hepta-ui-v38-candidate/patcher.py" \
+            --repo "$GITHUB_WORKSPACE" \
+            --apply-patch-dir "$RUNNER_TEMP/hepta-ui-v38-candidate"
+
+      - name: Install Rust and WebKit
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.95.0 --profile minimal --no-self-update
+          rustup default 1.95.0
+          prefix="$RUNNER_TEMP/hepta-playwright"
+          npm install --prefix "$prefix" --no-save --no-audit --no-fund playwright@1.55.0
+          node "$prefix/node_modules/playwright/cli.js" install webkit
+          echo "NODE_PATH=$prefix/node_modules" >> "$GITHUB_ENV"
+
+      - name: Build and start exact Rust-served UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/hepta-browser-target"
+          cargo build --manifest-path tools/hepta-ui-rust-served-browser-probe/Cargo.toml
+          mkdir -p artifacts/server artifacts/browser
+          "$CARGO_TARGET_DIR/debug/hepta-ui-rust-served-browser-probe" \
+            --port-file artifacts/server/ready.json > artifacts/server/server.log 2>&1 &
+          echo "$!" > artifacts/server/server.pid
+          for _ in $(seq 1 150); do
+            [[ -s artifacts/server/ready.json ]] && break
+            sleep 0.1
+          done
+          test -s artifacts/server/ready.json
+          base_url="$(node -e 'const v=require("./artifacts/server/ready.json");process.stdout.write(`http://${v.host}:${v.port}`)')"
+          echo "HEPTA_UI_BASE_URL=$base_url" >> "$GITHUB_ENV"
+          echo "HEPTA_SERVER_PID=$(cat artifacts/server/server.pid)" >> "$GITHUB_ENV"
+
+      - name: Execute real WebKit engine
+        shell: bash
+        env:
+          HEPTA_BROWSER_ENGINE: webkit
+          HEPTA_BROWSER_ENGINE_KEY: webkitMacos
+          HEPTA_BROWSER_RECEIPT: artifacts/browser/receipt.json
+          HEPTA_BROWSER_SCREENSHOT: artifacts/browser/webkitMacos.png
+        run: |
+          set -euo pipefail
+          node scripts/hepta-ui-v4-rust-served-browser-engine.cjs
+          node -e 'const r=require("./artifacts/browser/receipt.json");if(r.status!=="PASS_RUST_SERVED_BROWSER_ENGINE"||!r.rustServedRuntime||r.failures.length)process.exit(1)'
+
+      - name: Stop Rust server
+        if: always()
+        shell: bash
+        run: kill "${HEPTA_SERVER_PID:-0}" 2>/dev/null || true
+
+      - name: Upload WebKit evidence
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-ui-v38-webkit-${{ github.sha }}
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish qualified candidate without helper files
+    needs: [candidate, windows-bazel, webkit-runtime]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.EXPECTED_PARENT }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ${{ env.PATCH_ARTIFACT }}
+          path: ${{ runner.temp }}/hepta-ui-v38-candidate
+
+      - name: Revalidate target head and apply candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | awk 'NR==1{print $1}')"
+          test "$remote_head" = "$EXPECTED_PARENT"
+          python3 "$RUNNER_TEMP/hepta-ui-v38-candidate/patcher.py" \
+            --repo "$GITHUB_WORKSPACE" \
+            --apply-patch-dir "$RUNNER_TEMP/hepta-ui-v38-candidate"
+
+      - name: Commit implementation and bind fail-closed truth
+        id: implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Hepta UI governed source publisher"
+          git config user.email "hepta-ui-source-publisher@users.noreply.github.com"
+          git commit -m "fix(ui): close exact-head UI and Windows Bazel blockers"
+          implementation_commit="$(git rev-parse HEAD)"
+          implementation_tree="$(git rev-parse 'HEAD^{tree}')"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          python3 "$RUNNER_TEMP/hepta-ui-v38-candidate/patcher.py" \
+            --repo "$GITHUB_WORKSPACE" --bind-docs \
+            --implementation-commit "$implementation_commit" \
+            --implementation-tree "$implementation_tree" \
+            --driver-commit "$GITHUB_SHA" --driver-run-id "$GITHUB_RUN_ID"
+          git add \
+            docs/ui/HEPTA_UI_ACTIVE_PLAN_V5.json \
+            docs/ui/HEPTA_UI_REPOSITORY_GAP_LEDGER_V1.json \
+            docs/ui/HEPTA_UI_EXTERNAL_EVIDENCE_LEDGER_V1.json \
+            docs/ui/HEPTA_UI_DEVELOPMENT_PLAN_V5_2026-08-29.md
+          git diff --cached --check
+          git commit -m "docs(ui): bind v38 repository closure candidate"
+          echo "commit=$implementation_commit" >> "$GITHUB_OUTPUT"
+          echo "tree=$implementation_tree" >> "$GITHUB_OUTPUT"
+
+      - name: Non-force fast-forward PR branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | awk 'NR==1{print $1}')"
+          test "$remote_head" = "$EXPECTED_PARENT"
+          test "$(git merge-base "$EXPECTED_PARENT" HEAD)" = "$EXPECTED_PARENT"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          echo "Implementation: ${{ steps.implementation.outputs.commit }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "External physical/human evidence remains REQUIRED_NOT_PRESENT." >> "$GITHUB_STEP_SUMMARY"
