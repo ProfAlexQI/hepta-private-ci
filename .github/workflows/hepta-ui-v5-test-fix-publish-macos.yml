@@ -1,0 +1,200 @@
+name: Hepta UI v5 test repair publish macOS
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-test-fix-publish-macos-v1-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-test-fix-publish-macos.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-test-fix-publish-macos-v1
+  cancel-in-progress: false
+
+jobs:
+  validate-and-publish:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: macos-14
+    timeout-minutes: 100
+    env:
+      TARGET_BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_TARGET_HEAD: 1e6f7cf3db498153fd52250dee1112f89489e094
+      DRIVER_WORKFLOW: .github/workflows/hepta-ui-v5-test-fix-publish-macos.yml
+
+    steps:
+      - name: Check out exact repair driver
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify driver and check out exact target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_TARGET_HEAD"
+          test "$(git diff --name-only HEAD^ HEAD | wc -l | tr -d ' ')" = 1
+          test "$(git diff --name-only HEAD^ HEAD)" = "$DRIVER_WORKFLOW"
+          git fetch --no-tags origin "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          test "$(git rev-parse refs/remotes/origin/$TARGET_BRANCH)" = "$EXPECTED_TARGET_HEAD"
+          git checkout --detach "$EXPECTED_TARGET_HEAD"
+
+      - name: Apply exact test-contract repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          http_path = Path("codex-rs/http-client/src/outbound_proxy_tests.rs")
+          http_text = http_path.read_text(encoding="utf-8")
+          http_old = '''            stream
+              .set_read_timeout(Some(Duration::from_secs(10)))
+              .expect("HTTP stream should get a read timeout");
+          '''
+          http_new = '''            stream
+              .set_nonblocking(false)
+              .expect("HTTP stream should become blocking after accept");
+            stream
+              .set_read_timeout(Some(Duration::from_secs(10)))
+              .expect("HTTP stream should get a read timeout");
+          '''
+          if http_text.count(http_old) != 1:
+              raise SystemExit(
+                  f"HTTP accepted-stream anchor: expected 1 match, found {http_text.count(http_old)}"
+              )
+          with http_path.open("w", encoding="utf-8", newline="\n") as output:
+              output.write(http_text.replace(http_old, http_new, 1))
+
+          manager_path = Path("codex-rs/core-plugins/src/manager_tests.rs")
+          manager_text = manager_path.read_text(encoding="utf-8")
+          manager_old = '''#[tokio::test]
+          async fn remote_installed_cache_adds_plugin_skill_roots_without_remote_plugin_flag() {
+              let codex_home = TempDir::new().unwrap();
+              let plugin_base = codex_home
+                  .path()
+                  .join("plugins/cache/chatgpt-global/linear");
+              write_plugin(&plugin_base, "local", "linear");
+              write_file(
+                  &codex_home.path().join(CONFIG_TOML_FILE),
+                  r#"[features]
+          plugins = true
+          "#,
+              );
+
+              let config = load_config(codex_home.path(), codex_home.path()).await;
+              let manager = PluginsManager::new_with_restriction_product(
+                  codex_home.path().to_path_buf(),
+                  /*restriction_product*/ None,
+              );
+              manager.write_remote_installed_plugins_cache(vec![RemoteInstalledPlugin {
+                  marketplace_name: "chatgpt-global".to_string(),
+                  id: "plugins~Plugin_linear".to_string(),
+                  name: "linear".to_string(),
+                  enabled: true,
+              }]);
+
+              let outcome = manager.plugins_for_config(&config).await;
+              let expected_skill_root = AbsolutePathBuf::try_from(
+                  std::fs::canonicalize(plugin_base.join("local/skills"))
+                      .expect("canonicalize remote-installed plugin skill root"),
+              )
+              .expect("canonical plugin skill root must be absolute");
+              assert_eq!(outcome.effective_skill_roots(), vec![expected_skill_root]);
+              assert_eq!(outcome.plugins().len(), 1);
+              assert_eq!(outcome.plugins()[0].config_name, "linear@chatgpt-global");
+          }
+          '''
+          manager_new = '''#[tokio::test]
+          async fn remote_installed_cache_adds_plugin_skill_roots_for_chatgpt_remote_route() {
+              let codex_home = TempDir::new().unwrap();
+              let plugin_base = codex_home
+                  .path()
+                  .join("plugins/cache/chatgpt-global/linear");
+              write_plugin(&plugin_base, "local", "linear");
+              write_file(
+                  &codex_home.path().join(CONFIG_TOML_FILE),
+                  r#"[features]
+          plugins = true
+          remote_plugin = true
+          "#,
+              );
+
+              let config = load_config(codex_home.path(), codex_home.path()).await;
+              let manager = PluginsManager::new_with_restriction_product(
+                  codex_home.path().to_path_buf(),
+                  /*restriction_product*/ None,
+              );
+              assert!(manager.set_auth_mode(Some(AuthMode::Chatgpt)));
+              manager.write_remote_installed_plugins_cache(vec![RemoteInstalledPlugin {
+                  marketplace_name: "chatgpt-global".to_string(),
+                  id: "plugins~Plugin_linear".to_string(),
+                  name: "linear".to_string(),
+                  enabled: true,
+              }]);
+
+              let outcome = manager.plugins_for_config(&config).await;
+              let expected_skill_root = AbsolutePathBuf::try_from(
+                  std::fs::canonicalize(plugin_base.join("local/skills"))
+                      .expect("canonicalize remote-installed plugin skill root"),
+              )
+              .expect("canonical plugin skill root must be absolute");
+              assert_eq!(outcome.effective_skill_roots(), vec![expected_skill_root]);
+              assert_eq!(outcome.plugins().len(), 1);
+              assert_eq!(outcome.plugins()[0].config_name, "linear@chatgpt-global");
+          }
+          '''
+          if manager_text.count(manager_old) != 1:
+              raise SystemExit(
+                  "remote-installed route test anchor: expected 1 match, "
+                  f"found {manager_text.count(manager_old)}"
+              )
+          with manager_path.open("w", encoding="utf-8", newline="\n") as output:
+              output.write(manager_text.replace(manager_old, manager_new, 1))
+          PY
+          git diff --check
+          test "$(git diff --name-only | sort)" = "$(printf '%s\n' \
+            codex-rs/core-plugins/src/manager_tests.rs \
+            codex-rs/http-client/src/outbound_proxy_tests.rs | sort)"
+
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --no-self-update
+
+      - name: Run focused formatting and Cargo regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +1.95.0 fmt --manifest-path codex-rs/Cargo.toml --all -- --check
+          cargo +1.95.0 test --locked --manifest-path codex-rs/Cargo.toml \
+            -p codex-http-client enabled_environment_proxy_routes_request_through_proxy
+          cargo +1.95.0 test --locked --manifest-path codex-rs/Cargo.toml \
+            -p codex-core-plugins remote_installed_cache_adds_plugin_skill_roots_for_chatgpt_remote_route
+
+      - name: Commit and non-force fast-forward target branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git config user.name 'Hepta governed source publisher'
+          git config user.email 'hepta-source-publisher@users.noreply.github.com'
+          git add -- \
+            codex-rs/http-client/src/outbound_proxy_tests.rs \
+            codex-rs/core-plugins/src/manager_tests.rs
+          test "$(git diff --cached --name-only | sort)" = "$(printf '%s\n' \
+            codex-rs/core-plugins/src/manager_tests.rs \
+            codex-rs/http-client/src/outbound_proxy_tests.rs | sort)"
+          git commit -m 'test(windows): stabilize proxy fixture and remote plugin auth route'
+          repair_commit="$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_TARGET_HEAD"
+          git fetch --no-tags origin "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          test "$(git rev-parse refs/remotes/origin/$TARGET_BRANCH)" = "$EXPECTED_TARGET_HEAD"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          printf 'published_repair_commit=%s\n' "$repair_commit"
