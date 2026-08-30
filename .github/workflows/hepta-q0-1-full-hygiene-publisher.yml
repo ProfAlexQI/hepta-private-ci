@@ -1,0 +1,138 @@
+name: Hepta Q0.1 full repository hygiene publisher
+
+on:
+  push:
+    branches:
+      - "staging/hepta-q0-1-full-hygiene-closure-20260830"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-q0-1-full-hygiene-publisher-20260830
+  cancel-in-progress: true
+
+jobs:
+  repair-and-publish:
+    name: Auto-fix Cargo Shear and UDS Clippy, then publish a clean staging tree
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact staging branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Run repository CI setup
+        uses: ./.github/actions/setup-ci
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+
+      - name: Install locked cargo-shear
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: cargo-shear@1.11.2
+
+      - name: Move Unix UDS tests after production items
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("codex-rs/uds/src/lib.rs")
+          text = path.read_text(encoding="utf-8")
+          tests = '''    #[cfg(test)]
+              mod tests {
+                  use std::io::ErrorKind;
+
+                  use super::ensure_peer_uid;
+
+                  #[test]
+                  fn peer_uid_gate_accepts_only_the_process_owner() {
+                      let owner = unsafe { libc::getuid() };
+                      ensure_peer_uid(owner).expect("the process owner must pass the UDS peer gate");
+
+                      let non_owner = if owner == libc::uid_t::MAX {
+                          owner - 1
+                      } else {
+                          owner + 1
+                      };
+                      let error = ensure_peer_uid(non_owner)
+                          .expect_err("a different UID must fail closed before reading the request");
+                      assert_eq!(error.kind(), ErrorKind::PermissionDenied);
+                  }
+              }
+          '''
+          stale = '''    pub(super) async fn is_stale_socket_path(socket_path: &Path) -> IoResult<bool> {
+                  Ok(fs::symlink_metadata(socket_path)
+                      .await?
+                      .file_type()
+                      .is_socket())
+              }
+          '''
+          old = tests + "\n" + stale
+          new = stale + "\n" + tests
+          if text.count(old) != 1:
+              raise SystemExit("UDS source shape drifted; refusing a non-deterministic rewrite")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+
+      - name: Apply cargo-shear's deterministic fixes
+        id: shear-fix
+        shell: bash
+        run: |
+          set -uo pipefail
+          cd codex-rs
+          set +e
+          cargo shear --fix --check-test-targets --format=json > ../cargo-shear-fix.json
+          status=$?
+          set -e
+          if [[ "$status" -gt 1 ]]; then
+            cat ../cargo-shear-fix.json
+            exit "$status"
+          fi
+          cat ../cargo-shear-fix.json
+
+      - name: Verify zero Cargo Shear errors or warnings
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd codex-rs
+          cargo shear --check-test-targets --deny-warnings --format=json | tee ../cargo-shear-verify.json
+
+      - name: Verify UDS Clippy with warnings denied
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd codex-rs
+          cargo clippy -p codex-uds --all-targets -- -D warnings
+
+      - name: Remove one-shot workflow and publish staging result
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/hepta-q0-1-full-hygiene-publisher.yml
+          git config user.name "hepta-q0-hygiene-publisher"
+          git config user.email "hepta-q0-hygiene-publisher@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "No repository changes remain to publish."
+            exit 0
+          fi
+          git commit -m "fix(ci): close remaining Q0 repository hygiene blockers"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Upload deterministic hygiene evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-q0-1-full-hygiene-${{ github.sha }}
+          path: |
+            cargo-shear-fix.json
+            cargo-shear-verify.json
+          if-no-files-found: warn
+          retention-days: 30
