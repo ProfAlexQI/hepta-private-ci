@@ -1,0 +1,612 @@
+name: Hepta Intelligence Q0.49 ARM dependency publisher
+
+on:
+  push:
+    branches:
+      - automation/hepta-intelligence-q0-49-arm-publisher-20260830
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-q0-49-arm-publisher
+  cancel-in-progress: true
+
+env:
+  SOURCE_SHA: f2f200969fa0076178276bceab2eb21d23f0519e
+  SOURCE_TREE: e6d9a631345927a8c0817080a2f8cab150c516f3
+  PUBLISHER_PATH: .github/workflows/hepta-intelligence-q0-49-arm-publisher.yml
+  BYTES_OLD_VERSION: 1.11.1
+  BYTES_OLD_CHECKSUM: 1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33
+  BYTES_VERSION: 1.12.1
+  BYTES_CHECKSUM: fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04
+  CARGO_DENY_VERSION: 0.19.0
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - name: Checkout isolated publisher
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind publisher and exact Q0.48 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mapfile -t changed < <(git diff --name-only --no-renames "$SOURCE_SHA" "$GITHUB_SHA")
+          printf '%s\n' "${changed[@]}"
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "$PUBLISHER_PATH"
+          git diff --check "$SOURCE_SHA" "$GITHUB_SHA"
+          git cat-file -e "${SOURCE_SHA}^{commit}"
+          git switch --detach "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git show -s --format=%T HEAD)" = "$SOURCE_TREE"
+          test -z "$(git status --porcelain)"
+          mkdir -p "$RUNNER_TEMP/q049"
+
+      - name: Install repository CI prerequisites
+        uses: ./.github/actions/setup-ci
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Install pinned dependency policy tools
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: cargo-shear@1.11.2,cargo-deny@0.19.0
+
+      - name: Reconcile pre-existing lock drift and bytes only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/Cargo.toml")
+          text = path.read_text(encoding="utf-8")
+          old = 'bytes = "1.10.1"'
+          new = 'bytes = "1.12.1"'
+          if text.count(old) != 1:
+              raise SystemExit(f"unexpected bytes declaration count: {text.count(old)}")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
+          CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback \
+            cargo +1.95.0 update \
+              --manifest-path codex-rs/Cargo.toml \
+              -p bytes@1.11.1 \
+              --precise "$BYTES_VERSION" \
+              >"$RUNNER_TEMP/q049/cargo-update.stdout" \
+              2>"$RUNNER_TEMP/q049/cargo-update.stderr"
+
+          cargo +1.95.0 metadata \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --format-version 1 \
+            >"$RUNNER_TEMP/q049/metadata-after-initial-reconcile.json"
+
+      - name: Bind runner-observed cargo-shear findings
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          cargo +1.95.0 shear \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --deny-warnings \
+            --format=json \
+            >"$RUNNER_TEMP/q049/shear-before.json"
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" >"$RUNNER_TEMP/q049/shear-before.rc"
+          test "$rc" -eq 1
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          data = json.loads(
+              (Path(os.environ["RUNNER_TEMP"]) / "q049" / "shear-before.json")
+              .read_text(encoding="utf-8")
+          )
+          expected = {
+              "hepta-evidence/Cargo.toml": "sha2",
+              "ext/hepta-governance/Cargo.toml": "pretty_assertions",
+              "hepta-matrix-protocol/Cargo.toml": "pretty_assertions",
+          }
+          observed = {}
+          for finding in data.get("findings", []):
+              if finding.get("code") != "shear/unused_dependency":
+                  raise SystemExit(f"unexpected cargo-shear finding: {finding!r}")
+              match = re.fullmatch(
+                  r"unused dependency `([^`]+)`",
+                  finding.get("message", ""),
+              )
+              file = finding.get("file")
+              if match is None or not isinstance(file, str) or file in observed:
+                  raise SystemExit(f"invalid cargo-shear finding: {finding!r}")
+              observed[file] = match.group(1)
+          if observed != expected:
+              raise SystemExit(
+                  f"unexpected cargo-shear set: observed={observed!r} expected={expected!r}"
+              )
+          summary = data.get("summary", {})
+          if summary.get("errors") != 3 or summary.get("warnings") != 0:
+              raise SystemExit(f"unexpected cargo-shear summary: {summary!r}")
+          print("PASS_Q049_EXACT_CARGO_SHEAR_FINDINGS")
+          PY
+
+      - name: Apply bounded dependency and CI policy repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import textwrap
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"expected one token in {path}: {old!r}; count={count}"
+                  )
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              ".github/workflows/rust-ci.yml",
+              "        run: cargo shear --deny-warnings\n",
+              "        run: cargo shear --locked --deny-warnings\n",
+          )
+          replace_once(
+              "codex-rs/hepta-evidence/Cargo.toml",
+              "sha2 = { workspace = true }\n",
+              "",
+          )
+          replace_once(
+              "codex-rs/ext/hepta-governance/Cargo.toml",
+              "pretty_assertions = { workspace = true }\n",
+              "",
+          )
+          replace_once(
+              "codex-rs/hepta-matrix-protocol/Cargo.toml",
+              "[dev-dependencies]\npretty_assertions = { workspace = true }\n",
+              "",
+          )
+
+          cargo_deny = textwrap.dedent(
+              """\
+              name: cargo-deny
+
+              on:
+                workflow_call:
+
+              jobs:
+                cargo-deny:
+                  runs-on: ubuntu-24.04
+                  defaults:
+                    run:
+                      working-directory: ./codex-rs
+                  steps:
+                    - name: Checkout
+                      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+                      with:
+                        persist-credentials: false
+
+                    - uses: ./.github/actions/setup-ci
+
+                    - name: Install Rust 1.95.0
+                      uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+                      with:
+                        toolchain: 1.95.0
+
+                    - name: Install cargo-deny 0.19.0
+                      uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+                      with:
+                        tool: cargo-deny@0.19.0
+
+                    - name: Run cargo-deny
+                      run: >-
+                        cargo +1.95.0 deny --manifest-path Cargo.toml
+                        --all-features --locked check --config deny.toml
+
+                    - name: Check for a clean worktree
+                      if: always() && !cancelled()
+                      uses: ./.github/actions/check-clean-worktree
+              """
+          )
+          Path(".github/workflows/cargo-deny.yml").write_text(
+              cargo_deny.strip() + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          cargo +1.95.0 metadata \
+            --manifest-path codex-rs/Cargo.toml \
+            --offline \
+            --format-version 1 \
+            >"$RUNNER_TEMP/q049/metadata-final-reconcile.json"
+
+      - name: Validate exact Cargo lock delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          source = os.environ["SOURCE_SHA"]
+          old = tomllib.loads(
+              subprocess.check_output(
+                  ["git", "show", f"{source}:codex-rs/Cargo.lock"],
+                  text=True,
+              )
+          )
+          new = tomllib.loads(Path("codex-rs/Cargo.lock").read_text(encoding="utf-8"))
+          if old.get("version") != new.get("version"):
+              raise SystemExit("Cargo.lock format drifted")
+
+          def one(data: dict, name: str) -> dict:
+              matches = [
+                  package
+                  for package in data["package"]
+                  if package["name"] == name and package.get("source") is None
+              ]
+              if len(matches) != 1:
+                  raise SystemExit(f"expected one workspace package {name}: {matches!r}")
+              return matches[0]
+
+          old_registry = {
+              (p["name"], p["version"], p.get("source"), p.get("checksum"))
+              for p in old["package"]
+              if p.get("source") is not None
+          }
+          new_registry = {
+              (p["name"], p["version"], p.get("source"), p.get("checksum"))
+              for p in new["package"]
+              if p.get("source") is not None
+          }
+          old_bytes = (
+              "bytes",
+              os.environ["BYTES_OLD_VERSION"],
+              "registry+https://github.com/rust-lang/crates.io-index",
+              os.environ["BYTES_OLD_CHECKSUM"],
+          )
+          new_bytes = (
+              "bytes",
+              os.environ["BYTES_VERSION"],
+              "registry+https://github.com/rust-lang/crates.io-index",
+              os.environ["BYTES_CHECKSUM"],
+          )
+          if old_registry - new_registry != {old_bytes}:
+              raise SystemExit(
+                  f"unexpected removed registry packages: {old_registry - new_registry!r}"
+              )
+          if new_registry - old_registry != {new_bytes}:
+              raise SystemExit(
+                  f"unexpected added registry packages: {new_registry - old_registry!r}"
+              )
+
+          removals = {
+              "codex-hepta-agent-protocol": "pretty_assertions",
+              "codex-hepta-agentd": "pretty_assertions",
+              "codex-hepta-matrix-sdk": "futures",
+              "codex-hepta-paths": "tempfile",
+              "codex-hepta-evidence": "sha2 0.10.9",
+              "codex-hepta-governance": "pretty_assertions",
+              "codex-hepta-matrix-protocol": "pretty_assertions",
+          }
+          affected = set(removals)
+          old_workspace = {
+              p["name"]: p
+              for p in old["package"]
+              if p.get("source") is None and p["name"] not in affected
+          }
+          new_workspace = {
+              p["name"]: p
+              for p in new["package"]
+              if p.get("source") is None and p["name"] not in affected
+          }
+          if old_workspace != new_workspace:
+              changed = sorted(
+                  name
+                  for name in set(old_workspace) | set(new_workspace)
+                  if old_workspace.get(name) != new_workspace.get(name)
+              )
+              raise SystemExit(f"unrelated workspace lock entries changed: {changed!r}")
+
+          for package_name, dependency in removals.items():
+              old_package = one(old, package_name)
+              new_package = one(new, package_name)
+              expected = dict(old_package)
+              dependencies = list(expected.get("dependencies", []))
+              if dependencies.count(dependency) != 1:
+                  raise SystemExit(
+                      f"unexpected old dependency for {package_name}: {dependencies!r}"
+                  )
+              dependencies.remove(dependency)
+              expected["dependencies"] = dependencies
+              if new_package != expected:
+                  raise SystemExit(
+                      f"unexpected lock delta for {package_name}: {new_package!r}"
+                  )
+
+          print("PASS_Q049_EXACT_MINIMAL_CARGO_LOCK_DELTA")
+          PY
+
+          git diff --check "$SOURCE_SHA" --
+          cargo +1.95.0 metadata \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --all-features \
+            --format-version 1 \
+            >"$RUNNER_TEMP/q049/cargo-metadata-locked.json"
+
+      - name: Run locked dependency policy gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +1.95.0 shear \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --deny-warnings \
+            --format=json \
+            >"$RUNNER_TEMP/q049/shear-after.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          data = json.loads(
+              (Path(os.environ["RUNNER_TEMP"]) / "q049" / "shear-after.json")
+              .read_text(encoding="utf-8")
+          )
+          if data.get("findings") != []:
+              raise SystemExit(f"cargo-shear findings remain: {data['findings']!r}")
+          summary = data.get("summary", {})
+          if summary.get("errors") != 0 or summary.get("warnings") != 0:
+              raise SystemExit(f"cargo-shear summary is not clean: {summary!r}")
+          print("PASS_Q049_CARGO_SHEAR_LOCKED_CLEAN")
+          PY
+
+          cargo +1.95.0 deny \
+            --manifest-path codex-rs/Cargo.toml \
+            --all-features \
+            --locked \
+            check \
+            --config codex-rs/deny.toml \
+            >"$RUNNER_TEMP/q049/cargo-deny.log" 2>&1
+
+      - name: Run focused Rust compile gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          packages=(
+            codex-hepta-agent-protocol
+            codex-hepta-agentd
+            codex-hepta-matrix-sdk
+            codex-hepta-paths
+            codex-hepta-evidence
+            codex-hepta-governance
+            codex-hepta-matrix-protocol
+          )
+          args=()
+          for package in "${packages[@]}"; do
+            args+=( -p "$package" )
+          done
+          cargo +1.95.0 check \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --all-targets \
+            "${args[@]}" \
+            >"$RUNNER_TEMP/q049/focused-check.log" 2>&1
+          cargo +1.95.0 test \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --no-run \
+            "${args[@]}" \
+            >"$RUNNER_TEMP/q049/focused-test-no-run.log" 2>&1
+
+      - name: Set up Bazel for ARM lock regeneration
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          target: aarch64-unknown-linux-gnu
+
+      - name: Regenerate Bazel module lock and bind changed paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          just bazel-lock-update \
+            >"$RUNNER_TEMP/q049/bazel-lock-update.log" 2>&1
+          git diff --binary "$SOURCE_SHA" -- >"$RUNNER_TEMP/q049/q049.patch"
+          git diff --stat "$SOURCE_SHA" -- >"$RUNNER_TEMP/q049/q049.diff-stat"
+          git diff --name-only --no-renames "$SOURCE_SHA" -- \
+            >"$RUNNER_TEMP/q049/q049.changed-paths"
+          git diff --check "$SOURCE_SHA" --
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          observed = (
+              Path(os.environ["RUNNER_TEMP"]) / "q049" / "q049.changed-paths"
+          ).read_text(encoding="utf-8").splitlines()
+          required = {
+              ".github/workflows/cargo-deny.yml",
+              ".github/workflows/rust-ci.yml",
+              "codex-rs/Cargo.lock",
+              "codex-rs/Cargo.toml",
+              "codex-rs/ext/hepta-governance/Cargo.toml",
+              "codex-rs/hepta-evidence/Cargo.toml",
+              "codex-rs/hepta-matrix-protocol/Cargo.toml",
+          }
+          allowed = required | {"MODULE.bazel.lock"}
+          if set(observed) - allowed:
+              raise SystemExit(f"unexpected Q0.49 paths: {observed!r}")
+          if not required.issubset(observed):
+              raise SystemExit(f"missing Q0.49 paths: {observed!r}")
+          if observed != sorted(observed):
+              raise SystemExit(f"non-canonical path order: {observed!r}")
+          print("PASS_Q049_EXACT_CHANGED_PATH_SET")
+          PY
+          cp codex-rs/Cargo.lock "$RUNNER_TEMP/q049/Cargo.lock.generated"
+          cp MODULE.bazel.lock "$RUNNER_TEMP/q049/MODULE.bazel.lock.generated"
+
+      - name: Create deterministic immutable Q0.49 Git objects
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          import subprocess
+          import urllib.request
+          from pathlib import Path
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          source = os.environ["SOURCE_SHA"]
+          source_tree = os.environ["SOURCE_TREE"]
+          artifact = Path(os.environ["RUNNER_TEMP"]) / "q049"
+          paths = artifact.joinpath("q049.changed-paths").read_text(
+              encoding="utf-8"
+          ).splitlines()
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "Content-Type": "application/json",
+          }
+
+          def post(path: str, payload: dict) -> dict:
+              request = urllib.request.Request(
+                  f"https://api.github.com/repos/{repository}/{path}",
+                  data=json.dumps(payload, separators=(",", ":")).encode(),
+                  headers=headers,
+                  method="POST",
+              )
+              with urllib.request.urlopen(request, timeout=90) as response:
+                  return json.load(response)
+
+          blobs = {}
+          entries = []
+          for path in paths:
+              index_line = subprocess.check_output(
+                  ["git", "ls-files", "--stage", "--", path],
+                  text=True,
+              ).strip()
+              fields = index_line.split(maxsplit=3)
+              if len(fields) != 4 or fields[2] != "0" or fields[3] != path:
+                  raise SystemExit(f"invalid index entry for {path}: {index_line!r}")
+              mode = fields[0]
+              if mode not in {"100644", "100755"}:
+                  raise SystemExit(f"invalid mode for {path}: {mode}")
+              blob = post(
+                  "git/blobs",
+                  {
+                      "content": base64.b64encode(Path(path).read_bytes()).decode(),
+                      "encoding": "base64",
+                  },
+              )["sha"]
+              blobs[path] = {"sha": blob, "mode": mode}
+              entries.append(
+                  {"path": path, "mode": mode, "type": "blob", "sha": blob}
+              )
+
+          tree = post(
+              "git/trees",
+              {"base_tree": source_tree, "tree": entries},
+          )
+          identity = {
+              "name": "Hepta Q0.49 Publisher",
+              "email": "hepta-q049@users.noreply.github.com",
+              "date": "2026-08-30T12:53:41Z",
+          }
+          commit = post(
+              "git/commits",
+              {
+                  "message": (
+                      "fix(rust): close Q0.49 locked dependency policy blockers\n\n"
+                      "Upgrade bytes to 1.12.1, reconcile the four pre-existing "
+                      "workspace lock remnants, remove the three runner-observed "
+                      "unused direct dependencies, enforce locked cargo-shear and "
+                      "native cargo-deny, and regenerate the Bazel module lock. "
+                      "Repository qualification only; no runtime or authority change."
+                  ),
+                  "tree": tree["sha"],
+                  "parents": [source],
+                  "author": identity,
+                  "committer": identity,
+              },
+          )
+          receipt = {
+              "schema": "hepta_intelligence_q0_49_git_objects_v3",
+              "repository": repository,
+              "publisher_head": os.environ["GITHUB_SHA"],
+              "source_sha": source,
+              "source_tree": source_tree,
+              "tree_sha": tree["sha"],
+              "commit_sha": commit["sha"],
+              "changed_paths": paths,
+              "blobs": blobs,
+              "bytes_version": os.environ["BYTES_VERSION"],
+              "cargo_shear_version": "1.11.2",
+              "cargo_deny_version": os.environ["CARGO_DENY_VERSION"],
+              "rust_version": "1.95.0",
+              "runner_arch": os.environ["RUNNER_ARCH"],
+              "source_writeback": False,
+              "ref_moved": False,
+              "a0_candidate_qualified": False,
+              "independent_review": False,
+              "selected": False,
+              "full_repository_merge_green": False,
+              "live_ruleset_applied": False,
+              "runtime_wired": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "release_authority": False,
+              "callers_ratchet": False,
+          }
+          artifact.joinpath("q049-git-objects.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(f"Q049_TREE_SHA={tree['sha']}")
+          print(f"Q049_COMMIT_SHA={commit['sha']}")
+          PY
+
+      - name: Stage evidence
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p q049-artifacts
+          if test -d "$RUNNER_TEMP/q049"; then
+            cp -R "$RUNNER_TEMP/q049/." q049-artifacts/
+          fi
+          git status --short >q049-artifacts/git-status.txt || true
+          git diff --binary "$SOURCE_SHA" -- >q049-artifacts/q049.patch || true
+
+      - name: Upload evidence
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hepta-intelligence-q0-49-arm-publisher-${{ github.sha }}
+          path: q049-artifacts
+          if-no-files-found: error
+          retention-days: 30
