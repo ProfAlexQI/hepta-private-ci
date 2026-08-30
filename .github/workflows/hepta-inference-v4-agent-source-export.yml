@@ -32,7 +32,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain)"
 
-      - name: Export inference closure source
+      - name: Export inference closure source and qualification payload
         shell: bash
         run: |
           set -euo pipefail
@@ -50,6 +50,7 @@ jobs:
             codex-rs/rust-toolchain.toml \
             docs/hepta-vnext/inference \
             scripts \
+            .github/qualification \
             .github/workflows \
             .github/actions \
             .github/scripts \
