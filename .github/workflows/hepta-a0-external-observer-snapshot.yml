@@ -1,0 +1,326 @@
+name: Hepta A0 external observer and exact source snapshot
+
+on:
+  push:
+    branches:
+      - "automation/hepta-a0-external-observer-snapshot-macos-73a636-20260830"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: hepta-a0-external-observer-snapshot-macos-73a636
+  cancel-in-progress: true
+
+env:
+  EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+  EXPECTED_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  EXPECTED_HEAD: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
+  EXPECTED_TREE: be18f73ac54f21a7b0b862940ab6007c6589300c
+  EXPECTED_PARENT: c768bcbeb4c1168088d2499828c24da521a2a73a
+  SOURCE_RUN_ID: "33284877038"
+  SOURCE_JOB_ID: "99186214666"
+  SOURCE_ARTIFACT_ID: "9724132824"
+  SOURCE_ARTIFACT_NAME: hepta-intelligence-a0-source-73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
+  SOURCE_ARTIFACT_DIGEST: sha256:5dd14dc3edbeff1af3551aec648aa4910c6fdb10c37ab4540d62ed50f6a56cdc
+  SOURCE_ARTIFACT_EXPIRES: "2026-09-29T01:10:01Z"
+
+jobs:
+  observe-and-snapshot:
+    name: Independently observe source evidence and archive exact candidate
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout observer workflow source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: observer
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout exact A0 candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ProfHepta/hepta-private-ci
+          ref: ${{ env.EXPECTED_HEAD }}
+          path: target
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Fetch exact source run metadata and artifact archive
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/api evidence/extracted evidence/output
+          api="https://api.github.com/repos/${EXPECTED_REPOSITORY}"
+          headers=(
+            -H "Authorization: Bearer ${GH_TOKEN}"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+          curl -fsSL "${headers[@]}" "$api/actions/runs/${SOURCE_RUN_ID}" > evidence/api/source-run.json
+          curl -fsSL "${headers[@]}" "$api/actions/runs/${SOURCE_RUN_ID}/jobs?filter=latest&per_page=100" > evidence/api/source-jobs.json
+          curl -fsSL "${headers[@]}" "$api/actions/runs/${SOURCE_RUN_ID}/artifacts?per_page=100" > evidence/api/source-artifacts.json
+          curl -fsSL -L "${headers[@]}" "$api/actions/artifacts/${SOURCE_ARTIFACT_ID}/zip" > evidence/api/source-artifact.zip
+
+      - name: Verify identity, archive bytes, safe extraction and source receipts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import stat
+          import subprocess
+          import zipfile
+
+          if not __debug__:
+              raise SystemExit("Python optimization is forbidden")
+
+          expected_head = os.environ["EXPECTED_HEAD"]
+          expected_tree = os.environ["EXPECTED_TREE"]
+          expected_parent = os.environ["EXPECTED_PARENT"]
+          expected_branch = os.environ["EXPECTED_BRANCH"]
+          target = pathlib.Path("target")
+          observer = pathlib.Path("observer")
+          api_dir = pathlib.Path("evidence/api")
+          extracted = pathlib.Path("evidence/extracted")
+          output = pathlib.Path("evidence/output")
+
+          def git(cwd, *args):
+              return subprocess.check_output(["git", "-C", str(cwd), *args], text=True).strip()
+
+          assert git(target, "rev-parse", "HEAD") == expected_head
+          assert git(target, "rev-parse", "HEAD^{tree}") == expected_tree
+          assert git(target, "rev-parse", "HEAD^") == expected_parent
+          assert git(target, "rev-list", "--count", f"{expected_parent}..HEAD") == "1"
+          assert not subprocess.check_output(
+              ["git", "-C", str(target), "status", "--porcelain", "--untracked-files=no"],
+              text=True,
+          ).strip()
+
+          run = json.loads((api_dir / "source-run.json").read_text(encoding="utf-8"))
+          jobs = json.loads((api_dir / "source-jobs.json").read_text(encoding="utf-8"))["jobs"]
+          artifacts = json.loads((api_dir / "source-artifacts.json").read_text(encoding="utf-8"))["artifacts"]
+          assert run["id"] == int(os.environ["SOURCE_RUN_ID"])
+          assert run["head_sha"] == expected_head
+          assert run["head_branch"] == expected_branch
+          producer = [j for j in jobs if j["id"] == int(os.environ["SOURCE_JOB_ID"])]
+          assert len(producer) == 1
+          producer = producer[0]
+          assert producer["status"] == "completed" and producer["conclusion"] == "success"
+          assert int(producer.get("runner_id") or 0) > 0
+          assert producer.get("steps")
+          for step in producer["steps"]:
+              if step["name"] == "Complete job":
+                  continue
+              assert step.get("conclusion") == "success", step
+
+          found = [a for a in artifacts if a["id"] == int(os.environ["SOURCE_ARTIFACT_ID"])]
+          assert len(found) == 1
+          source_artifact = found[0]
+          assert source_artifact["name"] == os.environ["SOURCE_ARTIFACT_NAME"]
+          assert source_artifact["digest"] == os.environ["SOURCE_ARTIFACT_DIGEST"]
+          assert source_artifact["expires_at"] == os.environ["SOURCE_ARTIFACT_EXPIRES"]
+          assert source_artifact["expired"] is False
+          assert source_artifact["workflow_run"]["head_sha"] == expected_head
+
+          archive = api_dir / "source-artifact.zip"
+          archive_digest = "sha256:" + hashlib.sha256(archive.read_bytes()).hexdigest()
+          assert archive_digest == source_artifact["digest"]
+
+          seen = set()
+          expanded = 0
+          safe_files = []
+          with zipfile.ZipFile(archive) as zf:
+              infos = zf.infolist()
+              assert 0 < len(infos) <= 256
+              for info in infos:
+                  pure = pathlib.PurePosixPath(info.filename)
+                  assert not pure.is_absolute()
+                  assert ".." not in pure.parts
+                  normalized = pure.as_posix().rstrip("/")
+                  assert normalized and normalized not in seen
+                  seen.add(normalized)
+                  mode = (info.external_attr >> 16) & 0xFFFF
+                  assert not stat.S_ISLNK(mode)
+                  assert not stat.S_ISCHR(mode)
+                  assert not stat.S_ISBLK(mode)
+                  assert not stat.S_ISFIFO(mode)
+                  expanded += info.file_size
+                  assert expanded <= 16 * 1024 * 1024
+                  destination = extracted / pure
+                  destination.resolve().relative_to(extracted.resolve())
+                  if info.is_dir():
+                      destination.mkdir(parents=True, exist_ok=True)
+                      continue
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  data = zf.read(info)
+                  assert len(data) == info.file_size
+                  destination.write_bytes(data)
+                  safe_files.append(
+                      {
+                          "path": normalized,
+                          "size": len(data),
+                          "sha256": hashlib.sha256(data).hexdigest(),
+                      }
+                  )
+
+          source_receipts = list(extracted.rglob("a0-source-evidence-receipt.json"))
+          source_manifests = list(extracted.rglob("source-manifest.json"))
+          truths = list(extracted.rglob("current-truth.json"))
+          assert len(source_receipts) == len(source_manifests) == len(truths) == 1
+          source_receipt = json.loads(source_receipts[0].read_text(encoding="utf-8"))
+          source_manifest = json.loads(source_manifests[0].read_text(encoding="utf-8"))
+          current_truth = json.loads(truths[0].read_text(encoding="utf-8"))
+
+          assert source_receipt["status"] == "PASS_HEPTA_INTELLIGENCE_A0_SOURCE_EVIDENCE"
+          assert source_receipt["candidate"]["head"] == expected_head
+          assert source_receipt["candidate"]["tree"] == expected_tree
+          assert source_receipt["candidate"]["parent"] == expected_parent
+          assert source_receipt["a0_candidate_qualified"] is False
+          assert source_receipt["selected"] is False
+          assert source_receipt["full_repository_merge_green"] is False
+          assert source_receipt["source_writeback"] is False
+          assert source_receipt["authority"] and all(v is False for v in source_receipt["authority"].values())
+
+          assert source_manifest["head"] == expected_head
+          assert source_manifest["tree"] == expected_tree
+          assert source_manifest["parent"] == expected_parent
+          assert len(source_manifest["changed_paths"]) == 17
+          assert source_manifest["source_writeback"] is False
+          assert source_manifest["a0_candidate_qualified"] is False
+
+          assert current_truth["current_truth"]["a0_candidate_qualified"] is False
+          assert current_truth["current_truth"]["selected"] is False
+          assert current_truth["current_truth"]["full_repository_merge_green"] is False
+          assert current_truth["authority"] and all(v is False for v in current_truth["authority"].values())
+
+          canonical_workflow = target / ".github/workflows/hepta-intelligence-a0-authority.yml"
+          assert source_manifest["workflow_blob_sha"] == git(
+              target, "rev-parse", "HEAD:.github/workflows/hepta-intelligence-a0-authority.yml"
+          )
+          assert source_manifest["workflow_content_sha256"] == hashlib.sha256(
+              canonical_workflow.read_bytes()
+          ).hexdigest()
+
+          observer_workflow = observer / ".github/workflows/hepta-a0-external-observer-snapshot.yml"
+          observer_receipt = {
+              "schema": "hepta_intelligence_a0_exact_head_external_observer_receipt_v1",
+              "status": "PASS_HEPTA_INTELLIGENCE_A0_EXACT_HEAD_EVIDENCE_OBSERVED",
+              "classification": "EXTERNAL_READ_ONLY_OBSERVER_NON_SELF_QUALIFYING",
+              "repository": os.environ["EXPECTED_REPOSITORY"],
+              "candidate": {
+                  "branch": expected_branch,
+                  "head": expected_head,
+                  "tree": expected_tree,
+                  "parent": expected_parent,
+                  "changed_path_count": 17,
+                  "changed_paths_sha256": source_manifest["changed_paths_sha256"],
+              },
+              "source_evidence": {
+                  "workflow_path": source_manifest["workflow_path"],
+                  "workflow_blob_sha": source_manifest["workflow_blob_sha"],
+                  "workflow_content_sha256": source_manifest["workflow_content_sha256"],
+                  "run_id": run["id"],
+                  "run_attempt": run["run_attempt"],
+                  "event": run["event"],
+                  "producer_job_id": producer["id"],
+                  "producer_runner_id": producer["runner_id"],
+                  "producer_labels": producer["labels"],
+                  "artifact_id": source_artifact["id"],
+                  "artifact_name": source_artifact["name"],
+                  "artifact_digest": source_artifact["digest"],
+                  "artifact_created_at": source_artifact["created_at"],
+                  "artifact_expires_at": source_artifact["expires_at"],
+                  "archive_digest_recomputed": archive_digest,
+                  "receipt_sha256": hashlib.sha256(source_receipts[0].read_bytes()).hexdigest(),
+                  "manifest_sha256": hashlib.sha256(source_manifests[0].read_bytes()).hexdigest(),
+                  "current_truth_sha256": hashlib.sha256(truths[0].read_bytes()).hexdigest(),
+              },
+              "external_observer": {
+                  "branch": os.environ["GITHUB_REF_NAME"],
+                  "commit": os.environ["GITHUB_SHA"],
+                  "workflow_path": ".github/workflows/hepta-a0-external-observer-snapshot.yml",
+                  "workflow_blob_sha": git(
+                      observer,
+                      "rev-parse",
+                      "HEAD:.github/workflows/hepta-a0-external-observer-snapshot.yml",
+                  ),
+                  "workflow_content_sha256": hashlib.sha256(observer_workflow.read_bytes()).hexdigest(),
+                  "run_id": int(os.environ["GITHUB_RUN_ID"]),
+                  "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+                  "runner_os": os.environ["RUNNER_OS"],
+                  "runner_name": os.environ["RUNNER_NAME"],
+              },
+              "safe_extraction": {
+                  "archive_sha256": archive_digest,
+                  "expanded_bytes": expanded,
+                  "files": sorted(safe_files, key=lambda item: item["path"]),
+              },
+              "source_writeback": False,
+              "a0_candidate_qualified": False,
+              "selected": False,
+              "full_repository_merge_green": False,
+              "runtime_authority": False,
+              "production_authority": False,
+              "promotion": False,
+              "release_authority": False,
+              "callers_ratchet": False,
+          }
+          binding_payload = dict(observer_receipt)
+          observer_receipt["receipt_binding_sha256"] = hashlib.sha256(
+              b"hepta-intelligence-a0-external-observer-receipt-v1\0"
+              + json.dumps(binding_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+          ).hexdigest()
+
+          output.joinpath("a0-external-observer-receipt.json").write_text(
+              json.dumps(observer_receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          output.joinpath("safe-extraction-manifest.json").write_text(
+              json.dumps(observer_receipt["safe_extraction"], indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          output.joinpath("source-run.json").write_text(
+              json.dumps(run, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          output.joinpath("source-producer-job.json").write_text(
+              json.dumps(producer, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          output.joinpath("source-artifact.json").write_text(
+              json.dumps(source_artifact, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Archive exact candidate and build integrity manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C target archive \
+            --format=tar.gz \
+            --output="../evidence/output/hepta-private-ci-${EXPECTED_HEAD}.tar.gz" \
+            HEAD
+          (
+            cd evidence/output
+            shasum -a 256 * > SHA256SUMS
+          )
+          test -z "$(git -C target status --porcelain --untracked-files=no)"
+          test -z "$(git -C observer status --porcelain --untracked-files=no)"
+
+      - name: Upload external observer and exact source snapshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-a0-external-observer-snapshot-${{ env.EXPECTED_HEAD }}
+          path: evidence/output/**
+          if-no-files-found: error
+          retention-days: 30
