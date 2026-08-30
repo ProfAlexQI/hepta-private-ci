@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "${GITHUB_WORKSPACE:?}"
 
-EXPECTED_PARENT=f1830f3a7153210f5ca8294baa89f74e299a4668
+EXPECTED_PARENT=a84299b576e960f2c7dccdf3ff5185159e4897e1
 BASE_BRANCH=integration/vnext-main-full-ci-authbus-p1-3-20260829
 BASE_SHA=6b7aa91d7702a92a50297b1b1bd8170ffb7cb184
 BASE_TREE=f46fa8c6d541742eaea62d70ea62c0fe316dbaf9
@@ -134,7 +134,7 @@ source = path.read_text(encoding='utf-8')
 for before, after, expected, label in (
     ('      - integration/vnext-main-full-ci-authbus-p1-3-20260829',
      '      - codex/authbus-p1-3-clean-replay-20260830', 1, 'target branch'),
-    ('runs-on: ubuntu-slim', 'runs-on: ubuntu-slim', 4, 'hosted runner'),
+    ('runs-on: ubuntu-slim', 'runs-on: ubuntu-24.04', 4, 'hosted runner'),
     ('f6702be58c499d853d273f3174a2556481a3f5b4284cd9cd0b0a247160d7ac08',
      'dfcab028e1a135a0895b3f9eddec9f5f99cf5f392701b98ad14180058a284bf1',
      3, 'registry digest'),

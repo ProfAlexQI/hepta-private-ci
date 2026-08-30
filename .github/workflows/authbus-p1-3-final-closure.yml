@@ -20,7 +20,7 @@ permissions:
 jobs:
   close:
     name: Qualify and publish exact 29-path clean source
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
       CARGO_INCREMENTAL: "0"
