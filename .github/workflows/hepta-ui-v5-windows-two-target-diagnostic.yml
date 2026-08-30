@@ -1,0 +1,174 @@
+name: Hepta UI v5 Windows focused test diagnostics
+
+on:
+  push:
+    branches:
+      - diagnostic/ui-v5-windows-two-targets-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-windows-two-target-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v5-windows-two-target-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  focused-windows-tests:
+    name: Focused Windows tests with complete logs
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - name: Enable Windows long paths before checkout
+        shell: pwsh
+        run: git config --global core.longpaths true
+
+      - name: Check out exact diagnostic commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify diagnostic ancestry
+        shell: pwsh
+        env:
+          EXPECTED_PRODUCT_HEAD: 1e6f7cf3db498153fd52250dee1112f89489e094
+          DIAGNOSTIC_PATH: .github/workflows/hepta-ui-v5-windows-two-target-diagnostic.yml
+        run: |
+          $parent = (git rev-parse HEAD^).Trim()
+          if ($parent -ne $env:EXPECTED_PRODUCT_HEAD) {
+              throw "Diagnostic commit parent drifted: $parent"
+          }
+          $paths = @(git diff-tree --no-commit-id --name-only -r HEAD)
+          if ($paths.Count -ne 1 -or $paths[0] -ne $env:DIAGNOSTIC_PATH) {
+              throw "Diagnostic commit must change only $($env:DIAGNOSTIC_PATH): $($paths -join ', ')"
+          }
+
+      - name: Install Bazelisk
+        shell: pwsh
+        run: choco install bazelisk --yes --no-progress
+
+      - name: Install Rust 1.95.0 with rustfmt
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --no-self-update
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup default 1.95.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Set up sandboxed rusty_v8
+        shell: bash
+        run: bash .github/workflows/scripts/setup-rusty-v8.sh x86_64-pc-windows-msvc "$RUNNER_TEMP/rusty-v8/x86_64-pc-windows-msvc" "$GITHUB_ENV"
+
+      - name: Export the x64 MSVC developer environment
+        shell: pwsh
+        run: .github/workflows/scripts/export-msvc-env.ps1
+
+      - name: Run the two failing targets with full output
+        id: focused
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $rustfmtPath = (& rustup which --toolchain 1.95.0 rustfmt).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $rustfmtPath) {
+              throw "Unable to resolve Rust 1.95.0 rustfmt"
+          }
+          if (-not [System.IO.Path]::IsPathFullyQualified($rustfmtPath)) {
+              throw "Rustfmt path is not absolute: $rustfmtPath"
+          }
+          if (-not (Test-Path -LiteralPath $rustfmtPath -PathType Leaf)) {
+              throw "Rustfmt path is not an executable file: $rustfmtPath"
+          }
+          $env:RUSTFMT = $rustfmtPath
+
+          $diagnosticRoot = Join-Path $env:RUNNER_TEMP "hepta-ui-v5-windows-two-targets"
+          New-Item -ItemType Directory -Force -Path $diagnosticRoot | Out-Null
+          $executionLog = Join-Path $diagnosticRoot "execution-log.zst"
+          $buildEvents = Join-Path $diagnosticRoot "build-events.json"
+          $combinedOutput = Join-Path $diagnosticRoot "bazel-output.txt"
+
+          $environmentVariables = @(
+              "RUSTFMT", "BAZEL_SH", "BAZEL_VC", "INCLUDE", "LIB", "LIBPATH",
+              "Path", "UCRTVersion", "UniversalCRTSdkDir", "VCINSTALLDIR",
+              "VCToolsInstallDir", "WindowsLibPath", "WindowsSdkBinPath",
+              "WindowsSdkDir", "WindowsSDKLibVersion", "WindowsSDKVersion"
+          )
+          $environmentArguments = foreach ($name in $environmentVariables) {
+              $value = [Environment]::GetEnvironmentVariable($name)
+              if ($value) {
+                  "--action_env=$name=$value"
+                  "--host_action_env=$name=$value"
+              }
+          }
+
+          $bazelArguments = @(
+              "test",
+              "--config=ci-windows",
+              "--platforms=//:windows_x86_64_msvc",
+              "--host_platform=//:windows_x86_64_msvc",
+              "--extra_execution_platforms=//:windows_x86_64_msvc",
+              "--extra_toolchains=//:windows_msvc_tests_on_msvc_host_toolchain",
+              "--jobs=8",
+              "--test_tag_filters=-argument-comment-lint",
+              "--test_verbose_timeout_warnings",
+              "--test_output=all",
+              "--test_summary=detailed",
+              "--keep_going",
+              "--execution_log_compact_file=$executionLog",
+              "--build_event_json_file=$buildEvents",
+              "--repo_contents_cache=$env:RUNNER_TEMP/bazel-repo-contents-cache",
+              "--",
+              "//codex-rs/http-client:http-client-unit-tests",
+              "//codex-rs/core-plugins:core-plugins-unit-tests"
+          )
+
+          & bazelisk @bazelArguments @environmentArguments 2>&1 | Tee-Object -FilePath $combinedOutput
+          $exitCode = $LASTEXITCODE
+          "exit_code=$exitCode" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          exit 0
+
+      - name: Collect complete Bazel test logs
+        if: always() && !cancelled()
+        shell: pwsh
+        run: |
+          $diagnosticRoot = Join-Path $env:RUNNER_TEMP "hepta-ui-v5-windows-two-targets"
+          New-Item -ItemType Directory -Force -Path $diagnosticRoot | Out-Null
+          if (Test-Path -LiteralPath "bazel-testlogs") {
+              Copy-Item -LiteralPath "bazel-testlogs" -Destination (Join-Path $diagnosticRoot "bazel-testlogs") -Recurse -Force
+          }
+          Get-ChildItem -LiteralPath $diagnosticRoot -Recurse -Force |
+              Select-Object FullName, Length, LastWriteTimeUtc |
+              Format-Table -AutoSize |
+              Out-String -Width 4096 |
+              Set-Content -LiteralPath (Join-Path $diagnosticRoot "inventory.txt") -Encoding utf8
+
+      - name: Upload focused Windows diagnostics
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-ui-v5-windows-two-target-diagnostics
+          path: ${{ runner.temp }}/hepta-ui-v5-windows-two-targets
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 6
+
+      - name: Enforce focused test success
+        if: always() && !cancelled()
+        shell: pwsh
+        env:
+          FOCUSED_EXIT_CODE: ${{ steps.focused.outputs.exit_code }}
+        run: |
+          if (-not $env:FOCUSED_EXIT_CODE) {
+              throw "Focused Bazel invocation did not report an exit code"
+          }
+          if ($env:FOCUSED_EXIT_CODE -ne "0") {
+              throw "Focused Windows targets failed with exit code $($env:FOCUSED_EXIT_CODE)"
+          }
+
+      - name: Check for a clean worktree
+        if: always() && !cancelled()
+        shell: pwsh
+        run: git diff --exit-code
