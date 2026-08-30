@@ -20,7 +20,7 @@ permissions:
 jobs:
   close:
     name: Qualify and publish exact 29-path clean source
-    runs-on: macos-15-arm64
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
       CARGO_INCREMENTAL: "0"
@@ -42,6 +42,56 @@ jobs:
         with:
           toolchain: 1.95.0
           components: rustfmt, clippy
+
+      - name: Rebind exact controller to this helper commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/authbus-p1-3-final-closure.sh")
+          source = path.read_text(encoding="utf-8")
+          replacements = (
+              (
+                  "EXPECTED_PARENT=3c44c4d1ee9faaf66a1bd81a7cb2f676974a9f74",
+                  "EXPECTED_PARENT=d6552ae1dfd3533d4cf7aa3a912e783a9eec7784",
+                  1,
+                  "exact helper parent",
+              ),
+              (
+                  "('runs-on: ubuntu-slim', 'runs-on: macos-15-arm64', 4, 'hosted runner'),",
+                  "('runs-on: ubuntu-slim', 'runs-on: ubuntu-24.04', 4, 'hosted runner'),",
+                  1,
+                  "qualification hosted runner",
+              ),
+          )
+          for before, after, expected, label in replacements:
+              count = source.count(before)
+              if count != expected:
+                  raise SystemExit(f"{label}: expected {expected} anchors, found {count}")
+              source = source.replace(before, after)
+
+          anchor = "    ('runs-on: ubuntu-slim', 'runs-on: ubuntu-24.04', 4, 'hosted runner'),\n"
+          insertion = (
+              anchor
+              + "    ('      - codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs',\n"
+              + "     '      - codex-rs/hepta-authbus-p0-3-qualification/src/lib.rs\\n"
+              + "      - codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs',\n"
+              + "     1, 'P0.3 inline assertion trigger path'),\n"
+          )
+          if source.count(anchor) != 1:
+              raise SystemExit("P0.3 trigger insertion: hosted-runner anchor is not unique")
+          source = source.replace(anchor, insertion)
+          path.write_text(source, encoding="utf-8")
+          PY
+          bash -n scripts/authbus-p1-3-final-closure.sh
+          grep -Fq 'EXPECTED_PARENT=d6552ae1dfd3533d4cf7aa3a912e783a9eec7784' \
+            scripts/authbus-p1-3-final-closure.sh
+          grep -Fq "('runs-on: ubuntu-slim', 'runs-on: ubuntu-24.04', 4, 'hosted runner')," \
+            scripts/authbus-p1-3-final-closure.sh
+          grep -Fq 'P0.3 inline assertion trigger path' \
+            scripts/authbus-p1-3-final-closure.sh
 
       - name: Execute fail-closed AuthBus P1.3 closure
         shell: bash
