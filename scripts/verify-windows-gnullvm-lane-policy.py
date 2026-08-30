@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / ".github" / "scripts" / "run_bazel_q022_negative_targets.py"
 FINAL_TEST = ROOT / ".github" / "scripts" / "test_run_bazel_final_command.py"
+NEGATIVE_TEST = ROOT / ".github" / "scripts" / "test_run_bazel_negative_targets.py"
 LANE_TEST = ROOT / ".github" / "scripts" / "test_run_bazel_lane_policy.py"
 BOUNDARY = ROOT / ".github" / "scripts" / "test_run_bazel_qualification_boundary.sh"
 BAZEL_WORKFLOW = ROOT / ".github" / "workflows" / "bazel.yml"
@@ -54,12 +55,13 @@ def require_executable(path: Path) -> None:
 def main() -> None:
     policy = read(POLICY)
     final_test = read(FINAL_TEST)
+    negative_test = read(NEGATIVE_TEST)
     lane_test = read(LANE_TEST)
     boundary = read(BOUNDARY)
     bazel_workflow = read(BAZEL_WORKFLOW)
     release_targets = read(RELEASE_TARGETS)
 
-    for path in (FINAL_TEST, LANE_TEST, BOUNDARY, RELEASE_TARGETS):
+    for path in (FINAL_TEST, NEGATIVE_TEST, LANE_TEST, BOUNDARY, RELEASE_TARGETS):
         require_executable(path)
 
     require(
@@ -72,22 +74,38 @@ def main() -> None:
     )
 
     for token in (
+        'BUILD_METADATA_OPTION = "--build_metadata"',
+        'JOB_METADATA_PREFIX = "--build_metadata=TAG_job="',
+        'JOB_METADATA_LIKE_PREFIX = "--build_metadata=TAG_job"',
         'RELEASE_JOB_METADATA = "--build_metadata=TAG_job=verify-release-build"',
         'CLIPPY_JOB_METADATA = "--build_metadata=TAG_job=clippy"',
         'CANONICAL_TEST_TAG_FILTER = "--test_tag_filters=-argument-comment-lint"',
-        '"--test_filter="',
-        '"--test_arg="',
-        '"--test_lang_filters="',
-        '"--test_size_filters="',
-        '"--test_timeout_filters="',
-        '"--build_tag_filters="',
+        "FORBIDDEN_SELECTION_VALUE_OPTIONS",
+        "FORBIDDEN_SELECTION_BOOLEAN_OPTIONS",
+        "FORBIDDEN_SELECTION_SPLIT_OPTIONS",
+        "SKIP_INCOMPATIBLE_FLAG_FAMILY",
+        "TEST_VERBOSE_TIMEOUT_FLAG_FAMILY",
+        "def _job_metadata",
+        "rejects split-form",
+        "rejects malformed",
+        "rejects ambiguous",
+        "test qualification rejects",
+        "TAG_job metadata",
+        '"--test_filter"',
+        '"--test_arg"',
+        '"--test_lang_filters"',
+        '"--test_size_filters"',
+        '"--test_timeout_filters"',
+        '"--build_tag_filters"',
         '"--build_tests_only"',
         "exact configs ('ci-windows',)",
         "exact configs ('clippy', 'ci-windows')",
         "one recognized lane metadata tag",
         "the exact canonical target set",
-        "test qualification rejects negative targets",
-        "clippy qualification rejects negative targets",
+        "test qualification rejects",
+        "clippy qualification rejects",
+        "requires exactly",
+        "rejects flag family",
     ):
         require_token(policy, token, "run_bazel_q022_negative_targets.py")
 
@@ -101,17 +119,52 @@ def main() -> None:
         require_token(final_test, token, "test_run_bazel_final_command.py")
 
     for token in (
+        "test_canonical_test_targets_pass",
+        "test_canonical_clippy_targets_pass",
+        "test_exact_release_target_set_passes",
+        "test_duplicate_release_job_metadata_fails_closed",
+        "test_release_plus_alternate_job_metadata_fails_closed",
+        "test_split_build_metadata_fails_closed",
+        "test_malformed_job_metadata_fails_closed",
+        "test_empty_job_metadata_fails_closed",
+        "test_test_lane_job_metadata_fails_closed",
+        "test_unrecognized_build_job_metadata_fails_closed",
+        "test_duplicate_clippy_job_metadata_fails_closed",
+        "test_test_exclude_all_fails_closed",
+        "test_clippy_arbitrary_exclusion_fails_closed",
+        "test_release_target_drop_fails_closed",
+        "test_release_target_addition_fails_closed",
+        "test_release_metadata_on_test_command_fails_closed",
+        "test_release_script_matches_policy_constant",
+        "test_wrapper_imports_composed_validator",
+    ):
+        require_token(
+            negative_test,
+            token,
+            "test_run_bazel_negative_targets.py",
+        )
+
+    for token in (
         "test_canonical_test_lane_passes",
         "test_canonical_clippy_lane_passes",
         "test_canonical_release_lane_passes",
         "test_extra_test_config_fails_closed",
         "test_test_filter_fails_closed",
+        "test_split_test_filter_fails_closed",
         "test_test_arg_fails_closed",
+        "test_split_test_arg_fails_closed",
         "test_alternate_test_tag_filter_fails_closed",
+        "test_split_test_tag_filter_fails_closed",
         "test_duplicate_test_tag_filter_fails_closed",
         "test_build_tag_filter_fails_closed",
+        "test_split_build_tag_filter_fails_closed",
+        "test_build_tests_only_false_fails_closed",
         "test_unclassified_build_fails_closed",
         "test_clippy_without_skip_incompatible_fails_closed",
+        "test_clippy_with_skip_disable_alias_fails_closed",
+        "test_clippy_with_skip_false_alias_fails_closed",
+        "test_test_with_timeout_disable_alias_fails_closed",
+        "test_release_with_skip_false_alias_fails_closed",
         "test_release_with_clippy_config_fails_closed",
         "test_release_with_arbitrary_exclusion_fails_closed",
         "test_test_negative_target_fails_closed",

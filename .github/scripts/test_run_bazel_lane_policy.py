@@ -85,6 +85,21 @@ class LaneSelectionQualificationTest(unittest.TestCase):
                 "//codex-rs/uds:uds-unit-tests-bin",
             )
 
+    def test_split_test_filter_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "test-selection override"):
+            self.validate(
+                "test",
+                "--config=ci-windows",
+                *self.common_options(),
+                subject.CANONICAL_TEST_TAG_FILTER,
+                subject.CANONICAL_SKIP_INCOMPATIBLE,
+                subject.CANONICAL_TEST_VERBOSE_TIMEOUTS,
+                "--test_filter",
+                "NoSuchTest",
+                "--",
+                "//codex-rs/uds:uds-unit-tests-bin",
+            )
+
     def test_test_arg_fails_closed(self) -> None:
         with self.assertRaisesRegex(ValueError, "test-selection override"):
             self.validate(
@@ -99,6 +114,21 @@ class LaneSelectionQualificationTest(unittest.TestCase):
                 "//codex-rs/uds:uds-unit-tests-bin",
             )
 
+    def test_split_test_arg_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "test-selection override"):
+            self.validate(
+                "test",
+                "--config=ci-windows",
+                *self.common_options(),
+                subject.CANONICAL_TEST_TAG_FILTER,
+                subject.CANONICAL_SKIP_INCOMPATIBLE,
+                subject.CANONICAL_TEST_VERBOSE_TIMEOUTS,
+                "--test_arg",
+                "NoSuchTest",
+                "--",
+                "//codex-rs/uds:uds-unit-tests-bin",
+            )
+
     def test_alternate_test_tag_filter_fails_closed(self) -> None:
         with self.assertRaisesRegex(ValueError, "test qualification requires exactly"):
             self.validate(
@@ -106,6 +136,20 @@ class LaneSelectionQualificationTest(unittest.TestCase):
                 "--config=ci-windows",
                 *self.common_options(),
                 "--test_tag_filters=-manual",
+                subject.CANONICAL_SKIP_INCOMPATIBLE,
+                subject.CANONICAL_TEST_VERBOSE_TIMEOUTS,
+                "--",
+                "//codex-rs/uds:uds-unit-tests-bin",
+            )
+
+    def test_split_test_tag_filter_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "test-selection override"):
+            self.validate(
+                "test",
+                "--config=ci-windows",
+                *self.common_options(),
+                "--test_tag_filters",
+                "-manual",
                 subject.CANONICAL_SKIP_INCOMPATIBLE,
                 subject.CANONICAL_TEST_VERBOSE_TIMEOUTS,
                 "--",
@@ -140,6 +184,35 @@ class LaneSelectionQualificationTest(unittest.TestCase):
                 "//codex-rs/uds:uds-unit-tests-bin",
             )
 
+    def test_split_build_tag_filter_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "test-selection override"):
+            self.validate(
+                "build",
+                "--config=clippy",
+                "--config=ci-windows",
+                *self.common_options(),
+                subject.CANONICAL_SKIP_INCOMPATIBLE,
+                subject.CLIPPY_JOB_METADATA,
+                "--build_tag_filters",
+                "-required",
+                "--",
+                "//codex-rs/uds:uds-unit-tests-bin",
+            )
+
+    def test_build_tests_only_false_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "test-selection override"):
+            self.validate(
+                "build",
+                "--config=clippy",
+                "--config=ci-windows",
+                *self.common_options(),
+                subject.CANONICAL_SKIP_INCOMPATIBLE,
+                subject.CLIPPY_JOB_METADATA,
+                "--build_tests_only=false",
+                "--",
+                "//codex-rs/uds:uds-unit-tests-bin",
+            )
+
     def test_unclassified_build_fails_closed(self) -> None:
         with self.assertRaisesRegex(ValueError, "one recognized lane metadata"):
             self.validate(
@@ -160,6 +233,60 @@ class LaneSelectionQualificationTest(unittest.TestCase):
                 subject.CLIPPY_JOB_METADATA,
                 "--",
                 "//codex-rs/uds:uds-unit-tests-bin",
+            )
+
+    def test_clippy_with_skip_disable_alias_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "clippy qualification requires exactly"):
+            self.validate(
+                "build",
+                "--config=clippy",
+                "--config=ci-windows",
+                *self.common_options(),
+                subject.CANONICAL_SKIP_INCOMPATIBLE,
+                "--noskip_incompatible_explicit_targets",
+                subject.CLIPPY_JOB_METADATA,
+                "--",
+                "//codex-rs/uds:uds-unit-tests-bin",
+            )
+
+    def test_clippy_with_skip_false_alias_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "clippy qualification requires exactly"):
+            self.validate(
+                "build",
+                "--config=clippy",
+                "--config=ci-windows",
+                *self.common_options(),
+                subject.CANONICAL_SKIP_INCOMPATIBLE,
+                "--skip_incompatible_explicit_targets=false",
+                subject.CLIPPY_JOB_METADATA,
+                "--",
+                "//codex-rs/uds:uds-unit-tests-bin",
+            )
+
+    def test_test_with_timeout_disable_alias_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "test qualification requires exactly"):
+            self.validate(
+                "test",
+                "--config=ci-windows",
+                *self.common_options(),
+                subject.CANONICAL_TEST_TAG_FILTER,
+                subject.CANONICAL_SKIP_INCOMPATIBLE,
+                subject.CANONICAL_TEST_VERBOSE_TIMEOUTS,
+                "--notest_verbose_timeout_warnings",
+                "--",
+                "//codex-rs/uds:uds-unit-tests-bin",
+            )
+
+    def test_release_with_skip_false_alias_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "release qualification rejects"):
+            self.validate(
+                "build",
+                "--config=ci-windows",
+                *self.common_options(),
+                subject.RELEASE_JOB_METADATA,
+                "--skip_incompatible_explicit_targets=false",
+                "--",
+                *subject.CANONICAL_RELEASE_TARGETS,
             )
 
     def test_release_with_clippy_config_fails_closed(self) -> None:
