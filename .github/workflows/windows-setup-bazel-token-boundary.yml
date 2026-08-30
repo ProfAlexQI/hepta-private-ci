@@ -51,7 +51,9 @@ jobs:
 
       - name: Verify cross-platform setup-token boundary
         shell: bash
-        run: python3 scripts/verify-windows-gnullvm-setup-token-cross-platform.py
+        run: |
+          python3 scripts/verify-windows-gnullvm-setup-token-cross-platform.py
+          python3 scripts/verify-windows-gnullvm-setup-token-receipt-truth.py
 
       - name: Exercise pinned setup-bazel composite action
         uses: ./.github/actions/setup-bazel-ci
@@ -122,7 +124,7 @@ jobs:
                   if runner_os == "Windows"
                   else "not_applicable"
               ),
-              "strict_step_parser_executed_before_setup_action": True,
+              "strict_step_parser_executed_before_setup_action": runner_os == "Linux",
               "cross_platform_verifier_executed_before_setup_action": True,
               "anonymous_step_between_setup_and_scrub_allowed": False,
               "duplicate_runs_or_steps_mapping_allowed": False,
