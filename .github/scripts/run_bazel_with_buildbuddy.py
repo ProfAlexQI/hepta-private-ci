@@ -31,6 +31,21 @@ REMOTE_REPO_CONTENTS_CACHE_STARTUP_OPTIONS = {
 LOCAL_WINDOWS_CI_CONFIG = "--config=ci-windows"
 LOCAL_WINDOWS_MSVC_HOST_PLATFORM = "--host_platform=//:local_windows_msvc"
 LOCAL_WINDOWS_MSVC_TARGET_PLATFORM = "--platforms=//:local_windows_msvc"
+LOCAL_WINDOWS_GNULLVM_METADATA = "--build_metadata=TAG_windows_gnullvm_local=true"
+WINDOWS_MSVC_SDK_ENV = (
+    "INCLUDE",
+    "LIB",
+    "LIBPATH",
+    "UCRTVersion",
+    "UniversalCRTSdkDir",
+    "VCINSTALLDIR",
+    "VCToolsInstallDir",
+    "WindowsLibPath",
+    "WindowsSdkBinPath",
+    "WindowsSdkDir",
+    "WindowsSDKLibVersion",
+    "WindowsSDKVersion",
+)
 
 
 def startup_args(args: Sequence[str], env: Mapping[str, str]) -> list[str]:
@@ -160,6 +175,38 @@ def local_windows_msvc_fallback_config(
     return None
 
 
+def local_windows_gnullvm_target_env_sanitizers(
+    args: Sequence[str], env: Mapping[str, str]
+) -> list[str]:
+    """Unset MSVC SDK variables only from the local gnullvm target config.
+
+    The keyless hybrid lane executes tools on an MSVC execution platform while
+    compiling the qualified target for gnullvm. `run-bazel-ci-core.sh` exposes
+    the developer-shell variables to both configurations for ordinary Windows
+    builds. Bazel applies `--action_env` to target configurations and
+    `--host_action_env` to execution configurations, with the latest option for
+    a name winning. Appending explicit target unsets here keeps repository and
+    MSVC execution probes intact while preventing target actions from observing
+    the MSVC SDK environment.
+    """
+    if env.get("BUILDBUDDY_API_KEY") or env.get("RUNNER_OS") != "Windows":
+        return []
+
+    try:
+        separator_idx = args.index("--")
+    except ValueError:
+        separator_idx = len(args)
+    bazel_options = args[:separator_idx]
+    if LOCAL_WINDOWS_GNULLVM_METADATA not in bazel_options:
+        return []
+
+    return [
+        f"--action_env=={name}"
+        for name in WINDOWS_MSVC_SDK_ENV
+        if f"--action_env=={name}" not in bazel_options
+    ]
+
+
 def bazel_args_with_remote_config(
     args: Sequence[str], env: Mapping[str, str]
 ) -> list[str]:
@@ -218,9 +265,13 @@ def bazel_args_with_remote_config(
             arg.startswith(option_prefix) for arg in configured_args[:separator_idx]
         )
     ]
+    target_env_sanitizers = local_windows_gnullvm_target_env_sanitizers(
+        configured_args, env
+    )
     return [
         *configured_args[:separator_idx],
         *cache_args,
+        *target_env_sanitizers,
         *configured_args[separator_idx:],
     ]
 
