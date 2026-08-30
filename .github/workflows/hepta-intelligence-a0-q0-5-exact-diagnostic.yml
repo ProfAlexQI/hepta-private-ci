@@ -17,6 +17,7 @@ env:
   EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
   EXPECTED_HEAD_SHA: f950ea4e81d9a33a37ae728edd31492afe192c77
   EXPECTED_TREE_SHA: 48d7291dbe67af7c4585dff63aa77345b72406ba
+  A0_SOURCE_HEAD: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
 
 jobs:
   exact-integration-diagnostic:
@@ -38,7 +39,12 @@ jobs:
           test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
           test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE_SHA"
-          test "$(git rev-list --parents -n 1 HEAD | awk '{print NF-1}')" -ge 2
+          mapfile -t parents < <(git show -s --format=%P HEAD)
+          read -r first_parent second_parent extra <<< "${parents[0]}"
+          test "$first_parent" = "$A0_SOURCE_HEAD"
+          test -n "$second_parent"
+          test -z "${extra:-}"
+          git cat-file -e "$A0_SOURCE_HEAD^{commit}"
           mkdir -p "$RUNNER_TEMP/hepta-intelligence-a0-q0-5-diagnostic"
           {
             echo "repository=$GITHUB_REPOSITORY"
@@ -47,9 +53,39 @@ jobs:
             echo "candidate_head=$(git rev-parse HEAD)"
             echo "candidate_tree=$(git rev-parse HEAD^{tree})"
             echo "candidate_parents=$(git show -s --format=%P HEAD)"
+            echo "a0_source_head=$A0_SOURCE_HEAD"
             echo "runner_os=$RUNNER_OS"
             echo "runner_arch=$RUNNER_ARCH"
           } > "$RUNNER_TEMP/hepta-intelligence-a0-q0-5-diagnostic/identity.txt"
+
+      - name: Verify all A0-owned blobs are byte-identical to the first parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$A0_SOURCE_HEAD" <<'PY'
+          import json
+          import pathlib
+          import subprocess
+          import sys
+
+          a0 = sys.argv[1]
+          root = pathlib.Path.cwd()
+          integration = json.loads(
+              (root / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json").read_text()
+          )
+          paths = integration["allowed_changed_paths"]
+          assert len(paths) == 17, paths
+          for path in paths:
+              current = subprocess.check_output(
+                  ["git", "rev-parse", f"HEAD:{path}"], text=True
+              ).strip()
+              source = subprocess.check_output(
+                  ["git", "rev-parse", f"{a0}:{path}"], text=True
+              ).strip()
+              if current != source:
+                  raise SystemExit(f"A0 blob drift: {path}: {current} != {source}")
+          print("PASS_A0_FIRST_PARENT_BLOB_IDENTITY")
+          PY
 
       - name: Set up repository CI tools
         uses: ./.github/actions/setup-ci
@@ -76,7 +112,7 @@ jobs:
             scripts/verify-hepta-intelligence-document-authority.py \
             scripts/verify-hepta-intelligence-master-plan.py
 
-      - name: Verify A0 plan, document authority, truth, and compatibility
+      - name: Verify integration plan, document authority, truth, and compatibility
         shell: bash
         run: |
           set -euo pipefail
@@ -86,8 +122,22 @@ jobs:
           for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
             python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
           done
-          GITHUB_SHA="$EXPECTED_HEAD_SHA" python3 scripts/verify-hepta-intelligence-a0-authority.py \
-            > "$RUNNER_TEMP/hepta-intelligence-a0-q0-5-diagnostic/a0-authority-receipt.json"
+
+      - name: Re-verify canonical A0 source in an isolated first-parent worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          a0_dir="$RUNNER_TEMP/hepta-intelligence-a0-source"
+          git worktree add --detach "$a0_dir" "$A0_SOURCE_HEAD"
+          (
+            cd "$a0_dir"
+            env -u GITHUB_HEAD_REF -u GITHUB_REF_NAME \
+              GITHUB_SHA="$A0_SOURCE_HEAD" \
+              GITHUB_REPOSITORY="$EXPECTED_REPOSITORY" \
+              python3 scripts/verify-hepta-intelligence-a0-authority.py \
+              > "$RUNNER_TEMP/hepta-intelligence-a0-q0-5-diagnostic/a0-authority-receipt.json"
+          )
+          git worktree remove --force "$a0_dir"
 
       - name: Repository format gate
         shell: bash
@@ -108,6 +158,8 @@ jobs:
         run: |
           set -euo pipefail
           cargo shear --deny-warnings
+          cargo metadata --locked --no-deps --format-version 1 \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(p["name"] == "codex-hepta-matrixd" for p in d["packages"])'
 
       - name: Cargo deny checked policy gate
         uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
