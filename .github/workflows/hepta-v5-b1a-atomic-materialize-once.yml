@@ -1,0 +1,164 @@
+name: Hepta V5 B1a atomic provider boundary materializer (one shot)
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-v5-b1a-atomic-pair-20260830
+    paths:
+      - .github/workflows/hepta-v5-b1a-atomic-materialize-once.yml
+      - scripts/.hepta-v5-b1a-atomic-payload.tgz
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-v5-b1a-atomic-materialize-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HEPTA_B1A_BASE_SHA: 382d3019d47990cd1e2db8dce9ab1d54cc49813a
+  HEPTA_B1A_PAYLOAD_SHA256: fbbb5c4446925b87f7ca41b79832fde75e594983be276a33bf3d568e8937c81e
+  HEPTA_B1A_BRANCH: codex/hepta-architecture-v5-b1a-atomic-pair-20260830
+  HEPTA_B1A_BOOTSTRAP: .github/workflows/hepta-v5-b1a-atomic-materialize-once.yml
+  HEPTA_B1A_ARCHIVE: scripts/.hepta-v5-b1a-atomic-payload.tgz
+
+jobs:
+  materialize-and-qualify:
+    name: Materialize and qualify atomic B1a on current B0
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact staging head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify exact staging history and payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$HEPTA_B1A_BRANCH"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$HEPTA_B1A_BASE_SHA" HEAD
+          test "$(git merge-base "$HEPTA_B1A_BASE_SHA" HEAD)" = "$HEPTA_B1A_BASE_SHA"
+          actual="$(git diff --name-only "$HEPTA_B1A_BASE_SHA..HEAD" | LC_ALL=C sort)"
+          expected="$(printf '%s\n' "$HEPTA_B1A_BOOTSTRAP" "$HEPTA_B1A_ARCHIVE" | LC_ALL=C sort)"
+          test "$actual" = "$expected"
+          test "$(sha256sum "$HEPTA_B1A_ARCHIVE" | awk '{print $1}')" = "$HEPTA_B1A_PAYLOAD_SHA256"
+          git diff --check "$HEPTA_B1A_BASE_SHA..HEAD"
+
+      - name: Authenticate and extract reviewed payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/hepta-v5-b1a-payload"
+          mkdir -p "$RUNNER_TEMP/hepta-v5-b1a-payload"
+          python3 - <<'PY'
+          import pathlib
+          import tarfile
+
+          archive = pathlib.Path("scripts/.hepta-v5-b1a-atomic-payload.tgz")
+          output = pathlib.Path("${{ runner.temp }}/hepta-v5-b1a-payload")
+          expected = {
+              ".github/workflows/hepta-architecture-v5-b1a-provider-boundary.yml",
+              "codex-rs/hepta-contracts/src/checked_provider_operation.rs",
+              "codex-rs/hepta-contracts/tests/provider_verified_use_boundary.rs",
+              "docs/architecture/HEPTA_P0_7B_B1A_PROVIDER_BOUNDARY_CONTRACT_V1.md",
+              "docs/architecture/HEPTA_P0_7B_B1A_STATUS.json",
+              "docs/architecture/HEPTA_V5_B1A_PROVIDER_CALLSITE_INVENTORY.json",
+              "scripts/verify-hepta-v5-b1a-format.py",
+              "scripts/verify-hepta-v5-b1a-provider-boundary.py",
+          }
+          with tarfile.open(archive, "r:gz") as bundle:
+              files = set()
+              for member in bundle.getmembers():
+                  name = member.name.removeprefix("./")
+                  path = pathlib.PurePosixPath(name)
+                  if path.is_absolute() or ".." in path.parts:
+                      raise SystemExit(f"unsafe payload path: {member.name}")
+                  if member.isfile():
+                      files.add(name)
+                  elif not member.isdir():
+                      raise SystemExit(f"unsupported payload entry: {member.name}")
+              if files != expected:
+                  raise SystemExit(f"payload file set drifted: {sorted(files ^ expected)}")
+              bundle.extractall(output, filter="data")
+          PY
+          cp -a "$RUNNER_TEMP/hepta-v5-b1a-payload/." .
+          chmod 755 scripts/verify-hepta-v5-b1a-format.py scripts/verify-hepta-v5-b1a-provider-boundary.py
+          git add \
+            .github/workflows/hepta-architecture-v5-b1a-provider-boundary.yml \
+            codex-rs/hepta-contracts/src/checked_provider_operation.rs \
+            codex-rs/hepta-contracts/tests/provider_verified_use_boundary.rs \
+            docs/architecture/HEPTA_P0_7B_B1A_PROVIDER_BOUNDARY_CONTRACT_V1.md \
+            docs/architecture/HEPTA_P0_7B_B1A_STATUS.json \
+            docs/architecture/HEPTA_V5_B1A_PROVIDER_CALLSITE_INVENTORY.json \
+            scripts/verify-hepta-v5-b1a-format.py \
+            scripts/verify-hepta-v5-b1a-provider-boundary.py
+
+      - name: Set up repository CI dependencies
+        uses: ./.github/actions/setup-ci
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Validate source contracts and formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/verify-hepta-v5-b1a-format.py scripts/verify-hepta-v5-b1a-provider-boundary.py
+          python3 -m json.tool docs/architecture/HEPTA_P0_7B_B1A_STATUS.json >/dev/null
+          python3 -m json.tool docs/architecture/HEPTA_V5_B1A_PROVIDER_CALLSITE_INVENTORY.json >/dev/null
+          ruby -e 'require "yaml"; YAML.safe_load_file(".github/workflows/hepta-architecture-v5-b1a-provider-boundary.yml", aliases: true)'
+          python3 scripts/verify-hepta-v5-b1a-provider-boundary.py
+          python3 scripts/verify-hepta-v5-b1a-format.py
+          python3 scripts/verify-hepta-v5-b1a-format.py --check
+          python3 scripts/verify-hepta-v5-b1a-provider-boundary.py
+          git diff --check
+
+      - name: Locked atomic B1a Rust qualification
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --locked --no-deps --format-version 1 >/dev/null
+          cargo test --locked -p codex-hepta-contracts --test provider_verified_use_boundary -- --nocapture
+          cargo test --locked -p codex-hepta-contracts
+          cargo check --locked -p codex-hepta-contracts --all-targets
+          cargo clippy --locked -p codex-hepta-contracts --all-targets -- -D warnings
+
+      - name: Verify Bazel lock and final source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          just bazel-lock-check
+          python3 scripts/verify-hepta-v5-b1a-provider-boundary.py
+          git diff --check
+
+      - name: Seal exact source commit and remove bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "$HEPTA_B1A_ARCHIVE" "$HEPTA_B1A_BOOTSTRAP"
+          git add -A
+          actual="$(git diff --cached --name-only | LC_ALL=C sort)"
+          expected="$(printf '%s\n' \
+            .github/workflows/hepta-architecture-v5-b1a-provider-boundary.yml \
+            "$HEPTA_B1A_BOOTSTRAP" \
+            "$HEPTA_B1A_ARCHIVE" \
+            codex-rs/hepta-contracts/src/checked_provider_operation.rs \
+            codex-rs/hepta-contracts/tests/provider_verified_use_boundary.rs \
+            docs/architecture/HEPTA_P0_7B_B1A_PROVIDER_BOUNDARY_CONTRACT_V1.md \
+            docs/architecture/HEPTA_P0_7B_B1A_STATUS.json \
+            docs/architecture/HEPTA_V5_B1A_PROVIDER_CALLSITE_INVENTORY.json \
+            scripts/verify-hepta-v5-b1a-format.py \
+            scripts/verify-hepta-v5-b1a-provider-boundary.py | LC_ALL=C sort)"
+          test "$actual" = "$expected"
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat(hepta): make B1a provider claims atomic"
+          git push origin "HEAD:$HEPTA_B1A_BRANCH"
