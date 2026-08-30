@@ -28,10 +28,7 @@ CLIPPY_MANUAL_TEST_QUERY = (
     '//codex-rs/... except //codex-rs/v8-poc/...))'
 )
 QUERY_OPTIONS = (
-    "--config=ci-windows",
     "--noshow_progress",
-    "--nouse_action_cache",
-    "--nouse_analysis_cache",
     "--output=label",
 )
 CRC32_POLYNOMIAL = 0x04C11DB7
