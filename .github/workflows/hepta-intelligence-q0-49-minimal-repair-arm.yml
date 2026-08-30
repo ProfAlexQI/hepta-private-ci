@@ -1,0 +1,371 @@
+name: Hepta Intelligence Q0.49 minimal dependency repair
+
+on:
+  push:
+    branches:
+      - diagnostic/hepta-intelligence-q0-49-minimal-repair-arm-20260830
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-q0-49-minimal-repair-arm
+  cancel-in-progress: true
+
+jobs:
+  reconstruct-q049:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    env:
+      SOURCE_SHA: f2f200969fa0076178276bceab2eb21d23f0519e
+      SOURCE_TREE: e6d9a631345927a8c0817080a2f8cab150c516f3
+      BYTES_OLD_VERSION: 1.11.1
+      BYTES_VERSION: 1.12.1
+      BYTES_CHECKSUM: fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04
+      ARTIFACT_DIR: artifacts/q049-minimal-arm
+
+    steps:
+      - name: Checkout exact diagnostic head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind one diagnostic path and select Q0.48
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mapfile -t changed < <(
+            git diff --name-only --no-renames "$SOURCE_SHA" HEAD
+          )
+          printf '%s\n' "${changed[@]}"
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = \
+            ".github/workflows/hepta-intelligence-q0-49-minimal-repair-arm.yml"
+          git diff --check "$SOURCE_SHA" HEAD
+          git switch --detach "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git show -s --format=%T HEAD)" = "$SOURCE_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Install repository CI prerequisites
+        uses: ./.github/actions/setup-ci
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt,clippy
+
+      - name: Install pinned cargo-shear and cargo-deny
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: cargo-shear@1.11.2,cargo-deny@0.19.0
+
+      - name: Apply and validate minimal Cargo repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR/files/.github/workflows"
+          mkdir -p "$ARTIFACT_DIR/files/codex-rs/hepta-evidence"
+          mkdir -p "$ARTIFACT_DIR/files/codex-rs/ext/hepta-governance"
+          mkdir -p "$ARTIFACT_DIR/files/codex-rs/hepta-matrix-protocol"
+          cp codex-rs/Cargo.lock "$ARTIFACT_DIR/Cargo.lock.before"
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"expected one token in {path}: {old!r}; count={count}"
+                  )
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          def remove_once(path: str, token: str) -> None:
+              replace_once(path, token, "")
+
+          replace_once(
+              "codex-rs/Cargo.toml",
+              'bytes = "1.10.1"',
+              'bytes = "1.12.1"',
+          )
+          replace_once(
+              ".github/workflows/rust-ci.yml",
+              "        run: cargo shear --deny-warnings\n",
+              "        run: cargo shear --locked --deny-warnings\n",
+          )
+
+          old = """      - name: Run cargo-deny
+                  uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
+                  with:
+                    rust-version: 1.95.0
+                    manifest-path: ./codex-rs/Cargo.toml
+                    # Docker actions do not inherit defaults.run.working-directory. Keep
+                    # global flags before `check`, but pass `--config` as a command flag;
+                    # cargo-deny 0.19 rejects `--config` in the global argument position.
+                    arguments: --all-features
+                    command-arguments: --config ./codex-rs/deny.toml
+          """
+          new = """      - name: Install pinned cargo-deny
+                  uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+                  with:
+                    tool: cargo-deny@0.19.0
+
+                - name: Run cargo-deny
+                  run: cargo +1.95.0 deny --all-features check --config deny.toml
+          """
+          replace_once(".github/workflows/cargo-deny.yml", old, new)
+
+          remove_once(
+              "codex-rs/hepta-evidence/Cargo.toml",
+              "sha2 = { workspace = true }\n",
+          )
+          remove_once(
+              "codex-rs/ext/hepta-governance/Cargo.toml",
+              "pretty_assertions = { workspace = true }\n",
+          )
+          remove_once(
+              "codex-rs/hepta-matrix-protocol/Cargo.toml",
+              "pretty_assertions = { workspace = true }\n",
+          )
+          PY
+
+          cargo +1.95.0 update \
+            --manifest-path codex-rs/Cargo.toml \
+            -p "bytes@$BYTES_OLD_VERSION" \
+            --precise "$BYTES_VERSION" \
+            >"$ARTIFACT_DIR/cargo-update.stdout" \
+            2>"$ARTIFACT_DIR/cargo-update.stderr"
+
+          cp codex-rs/Cargo.lock "$ARTIFACT_DIR/Cargo.lock.minimal"
+          git diff -- codex-rs/Cargo.lock \
+            >"$ARTIFACT_DIR/Cargo.lock.diff"
+
+          python3 - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          before = tomllib.loads(
+              Path(os.environ["ARTIFACT_DIR"] + "/Cargo.lock.before").read_text()
+          )["package"]
+          after = tomllib.loads(Path("codex-rs/Cargo.lock").read_text())["package"]
+
+          def external(packages):
+              return {
+                  (
+                      p["name"],
+                      p["version"],
+                      p.get("source"),
+                      p.get("checksum"),
+                  )
+                  for p in packages
+                  if p.get("source") is not None
+              }
+
+          removed = external(before) - external(after)
+          added = external(after) - external(before)
+          expected_removed = {
+              (
+                  "bytes",
+                  os.environ["BYTES_OLD_VERSION"],
+                  "registry+https://github.com/rust-lang/crates.io-index",
+                  "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33",
+              )
+          }
+          expected_added = {
+              (
+                  "bytes",
+                  os.environ["BYTES_VERSION"],
+                  "registry+https://github.com/rust-lang/crates.io-index",
+                  os.environ["BYTES_CHECKSUM"],
+              )
+          }
+          if removed != expected_removed or added != expected_added:
+              raise SystemExit(
+                  f"non-minimal external lock delta: removed={removed!r}; "
+                  f"added={added!r}"
+              )
+
+          before_local = {
+              p["name"]: p for p in before if p.get("source") is None
+          }
+          after_local = {
+              p["name"]: p for p in after if p.get("source") is None
+          }
+          changed_local = {
+              name
+              for name in before_local.keys() | after_local.keys()
+              if before_local.get(name) != after_local.get(name)
+          }
+          expected_local = {
+              "codex-hepta-evidence",
+              "codex-hepta-governance",
+              "codex-hepta-matrix-protocol",
+          }
+          if changed_local != expected_local:
+              raise SystemExit(
+                  f"unexpected local lock delta: {sorted(changed_local)!r}"
+              )
+
+          expected_removed_deps = {
+              "codex-hepta-evidence": "sha2 0.10.9",
+              "codex-hepta-governance": "pretty_assertions",
+              "codex-hepta-matrix-protocol": "pretty_assertions",
+          }
+          for name, dependency in expected_removed_deps.items():
+              before_deps = set(before_local[name].get("dependencies", []))
+              after_deps = set(after_local[name].get("dependencies", []))
+              if before_deps - after_deps != {dependency}:
+                  raise SystemExit(
+                      f"unexpected dependency removal for {name}: "
+                      f"{before_deps - after_deps!r}"
+                  )
+              if after_deps - before_deps:
+                  raise SystemExit(
+                      f"unexpected dependency addition for {name}: "
+                      f"{after_deps - before_deps!r}"
+                  )
+          PY
+
+          set +e
+          cargo +1.95.0 metadata \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --no-deps \
+            --format-version=1 \
+            >"$ARTIFACT_DIR/cargo-metadata.json" \
+            2>"$ARTIFACT_DIR/cargo-metadata.stderr"
+          metadata_rc=$?
+
+          (
+            cd codex-rs
+            cargo +1.95.0 shear --locked --deny-warnings --format=json
+          ) >"$ARTIFACT_DIR/cargo-shear.json" \
+            2>"$ARTIFACT_DIR/cargo-shear.stderr"
+          shear_rc=$?
+
+          cargo +1.95.0 check \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --all-targets \
+            -p codex-hepta-automation \
+            -p codex-hepta-contracts \
+            -p codex-hepta-evidence \
+            -p codex-hepta-fleet \
+            -p codex-hepta-governance \
+            -p codex-hepta-matrix-protocol \
+            >"$ARTIFACT_DIR/focused-check.log" 2>&1
+          check_rc=$?
+
+          cargo +1.95.0 test \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --no-run \
+            -p codex-hepta-automation \
+            -p codex-hepta-contracts \
+            -p codex-hepta-evidence \
+            -p codex-hepta-fleet \
+            -p codex-hepta-governance \
+            -p codex-hepta-matrix-protocol \
+            >"$ARTIFACT_DIR/focused-test-no-run.log" 2>&1
+          test_rc=$?
+
+          (
+            cd codex-rs
+            cargo +1.95.0 deny --all-features check --config deny.toml
+          ) >"$ARTIFACT_DIR/cargo-deny.log" 2>&1
+          deny_rc=$?
+          set -e
+
+          cp .github/workflows/cargo-deny.yml \
+            "$ARTIFACT_DIR/files/.github/workflows/cargo-deny.yml"
+          cp .github/workflows/rust-ci.yml \
+            "$ARTIFACT_DIR/files/.github/workflows/rust-ci.yml"
+          cp codex-rs/Cargo.toml "$ARTIFACT_DIR/files/codex-rs/Cargo.toml"
+          cp codex-rs/Cargo.lock "$ARTIFACT_DIR/files/codex-rs/Cargo.lock"
+          cp codex-rs/hepta-evidence/Cargo.toml \
+            "$ARTIFACT_DIR/files/codex-rs/hepta-evidence/Cargo.toml"
+          cp codex-rs/ext/hepta-governance/Cargo.toml \
+            "$ARTIFACT_DIR/files/codex-rs/ext/hepta-governance/Cargo.toml"
+          cp codex-rs/hepta-matrix-protocol/Cargo.toml \
+            "$ARTIFACT_DIR/files/codex-rs/hepta-matrix-protocol/Cargo.toml"
+
+          {
+            echo "diagnostic_head=$GITHUB_SHA"
+            echo "source_sha=$SOURCE_SHA"
+            echo "source_tree=$SOURCE_TREE"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "metadata_rc=$metadata_rc"
+            echo "shear_rc=$shear_rc"
+            echo "focused_check_rc=$check_rc"
+            echo "focused_test_no_run_rc=$test_rc"
+            echo "cargo_deny_rc=$deny_rc"
+            echo "cargo_lock_sha256=$(sha256sum codex-rs/Cargo.lock | awk '{print $1}')"
+          } >"$ARTIFACT_DIR/summary.env"
+          cat "$ARTIFACT_DIR/summary.env"
+
+          test "$metadata_rc" -eq 0
+          test "$shear_rc" -eq 0
+          test "$check_rc" -eq 0
+          test "$test_rc" -eq 0
+          test "$deny_rc" -eq 0
+
+      - name: Set up Bazel for deterministic lock update
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          target: aarch64-unknown-linux-gnu
+
+      - name: Regenerate Bazel lock and seal candidate files
+        shell: bash
+        run: |
+          set -euo pipefail
+          just bazel-lock-update \
+            >"$ARTIFACT_DIR/bazel-lock-update.log" 2>&1
+          cp MODULE.bazel.lock "$ARTIFACT_DIR/MODULE.bazel.lock.minimal"
+          cp MODULE.bazel.lock "$ARTIFACT_DIR/files/MODULE.bazel.lock"
+          git diff -- MODULE.bazel.lock \
+            >"$ARTIFACT_DIR/MODULE.bazel.lock.diff"
+
+          git diff --check "$SOURCE_SHA" --
+          git diff --binary "$SOURCE_SHA" -- \
+            >"$ARTIFACT_DIR/q049-minimal-source.patch"
+          git diff --name-only --no-renames "$SOURCE_SHA" -- \
+            >"$ARTIFACT_DIR/changed-paths.txt"
+
+          expected=(
+            .github/workflows/cargo-deny.yml
+            .github/workflows/rust-ci.yml
+            MODULE.bazel.lock
+            codex-rs/Cargo.lock
+            codex-rs/Cargo.toml
+            codex-rs/ext/hepta-governance/Cargo.toml
+            codex-rs/hepta-evidence/Cargo.toml
+            codex-rs/hepta-matrix-protocol/Cargo.toml
+          )
+          mapfile -t observed <"$ARTIFACT_DIR/changed-paths.txt"
+          printf 'observed=%s\n' "${observed[*]}"
+          printf 'expected=%s\n' "${expected[*]}"
+          test "${observed[*]}" = "${expected[*]}"
+
+          git add -- "${expected[@]}"
+          candidate_tree=$(git write-tree)
+          git reset --mixed "$SOURCE_SHA"
+          echo "candidate_tree=$candidate_tree" >>"$ARTIFACT_DIR/summary.env"
+          echo "module_bazel_lock_sha256=$(sha256sum MODULE.bazel.lock | awk '{print $1}')" \
+            >>"$ARTIFACT_DIR/summary.env"
+          cat "$ARTIFACT_DIR/summary.env"
+
+      - name: Upload complete Q0.49 reconstruction bundle
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-q0-49-minimal-arm-${{ github.sha }}
+          path: artifacts/q049-minimal-arm
+          if-no-files-found: error
+          retention-days: 30
