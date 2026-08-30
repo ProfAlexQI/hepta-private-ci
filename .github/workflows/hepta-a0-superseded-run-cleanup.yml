@@ -1,0 +1,91 @@
+name: Hepta A0 superseded-run cleanup
+
+on:
+  push:
+    branches:
+      - "automation/hepta-a0-superseded-run-cleanup-20260830-0120"
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: hepta-a0-superseded-run-cleanup-20260830-0120
+  cancel-in-progress: true
+
+env:
+  CURRENT_A0_HEAD: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
+
+jobs:
+  cancel-superseded:
+    name: Cancel explicit superseded A0 runs only
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - name: Validate and cancel explicit superseded runs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          headers=(
+            -H "Authorization: Bearer ${GH_TOKEN}"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+          run_ids=(
+            33283698330
+            33283737341
+            33283737367
+            33283737509
+            33284409908
+            33284651386
+            33284672050
+            33284696021
+            33284941104
+          )
+          mkdir -p artifacts
+          : > artifacts/results.ndjson
+          for run_id in "${run_ids[@]}"; do
+            metadata="$(curl -fsSL "${headers[@]}" "$api/actions/runs/$run_id")"
+            read -r head_sha status name < <(
+              python3 -c 'import json,sys; x=json.load(sys.stdin); print(x.get("head_sha", ""), x.get("status", ""), json.dumps(x.get("name", "")))' <<<"$metadata"
+            )
+            name="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]))' "$name")"
+            if [[ "$head_sha" == "$CURRENT_A0_HEAD" ]]; then
+              printf '{"run_id":%s,"disposition":"protected_current_head"}\n' "$run_id" >> artifacts/results.ndjson
+              continue
+            fi
+            case "$name" in
+              "Hepta Intelligence P0 compatibility matrix"|"v8-canary"|"blocking-ci"|*"provenance publisher"*|*"Ruff-clean replacement publisher"*) ;;
+              *)
+                printf '{"run_id":%s,"disposition":"skipped_unapproved_name"}\n' "$run_id" >> artifacts/results.ndjson
+                continue
+                ;;
+            esac
+            case "$status" in
+              queued|in_progress|pending|requested|waiting)
+                code="$(curl -sS -o /tmp/cancel-response -w '%{http_code}' -X POST "${headers[@]}" "$api/actions/runs/$run_id/cancel")"
+                if [[ "$code" != 202 && "$code" != 409 ]]; then
+                  cat /tmp/cancel-response >&2
+                  exit 1
+                fi
+                printf '{"run_id":%s,"head_sha":"%s","status_before":"%s","disposition":"cancel_requested","http_code":%s}\n' \
+                  "$run_id" "$head_sha" "$status" "$code" >> artifacts/results.ndjson
+                ;;
+              *)
+                printf '{"run_id":%s,"head_sha":"%s","status_before":"%s","disposition":"already_terminal"}\n' \
+                  "$run_id" "$head_sha" "$status" >> artifacts/results.ndjson
+                ;;
+            esac
+          done
+          cat artifacts/results.ndjson
+
+      - name: Upload cleanup receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-a0-superseded-run-cleanup-${{ github.sha }}
+          path: artifacts/results.ndjson
+          if-no-files-found: error
+          retention-days: 7
