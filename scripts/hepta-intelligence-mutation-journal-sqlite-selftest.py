@@ -35,7 +35,9 @@ def sha(label: str) -> str:
     return hashlib.sha256(label.encode("utf-8")).hexdigest()
 
 
-def expect_rejected(connection: sqlite3.Connection, statement: str, params: tuple = ()) -> None:
+def expect_rejected(
+    connection: sqlite3.Connection, statement: str, params: tuple = ()
+) -> None:
     try:
         connection.execute(statement, params)
     except sqlite3.DatabaseError:
@@ -210,10 +212,13 @@ def main() -> None:
         sha("transition:rollback:0"),
     )
     connection.execute("ROLLBACK")
-    assert connection.execute(
-        "SELECT COUNT(*) FROM cognitive_intelligence_mutation_operations WHERE operation_id = ?",
-        ("operation:rollback",),
-    ).fetchone()[0] == 0
+    assert (
+        connection.execute(
+            "SELECT COUNT(*) FROM cognitive_intelligence_mutation_operations WHERE operation_id = ?",
+            ("operation:rollback",),
+        ).fetchone()[0]
+        == 0
+    )
 
     connection.execute("BEGIN IMMEDIATE")
     insert_operation(connection, "operation:ack-loss")
