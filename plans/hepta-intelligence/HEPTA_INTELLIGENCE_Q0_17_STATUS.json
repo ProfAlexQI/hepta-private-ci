@@ -1,0 +1,38 @@
+{
+  "schema": "hepta.intelligence.q0_17.status.v1",
+  "status": "SOURCE_VALIDATED_EXECUTABLE_QUALIFICATION_PENDING",
+  "repository": "ProfHepta/hepta-private-ci",
+  "base_q0_16": {
+    "commit": "cb685205d396b2b73e69b8f0d7049516749dcd4a",
+    "tree": "5c5d6a01d357ef1be0dc9aae73ba4e3189a24fcc"
+  },
+  "implementation": {
+    "commit": "ec70f59268ecf16756cec515b6047c00ee722e88",
+    "tree": "de79568a365300baaa6f8f7e773109da8d46f8a0"
+  },
+  "source_validation": {
+    "python_compile": true,
+    "existing_helper_tests": 14,
+    "q0_17_final_command_tests": 14,
+    "combined_tests": 28,
+    "shell_syntax": true
+  },
+  "executable_qualification": {
+    "exact_head": false,
+    "synthetic_merge": false,
+    "assigned_runner": false,
+    "nonempty_steps": false,
+    "full_repository_green": false
+  },
+  "authority": {
+    "a0_candidate_qualified": false,
+    "selected": false,
+    "runtime_wired": false,
+    "production_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_authority": false,
+    "callers_ratchet": false
+  },
+  "claim": "source-only; exact-head and synthetic-merge assigned-runner evidence is required"
+}
