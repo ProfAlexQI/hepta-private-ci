@@ -1,0 +1,187 @@
+name: Hepta UI v5 current v25 dedicated 52ec Linux
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-current-v25-selfhosted-52ec-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-current-v25-selfhosted-52ec.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-current-v25-selfhosted-52ec
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: hepta-vnext-linux-x64-52ec
+    timeout-minutes: 120
+    env:
+      BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_PARENT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
+      BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-current-v25-selfhosted-52ec.yml
+      UPSTREAM_URL: https://github.com/openai/codex.git
+      UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
+      UPSTREAM_ROLE: current_r12
+      UPSTREAM_FROZEN_REF: refs/remotes/upstream/hepta-intake-20260830-r12
+      UPSTREAM_INTAKE_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R12.json
+      UPSTREAM_RECORD_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+      V12_DRIVER_COMMIT: 554d710f6a561166553f3c01fafc5b27cd8c28b9
+      V14_DRIVER_COMMIT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
+      V18_DRIVER_COMMIT: 022b91a04f443d7fe4ca2bce853bc26bccf99f84
+      V20_DRIVER_COMMIT: 781c237dbc81f49d3f22432b341d904aaa929291
+      V24_X64_DRIVER_COMMIT: 9a1fc8005bab27e668e9cba98235fc21a3021a0d
+    steps:
+      - name: Check out exact current-v25 dedicated-52ec commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install deterministic remediation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes jq ripgrep ruby patch
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+
+      - name: Execute v24 remediation with semantic addon self-test
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source_workflow="$RUNNER_TEMP/hepta-ui-v5-remediation-v24-x64.yml"
+          generated_driver="$RUNNER_TEMP/hepta-ui-v5-remediation-v25-driver.sh"
+          if ! git cat-file -e "$V24_X64_DRIVER_COMMIT^{commit}"; then
+            git fetch --no-tags origin "$V24_X64_DRIVER_COMMIT"
+          fi
+          git show "$V24_X64_DRIVER_COMMIT:.github/workflows/hepta-ui-v5-remediation-v24-x64.yml" > "$source_workflow"
+          awk '
+            /      - name: Execute v20 remediation with corrected Windows patch payload/ { found=1; next }
+            found && /        shell: bash/ { next }
+            found && /        run: \|/ { in_run=1; next }
+            in_run { sub(/^          /, ""); print }
+          ' "$source_workflow" > "$generated_driver"
+          test -s "$generated_driver"
+
+          export V25_GENERATED_DRIVER="$generated_driver"
+          python3 <<'PY'
+          from __future__ import annotations
+
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["V25_GENERATED_DRIVER"])
+          text = path.read_text(encoding="utf-8")
+          lines = text.splitlines(keepends=True)
+          marker = "v24 Windows addon still contains double-escaped statement newlines"
+          marker_indices = [index for index, line in enumerate(lines) if marker in line]
+          if len(marker_indices) != 1:
+              raise SystemExit(
+                  f"v25 v24-guard marker: expected 1 match, found {len(marker_indices)}"
+              )
+          raise_index = marker_indices[0]
+          guard_index = raise_index - 1
+          if guard_index < 0 or not lines[guard_index].lstrip().startswith("if '!= 1:"):
+              raise SystemExit("v25 v24-guard predecessor is not the expected conditional")
+          if not lines[raise_index].lstrip().startswith("raise SystemExit("):
+              raise SystemExit("v25 v24-guard marker is not inside the expected raise")
+
+          semantic_block = r'''
+          import re as _v25_re
+          import subprocess as _v25_subprocess
+          import sys as _v25_sys
+          import tempfile as _v25_tempfile
+
+          with _v25_tempfile.TemporaryDirectory(prefix="hepta-v25-addon-") as _v25_temp:
+              _v25_root = Path(_v25_temp)
+              _v25_addon = _v25_root / "addon.py"
+              _v25_fixture = _v25_root / "remediation.sh"
+              _v25_addon.write_text(decoded, encoding="utf-8")
+              _v25_fixture.write_text(
+                  "#!/usr/bin/env bash\nset -euo pipefail\ngit add -A\n",
+                  encoding="utf-8",
+              )
+              _v25_subprocess.run(
+                  [_v25_sys.executable, str(_v25_addon), str(_v25_fixture)],
+                  check=True,
+              )
+              _v25_subprocess.run(["bash", "-n", str(_v25_fixture)], check=True)
+              _v25_generated = _v25_fixture.read_text(encoding="utf-8")
+              for _v25_command in (
+                  "scripts/hepta-workgraph-caller-scc-retirement-v1 apply >/dev/null",
+                  "scripts/hepta-workgraph-caller-scc-retirement-v1 verify >/dev/null",
+              ):
+                  if _v25_generated.count(_v25_command) != 1:
+                      raise SystemExit(
+                          f"v25 semantic fixture: expected one {_v25_command!r}"
+                      )
+                  if _v25_generated.index(_v25_command) > _v25_generated.index("git add -A"):
+                      raise SystemExit(
+                          f"v25 semantic fixture: {_v25_command!r} was inserted after staging"
+                      )
+              _v25_match = _v25_re.search(
+                  r"^python3 <<'V20_WINDOWS_BAZEL'\n(.*?)^V20_WINDOWS_BAZEL\n",
+                  _v25_generated,
+                  flags=_v25_re.MULTILINE | _v25_re.DOTALL,
+              )
+              if _v25_match is None:
+                  raise SystemExit("v25 semantic fixture did not produce the Windows Bazel patcher")
+              _v25_patcher_source = _v25_match.group(1)
+              compile(
+                  _v25_patcher_source,
+                  "<v25-generated-windows-patcher>",
+                  "exec",
+              )
+
+              _v25_workspace = _v25_root / "workspace"
+              _v25_workflow = _v25_workspace / ".github/workflows/windows-msvc-bazel.yml"
+              _v25_workflow.parent.mkdir(parents=True)
+              _v25_workflow.write_text(
+                  """name: v25-fixture
+          jobs:
+            test:
+              steps:
+                - name: Install Bazelisk
+                  shell: pwsh
+                  run: choco install bazelisk --yes --no-progress
+                - name: Run native suite
+                  shell: pwsh
+                  run: |
+                    $executionLogDirectory = Join-Path $env:RUNNER_TEMP "bazel-execution-logs"
+                    $environmentVariables = @(
+                        "BAZEL_SH",
+                        "Path"
+                    )
+          """,
+                  encoding="utf-8",
+              )
+              _v25_patcher = _v25_root / "windows-patcher.py"
+              _v25_patcher.write_text(_v25_patcher_source, encoding="utf-8")
+              _v25_subprocess.run(
+                  [_v25_sys.executable, str(_v25_patcher)],
+                  cwd=_v25_workspace,
+                  check=True,
+              )
+              _v25_patched_workflow = _v25_workflow.read_text(encoding="utf-8")
+              for _v25_expected in (
+                  "Install Rust 1.95.0 with rustfmt",
+                  "rustup which --toolchain 1.95.0 rustfmt",
+                  '"RUSTFMT"',
+              ):
+                  if _v25_patched_workflow.count(_v25_expected) != 1:
+                      raise SystemExit(
+                          f"v25 semantic fixture: expected one {_v25_expected!r}"
+                      )
+          '''.lstrip()
+          lines[guard_index : raise_index + 1] = semantic_block.splitlines(keepends=True)
+          path.write_text("".join(lines), encoding="utf-8")
+          PY
+
+          bash -n "$generated_driver"
+          bash -x "$generated_driver"
