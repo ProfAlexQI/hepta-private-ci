@@ -1,0 +1,88 @@
+name: Hepta UI v5 Native overlay ledger diagnostic v2
+
+on:
+  push:
+    branches:
+      - diagnostic/ui-v5-native-overlay-ledger-v2-dba1fce-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-native-overlay-ledger-diagnostic-v2.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v5-native-overlay-ledger-diagnostic-v2-dba1fce
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TARGET_SHA: dba1fce798e3c5ce7964a64c2f41114c375f12d0
+      DRIVER_PATH: .github/workflows/hepta-ui-v5-native-overlay-ledger-diagnostic-v2.yml
+    steps:
+      - name: Check out exact diagnostic driver
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify driver ancestry and select exact target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$TARGET_SHA"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$DRIVER_PATH"
+          git checkout --detach "$TARGET_SHA"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test -z "$(git status --short)"
+
+      - name: Produce exact strict overlay diagnostics
+        id: diagnose
+        shell: bash
+        run: |
+          set -uo pipefail
+          set +e
+          mkdir -p artifacts/ui-v5-native-overlay-diagnostic
+          scripts/hepta-native-robrix-upstream-sync-check-v2.sh --json --strict \
+            > artifacts/ui-v5-native-overlay-diagnostic/sync.json \
+            2> artifacts/ui-v5-native-overlay-diagnostic/sync.stderr.log
+          sync_rc=$?
+          scripts/hepta-native-product-shell-gate-v2.sh \
+            --output artifacts/ui-v5-native-overlay-diagnostic/product-shell.json \
+            > artifacts/ui-v5-native-overlay-diagnostic/product-shell.stdout.log \
+            2> artifacts/ui-v5-native-overlay-diagnostic/product-shell.stderr.log
+          shell_rc=$?
+          set -e
+          jq -n \
+            --arg target "$TARGET_SHA" \
+            --argjson syncRc "$sync_rc" \
+            --argjson productShellRc "$shell_rc" \
+            '{schema:"hepta.ui.v5.native-overlay-diagnostic.v2",target:$target,syncRc:$syncRc,productShellRc:$productShellRc}' \
+            > artifacts/ui-v5-native-overlay-diagnostic/summary.json
+          printf 'sync_rc=%s\nproduct_shell_rc=%s\n' "$sync_rc" "$shell_rc" >> "$GITHUB_OUTPUT"
+
+      - name: Upload exact diagnostics
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hepta-ui-v5-native-overlay-diagnostic-v2-${{ github.run_id }}
+          path: artifacts/ui-v5-native-overlay-diagnostic/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce diagnostic reproduced the current blocker
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.diagnose.outputs.sync_rc }}" != 0
+          test "${{ steps.diagnose.outputs.product_shell_rc }}" != 0
+          jq -e '
+            .status == "not_ready"
+            and .provenance_ready == true
+            and .downstream_overlay_accounted == false
+            and (.undeclared_drift | type) == "array"
+            and (.ambiguous_drift | type) == "array"
+            and (.unused_ledger_rules | type) == "array"
+          ' artifacts/ui-v5-native-overlay-diagnostic/sync.json >/dev/null
