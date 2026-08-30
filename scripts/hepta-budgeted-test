@@ -6,17 +6,58 @@ usage() {
   echo "       $0 self-test" >&2
 }
 
+sha256_stream() {
+  shasum -a 256 | awk '{print $1}'
+}
+
+snapshot_untracked_entry() {
+  local workspace="$1"
+  local file="$2"
+  local absolute="$workspace/$file"
+
+  if [[ -f "$absolute" || -L "$absolute" ]]; then
+    printf 'untracked-sha256 '
+    shasum -a 256 "$absolute" | awk -v file="$file" '{print $1 " " file}'
+    return
+  fi
+
+  # Parent repositories report an embedded, otherwise-untracked Git repository
+  # as one directory entry. Hash the nested repository state instead of passing
+  # that directory to shasum as though it were a regular file.
+  if [[ -d "$absolute" && -e "$absolute/.git" ]]; then
+    local nested_head nested_diff_sha nested_status_sha
+    nested_head="$(git -C "$absolute" rev-parse --verify HEAD 2>/dev/null || printf 'UNBORN')"
+    nested_status_sha="$(
+      git -C "$absolute" status --porcelain=v1 -z --untracked-files=all | sha256_stream
+    )"
+    if [[ "$nested_head" == "UNBORN" ]]; then
+      nested_diff_sha="$(printf '' | sha256_stream)"
+    else
+      nested_diff_sha="$(git -C "$absolute" diff --binary HEAD -- . | sha256_stream)"
+    fi
+    printf 'embedded-repo-state %s %s %s %s\n' \
+      "$nested_head" "$nested_diff_sha" "$nested_status_sha" "$file"
+    return
+  fi
+
+  if [[ -d "$absolute" ]]; then
+    printf 'untracked-directory %s\n' "$file"
+    return
+  fi
+
+  printf 'untracked-special %s\n' "$file"
+}
+
 snapshot_workspace() {
   local workspace="$1"
   local output="$2"
   {
     printf 'tracked-diff-sha256 '
-    git -C "$workspace" diff --binary HEAD -- . | shasum -a 256 | awk '{print $1}'
+    git -C "$workspace" diff --binary HEAD -- . | sha256_stream
     git -C "$workspace" status --porcelain=v1 --untracked-files=all | LC_ALL=C sort
     git -C "$workspace" ls-files --others --exclude-standard -z \
       | while IFS= read -r -d '' file; do
-          printf 'untracked-sha256 '
-          shasum -a 256 "$workspace/$file" | awk -v file="$file" '{print $1 " " file}'
+          snapshot_untracked_entry "$workspace" "$file"
         done \
       | LC_ALL=C sort
   } >"$output"
@@ -125,7 +166,7 @@ run_budgeted() {
 }
 
 self_test() (
-  local temp_repo
+  local temp_repo nested_repo
   temp_repo="$(mktemp -d /tmp/hepta-budgeted-test-self.XXXXXX)"
   trap 'rm -rf "$temp_repo"' EXIT
   git -C "$temp_repo" init -q
@@ -137,7 +178,26 @@ self_test() (
 
   run_budgeted --name success --max-seconds 2 --workspace "$temp_repo" -- sh -c 'exit 0'
 
+  nested_repo="$temp_repo/.hepta/security/advisory-db"
+  mkdir -p "$nested_repo"
+  git -C "$nested_repo" init -q
+  git -C "$nested_repo" config user.name hepta-budget-self-test
+  git -C "$nested_repo" config user.email hepta-budget-self-test@invalid
+  printf 'advisory baseline\n' >"$nested_repo/advisory"
+  git -C "$nested_repo" add advisory
+  git -C "$nested_repo" commit -qm baseline
+  run_budgeted --name clean-embedded-repository --max-seconds 2 --workspace "$temp_repo" -- sh -c 'exit 0'
+
   local rc=0
+  run_budgeted --name embedded-repository-write-denial --max-seconds 2 --workspace "$temp_repo" -- \
+    sh -c 'printf changed > .hepta/security/advisory-db/advisory' || rc=$?
+  [[ "$rc" -eq 90 ]] || {
+    echo "embedded repository write self-test expected 90, got $rc" >&2
+    return 1
+  }
+  git -C "$nested_repo" checkout -q -- advisory
+
+  rc=0
   run_budgeted --name timeout --max-seconds 1 --workspace "$temp_repo" -- sh -c 'sleep 3' || rc=$?
   [[ "$rc" -eq 124 ]] || { echo "timeout self-test expected 124, got $rc" >&2; return 1; }
 
@@ -146,7 +206,7 @@ self_test() (
     sh -c 'printf unexpected > unexpected-file' || rc=$?
   [[ "$rc" -eq 90 ]] || { echo "write self-test expected 90, got $rc" >&2; return 1; }
 
-  echo '{"schema":"hepta_budgeted_test_self_test_v1","status":"ready","timeout_enforced":true,"workspace_write_budget_enforced":true}'
+  echo '{"schema":"hepta_budgeted_test_self_test_v1","status":"ready","timeout_enforced":true,"workspace_write_budget_enforced":true,"embedded_repository_state_enforced":true}'
 )
 
 case "${1:-}" in
