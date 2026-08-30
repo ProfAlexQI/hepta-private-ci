@@ -12,6 +12,13 @@ fail() {
   exit 1
 }
 
+canonical_executable() {
+  local candidate="$1"
+  local parent
+  parent="$(cd "$(dirname "$candidate")" && pwd -P)"
+  printf '%s/%s\n' "$parent" "$(basename "$candidate")"
+}
+
 mkdir -p "$TEST_DIR/valid/bin" "$TEST_DIR/wrong/bin" "$TEST_DIR/venv/bin"
 printf '%s\n' '#!/usr/bin/env bash' 'echo "check-jsonschema, version 0.37.4"' \
   >"$TEST_DIR/valid/bin/check-jsonschema"
@@ -22,7 +29,8 @@ chmod 700 "$TEST_DIR/valid/bin/check-jsonschema" \
   "$TEST_DIR/wrong/bin/check-jsonschema" "$TEST_DIR/venv/bin/check-jsonschema"
 
 resolved="$(HEPTA_CHECK_JSONSCHEMA_BIN="$TEST_DIR/valid/bin/check-jsonschema" "$HELPER")"
-[[ "$resolved" == "$TEST_DIR/valid/bin/check-jsonschema" ]] \
+expected="$(canonical_executable "$TEST_DIR/valid/bin/check-jsonschema")"
+[[ "$resolved" == "$expected" ]] \
   || fail "explicit valid executable was not resolved"
 
 if HEPTA_CHECK_JSONSCHEMA_BIN="$TEST_DIR/wrong/bin/check-jsonschema" \
@@ -36,7 +44,8 @@ resolved="$(
   HEPTA_CHECK_JSONSCHEMA_VENV="$TEST_DIR/venv" \
     "$HELPER" --bootstrap
 )"
-[[ "$resolved" == "$TEST_DIR/venv/bin/check-jsonschema" ]] \
+expected="$(canonical_executable "$TEST_DIR/venv/bin/check-jsonschema")"
+[[ "$resolved" == "$expected" ]] \
   || fail "pre-provisioned exact venv was not reused"
 
 grep -Fq -- 'scripts/hepta-control-ui-schema-validator-v1 --bootstrap' \
