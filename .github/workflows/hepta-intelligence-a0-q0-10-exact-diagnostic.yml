@@ -1,0 +1,381 @@
+name: Hepta Intelligence A0 + Q0.10 exact integration diagnostic
+
+on:
+  push:
+    branches:
+      - "diagnostic/hepta-intelligence-a0-q0-10-exact-20260830"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-a0-q0-10-exact-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+  EXPECTED_HEAD_SHA: 3345348133276d33d13e7a30115a754b81cc4734
+  EXPECTED_TREE_SHA: fc6dbb4091009ff24996ba2fab2b7ab3977548de
+  EXPECTED_SYNTHETIC_MERGE: 0a0052f06fe35ffb1fe6ed11cbfbeb7ca8ac0a50
+  EXPECTED_SYNTHETIC_TREE: fc6dbb4091009ff24996ba2fab2b7ab3977548de
+  A0_SOURCE_HEAD: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
+  Q0_10_SECOND_PARENT: 8d7960f1805c6b2cda0d6274bf2541a535a4d30c
+  REPORT_DIR: ${{ runner.temp }}/hepta-intelligence-a0-q0-10-diagnostic
+  PYTHONPYCACHEPREFIX: ${{ runner.temp }}/hepta-python-cache
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  exact-integration-diagnostic:
+    name: Exact 3345348 integration high-risk gates
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    steps:
+      - name: Checkout exact integration candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify immutable candidate and synthetic-merge identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE_SHA"
+
+          read -r first_parent second_parent extra <<< "$(git show -s --format=%P HEAD)"
+          test "$first_parent" = "$A0_SOURCE_HEAD"
+          test "$second_parent" = "$Q0_10_SECOND_PARENT"
+          test -z "${extra:-}"
+
+          git fetch --no-tags --depth=2 origin "$EXPECTED_SYNTHETIC_MERGE"
+          test "$(git rev-parse "$EXPECTED_SYNTHETIC_MERGE^{tree}")" = "$EXPECTED_SYNTHETIC_TREE"
+          read -r merge_base merge_head merge_extra <<< "$(git show -s --format=%P "$EXPECTED_SYNTHETIC_MERGE")"
+          test "$merge_base" = "$A0_SOURCE_HEAD"
+          test "$merge_head" = "$EXPECTED_HEAD_SHA"
+          test -z "${merge_extra:-}"
+
+          mkdir -p "$REPORT_DIR"
+          {
+            echo "repository=$GITHUB_REPOSITORY"
+            echo "workflow_run_id=$GITHUB_RUN_ID"
+            echo "workflow_run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "candidate_head=$(git rev-parse HEAD)"
+            echo "candidate_tree=$(git rev-parse HEAD^{tree})"
+            echo "candidate_parents=$(git show -s --format=%P HEAD)"
+            echo "synthetic_merge=$EXPECTED_SYNTHETIC_MERGE"
+            echo "synthetic_merge_tree=$(git rev-parse "$EXPECTED_SYNTHETIC_MERGE^{tree}")"
+            echo "synthetic_merge_parents=$(git show -s --format=%P "$EXPECTED_SYNTHETIC_MERGE")"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+          } > "$REPORT_DIR/identity.txt"
+
+      - name: Verify all 17 A0-owned blobs are byte-identical
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$A0_SOURCE_HEAD" <<'PY'
+          import json
+          import pathlib
+          import subprocess
+          import sys
+
+          a0 = sys.argv[1]
+          root = pathlib.Path.cwd()
+          integration = json.loads(
+              (root / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          paths = integration["allowed_changed_paths"]
+          assert len(paths) == 17, paths
+          assert len(set(paths)) == 17, paths
+          for path in paths:
+              current = subprocess.check_output(
+                  ["git", "rev-parse", f"HEAD:{path}"], text=True
+              ).strip()
+              source = subprocess.check_output(
+                  ["git", "rev-parse", f"{a0}:{path}"], text=True
+              ).strip()
+              if current != source:
+                  raise SystemExit(f"A0 blob drift: {path}: {current} != {source}")
+          print("PASS_A0_FIRST_PARENT_BLOB_IDENTITY")
+          PY
+
+      - name: Verify Q0.9 Windows checkout ordering and Q0.10 platform source
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n .github/scripts/run-bazel-ci.sh
+          python3 - <<'PY'
+          from pathlib import Path
+
+          rust_ci = Path(".github/workflows/rust-ci.yml").read_text(encoding="utf-8")
+          longpaths = """      - name: Enable Windows long paths before checkout
+                if: runner.os == 'Windows'
+                shell: pwsh
+                run: git config --system core.longpaths true
+          """.replace("                ", "        ")
+          gated_checkout = """      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+                if: ${{ steps.argument_comment_lint_gate.outputs.run == 'true' }}
+          """.replace("                ", "        ")
+          if longpaths not in rust_ci or gated_checkout not in rust_ci:
+              raise SystemExit("missing exact Windows long-path or gated-checkout block")
+          if rust_ci.index(longpaths) >= rust_ci.index(gated_checkout):
+              raise SystemExit("Windows long paths are not enabled before checkout")
+
+          launcher = Path(".github/scripts/run-bazel-ci.sh").read_text(encoding="utf-8")
+          required = [
+              "windows_msvc_target_platform=1",
+              'post_config_bazel_args+=("--platforms=//:local_windows_msvc")',
+              "--host_platform=* | --platforms=*",
+          ]
+          for token in required:
+              if token not in launcher:
+                  raise SystemExit(f"missing Q0.10 launcher token: {token}")
+
+          root_build = Path("BUILD.bazel").read_text(encoding="utf-8")
+          if 'name = "local_windows_msvc"' not in root_build:
+              raise SystemExit("local_windows_msvc platform is absent")
+          if '"@llvm//constraints/windows/abi:msvc"' not in root_build:
+              raise SystemExit("local_windows_msvc ABI constraint is absent")
+          print("PASS_Q0_9_Q0_10_STATIC_BINDING")
+          PY
+
+      - name: Exercise credential-free, explicit-target, and RBE launcher fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture_root="$RUNNER_TEMP/q0-10-bazel-launcher-fixture"
+          rm -rf "$fixture_root"
+          mkdir -p "$fixture_root/.github/scripts"
+          cp .github/scripts/run-bazel-ci.sh "$fixture_root/.github/scripts/run-bazel-ci.sh"
+          cat > "$fixture_root/.github/scripts/run_bazel_with_buildbuddy.py" <<'PY'
+          #!/usr/bin/env python3
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          Path(os.environ["ARG_CAPTURE"]).write_text(
+              json.dumps(sys.argv[1:], indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+          chmod +x \
+            "$fixture_root/.github/scripts/run-bazel-ci.sh" \
+            "$fixture_root/.github/scripts/run_bazel_with_buildbuddy.py"
+
+          no_key="$REPORT_DIR/q0-10-no-key-args.json"
+          explicit="$REPORT_DIR/q0-10-explicit-target-args.json"
+          keyed="$REPORT_DIR/q0-10-keyed-rbe-args.json"
+
+          (
+            cd "$fixture_root"
+            env -u BUILDBUDDY_API_KEY \
+              RUNNER_OS=Windows \
+              CODEX_BAZEL_WINDOWS_PATH='C:\\Windows\\System32' \
+              ARG_CAPTURE="$no_key" \
+              ./.github/scripts/run-bazel-ci.sh \
+                --windows-cross-compile -- \
+                build --config=argument-comment-lint -- //codex-rs/uds:uds-unit-tests-bin
+          )
+
+          (
+            cd "$fixture_root"
+            env -u BUILDBUDDY_API_KEY \
+              RUNNER_OS=Windows \
+              CODEX_BAZEL_WINDOWS_PATH='C:\\Windows\\System32' \
+              ARG_CAPTURE="$explicit" \
+              ./.github/scripts/run-bazel-ci.sh \
+                --windows-cross-compile -- \
+                build --platforms=//:windows_x86_64_gnullvm -- //codex-rs/uds:uds-unit-tests-bin
+          )
+
+          (
+            cd "$fixture_root"
+            BUILDBUDDY_API_KEY=fixture-key \
+              RUNNER_OS=Windows \
+              CODEX_BAZEL_WINDOWS_PATH='C:\\Windows\\System32' \
+              ARG_CAPTURE="$keyed" \
+              ./.github/scripts/run-bazel-ci.sh \
+                --windows-cross-compile -- \
+                build --config=argument-comment-lint -- //codex-rs/uds:uds-unit-tests-bin
+          )
+
+          python3 - "$no_key" "$explicit" "$keyed" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          no_key, explicit, keyed = [
+              json.loads(Path(path).read_text(encoding="utf-8")) for path in sys.argv[1:]
+          ]
+
+          def require(args, value):
+              if value not in args:
+                  raise SystemExit(f"missing {value!r} in {args!r}")
+
+          require(no_key, "--host_platform=//:local_windows_msvc")
+          require(no_key, "--platforms=//:local_windows_msvc")
+          require(no_key, "--jobs=8")
+          if "--config=ci-windows-cross" in no_key:
+              raise SystemExit("credential-free fixture unexpectedly selected RBE config")
+
+          require(explicit, "--host_platform=//:local_windows_msvc")
+          require(explicit, "--platforms=//:windows_x86_64_gnullvm")
+          if "--platforms=//:local_windows_msvc" in explicit:
+              raise SystemExit("explicit target platform was overwritten")
+          if sum(arg.startswith("--platforms=") for arg in explicit) != 1:
+              raise SystemExit("explicit fixture has multiple target platform flags")
+
+          require(keyed, "--config=ci-windows-cross")
+          require(keyed, "--host_platform=//:rbe")
+          require(keyed, "--shell_executable=/bin/bash")
+          if "--platforms=//:local_windows_msvc" in keyed:
+              raise SystemExit("authenticated RBE fixture received local MSVC target")
+          print("PASS_Q0_10_LAUNCHER_FIXTURES")
+          PY
+
+      - name: Set up repository CI tools
+        uses: ./.github/actions/setup-ci
+
+      - name: Install Rust 1.95 with fmt and Clippy
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Install cargo-shear 1.11.2
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: cargo-shear@1.11.2
+
+      - name: Compile and execute strict Hepta Intelligence validators
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/hepta-intelligence-status-compat.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-document-authority.py
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
+            python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
+          done
+
+      - name: Re-verify canonical A0 in an isolated first-parent worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          a0_dir="$RUNNER_TEMP/hepta-intelligence-a0-source"
+          git worktree add --detach "$a0_dir" "$A0_SOURCE_HEAD"
+          (
+            cd "$a0_dir"
+            env -u GITHUB_HEAD_REF -u GITHUB_REF_NAME \
+              GITHUB_SHA="$A0_SOURCE_HEAD" \
+              GITHUB_REPOSITORY="$EXPECTED_REPOSITORY" \
+              python3 scripts/verify-hepta-intelligence-a0-authority.py \
+              > "$REPORT_DIR/a0-authority-receipt.json"
+          )
+          git worktree remove --force "$a0_dir"
+
+      - name: Repository and canonical Rust format gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          just fmt-check
+          (
+            cd codex-rs
+            cargo fmt -- --config imports_granularity=Item --check
+          )
+
+      - name: Cargo-shear strict gate and Matrixd membership
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo shear --deny-warnings
+          cargo metadata --locked --no-deps --format-version 1 \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(p["name"] == "codex-hepta-matrixd" for p in d["packages"])'
+
+      - name: Compile all Q0.3-affected packages and test targets
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          packages=(
+            codex-queue-extension
+            codex-hepta-agent-protocol
+            codex-hepta-agentd
+            codex-hepta-automation
+            codex-hepta-contracts
+            codex-hepta-fleet
+            codex-hepta-matrix-sdk
+            codex-hepta-matrix-store
+            codex-hepta-paths
+          )
+          cargo_args=()
+          for package in "${packages[@]}"; do
+            cargo_args+=(--package "$package")
+          done
+          cargo check --all-targets --locked "${cargo_args[@]}"
+          cargo test --all-targets --locked --no-run "${cargo_args[@]}"
+
+      - name: Run repaired package tests and strict Clippy
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for package in \
+            codex-hepta-automation \
+            codex-hepta-contracts \
+            codex-hepta-fleet \
+            codex-uds
+          do
+            cargo test -p "$package" --all-targets --locked
+            cargo clippy -p "$package" --all-targets --all-features --locked -- -D warnings
+          done
+
+      - name: Cargo-deny checked-policy gate
+        uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
+        with:
+          rust-version: 1.95.0
+          manifest-path: ./codex-rs/Cargo.toml
+          arguments: --all-features
+          command-arguments: --config ./codex-rs/deny.toml
+
+      - name: Verify immutable clean checkout and emit outcome
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test -z "$(git status --porcelain=v1 --untracked-files=normal --ignore-submodules=none)"
+          {
+            echo "completed_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "job_status=${{ job.status }}"
+            echo "source_writeback=false"
+            echo "a0_candidate_qualified=false"
+            echo "selected=false"
+            echo "full_repository_merge_green=false"
+            echo "runtime_authority=false"
+            echo "production_authority=false"
+            echo "promotion=false"
+            echo "release=false"
+          } > "$REPORT_DIR/outcome.txt"
+
+      - name: Upload immutable diagnostic evidence
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4
+        with:
+          name: hepta-intelligence-a0-q0-10-exact-3345348-${{ github.run_id }}
+          path: ${{ env.REPORT_DIR }}/**
+          if-no-files-found: error
+          retention-days: 30
