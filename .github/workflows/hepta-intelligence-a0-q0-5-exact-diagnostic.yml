@@ -175,12 +175,34 @@ jobs:
           cargo metadata --locked --no-deps --format-version 1 \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(p["name"] == "codex-hepta-matrixd" for p in d["packages"])'
 
-      - name: Automation compile, tests, and strict Clippy
+      - name: Compile every Q0.3 affected package and all test targets
         working-directory: codex-rs
         shell: bash
         run: |
           set -euo pipefail
-          cargo check -p codex-hepta-automation --all-targets --locked
+          packages=(
+            codex-queue-extension
+            codex-hepta-agent-protocol
+            codex-hepta-agentd
+            codex-hepta-automation
+            codex-hepta-contracts
+            codex-hepta-fleet
+            codex-hepta-matrix-sdk
+            codex-hepta-matrix-store
+            codex-hepta-paths
+          )
+          cargo_args=()
+          for package in "${packages[@]}"; do
+            cargo_args+=(--package "$package")
+          done
+          cargo check --all-targets --locked "${cargo_args[@]}"
+          cargo test --all-targets --locked --no-run "${cargo_args[@]}"
+
+      - name: Automation tests and strict Clippy
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
           cargo test -p codex-hepta-automation --all-targets --locked
           cargo clippy -p codex-hepta-automation --all-targets --locked -- -D warnings
 
