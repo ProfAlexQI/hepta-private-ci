@@ -413,10 +413,12 @@ plugins = true
     }]);
 
     let outcome = manager.plugins_for_config(&config).await;
-    assert_eq!(
-        outcome.effective_skill_roots(),
-        vec![AbsolutePathBuf::try_from(plugin_base.join("local/skills")).unwrap()]
-    );
+    let expected_skill_root = AbsolutePathBuf::try_from(
+        std::fs::canonicalize(plugin_base.join("local/skills"))
+            .expect("canonicalize remote-installed plugin skill root"),
+    )
+    .expect("canonical plugin skill root must be absolute");
+    assert_eq!(outcome.effective_skill_roots(), vec![expected_skill_root]);
     assert_eq!(outcome.plugins().len(), 1);
     assert_eq!(outcome.plugins()[0].config_name, "linear@chatgpt-global");
 }

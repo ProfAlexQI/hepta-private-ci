@@ -347,14 +347,14 @@ verify_contract() {
           manifest_path:"codex-rs/Cargo.toml",
           path:"codex-rs/Cargo.lock",
           deny_config_path:"codex-rs/deny.toml",
-          sha256:"5752e48bc2b1f9853e69d3678ca158a053123fb9af34786f2b3ea7bd755f9f18"
+          sha256:"18a7e01a28bbf13508f470cfa91650de7b5d954967318c3e232b5d3729c6102c"
         },
         {
           id:"native-app",
           manifest_path:"apps/hepta-native/Cargo.toml",
           path:"apps/hepta-native/Cargo.lock",
           deny_config_path:"apps/hepta-native/deny.toml",
-          sha256:"8856ff8f8a0c6869e245c919e9acfb00758441ffb7a988f92397ea31c117d1cb"
+          sha256:"57dfdcc7b67aaf578c3dd2d4ba94f71db4ac1af028e8340c8ede1c329ecd5cfa"
         }
       ],
       deny_config:{
@@ -367,15 +367,15 @@ verify_contract() {
       },
       native_deny_config:{
         path:"apps/hepta-native/deny.toml",
-        sha256:"854f5aec04140f06f15eba9604e16e0d245eba41cbe29335203c1065f78d80ad"
+        sha256:"b301b7d20df086ec504cf6e6890f92bfbe02b94f8086a499b135f819cdb40259"
       },
       native_source_policy:{
         path:"apps/hepta-native/dependency-source-policy-v1.json",
-        sha256:"7f32dd7b3e4f95daa6322ae0d5ed8e5781eadc8e3e3f81f1e19207b51ca7458d"
+        sha256:"5c6a7ae5df0d3b931200aae1549eebce560b4e1a7abc662555995d38ab4591ae"
       },
       native_source_policy_runner:{
         path:"apps/hepta-native/hepta-native-dependency-policy",
-        sha256:"dd56778b094d276deaf9eff41ff8dfb221518848b26b4a0ef67482aa9f268fd8"
+        sha256:"b35ecdb90461232f4a77585d0f15c56e5bf3a2e0d76e1e5d50b813110089875e"
       },
       exception_policy:{
         path:"scripts/hepta-dependency-exception-policy-v1.json",

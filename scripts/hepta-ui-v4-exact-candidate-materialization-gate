@@ -2,11 +2,13 @@
 # frozen_string_literal: true
 
 require "json"
+require "open3"
 require "pathname"
 
 root = Pathname.new(__dir__).join("..").expand_path
 files = {
   materializer: root.join("scripts/hepta-ui-v4-materialize-makepad-windows-hook"),
+  patcher: root.join("scripts/hepta-ui-v4-apply-makepad-windows-ack-patch"),
   wrapper: root.join("scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch"),
   contract: root.join("docs/ui/HEPTA_UI_EXACT_CANDIDATE_MATERIALIZATION_HARDENING_V1.json"),
   schema: root.join("docs/ui/schemas/hepta.ui.v4.vendored-makepad-materialization.v1.schema.json"),
@@ -42,8 +44,14 @@ checks["wrapper.self_test"] =
 checks["wrapper.safe_replacement"] =
   wrapper.include?("text.sub(before) { after }") &&
   wrapper.include?("text.sub(pattern) { replacement }")
+canonical_patcher_blob = wrapper[/^EXPECTED_PATCHER_BLOB = "([0-9a-f]{40})"$/, 1]
+actual_patcher_blob, patcher_blob_status = Open3.capture2(
+  "git", "-C", root.to_s, "hash-object", files.fetch(:patcher).to_s
+)
 checks["wrapper.canonical_blob_bound"] =
-  wrapper.include?("369e607f4f80d08d739d2f83778fb4e37aa50d4e")
+  patcher_blob_status.success? &&
+  !canonical_patcher_blob.nil? &&
+  canonical_patcher_blob == actual_patcher_blob.strip
 checks["schema.pass_fail"] =
   schema.dig("properties", "status", "enum")&.sort ==
     %w[FAIL_PATCHED_CHECKOUT_MATERIALIZATION PASS_PATCHED_CHECKOUT_MATERIALIZED_SOURCE_ONLY].sort

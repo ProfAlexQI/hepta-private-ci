@@ -342,6 +342,11 @@ verify_contract() {
           role:"current_r11",
           ref:"refs/remotes/upstream/hepta-intake-20260726-r11",
           sha:"61a44880a85d2fd0d8770908dea5733495e571c8"
+        },
+        {
+          role:"current_r12",
+          ref:"refs/remotes/upstream/hepta-intake-20260830-r12",
+          sha:"dde85b435b16994f956bce08e5fb796ed94c27fd"
         }
       ]
     }
@@ -400,8 +405,9 @@ verify_contract() {
   while IFS= read -r command_name; do
     require_literal "$baseline" "run: $command_name" "baseline command $command_name"
   done < <(jq -er '.baseline_workflow.required_commands[]' "$CONTRACT")
-  require_literal "$baseline" "uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26" "pinned Rust toolchain action"
-  require_literal "$baseline" "components: rustfmt, clippy" "bounded backend Clippy component"
+  reject_literal "$baseline" "uses: dtolnay/rust-toolchain@"
+  require_literal "$baseline" "rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update" "pinned explicit Rust toolchain install"
+  require_literal "$baseline" "rustup target add --toolchain 1.95.0 aarch64-apple-ios aarch64-apple-ios-sim aarch64-linux-android" "pinned mobile Rust targets"
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-safe-lint-security-baseline" run' "safe lint/security baseline execution"
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-dependency-security" scan' "dependency security execution"
   require_literal "$ROOT/scripts/hepta-ci-baseline" 'scripts/hepta-upstream-truth-gate" verify-counted-evidence' "exact counted upstream evidence execution"
@@ -527,7 +533,7 @@ RELEASE_CLOSURE_PATHS
   require_literal <(printf '%s\n' "$ui_contract_block") "    runs-on: macos-15" "UI contract macOS runner"
   require_literal <(printf '%s\n' "$ui_contract_block") "          fetch-depth: 0" "UI contract full-history checkout"
   require_literal <(printf '%s\n' "$ui_contract_block") \
-    "          targets: aarch64-apple-ios,aarch64-apple-ios-sim,aarch64-linux-android" \
+    "          rustup target add --toolchain 1.95.0 aarch64-apple-ios aarch64-apple-ios-sim aarch64-linux-android" \
     "UI contract pinned mobile Rust targets"
   require_literal <(printf '%s\n' "$ui_contract_block") \
     "        run: cargo fetch --locked --manifest-path apps/hepta-native/Cargo.toml" \

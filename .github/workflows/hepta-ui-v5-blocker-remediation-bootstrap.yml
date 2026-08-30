@@ -776,7 +776,17 @@ jobs:
           """
           if "## Remediation round 2 — exact-head failures observed on PR #78" in plan:
               raise SystemExit("remediation round 2 appendix already exists")
-          plan_path.write_text(plan.rstrip() + appendix + "\n", encoding="utf-8")
+          normalized_appendix = __import__("textwrap").dedent(appendix).strip()
+          if not normalized_appendix.startswith(
+              "## Remediation round 2 — exact-head failures observed on PR #78"
+          ):
+              raise SystemExit("remediation appendix heading normalization failed")
+          if any(line.startswith("          ") for line in normalized_appendix.splitlines()):
+              raise SystemExit("remediation appendix retained generator indentation")
+          plan_path.write_text(
+              plan.rstrip() + "\n\n" + normalized_appendix + "\n",
+              encoding="utf-8",
+          )
           PY
 
           python3 -m json.tool .github/hepta-ci-contract-v1.json >/dev/null

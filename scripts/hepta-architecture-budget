@@ -176,14 +176,46 @@ maintainable_tree_line_total() {
     | awk '$2 != "total" { total += $1 } END { print total + 0 }'
 }
 
+maintainable_scripts_physical_line_total_for_root() {
+  local scripts_root="$1"
+  python3 - "$scripts_root" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+if not root.is_dir():
+    raise SystemExit(f"maintainable scripts root is missing: {root}")
+
+excluded_exact = {
+    "lib/hepta-gate-pair-compat-v2/payloads.bundle.gz",
+    "lib/hepta-gate-pair-compat-v2/templates.jsonl",
+    "lib/hepta-gate-pair-compat-v2/parameters.jsonl",
+}
+total = 0
+for path in root.rglob("*"):
+    if path.is_symlink() or not path.is_file():
+        continue
+    relative = path.relative_to(root).as_posix()
+    if (
+        relative.startswith("archive/")
+        or relative in excluded_exact
+        or relative.startswith("lib/hepta-gate-pair-compat-v2/family-state-v1/")
+    ):
+        continue
+    data = path.read_bytes()
+    if b"\0" in data:
+        continue
+    try:
+        data.decode("utf-8")
+    except UnicodeDecodeError:
+        continue
+    total += data.count(b"\n")
+print(total)
+PY
+}
+
 maintainable_scripts_physical_line_total() {
-  find scripts -type f \
-    ! -path "$GATE_COMPAT_ROOT/payloads.bundle.gz" \
-    ! -path "$GATE_COMPAT_ROOT/templates.jsonl" \
-    ! -path "$GATE_COMPAT_ROOT/parameters.jsonl" \
-    ! -path "$GATE_COMPAT_ROOT/family-state-v1/*" \
-    -exec wc -l {} + \
-    | awk '$2 != "total" { total += $1 } END { print total + 0 }'
+  maintainable_scripts_physical_line_total_for_root scripts
 }
 
 maintainable_scripts_effective_line_total() {
@@ -284,11 +316,13 @@ verify_k2_split_budgets() {
   verify_split_family 12 4800 \
     codex-rs/hepta-native-gateway/src/native_gateway/tests/contract_part_*.rs
   verify_file_max apps/hepta-native/src/home/room_screen.rs 4500
+  verify_file_max apps/hepta-native/src/home/room_screen/live_design.rs 900
   verify_split_family 3 600 \
     apps/hepta-native/src/home/room_screen/message_content.rs \
     apps/hepta-native/src/home/room_screen/message_widget.rs \
     apps/hepta-native/src/home/room_screen/timeline_item_preview.rs
   verify_file_max apps/hepta-native/src/sliding_sync.rs 4500
+  verify_file_max apps/hepta-native/src/sliding_sync/matrix_worker_task.rs 2200
   verify_split_family 2 600 \
     apps/hepta-native/src/sliding_sync/requests.rs \
     apps/hepta-native/src/sliding_sync/user_power_levels.rs
@@ -2392,6 +2426,8 @@ verify() {
       readable_canonical_source_is_counted:true,
       gate_compat_effective_source_is_counted:true,
       binary_newline_counts_are_excluded:true,
+      archived_source_is_excluded_from_maintainable_physical_budget:true,
+      deterministic_utf8_text_classification:true,
       current_baseline_monotonic_ratchets:true,
       decline_targets:$decline_targets,
       default_route_response_max_bytes:131072,
@@ -2481,6 +2517,32 @@ self_test_build_output_pruned() (
   }
 )
 
+self_test_scripts_physical_counting_semantics() (
+  local fixture_root actual
+  fixture_root="$(mktemp -d /tmp/hepta-architecture-scripts-count-self.XXXXXX)"
+  trap 'rm -rf "$fixture_root"' EXIT
+
+  mkdir -p \
+    "$fixture_root/archive" \
+    "$fixture_root/lib/hepta-gate-pair-compat-v2/family-state-v1"
+  printf 'active-1\nactive-2\n' >"$fixture_root/active.sh"
+  printf '{"active":true}\n' >"$fixture_root/active.json"
+  printf 'archive-1\narchive-2\n' >"$fixture_root/archive/retired.sh"
+  printf 'compat-payload\n' >"$fixture_root/lib/hepta-gate-pair-compat-v2/payloads.bundle.gz"
+  printf 'compat-template\n' >"$fixture_root/lib/hepta-gate-pair-compat-v2/templates.jsonl"
+  printf 'compat-parameter\n' >"$fixture_root/lib/hepta-gate-pair-compat-v2/parameters.jsonl"
+  printf 'compat-family\n' >"$fixture_root/lib/hepta-gate-pair-compat-v2/family-state-v1/source.json"
+  printf 'binary\0payload\nwith-newline\n' >"$fixture_root/binary.bin"
+  printf '\377\ninvalid-utf8\n' >"$fixture_root/non-utf8.bin"
+  ln -s active.sh "$fixture_root/active-link.sh"
+
+  actual="$(maintainable_scripts_physical_line_total_for_root "$fixture_root")"
+  if [[ "$actual" != 3 ]]; then
+    echo "architecture maintainable scripts counting semantics drifted: actual=$actual expected=3" >&2
+    return 1
+  fi
+)
+
 self_test_first_model_invocation_test_family_split() {
   local family_file="codex-rs/hepta-native-gateway/src/native_gateway/tests/first_model_invocation.rs"
   local parent_file
@@ -2533,10 +2595,11 @@ self_test() {
   verify >/dev/null
   self_test_line_budget_negative_fixture
   self_test_build_output_pruned
+  self_test_scripts_physical_counting_semantics
   self_test_first_model_invocation_test_family_split
   scripts/hepta-budgeted-test self-test >/dev/null
   self_test_report_dag_budget
-  echo '{"schema":"hepta_architecture_budget_self_test_v1","status":"ready","line_budgets_enforced":true,"whole_tree_budgets_enforced":true,"giant_file_budgets_enforced":true,"architecture_v2_slice_budgets_enforced":true,"first_model_invocation_data_matrix_enforced":true,"report_dag_budgets_enforced":true,"test_timeout_enforced":true,"workspace_write_budget_enforced":true}'
+  echo '{"schema":"hepta_architecture_budget_self_test_v1","status":"ready","line_budgets_enforced":true,"whole_tree_budgets_enforced":true,"giant_file_budgets_enforced":true,"architecture_v2_slice_budgets_enforced":true,"first_model_invocation_data_matrix_enforced":true,"report_dag_budgets_enforced":true,"test_timeout_enforced":true,"workspace_write_budget_enforced":true,"scripts_binary_and_archive_exclusion_enforced":true}'
 }
 
 case "${1:-verify}" in

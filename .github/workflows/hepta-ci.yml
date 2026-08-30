@@ -92,9 +92,11 @@ jobs:
       - name: Install static gate tools
         run: brew install jq ripgrep
       - name: Install Rust 1.95.0
-        uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26
-        with:
-          toolchain: 1.95.0
+        shell: bash
+          set -euo pipefail
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+          rustup default 1.95.0
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
       - name: Run bounded static gates
         run: scripts/hepta-ci-baseline static
 
@@ -139,10 +141,12 @@ jobs:
           test "$("$HEPTA_CHECK_JSONSCHEMA_VENV/bin/check-jsonschema" --version)" = "check-jsonschema, version 0.37.4"
           printf '%s\n' "$HEPTA_CHECK_JSONSCHEMA_VENV/bin" >> "$GITHUB_PATH"
       - name: Install Rust 1.95.0 with pinned mobile targets
-        uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26
-        with:
-          toolchain: 1.95.0
-          targets: aarch64-apple-ios,aarch64-apple-ios-sim,aarch64-linux-android
+        shell: bash
+          set -euo pipefail
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+          rustup target add --toolchain 1.95.0 aarch64-apple-ios aarch64-apple-ios-sim aarch64-linux-android
+          rustup default 1.95.0
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
       - name: Cache Native UI inputs and pinned Makepad tool
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
@@ -203,10 +207,11 @@ jobs:
       - name: Materialize immutable upstream intake refs for counted evidence
         run: scripts/hepta-ci-materialize-upstream-intake materialize
       - name: Install Rust 1.95.0
-        uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26
-        with:
-          toolchain: 1.95.0
-          components: rustfmt, clippy
+        shell: bash
+          set -euo pipefail
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+          rustup default 1.95.0
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
       - name: Set up sandboxed rusty_v8
         shell: bash
         run: |
@@ -273,9 +278,11 @@ jobs:
             "${RUNNER_OS}-hepta-ci-v2-full-workspace-${{ hashFiles('codex-rs/rust-toolchain.toml', 'codex-rs/Cargo.lock', 'apps/hepta-native/Cargo.lock', 'MODULE.bazel.lock') }}" \
             >> "$GITHUB_ENV"
       - name: Install Rust 1.95.0
-        uses: dtolnay/rust-toolchain@a0b273b48ed29de4470960879e8381ff45632f26
-        with:
-          toolchain: 1.95.0
+        shell: bash
+          set -euo pipefail
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+          rustup default 1.95.0
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
       - name: Set up sandboxed rusty_v8
         shell: bash
         run: |

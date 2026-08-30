@@ -1,0 +1,936 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_inventory_shard_v1",
+  "record_id": "r12",
+  "commit_inventory": [
+    {
+      "upstream_commit": "3e4707b34b16e139fcb7ad11ab8445993b62bba1",
+      "title": "Support persistent reasoning effort (#40799)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "04907ab95a186d176021abffccac3b627ff1e32e",
+      "title": "Use step settings for MCP request metadata (#40807)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "21c58c90f2298587c6519e077d0692ce4c563d37",
+      "title": "Harden Windows sandbox helper cleanup (#40808)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "a26f1806a4f4b8cfec2ea1be129963815a61e58c",
+      "title": "Use issuing step settings for approval decisions (#40821)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "a9ed4f154a4fad64acf538d6418d3ed012aeab86",
+      "title": "Refine Guardian predictive risk classification (#40844)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "9dea1f709ffe94d74563b4d2c9f147b0eb5c9601",
+      "title": "Default Guardian v2 to computer-use reviews with images (#40846)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "039eb58a0ba6647fb8f29fdd35341f3f1b153728",
+      "title": "Give Guardian reviewers read-only access to parent history (#40848)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "74772623dbe1141763858dd6a5e444279d3ae85f",
+      "title": "Stop overriding Rust debuginfo in Bazel CI (#40864)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "f5420174dafba153913a3e697f89002c338dfd7e",
+      "title": "Include originating item IDs in MCP request metadata (#40866)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "10d5a603aecbd73a38f3a6576cce69a78f8d6f1d",
+      "title": "Persist Guardian V2 risk scores without restoring them (#40884)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "62fb56ee569e8ed6a9ad7ec575b0e78c25df4b17",
+      "title": "Route Guardian inference through dedicated endpoints (#40892)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "d4998d611ad37de0aa9723b6fdd2d9a2f8ff4763",
+      "title": "Record reviewed actions with security risk scores (#40901)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "bde9db1375667c50dcc0c2b52532a4e2672571c2",
+      "title": "Record actual Responses endpoints in tracing spans (#40906)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "5b92c2d2f54f90fee51bb8b71e17fa3619130425",
+      "title": "Make Guardian risk score persistence opt-in (#40911)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "7625bd56657da7ce6d96b6d27e983e568757cdbc",
+      "title": "Honor environment-resolved workspace roots (#40912)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "e0c727de04ea3d5c56c6cb734359fa7a5cda3151",
+      "title": "Classify streaming rate-limit errors (#40931)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "0e9a2bae5286334aab64946bab1f49c216a9906c",
+      "title": "Enable clock tools for persistent reasoning turns (#40942)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "7276d67081dd4149a15c72972e639b0d707915a4",
+      "title": "Expose resumable misalignment details through app server (#40952)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "6ac012a0d47b6ccd886445773a7dfa35918e2547",
+      "title": "Honor layered configuration when loading plugins (#40954)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "d47e5cc0e2bbd35774dff15c83570519735d2ac4",
+      "title": "Add Vim buffer jump motions (#40958)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "7f823973633472ec75b9ab86342e01561f78dd42",
+      "title": "Restrict macOS scratch access to process sandboxes (#40961)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "e77773085cf770c89b9f0800220786c15f38d113",
+      "title": "Give Responses Lite prefix items stable IDs (#40962)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "f74bcd281196a752521717757f39d6c7b26affae",
+      "title": "Build Guardian V2 synchronous review prompts (#40964)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "ac644ed1123c9fceeaab7be83cd5026ffe3601ed",
+      "title": "Stop preserving bounds in tool input schemas (#40966)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "daa3eaf10fda93ad8949b926c059dd8cc399f76a",
+      "title": "Allow Guardian scoring for required computer-use models (#40967)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "21ff2e802cd74eee8b25db6b17d9bd4891a42e38",
+      "title": "Expose MCP provenance to tool lifecycle extensions (#40976)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "a57b398351a803c9ec94e38042bc82f527bed2a4",
+      "title": "Require approval for input to escalated terminals (#40978)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "07d260c623cf874828f4eff40266dbf08b723944",
+      "title": "Update the stable exec-server test to Codex 0.150.0 (#40979)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "d61ba72f2f8af9adb694b8701aa64ed96cd80760",
+      "title": "Give Guardian trusted context for configured MCP tools (#40982)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "37a5149822296c52414ccf8ad3ca00bfb7424260",
+      "title": "Record Windows world-writable scan telemetry (#40983)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "102ae5e2e6ff63d2e7346138182e7eec2fc0711a",
+      "title": "Prewarm Guardian WebSockets without blocking thread startup (#40985)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "0d654e653614b0f99b8da3e4a74aa2558ee61752",
+      "title": "Track window and fork positions in turn metadata (#40987)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "6e008417bb3e76fa715d3c8b22e8cc77ab0bb84c",
+      "title": "Expose permission profile resolution in the core API (#40989)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "b9c4b9a0cfe8544c823a5dbf6ea61fc3974500ba",
+      "title": "Support standalone function outputs in turn routing (#40991)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "a98b94625e32d3fd62217364999eab33536bb61b",
+      "title": "Add trusted access context for MCP metadata (#40992)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "0340e12f5dc468f35ff922065ac1800459939b08",
+      "title": "Allow bundled browser plugins to run executor cleanup hooks (#40993)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "528fd7ace5ec0a1c2a387dcb9c76a09f3fa011ee",
+      "title": "Enable retained-image budgeting by default (#40994)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "f3741880f6dbc706252f4c5bb93f061dba18950d",
+      "title": "Harden managed proxy listener handoff (#40999)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "29260140756277f4cd3e8ae3db9587f96dc9da41",
+      "title": "Make filesystem policy matching URI-native (#41001)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "e56e4922ebb71b868aba275aa85fbcd87b69034f",
+      "title": "Support standalone tool outputs in `turn/start` (#41002)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "ae357e7250402af7c3bbede18a46cc565a7670d4",
+      "title": "Attach verified access context to eligible plugin MCP calls (#41005)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "b68acc4d4b56fdfa1d5b6a2c36102c66876e0c46",
+      "title": "Trust invoked user skills in Guardian reviews (#41006)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "7c3747941a6b664c30f1e6aa72a917fd74dc22d2",
+      "title": "Reduce skill catalog prompts with path aliases (#41011)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "eed1dee69e8ddab6fd3344f1b7572aafb2e75cb5",
+      "title": "Propagate trace context through gRPC code mode (#41017)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "81e180044d91c42f20818c43fbc2558603e4361d",
+      "title": "Scope extension capabilities to invocation lifetimes (#41020)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "307ce6cda900be1669c271a7124d002870fcb435",
+      "title": "Track Guardian reviewer turn and tool analytics (#41023)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "5af6979986a23fcd6bbeb1ef7b206cbc96e9a0a2",
+      "title": "Update the stable exec-server test to Codex 0.150.1 (#41030)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "57e2edc6e97474448f1fb634224471448bc09d40",
+      "title": "Encrypt sensitive history and notes tool arguments (#41041)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "72c96598c6b62126896f11ff1619a19b68cbc4d9",
+      "title": "Preserve tool authority for TUI delegation prompts (#41046)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "f1433fc71f2062ae3c007a03d7ff549bc582d386",
+      "title": "Add developer instructions for persistent mode (#41050)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "d5caceccb1ee5bf94c081b995575ce4860e0912b",
+      "title": "Track Code Mode tool call metadata completeness (#41058)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "4cb8d8679c051663c27827d3c2f15289671f864b",
+      "title": "Forward truncation policies to the history notes backend (#41062)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "218a3e50ae9f499edcf3d14e6535b97559976ab5",
+      "title": "Clarify when to send asynchronous user messages (#41070)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "b592a0bfed439386fadc69327bd49eccb074cdc6",
+      "title": "Forward model confirmation policies to actor MCP tools (#41072)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "2c4a95736bea64256a50f7b8506bd33c181cc85a",
+      "title": "Expose response usage metadata in completion events (#41087)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "89650c66f2f3ff0d028d3f5d6d0b187b2ed49be5",
+      "title": "Require synchronous review for sensitive MCP actions (#41094)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "e9a446d79dc2b40549186ac69f665794ad52cdd5",
+      "title": "Add Guardian V2 decision metrics (#41100)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "6c59264b14b963d45d1005e7a8b1de87d4b054e2",
+      "title": "Increase Guardian V2 async test timeouts (#41108)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "aa89cf62bb1b5b5001ba78693c762eeaed6fa832",
+      "title": "Freeze plugin roots in MCP tool attribution (#41117)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "694edc23b22b4696400dc47663ecacd437623870",
+      "title": "Propagate trusted root skills to delegated workers (#41118)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "a847c71a159cfa55509fbac1619c9c2294ed4718",
+      "title": "Limit inline diff previews in the TUI (#41143)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "e8b938b02eb7e202675f33bae4a3ba82f084d5b9",
+      "title": "Use typed outcomes for Guardian V2 classification (#41146)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "df9f537a6e105ac7e457f2e4ebc7431d8614393e",
+      "title": "Remove locking from trusted skill collection (#41150)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "5ed334a29f5895243115b8247098cb44b81b6ccd",
+      "title": "Extract Guardian action rendering into its own module (#41151)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "4f2a1d866697144c519c6ee135a114dcd46afc95",
+      "title": "Fail closed on unbounded Guardian parent compactions (#41152)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "453a9bcc69704f9cf49f3e09fce1ebe0f22b8309",
+      "title": "Reduce Guardian V2's default tool-call lag (#41158)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "bce96bcb43c1aeea69fa0aa230809fa9e4eba80e",
+      "title": "Reject oversized reviewed terminal input (#41159)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "8228e9b867251f544a5e0c6c80bb5ebc9d5446a1",
+      "title": "Resolve token budgets from each step's active model (#41162)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "5f49aba876922d6f2f55caa153bbb0ed1b46feba",
+      "title": "Require explicit requests for spawn model overrides (#41165)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "4761851ff35c4ebdd35eb8801e1180a0a50fef60",
+      "title": "Account subagent token usage toward root goals (#41183)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "efc020d224a96d24a7d8848a7744256ab5a7755e",
+      "title": "Instrument stdin review size checks (#41189)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "8935ff19dbf30afd4c45579b39b2f7119059b0aa",
+      "title": "Stabilize Guardian WebSocket tests (#41191)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "c29bc99949f90687171611bb845c4c289fa85dde",
+      "title": "Preserve restored permission profiles in TUI sessions (#41192)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "56239d7a618896a37380c87002165ae1cc214e39",
+      "title": "Report affected capabilities from remote plugin syncs (#41193)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "8aea62b2d857e950cb84366602af79403b8ed545",
+      "title": "Harden core test fixture startup assertions (#41194)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "0182ff34802c068815d5e0990ee94ec2d080b4fe",
+      "title": "Finalize model-specific tool plans in `ToolRouter` (#41195)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "035295b46ee4a5962d0e01a66a888d5bf5da4de4",
+      "title": "Improve sandboxing, MCP errors, and cached approvals (#41196)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "124e560b9357746b6a7e2bba1fd244115fd9cc5a",
+      "title": "Make the optional MCP startup grace configurable (#41199)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "5bf0ba3dd65952f8e37abbb7b535ee88841e2793",
+      "title": "Let extensions process MCP tool results (#41202)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "d4d2b293b446b019e4a14e26d4d16bfc6d682f8f",
+      "title": "Propagate executor home directories into sandbox contexts (#41204)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "e931d07b88338c1898ad37b056aedf5458037de6",
+      "title": "Track executor MCP discovery telemetry (#41205)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "7f135e1314433a53d4e348cbf7d3df6072e5971a",
+      "title": "Make Ultra reasoning fallback model-aware (#41206)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "19321435b10927001b260152c6617be208855a61",
+      "title": "Propagate executor OS into turn environments (#41207)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "c4c51c56e4f34729b5f6b3069974801a48bdd1a6",
+      "title": "Honor per-repository plugin configuration in catalog requests (#41208)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "34e74fda0eb05ce918b6ce8778857807bc9b4a6a",
+      "title": "Align deny-read matching with executor path semantics (#41209)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "f6494dc8f5969e8576a8a0945a674f2a15ac4de6",
+      "title": "Enable clock tools from model metadata (#41210)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "bae69125df2de0ee70b0599c7dae9fc34fb97f03",
+      "title": "Roll over Guardian context before follow-up reviews (#41215)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "4fea5234664ebc628b1a5322761cb132eaacc9e2",
+      "title": "Share linked tool mention parsing in the TUI (#41218)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "e325e3acd9ab64cd287a2c4d6cd7a7cebb639618",
+      "title": "Retry confirmed remote registration conflicts (#41219)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "2d929eb7c39a612b84e0987f2af4a4c2282249e2",
+      "title": "Honor turn token budgets in Guardian review rollover (#41221)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "f6726e898612e27c66a25f7c6b294f6269d9ed4f",
+      "title": "Add recency sorting to `project/list` (#41223)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "dd453867fa60bc130e2fba0a12ae4f27c2a3b732",
+      "title": "Move Guardian review session tests to a separate file (#41226)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "426fa8cdab4247e5623e9617d531f6917482b947",
+      "title": "Use compatible PowerShell for elevated Windows sandbox commands (#41227)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "e9a6d731b783fa710ca0e359e88701bc0d4c28a6",
+      "title": "Apply app routing policy to unauthenticated plugin reads (#41230)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "91c66024c7784f8de2d8c8355bcccad40ab3c44d",
+      "title": "Instrument the loaded plugin cache (#41231)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "dc031d4bc70965247478724f84e2ba341c2813f1",
+      "title": "Expose the PowerShell version in environment context (#41232)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "f1bb4c168d7b7bcfab8083d8cb34996bf2332c3a",
+      "title": "Sanitize history notes backend errors (#41235)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "41d3dc56a0e1de47e30a9585c1b49253c082f8f7",
+      "title": "Surface model provider authentication recovery progress (#41239)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "ec9620c231396895194329c410f3ec360b4cadef",
+      "title": "Add configurable gating for the sleep tool (#41243)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "18b9e7fd9e3f6670cc4f300338e44050b2c301e4",
+      "title": "Include thread source in realtime connection metadata (#41250)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "6be2a6ca952ac9f70676ce4dd07fda27175aa9dd",
+      "title": "Let the history backend enforce tool output budgets (#41260)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "7d6f808b97e424da80271be8cc539e8c5437a229",
+      "title": "Drive keymap conflict checks from the action registry (#41285)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "94311d447587411789533c47601fd8bc9d81eb48",
+      "title": "Forward history note images to the model (#41292)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "dc2ccc6843abb09c9d297862dc10b6bd12a3935d",
+      "title": "Make subagents follow the root service tier (#41308)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "f98649cde9402d8b055154d1121248cc72163947",
+      "title": "Honor required reviews when reusing Guardian scores (#41309)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "a73bf25d17805b4169ba2a2dc4329a010a3bb120",
+      "title": "Decouple HTTP retry backoff from overload integration testing (#41313)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "31d338a1ea89cd65a48d8ac07f50bb3917009806",
+      "title": "Isolate required-model Guardian approval coverage (#41322)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "5eea8d0dd3f6b38b0e457d266fd7c918eb189bb6",
+      "title": "Review terminal input against retained permissions (#41328)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "430d26b543b219049192de559987b8cf506efacf",
+      "title": "Classify clock tools as built-in control tools (#41331)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "7625343977154efed8c0dadba956374992a1580b",
+      "title": "Preserve cached MCP tools during binding capture (#41336)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "92f887ec35098c479dbe7f0d48d23f7f955055a0",
+      "title": "Use refreshed MCP tool caches during binding capture (#41344)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "868c9edb0da913a5fc699a71664e65f44f6058b0",
+      "title": "Assign stable IDs to generated Responses input items (#41349)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "39507eea5360b994d5f41f25e456d7f86733dc70",
+      "title": "Reject NUL bytes in reviewed terminal input (#41354)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "1cc81ca89a0b7660bcb332da09d1c3e966cf0298",
+      "title": "Support compression for shared rollout lineages (#41357)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "f4f85add41288c2059dc1a4326a598f739e47fe9",
+      "title": "Measure Codex home usage at app-server startup (#41360)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "8faf7252f07127ec4f46e0f308e6cf136bb57d63",
+      "title": "Test resuming compressed shared rollouts (#41364)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "7e41be641ed1133711e4f75b2e142de7affaff7a",
+      "title": "Restrict async user messages to questions (#41365)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "5ed294d49d64f79b25ae63cd1cdaf54db7a797fd",
+      "title": "Match Windows shell guidance to the executor platform (#41368)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "8bcac28f93f78b70d1159d97dbf11254bfb56a49",
+      "title": "Preload plugin recommendations during session startup (#41375)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "4ee04c0aa5833ac39b1763f6ea44c7bc777c83dd",
+      "title": "Clarify proactive multi-agent delegation guidance (#41380)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "e4d0ba4e927363f695bb8d0fef187fd229700657",
+      "title": "Support configurable timeouts for thread shell commands (#41384)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "60fc6995608e8188c0c9f8407d6cd98676efa247",
+      "title": "Give Guardian classifications distinct turn identities (#41385)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "4878401e8fbd205c683255b0d224a4592ff95a09",
+      "title": "Add shared Guardian context primitives (#41392)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "b836aecd4ddca2275f064920b52585d4e36c987e",
+      "title": "Preserve one-shot exec when unified exec is disabled (#41393)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "bb998aeb8e8aca2f707f83ce07f52adbb3cf2eb5",
+      "title": "Refresh runtimes for remote plugin state changes (#41396)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "d9511fb7888d98f89526d4ae019dd9be2f14199e",
+      "title": "Refresh MCP HTTP helper headers after authorization failures (#41400)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "3ae4225b1761c135c6d3bbc1ea0cfcfc95752cdc",
+      "title": "Restrict cloud task credentials to trusted origins (#41403)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "170da98842877c730a1d8ec9ee7421e54c06bb6d",
+      "title": "Optimize history item lookups (#41413)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "03147407e3a078c559f92f9fbad39d13541c3049",
+      "title": "Add app-server notification media filtering (#41416)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "f742dabc6f9c575ca43428a84b66fb42a7f3e4b2",
+      "title": "Support per-tool MCP output limits (#41421)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "0918cd2c08f6e3b1f2b1db593e632a2e092c1ea6",
+      "title": "Add shared Guardian transcript collection (#41422)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "f9cdc90c2c4d38cd557deb933e592f0032a5ea6e",
+      "title": "Preserve context baselines across nested agent forks (#41424)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "2008d27e98d7b46170d2d464b36dbf97008611b8",
+      "title": "Filter media from function call output notifications (#41427)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "0d226929622ce177b56e35d09cf39dd001721466",
+      "title": "Retain the last selected step context for each turn (#41429)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "c2abf869d539a6326a6e5a125dfdb8a5dc488ab4",
+      "title": "Run executor hooks for interrupted turns (#41432)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "c6bf330b42ed6fcbdcc902dc06ef38306b2e02f3",
+      "title": "Allow bundled browser cleanup hooks on subagent stop (#41435)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "0ae94fdd49b05ee7faa4d984d06a68492cb32b54",
+      "title": "Respond to terminal queries from TTY subprocesses (#41436)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "eec4a23cb16de16e0c8cff7c913eed943f223df7",
+      "title": "Support `openai/elicitation` form requests (#41447)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "a5c581e2476fd5309af0ea8065b92bdd91aaf26e",
+      "title": "Clarify question handling in Default collaboration mode (#41448)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "75388bf321bffeda40e41dca2061c1cd72c2f4d4",
+      "title": "Rename the read-only Seatbelt platform defaults policy (#41449)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "48e22a5fa08b03a9d8acc6a6577dd334c5319446",
+      "title": "Report code mode host request durations (#41452)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "62b458c93151595cdf2b5ef5e37aa3d8b5613aeb",
+      "title": "Block goals after repeated execution host failures (#41454)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "2181224dad147a9ed37e698b66487aba54acdb65",
+      "title": "Support app targets in executor plugin hooks (#41456)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "03861e69ef549717c0fc7045abad56321d4a082b",
+      "title": "Source proactive multi-agent instructions from the model catalog (#41457)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "3c062df036070ad5819a9a74160a448b414e9b92",
+      "title": "Source async user message descriptions from the model catalog (#41461)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "0b45b171ca7141fd7723f16adb59cd8e7c1a74c3",
+      "title": "Preserve permissions when updating session metadata (#41464)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "5fc7840cf6d085a7a7b3438d69a2beb934a2a5f4",
+      "title": "Refresh the TUI model picker from the app server (#41467)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "9a0d7a7cd09226020afb12dc0d5ceb470c54a885",
+      "title": "Use rules_rs platforms for release binaries (#41476)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "6478a751fde8884b2fdc76486fe23175a8e795d4",
+      "title": "Organize bundled Rust resources under asset directories (#41477)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "4210c08defe92fe8828f789b6f9fda287ad3709e",
+      "title": "Preserve turn lineage across goal continuations (#41562)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "f5636bb733c4653a6b91413fed1aaf8842374f2e",
+      "title": "Restore thread cwd from owned settings snapshots (#41567)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "aaa7ed042eaa1f8c6c03e41673bdf0efc7851c14",
+      "title": "Harden diagnostic report uploads (#41569)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "b8c86376a258e55efc8e5ecfbabc21c16c07d814",
+      "title": "Fix proactive multi-agent instruction grammar (#41570)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "63d213884daea50e4f74efc192cdc44f549b67d5",
+      "title": "Add Vim search motions to the composer (#41586)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "dde85b435b16994f956bce08e5fb796ed94c27fd",
+      "title": "Move Vim history tests into the history search module (#41613)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    }
+  ]
+}

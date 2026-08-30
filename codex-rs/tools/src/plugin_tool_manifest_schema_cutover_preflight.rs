@@ -144,6 +144,8 @@ fn schema_complete_candidate_ids(tool_schemas: Option<&JsonValue>) -> Vec<String
                 && object_has_field(declaration, "outputSchema"))
             .then(|| candidate_tool_id.clone())
         })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
         .collect()
 }
 
@@ -172,6 +174,8 @@ fn policy_complete_candidate_ids(
                 && object_has_field(declaration, "timeoutMs"))
             .then(|| candidate_tool_id.clone())
         })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
         .collect()
 }
 

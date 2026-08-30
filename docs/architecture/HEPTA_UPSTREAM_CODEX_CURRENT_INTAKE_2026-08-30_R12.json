@@ -1,0 +1,69 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v12",
+  "observation": {
+    "state": "observed_and_classified",
+    "observed_at": "2026-08-30T05:23:57.265106Z",
+    "upstream_repository": "https://github.com/openai/codex.git",
+    "target_branch": "main",
+    "target_ref": "refs/remotes/upstream/main",
+    "observed_upstream_head": "dde85b435b16994f956bce08e5fb796ed94c27fd",
+    "range_start_exclusive": "61a44880a85d2fd0d8770908dea5733495e571c8",
+    "range_end_inclusive": "dde85b435b16994f956bce08e5fb796ed94c27fd",
+    "commit_count": 1405,
+    "merge_commit_count": 0,
+    "net_changed_file_count": 3238,
+    "net_insertions": 446505,
+    "net_deletions": 77000,
+    "predecessor_relationship": "linear_ancestor",
+    "ordinary_merge_allowed": false,
+    "ordinary_rebase_allowed": false,
+    "direct_cherry_pick_default": false,
+    "required_integration_mode": "selective_semantic_transplant_with_behavioral_evidence",
+    "fetch_command": "git fetch --no-tags https://github.com/openai/codex.git dde85b435b16994f956bce08e5fb796ed94c27fd:refs/remotes/upstream/hepta-intake-20260830-r12"
+  },
+  "claims": {
+    "upstream_fully_consumed": false,
+    "source_imported_at_observation": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "deployment_performed": false,
+    "live_enablement_performed": false
+  },
+  "storage_layout": {
+    "inventory_shards": [
+      {
+        "path": "docs/architecture/upstream-intake-r12/commit-inventory-0001.json",
+        "sha256": "a8e8304be6c8e166d086cc153edea2993c4f5c92a153e3ac4aac260122b4aa51",
+        "commit_count": 250
+      },
+      {
+        "path": "docs/architecture/upstream-intake-r12/commit-inventory-0002.json",
+        "sha256": "d460575786a16fe9784819cb0b7c2f6cc97853f2bf0e678989a35deb6de7bad9",
+        "commit_count": 250
+      },
+      {
+        "path": "docs/architecture/upstream-intake-r12/commit-inventory-0003.json",
+        "sha256": "249c5e80a2547d9634c0a021e971415d8fc0465bcdc8dbffb3d79b257b00eb4b",
+        "commit_count": 250
+      },
+      {
+        "path": "docs/architecture/upstream-intake-r12/commit-inventory-0004.json",
+        "sha256": "73d2b15105eeb4dc8cd424198191a19b2cf4aa42db3e7dfde3f59ae6871b958d",
+        "commit_count": 250
+      },
+      {
+        "path": "docs/architecture/upstream-intake-r12/commit-inventory-0005.json",
+        "sha256": "9a7dae5bdc9f8676cdbe938754f202d06c678dcd4914b9adb2a5f94c9fc310a9",
+        "commit_count": 250
+      },
+      {
+        "path": "docs/architecture/upstream-intake-r12/commit-inventory-0006.json",
+        "sha256": "2674eb5f586007cc58181b4a9332bcb392ac359500a29c643675083543355817",
+        "commit_count": 155
+      }
+    ],
+    "shard_size": 250,
+    "commit_count": 1405
+  }
+}

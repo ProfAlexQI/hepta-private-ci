@@ -52,6 +52,18 @@ jobs:
         shell: pwsh
         run: choco install bazelisk --yes --no-progress
 
+      - name: Install Rust 1.95.0 with rustfmt
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --no-self-update
+          if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+          }
+          rustup default 1.95.0
+          if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+          }
+
       - name: Set up sandboxed rusty_v8
         shell: bash
         run: bash .github/workflows/scripts/setup-rusty-v8.sh x86_64-pc-windows-msvc "$RUNNER_TEMP/rusty-v8/x86_64-pc-windows-msvc" "$GITHUB_ENV"
@@ -63,10 +75,23 @@ jobs:
       - name: Run the native Windows Bazel suite
         shell: pwsh
         run: |
+          $rustfmtPath = (& rustup which --toolchain 1.95.0 rustfmt).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $rustfmtPath) {
+              throw "Unable to resolve Rust 1.95.0 rustfmt"
+          }
+          if (-not [System.IO.Path]::IsPathFullyQualified($rustfmtPath)) {
+              throw "Rustfmt path is not absolute: $rustfmtPath"
+          }
+          if (-not (Test-Path -LiteralPath $rustfmtPath -PathType Leaf)) {
+              throw "Rustfmt path is not an executable file: $rustfmtPath"
+          }
+          $env:RUSTFMT = $rustfmtPath
+
           $executionLogDirectory = Join-Path $env:RUNNER_TEMP "bazel-execution-logs"
           New-Item -ItemType Directory -Force -Path $executionLogDirectory | Out-Null
 
           $environmentVariables = @(
+              "RUSTFMT",
               "BAZEL_SH",
               "BAZEL_VC",
               "INCLUDE",
