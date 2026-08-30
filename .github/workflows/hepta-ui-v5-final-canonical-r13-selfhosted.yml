@@ -33,12 +33,19 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Verify wrapper and select exact hosted publisher driver
+      - name: Verify wrapper lineage and select exact hosted publisher driver
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "$REPLAY_DRIVER_SHA"
-          test "$(git diff --name-only HEAD^ HEAD)" = "$WRAPPER_PATH"
+          git merge-base --is-ancestor "$REPLAY_DRIVER_SHA" HEAD
+          test "$(git rev-list --merges --count "$REPLAY_DRIVER_SHA..HEAD")" = 0
+          mapfile -t wrapper_paths < <(
+            git log --format= --name-only "$REPLAY_DRIVER_SHA..HEAD" |
+              sed '/^$/d' |
+              sort -u
+          )
+          test "${#wrapper_paths[@]}" = 1
+          test "${wrapper_paths[0]}" = "$WRAPPER_PATH"
           test "$(git rev-parse "$REPLAY_DRIVER_SHA^")" = "$EXPECTED_REPLAY_PARENT"
           test "$(git diff --name-only "$EXPECTED_REPLAY_PARENT" "$REPLAY_DRIVER_SHA")" = "$REPLAY_DRIVER_PATH"
           git checkout --detach "$REPLAY_DRIVER_SHA"
@@ -64,7 +71,6 @@ jobs:
 
           import os
           import subprocess
-          import sys
           import tempfile
           from pathlib import Path
 
@@ -112,9 +118,9 @@ jobs:
                   target[name] = value
 
           runnable = [step for step in steps if "run" in step]
-          if len(runnable) != 8:
+          if len(runnable) != 7:
               raise SystemExit(
-                  f"publisher shell-step count drifted: expected 8, found {len(runnable)}"
+                  f"publisher shell-step count drifted: expected 7, found {len(runnable)}"
               )
 
           for ordinal, step in enumerate(runnable, start=1):
