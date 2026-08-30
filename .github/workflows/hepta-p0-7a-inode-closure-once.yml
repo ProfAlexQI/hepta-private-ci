@@ -60,6 +60,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
+          import base64
           from pathlib import Path
 
           fleet = Path("codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs")
@@ -97,78 +98,9 @@ jobs:
               text = text.replace(old, new, 1)
           fleet.write_text(text, encoding="utf-8")
 
+          agentd_b64 = "IyFbZm9yYmlkKHVuc2FmZV9jb2RlKV0KCi8vISBPbmUtcHJvY2Vzcy1wZXItd29ya3NwYWNlIEhlcHRhIGFnZW50IGhvc3QuCi8vIQovLyEgYGFnZW50ZGAgYmluZHMgZXhhY3RseSBvbmUgZmxlZXQgYEFnZW50SWRgLCBlbWJlZHMgdGhlIGV4aXN0aW5nIENvZGV4IEFwcAovLyEgU2VydmVyIGV4ZWN1dGlvbiBwYXRoLCBhbmQgZXhwb3NlcyBhIHNtYWxsIGxvY2FsIGxpZmVjeWNsZS9jb250cm9sIHNvY2tldC4KLy8hIEl0IGRvZXMgbm90IGltcGxlbWVudCBhIHNlY29uZCBydW50aW1lIGtlcm5lbCBvciBhIGZsZWV0LXdpZGUgbWVzc2FnZSBidXMuCgojW2NmZyhub3QodW5peCkpXQpjb21waWxlX2Vycm9yISgiY29kZXgtaGVwdGEtYWdlbnRkIHJlcXVpcmVzIFVuaXggZG9tYWluIHNvY2tldHMiKTsKCm1vZCBhcHBfcnVudGltZTsKbW9kIGF1dG9tYXRpb247Cm1vZCBhdXRvbWF0aW9uX3NlcnZpY2U7Cm1vZCBjbGllbnQ7Cm1vZCBjb21wb3NpdGlvbjsKbW9kIGNvbmZpZzsKbW9kIGNvbnRyb2w7Cm1vZCBlcnJvcjsKbW9kIGV2ZW50X2J1ZmZlcjsKbW9kIG1lbW9yeV9zZXJ2aWNlOwptb2QgcHJvZHVjdGlvbl9hdXRob3JpdHlfYWRhcHRlcjsKbW9kIHByb2R1Y3Rpb25fd3JpdGVyX2hvc3Q7Cm1vZCBxdWFsaWZpY2F0aW9uX3dyaXRlcjsKbW9kIHJ1bnRpbWU7Cm1vZCBydW50aW1lX2Jvb3RzdHJhcDsKbW9kIHJ1bnRpbWVfcHJvZmlsZTsKbW9kIHN0YXRlOwoKcHViIHVzZSBjbGllbnQ6OkFnZW50ZENsaWVudDsKcHViIHVzZSBjb2RleF9oZXB0YV9hZ2VudF9wcm90b2NvbDo6QUdFTlREX0NPTlRST0xfU0NIRU1BX1ZFUlNJT047CnB1YiB1c2UgY29kZXhfaGVwdGFfYWdlbnRfcHJvdG9jb2w6OkFnZW50ZEV2ZW50OwpwdWIgdXNlIGNvZGV4X2hlcHRhX2FnZW50X3Byb3RvY29sOjpBZ2VudGRFdmVudEtpbmQ7CnB1YiB1c2UgY29kZXhfaGVwdGFfYWdlbnRfcHJvdG9jb2w6OkFnZW50ZE1ldGhvZDsKcHViIHVzZSBjb2RleF9oZXB0YV9hZ2VudF9wcm90b2NvbDo6QWdlbnRkUGF5bG9hZDsKcHViIHVzZSBjb2RleF9oZXB0YV9hZ2VudF9wcm90b2NvbDo6QWdlbnRkUmVxdWVzdDsKcHViIHVzZSBjb2RleF9oZXB0YV9hZ2VudF9wcm90b2NvbDo6QWdlbnRkUmVzcG9uc2U7CnB1YiB1c2UgY29kZXhfaGVwdGFfYWdlbnRfcHJvdG9jb2w6OkV2ZW50QmF0Y2g7CnB1YiB1c2UgY29kZXhfaGVwdGFfYWdlbnRfcHJvdG9jb2w6OkhlYWx0aFNuYXBzaG90OwpwdWIgdXNlIGNvZGV4X2hlcHRhX2FnZW50X3Byb3RvY29sOjpMaWZlY3ljbGVTbmFwc2hvdDsKcHViIHVzZSBjb2RleF9oZXB0YV9hZ2VudF9wcm90b2NvbDo6TUFYX0NPTlRST0xfRlJBTUVfQllURVM7CnB1YiB1c2UgY29kZXhfaGVwdGFfYWdlbnRfcHJvdG9jb2w6Ok1BWF9FVkVOVF9CQVRDSDsKcHViIHVzZSBjb2RleF9oZXB0YV9hZ2VudF9wcm90b2NvbDo6TUFYX0ZFREVSQVRJT05fQ09OVFJPTF9MSVNUOwpwdWIgdXNlIGNvZGV4X2hlcHRhX2FnZW50X3Byb3RvY29sOjpNZW1vcnlGZWRlcmF0aW9uQ2FwYWJpbGl0eUlkOwpwdWIgdXNlIGNvZGV4X2hlcHRhX2FnZW50X3Byb3RvY29sOjpNZW1vcnlGZWRlcmF0aW9uQ2FwYWJpbGl0eVNuYXBzaG90OwpwdWIgdXNlIGNvZGV4X2hlcHRhX2FnZW50X3Byb3RvY29sOjpNZW1vcnlGZWRlcmF0aW9uQ2FwYWJpbGl0eVN0YXRlOwpwdWIgdXNlIGNvZGV4X2hlcHRhX2FnZW50X3Byb3RvY29sOjpNZW1vcnlGZWRlcmF0aW9uU2NvcGVLaW5kOwpwdWIgdXNlIGNvZGV4X2hlcHRhX2FnZW50X3Byb3RvY29sOjpTZXNzaW9uSW5ncmVzczsKcHViIHVzZSBjb2RleF9oZXB0YV9hZ2VudF9wcm90b2NvbDo6U2Vzc2lvblRyYW5zcG9ydDsKcHViIHVzZSBjb2RleF9oZXB0YV9hdXRvbWF0aW9uOjpBdXRvbWF0aW9uU2NoZWR1bGU7CnB1YiB1c2UgY29kZXhfaGVwdGFfYXV0b21hdGlvbjo6QXV0b21hdGlvblRhc2s7CnB1YiB1c2UgY29kZXhfaGVwdGFfYXV0b21hdGlvbjo6QXV0b21hdGlvblRhc2tEcmFmdDsKcHViIHVzZSBjb2RleF9oZXB0YV9hdXRvbWF0aW9uOjpBdXRvbWF0aW9uVGFza0lkOwpwdWIgdXNlIGNvbmZpZzo6QWdlbnRkQ29uZmlnOwpwdWIgdXNlIGNvbmZpZzo6QWdlbnRkSWRlbnRpdHk7CnB1YiB1c2UgY29uZmlnOjpIRVBUQV9BR0VOVF9HRU5FUkFUSU9OX0VOVjsKcHViIHVzZSBjb25maWc6OkhFUFRBX0FHRU5UX0hPTUVfRU5WOwpwdWIgdXNlIGNvbmZpZzo6SEVQVEFfQUdFTlRfSURfRU5WOwpwdWIgdXNlIGNvbmZpZzo6SEVQVEFfQUdFTlRfUlVOX1JPT1RfRU5WOwpwdWIgdXNlIGVycm9yOjpBZ2VudGRFcnJvcjsKcHViIHVzZSBwcm9kdWN0aW9uX3dyaXRlcl9ob3N0OjpBZ2VudGRQcm9kdWN0aW9uV3JpdGVySG9zdDsKcHViIHVzZSBydW50aW1lOjpydW47CnB1YiB1c2UgcnVudGltZV9ib290c3RyYXA6OlJ1bnRpbWVCb290c3RyYXBBZG1pc3Npb247Cgp1c2UgY29udHJvbDo6QWdlbnRkQ29udHJvbFNlcnZlcjsKdXNlIGV2ZW50X2J1ZmZlcjo6RXZlbnRCdWZmZXI7CnVzZSBzdGF0ZTo6QWdlbnRkU3RhdGU7Cg=="
           agentd = Path("codex-rs/hepta-agentd/src/lib.rs")
-          agentd.write_text(
-              '''#![forbid(unsafe_code)]
-
-//! One-process-per-workspace Hepta agent host.
-//!
-//! `agentd` binds exactly one fleet `AgentId`, embeds the existing Codex App
-//! Server execution path, and exposes a small local lifecycle/control socket.
-//! It does not implement a second runtime kernel or a fleet-wide message bus.
-
-#[cfg(not(unix))]
-compile_error!("codex-hepta-agentd requires Unix domain sockets");
-
-mod app_runtime;
-mod automation;
-mod automation_service;
-mod client;
-mod composition;
-mod config;
-mod control;
-mod error;
-mod event_buffer;
-mod memory_service;
-mod production_authority_adapter;
-mod production_writer_host;
-mod qualification_writer;
-mod runtime;
-mod runtime_bootstrap;
-mod runtime_profile;
-mod state;
-
-pub use client::AgentdClient;
-pub use codex_hepta_agent_protocol::AGENTD_CONTROL_SCHEMA_VERSION;
-pub use codex_hepta_agent_protocol::AgentdEvent;
-pub use codex_hepta_agent_protocol::AgentdEventKind;
-pub use codex_hepta_agent_protocol::AgentdMethod;
-pub use codex_hepta_agent_protocol::AgentdPayload;
-pub use codex_hepta_agent_protocol::AgentdRequest;
-pub use codex_hepta_agent_protocol::AgentdResponse;
-pub use codex_hepta_agent_protocol::EventBatch;
-pub use codex_hepta_agent_protocol::HealthSnapshot;
-pub use codex_hepta_agent_protocol::LifecycleSnapshot;
-pub use codex_hepta_agent_protocol::MAX_CONTROL_FRAME_BYTES;
-pub use codex_hepta_agent_protocol::MAX_EVENT_BATCH;
-pub use codex_hepta_agent_protocol::MAX_FEDERATION_CONTROL_LIST;
-pub use codex_hepta_agent_protocol::MemoryFederationCapabilityId;
-pub use codex_hepta_agent_protocol::MemoryFederationCapabilitySnapshot;
-pub use codex_hepta_agent_protocol::MemoryFederationCapabilityState;
-pub use codex_hepta_agent_protocol::MemoryFederationScopeKind;
-pub use codex_hepta_agent_protocol::SessionIngress;
-pub use codex_hepta_agent_protocol::SessionTransport;
-pub use codex_hepta_automation::AutomationSchedule;
-pub use codex_hepta_automation::AutomationTask;
-pub use codex_hepta_automation::AutomationTaskDraft;
-pub use codex_hepta_automation::AutomationTaskId;
-pub use config::AgentdConfig;
-pub use config::AgentdIdentity;
-pub use config::HEPTA_AGENT_GENERATION_ENV;
-pub use config::HEPTA_AGENT_HOME_ENV;
-pub use config::HEPTA_AGENT_ID_ENV;
-pub use config::HEPTA_AGENT_RUN_ROOT_ENV;
-pub use error::AgentdError;
-pub use production_writer_host::AgentdProductionWriterHost;
-pub use runtime::run;
-pub use runtime_bootstrap::RuntimeBootstrapAdmission;
-
-use control::AgentdControlServer;
-use event_buffer::EventBuffer;
-use state::AgentdState;
-''',
-              encoding="utf-8",
-          )
+          agentd.write_bytes(base64.b64decode(agentd_b64, validate=True))
           PY
 
           rm .github/workflows/hepta-p0-7a-inode-closure-once.yml
