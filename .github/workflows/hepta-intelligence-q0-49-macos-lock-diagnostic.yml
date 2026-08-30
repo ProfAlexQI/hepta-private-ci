@@ -30,7 +30,10 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
-          mapfile -t changed < <(git diff --name-only --no-renames "$SOURCE_SHA" HEAD)
+          changed=()
+          while IFS= read -r path; do
+            changed+=("$path")
+          done < <(git diff --name-only --no-renames "$SOURCE_SHA" HEAD)
           test "${#changed[@]}" -eq 1
           test "${changed[0]}" = ".github/workflows/hepta-intelligence-q0-49-macos-lock-diagnostic.yml"
           git diff --check "$SOURCE_SHA" HEAD
@@ -190,7 +193,10 @@ jobs:
             >artifacts/q049-macos/q049.changed-paths
           git diff --check "$SOURCE_SHA" --
 
-          mapfile -t paths <artifacts/q049-macos/q049.changed-paths
+          paths=()
+          while IFS= read -r path; do
+            paths+=("$path")
+          done <artifacts/q049-macos/q049.changed-paths
           required=(
             .github/workflows/rust-ci.yml
             codex-rs/Cargo.lock
