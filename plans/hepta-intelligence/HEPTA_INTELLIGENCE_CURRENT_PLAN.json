@@ -1,165 +1,117 @@
 {
-  "schema": "hepta_intelligence_current_plan_v2",
-  "generated_at": "2026-08-28",
-  "repository": "ProfAlexQI/hepta-private-ci",
-  "canonical": {
-    "plan_id": "HEPTA_INTELLIGENCE_MASTER_PLAN_V4",
-    "plan_version": "4.0.0",
-    "human_document": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
-    "content_sha256": "74339a00c972e64d29aaf89eea8fa416418d61a8c701dff3ce3cdfc9a326cfe8",
-    "blob_sha": "e7e73e23c4d94ee3035170fd7cab7dc6be1c3ab6",
-    "plan_commit": "298073d29bfb5b3f94ba4b08a2d3dd3d9ac3bcd4",
-    "plan_tree": "d3cb6876cff8b4c811aaeab72b7dc24e026f5e1c",
-    "receipt_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN_V4_RECEIPT_2026-08-28.json",
-    "branch": "codex/hepta-intelligence-plan-v3-20260828",
-    "status": "RECEIPTED_PLAN_V4_NO_RUNTIME_AUTHORITY"
-  },
-  "session_bootstrap": {
-    "instructions_file": "plans/hepta-intelligence/AGENTS.md",
-    "read_order": [
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md"
+  "a0_previous_exact_head_provenance": [
+    "241daa85253a6224a9473a1a2b2967f71e9b46af",
+    "88b355931456603bd7a1dd9e0cdfd4d0d035dc0e",
+    "0b80caff91010f40a79c795c20487ff9d773d229",
+    "0a93b172e575670d20c30e2efa7f312097466fe6",
+    "d93050c48e2943bb2be46e5f610c1bc109498194",
+    "1146f0290fbbff7e6a26f6b91c80ec1e1daa0b60",
+    "f09972580e7a10781bf48890f7eeeb2d9b9e945e"
+  ],
+  "active_phase": {
+    "active_task": "A0.3_V4_5_SOURCE_CONTRACT_CLOSURE",
+    "allowed_change_class": "DOCUMENTATION_REGISTRY_VERIFIER_WORKFLOW_ONLY",
+    "current_work_unit": "A0.3_PUBLISH_EXACT_PARENT_V4_5_AND_OBTAIN_EVIDENCE",
+    "forbidden_change_classes": [
+      "RUNTIME_SOURCE",
+      "SQL_MIGRATION",
+      "PRODUCT_CALLER",
+      "H5_H6_H7_RUNTIME",
+      "MULTIMODAL_RUNTIME",
+      "PRODUCTION_AUTHORITY",
+      "CALLERS",
+      "PROMOTION",
+      "RELEASE"
     ],
-    "only_current_human_plan": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
-    "current_machine_authority": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
-    "document_authority_registry": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json",
-    "time_bounded_evidence_index": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json",
-    "on_mismatch": "FAIL_CLOSED",
-    "historical_documents_are_authority": false,
-    "legacy_machine_contracts_are_current_authority": false,
-    "legacy_machine_contracts_must_remain_compatible_until_migrated": true
-  },
-  "exact_base": {
-    "pull_request": 23,
-    "branch": "codex/hepta-intelligence-shadow-host-adapter-v4c-20260828",
-    "head": "7691978b786dd00c69477d1a3355be13db2c4d67",
-    "tree": "bc2342443fe28d2b803cf1c8273c5d3cd4171ced",
-    "p0_4c_hardened_source_candidate": "7bb26ec016c2e2c83084756485ea324e79bcddbe"
-  },
-  "current_truth": {
-    "P0_1_through_P0_4c_source_implemented": true,
-    "wired": false,
-    "qualified": false,
-    "efficacy_proven": false,
-    "operator_accepted": false,
-    "promoted": false,
-    "live_runner_state_embedded_here": false,
-    "live_evidence_source": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json"
-  },
-  "document_compatibility": {
-    "status": "RESTORED_PENDING_EXACT_RERUN",
-    "regression_head": "80be14b1c42c76b9a7bd03393814b7e2b5a620de",
-    "root_cause": "legacy machine status contracts were replaced by minimal redirect schemas while frozen P0 verifiers still consumed their original fields",
-    "restored_contracts": [
-      {
-        "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
-        "schema": "hepta_intelligence_execution_status_v2",
-        "current_authority": false,
-        "compatibility_required": true
-      },
-      {
-        "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V3.json",
-        "schema": "hepta_intelligence_execution_status_v3",
-        "current_authority": false,
-        "compatibility_required": true
-      }
-    ],
-    "exit_gate": [
-      "P0.2 source gate passes on the repaired exact head",
-      "P0.3 source gate passes on the repaired exact head",
-      "P0.4a source gate passes on the repaired exact head",
-      "P0.4b source and SQLite gates pass on the repaired exact head",
-      "P0.4c source gate passes on the repaired exact head",
-      "master-plan verifier proves the compatibility registry and consumer matrix",
-      "all runtime and production authority remains false"
-    ]
+    "id": "A0",
+    "name": "Canonical Capability, Evidence and PR-Stack Authority",
+    "status": "ACTIVE_BLOCKING"
   },
   "authority": {
-    "runtime_wired": false,
+    "callers_ratchet": false,
     "default_open_wired": false,
-    "app_runtime_attached": false,
-    "tool_registered": false,
-    "memory_write_authority": false,
-    "projection_write_authority": false,
-    "learning_write_authority": false,
-    "outbox_dispatch_authority": false,
-    "model_runtime_authority": false,
-    "production_authority": false,
     "external_effects": false,
+    "learning_write_authority": false,
+    "memory_write_authority": false,
+    "model_runtime_authority": false,
     "operator_acceptance": false,
+    "outbox_dispatch_authority": false,
+    "product_module_registered": false,
+    "production_authority": false,
+    "projection_write_authority": false,
     "promotion": false,
-    "callers_ratchet": false
+    "provider_dispatch_authority": false,
+    "release_authority": false,
+    "runtime_wired": false,
+    "tool_registered": false
+  },
+  "canonical": {
+    "binding_policy": "raw plan bytes in source; exact commit/tree in external evidence",
+    "blob_sha": null,
+    "content_sha256": "23d4121ce4182b64880b4e7b0a04984a86ea49892485f2b66ed9e79e6c9bd5a5",
+    "human_document": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
+    "plan_commit": null,
+    "plan_id": "HEPTA_INTELLIGENCE_MASTER_PLAN_V4",
+    "plan_tree": null,
+    "plan_version": "4.5.1"
   },
   "claim_levels": {
-    "system_learning": "L0_STATIC_SHADOW_WITH_PARTIAL_L1_FOUNDATIONS",
+    "biological_mechanism_replication": false,
+    "closed_loop_learning": false,
+    "cross_modal_retrieval_qualified": false,
     "h5": "N0_METAPHORICAL_TYPED_PROPOSAL",
     "h6": "I0_DETERMINISTIC_SELECTIVE_POLICY",
-    "self_evolution": false,
-    "longitudinal_learning_efficacy": false,
-    "closed_loop_learning": false,
-    "structural_plasticity": false,
-    "neuromorphic_mechanism": false,
-    "biological_mechanism_replication": false,
     "local_small_model_used_by_h5": false,
-    "local_small_model_used_by_h6": false
+    "local_small_model_used_by_h6": false,
+    "longitudinal_learning_efficacy": false,
+    "multimodal_efficacy_proven": false,
+    "multimodal_memory": "MM0_SPECIFIED_ONLY",
+    "native_media_memory_wired": false,
+    "neuromorphic_mechanism": false,
+    "self_evolution": false,
+    "structural_plasticity": false,
+    "system_learning": "L0_STATIC_SHADOW_WITH_PARTIAL_L1_FOUNDATIONS"
   },
-  "active_phase": {
-    "id": "Q0",
-    "name": "qualification_debt_closure",
-    "status": "ACTIVE_BLOCKING",
-    "active_task": "DOC-Q0.1_RESTORE_FROZEN_QUALIFICATION_COMPATIBILITY",
-    "requirements": [
-      "preserve legacy machine schemas until every registered consumer migrates",
-      "rerun the complete P0 source compatibility matrix on one repaired exact head",
-      "produce reproducible local E1 executable evidence",
-      "produce independent E2 exact-head runner evidence",
-      "execute source, fmt, focused/full tests, clippy, SQLite upgrade/reopen/corruption/failpoints and Agentd default-off gates",
-      "keep all runtime and production authority false"
-    ]
+  "current_truth": {
+    "a0_candidate_qualified": false,
+    "efficacy_proven": false,
+    "full_repository_merge_green": false,
+    "implemented": true,
+    "operator_accepted": false,
+    "p0_1_through_p0_4c_source_implemented": true,
+    "production_candidate": false,
+    "promoted": false,
+    "q0_executable_evidence_complete": true,
+    "q0_executable_qualified": true,
+    "qualified": false,
+    "qualified_candidate": true,
+    "released": false,
+    "runtime_qualified": false,
+    "selected": false,
+    "source_writeback": false,
+    "wired": false
   },
-  "stack_budget": {
-    "maximum_unqualified_source_implementation_layers": 2,
-    "current_stack_exceeds_budget": true,
-    "runtime_source_freeze": true,
-    "allowed": [
-      "plan_only",
-      "schema_only",
-      "verifier_only",
-      "receipt_only",
-      "runner_infrastructure_only",
-      "compatibility adapters",
-      "fixes_to_existing_frozen_tranches"
-    ],
-    "blocked": [
-      "new_runtime_source",
-      "new_migration",
-      "P1_1_activation",
-      "H5_runtime",
-      "H6_runtime",
-      "H7_runtime",
-      "production_caller",
-      "CALLERS_ratchet"
-    ]
+  "evidence_model": {
+    "external_reviewer_binds_completed_observer_artifact": true,
+    "independent_review_receipt": "A0IndependentReviewReceiptV1",
+    "merge_attribution_receipt": "RepositoryCheckAttributionReceiptV1",
+    "observer_receipt_status": "PASS_HEPTA_INTELLIGENCE_A0_EXACT_HEAD_EVIDENCE_OBSERVED",
+    "observer_transport_self_binding": false,
+    "selection_receipt": "CanonicalSelectionReceiptV1",
+    "source_or_observer_may_set_a0_candidate_qualified": false,
+    "source_receipt_status": "PASS_HEPTA_INTELLIGENCE_A0_SOURCE_EVIDENCE"
   },
-  "roadmap": [
-    "A0_0_MINIMAL_DOCUMENT_AND_EVIDENCE_AUTHORITY_BOOTSTRAP",
-    "Q0_QUALIFICATION_DEBT_CLOSURE",
-    "A0_1_CANONICAL_CAPABILITY_EVIDENCE_AUTHORITY",
-    "B0_LEARNING_BOUNDARY_EXTRACTION",
-    "C0_LEARNING_EPISODE_AND_DURABLE_LEDGER",
-    "R1_GROUNDED_RETRIEVAL_TELEMETRY_SECURITY",
-    "N1_H5_ADAPTIVE_SIGNAL_UNIT",
-    "I1_H6_CALIBRATED_FAST_POLICY",
-    "L1_H7_CAUSAL_EVALUATION_ARTIFACT",
-    "C1_LOW_RISK_CLOSED_LOOP",
-    "N2_TEMPORAL_RECURRENT_SIGNAL_NETWORK",
-    "S1_GOVERNED_STRUCTURAL_PLASTICITY"
+  "external_stop_conditions": [
+    "BLOCKED_EXTERNAL_REVIEWER_SIGNATURES",
+    "BLOCKED_CANONICAL_SELECTOR",
+    "BLOCKED_EXTERNAL_REVIEWED_CORPUS",
+    "BLOCKED_MODEL_LICENSE_AND_SECURITY_APPROVAL",
+    "BLOCKED_REAL_HARDWARE_EVIDENCE",
+    "BLOCKED_RUNTIME_SOAK_AND_FAILURE_CAMPAIGN",
+    "OPERATOR_REQUIRED",
+    "CALLERS_REQUIRED"
   ],
-  "optional_parallel_research": [
-    "N3_ISOLATED_NEUROMORPHIC_RESEARCH"
-  ],
+  "generated_at_utc": null,
   "new_required_contracts": [
     "RunStartSnapshotV2",
     "LearningEpisodeV1",
@@ -175,40 +127,169 @@
     "EvaluationReceiptV2",
     "PolicyArtifactManifestV2",
     "UnlearningComplianceReceiptV1",
-    "TopologyProposalV1"
-  ],
-  "historical_human_plans": [
-    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V2_2026-08-28.md",
-    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28.md"
+    "TopologyProposalV1",
+    "IntegrationCandidateManifestV1",
+    "PackageHandoffReceiptV1",
+    "A0IndependentReviewReceiptV1",
+    "CanonicalSelectionReceiptV1",
+    "RepositoryCheckAttributionReceiptV1",
+    "B0ContractsExtractionReceiptV1",
+    "ReviewedCorpusEvidencePackageV1",
+    "SemanticArtifactEvidencePackageV1",
+    "OperatorAcceptancePackageV1",
+    "MemoryScopeV2",
+    "MemoryAssetManifestV1",
+    "MediaSegmentV1",
+    "AssetLifecycleV1",
+    "AssetIntakeReceiptV1",
+    "DerivedArtifactV1",
+    "EvidenceSetV1",
+    "ModelArtifactManifestV1",
+    "EmbeddingSpaceManifestV1",
+    "EmbeddingManifestV1",
+    "CrossModalQueryV1",
+    "MultimodalCandidateReceiptV1",
+    "MultimodalRerankReceiptV1",
+    "MultimodalRetrievalReceiptV1",
+    "RevalidationBindingV1",
+    "ContextCompilationReceiptV1",
+    "DeletionPropagationReceiptV1",
+    "MultimodalEfficacyReceiptV1",
+    "MultimodalSecurityReceiptV1",
+    "MultimodalResourceReceiptV1",
+    "A0SourceEvidenceReceiptV2",
+    "A0ExactHeadEvidenceReceiptV2"
   ],
   "next_actions": [
-    "rerun and pass the five frozen P0 source compatibility gates on one repaired exact head",
-    "classify and repair the real P0.4b rustfmt failure without adding new runtime behavior",
-    "freeze the exact P0 stack manifest after compatibility is green",
-    "establish a reproducible local executable qualification runner",
-    "obtain independent exact-head and merge-candidate qualification evidence",
-    "run the full Q0 Rust, SQLite, crash-window and Agentd matrix",
-    "fix only the failing frozen tranche before any new runtime source"
+    {
+      "action": "Publish V4.5.1 as one exact-parent replacement",
+      "blocked": false,
+      "id": "A0.3a",
+      "order": 1
+    },
+    {
+      "action": "Obtain fresh exact-head A0 source and executable receipts",
+      "blocked": false,
+      "id": "A0.3b",
+      "order": 2
+    },
+    {
+      "action": "Independent review and canonical selection",
+      "blocked": true,
+      "blocked_by": "fresh A0 exact-head executable receipt and distinct identities",
+      "id": "A0.4",
+      "order": 3
+    },
+    {
+      "action": "Build selected synthetic merge candidate and issue check attribution",
+      "blocked": true,
+      "blocked_by": "independent review and selection",
+      "id": "A0.5",
+      "order": 4
+    },
+    {
+      "action": "Begin B0.1 boundary extraction then MM0 contracts",
+      "blocked": true,
+      "blocked_by": "A0 merge-candidate admission",
+      "id": "B0_MM0",
+      "order": 5
+    }
   ],
-  "plan_source_gate": {
-    "receipt_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN_V4_HOSTED_SOURCE_RECEIPT_2026-08-28.json",
-    "head": "1099821cdf02595d716fa877fe2639cca92a6d8b",
-    "workflow_run": 33152382416,
-    "job_id": 98787148022,
-    "runner_id": 1000025882,
-    "runner_name": "GitHub Actions 1000025882",
-    "steps_non_empty": true,
-    "result": "PASS_CANONICAL_MASTER_PLAN_SOURCE_ONLY",
-    "satisfies_Q0": false,
-    "does_not_imply": [
-      "downstream consumer compatibility",
-      "Rust qualification",
-      "SQLite qualification",
-      "Agentd qualification",
-      "runtime wiring",
-      "efficacy",
-      "operator acceptance",
-      "promotion"
-    ]
+  "operational_execution": {
+    "candidate_qualification_requires_external_review_selection_and_merge_admission": true,
+    "canonical_trigger_path_manifest_sha256": "fa963166de5cfe36af6682e0e434fd17a8fc7e7d2cfe0c94777b1e0826475e9c",
+    "classification": "SUBORDINATE_EXECUTION_SPEC_NO_CURRENT_PLAN_OR_PROMOTION_AUTHORITY",
+    "execution_spec": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md",
+    "execution_spec_id": "HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1",
+    "execution_spec_sha256": "ceb0dc13df39b553f513ce8567d676c98b1a00a615163fe72b19f93f4ca30699",
+    "execution_spec_version": "1.3.0",
+    "gap_ledger_location": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json#/gap_closure_ledger",
+    "implementation_blueprint_location": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md#5-b0--learning-boundary-extraction",
+    "multimodal_blueprint_location": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md#16-mm0--multimodal-contract-and-authority-foundation",
+    "multimodal_gap_ledger_location": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json#/multimodal_memory_gap_ledger",
+    "no_ci_source_writeback": true,
+    "source_and_observer_receipts_are_candidate_qualification": false,
+    "source_publisher_separate_from_evidence_workflow": true
+  },
+  "q0_qualification": {
+    "candidate": {
+      "branch": "codex/hepta-intelligence-plan-v3-20260828",
+      "head": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+      "parent": "aeb8ac0bfb30d570a16c4914b6e4b31ce035dd62",
+      "repository": "ProfHepta/hepta-private-ci",
+      "tree": "ca455a9ef797cd95164c880c7b8faba80b305589"
+    },
+    "paired_receipt_qualified_candidate": true,
+    "run_attempt": 1,
+    "run_id": 33252922404,
+    "runtime_capability_qualified": false,
+    "status": "EXECUTABLE_EXACT_CANDIDATE_QUALIFIED",
+    "summary_receipt": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json",
+    "summary_receipt_binding_sha256": "277e9c67fdf29226cafb47289f70f4a60a8ad3c579c63c8ab9da5374ef4b7b4a"
+  },
+  "repository": "ProfHepta/hepta-private-ci",
+  "roadmap": [
+    "Q0_EXECUTABLE_CANDIDATE_QUALIFIED",
+    "A0_CANONICAL_AUTHORITY_ACTIVE",
+    "B0_BOUNDARY_EXTRACTION",
+    "MM0_MULTIMODAL_CONTRACTS",
+    "C0_DURABLE_LEARNING_LEDGER",
+    "M0_TRANSACTIONAL_MUTATION_COORDINATOR",
+    "J0_JOURNAL_LIFECYCLE_AND_RECOVERY",
+    "R1_GROUNDED_RETRIEVAL",
+    "MM1_ASSET_DERIVATION_LEDGER",
+    "MM2_SANDBOXED_EXTRACTION",
+    "MM3_MULTIMODAL_EMBEDDING_INDEX",
+    "MM4_CROSS_MODAL_RETRIEVAL",
+    "MM5_MULTIMODAL_CONSOLIDATION_CONTEXT",
+    "MM6_SECURITY_EFFICACY_CANARY",
+    "N1_ADAPTIVE_SIGNAL_UNIT",
+    "I1_CALIBRATED_FAST_POLICY",
+    "L1_CAUSAL_EVALUATION_ARTIFACT",
+    "C1_LOW_RISK_CLOSED_LOOP",
+    "N2_TEMPORAL_RECURRENT_SIGNAL_NETWORK",
+    "S1_GOVERNED_STRUCTURAL_PLASTICITY",
+    "N3_ISOLATED_NEUROMORPHIC_RESEARCH"
+  ],
+  "schema": "hepta_intelligence_current_plan_v2",
+  "session_bootstrap": {
+    "capability_registry": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json",
+    "document_authority_registry": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json",
+    "historical_documents_are_authority": false,
+    "integration_candidate": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json",
+    "legacy_machine_contracts_are_current_authority": false,
+    "legacy_machine_contracts_must_remain_compatible_until_migrated": true,
+    "on_mismatch": "FAIL_CLOSED",
+    "only_current_human_plan": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
+    "pr_stack_registry": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json",
+    "read_order": [
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md"
+    ],
+    "subordinate_execution_spec": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md",
+    "time_bounded_evidence_index": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json"
+  },
+  "source_snapshot_policy": {
+    "classification": "SOURCE_SNAPSHOT_NOT_LIVE_CI",
+    "future_dated_source_timestamp_allowed": false,
+    "generated_at_policy": "COMMIT_BOUND_AT_EXECUTABLE_RECEIPT",
+    "live_evidence_may_directly_mutate_source": false,
+    "live_observation_requires_exact_receipt": true,
+    "queued_or_incomplete_is_pass": false,
+    "superseded_head_evidence_reusable": false
+  },
+  "stack_budget": {
+    "allowed_current_branch": "codex/hepta-intelligence-a0-authority-gap-closure-20260829",
+    "expected_parent": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+    "maximum_unqualified_runtime_source_layers": 0,
+    "reason": "A0 V4.5.1 exact-parent replacement requires executable evidence, independent review, canonical selection and merge-candidate admission",
+    "runtime_source_freeze": true,
+    "side_stack_auto_inclusion": false
   }
 }
