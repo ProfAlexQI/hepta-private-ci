@@ -1,0 +1,38 @@
+[package]
+name = "codex-hepta-authbus-p1-3-qualification"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.95"
+license = "Apache-2.0"
+publish = false
+
+# P1.3 is a nested, default-off qualification workspace. It centralizes quota
+# schema evidence only and does not join a product workspace or gain authority.
+[workspace]
+resolver = "3"
+
+[features]
+default = []
+p1-3-qualification = [
+    "dep:codex-hepta-authbus-p0-3-qualification",
+    "dep:codex-hepta-authbus-qualification",
+    "dep:codex-hepta-contracts",
+    "dep:serde_json",
+]
+
+[dependencies]
+codex-hepta-authbus-p0-3-qualification = { path = "../hepta-authbus-p0-3-qualification", features = ["p0-3-qualification"], optional = true }
+codex-hepta-authbus-qualification = { path = "../hepta-authbus-qualification", features = ["sqlite-qualification"], optional = true }
+codex-hepta-contracts = { path = "../hepta-contracts", features = ["authbus-local-qualification"], optional = true }
+serde_json = { version = "1.0.149", optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"

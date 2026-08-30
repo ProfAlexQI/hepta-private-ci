@@ -1,3 +1,6 @@
+use codex_hepta_contracts::CanonicalQuotaVector;
+use codex_hepta_contracts::LegacyRequestCountPolicy;
+use codex_hepta_contracts::QuotaProjectionError;
 use codex_hepta_contracts::QuotaVector;
 use codex_hepta_contracts::RefreshWithSecretRefRequest;
 use codex_hepta_contracts::RotateSecretRefRequest;
@@ -93,7 +96,7 @@ impl QualificationFence {
             authority_epoch: request.authority_epoch,
             owner_epoch: request.owner_epoch,
             generation: request.generation,
-            fencing_token_sha256: Sha256Digest::for_bytes(request.fencing_token.as_bytes()),
+            fencing_token_sha256: request.fencing_token.clone(),
         }
     }
 
@@ -102,7 +105,7 @@ impl QualificationFence {
             authority_epoch: request.authority_epoch,
             owner_epoch: request.owner_epoch,
             generation: request.generation,
-            fencing_token_sha256: Sha256Digest::for_bytes(request.fencing_token.as_bytes()),
+            fencing_token_sha256: request.fencing_token.clone(),
         }
     }
 }
@@ -129,6 +132,35 @@ impl From<QuotaVector> for QualificationQuota {
 }
 
 impl QualificationQuota {
+    /// Upgrade this legacy P0.2 storage value under an explicit
+    /// request-count policy.
+    pub fn try_into_canonical(
+        self,
+        policy: LegacyRequestCountPolicy,
+    ) -> Result<CanonicalQuotaVector, QuotaProjectionError> {
+        CanonicalQuotaVector::from_legacy_dimensions(
+            self.rpm,
+            self.tpm,
+            self.concurrency,
+            self.day_budget,
+            self.context,
+            policy,
+        )
+    }
+
+    /// Downgrade a canonical vector only when no request-count information is
+    /// lost.
+    pub fn try_from_canonical(value: CanonicalQuotaVector) -> Result<Self, QuotaProjectionError> {
+        let legacy = value.try_to_legacy()?;
+        Ok(Self {
+            rpm: legacy.rpm,
+            tpm: legacy.tpm,
+            concurrency: legacy.concurrency,
+            day_budget: legacy.day_budget,
+            context: legacy.context,
+        })
+    }
+
     pub fn validate_reservation(self) -> QualificationResult<()> {
         if self.rpm == 0
             && self.tpm == 0
@@ -321,7 +353,7 @@ impl DurableOperationIntent {
             kind,
             operation_id,
             operation_key,
-            effect_key: format!("provider-effect:v1:{operation_key_sha256}"),
+            effect_key: format!("provider-effect:v1:{}", operation_key_sha256.as_str()),
             command_id,
             run_id,
             idempotency_key,
@@ -473,13 +505,13 @@ impl OperationState {
     }
 
     pub fn is_terminal(self) -> bool {
-        matches!(Self::Completed | Self::Rejected | Self::Quarantined, self)
+        matches!(self, Self::Completed | Self::Rejected | Self::Quarantined)
     }
 
     pub fn requires_lookup_only(self) -> bool {
         matches!(
-            Self::AttemptStarted | Self::Accepted | Self::Unknown | Self::Indeterminate,
-            self
+            self,
+            Self::AttemptStarted | Self::Accepted | Self::Unknown | Self::Indeterminate
         )
     }
 }
