@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "${GITHUB_WORKSPACE:?}"
 
-EXPECTED_PARENT=a84299b576e960f2c7dccdf3ff5185159e4897e1
+EXPECTED_PARENT=3c44c4d1ee9faaf66a1bd81a7cb2f676974a9f74
 BASE_BRANCH=integration/vnext-main-full-ci-authbus-p1-3-20260829
 BASE_SHA=6b7aa91d7702a92a50297b1b1bd8170ffb7cb184
 BASE_TREE=f46fa8c6d541742eaea62d70ea62c0fe316dbaf9
@@ -43,8 +43,17 @@ require_line 'applied_authbus_p1_3_registry_files=9' /tmp/p13-finalize.txt
 require_line 'applied_authbus_p1_3_existing_file_patches=5' /tmp/p13-finalize.txt
 require_line 'removed_p0_3_canonical_type_copies=2' /tmp/p13-finalize.txt
 scheduler=codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
-test "$(grep -F -c 'request_sha256.to_string()' "${scheduler}")" = "1"
-sed -i 's/request_sha256\.to_string()/request_sha256.as_str().to_owned()/' "${scheduler}"
+python3 - <<'PY_SCHEDULER'
+from pathlib import Path
+path = Path("codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs")
+source = path.read_text(encoding="utf-8")
+before = "request_sha256.to_string()"
+after = "request_sha256.as_str().to_owned()"
+count = source.count(before)
+if count != 1:
+    raise SystemExit(f"scheduler conversion: expected 1 anchor, found {count}")
+path.write_text(source.replace(before, after), encoding="utf-8")
+PY_SCHEDULER
 ! grep -Fq 'request_sha256.to_string()' "${scheduler}"
 python3 scripts/authbus-p1-3-semantic-completion.py | tee /tmp/p13-semantic.txt
 require_line 'applied_authbus_p1_3_semantic_completion=1' /tmp/p13-semantic.txt
@@ -134,7 +143,7 @@ source = path.read_text(encoding='utf-8')
 for before, after, expected, label in (
     ('      - integration/vnext-main-full-ci-authbus-p1-3-20260829',
      '      - codex/authbus-p1-3-clean-replay-20260830', 1, 'target branch'),
-    ('runs-on: ubuntu-slim', 'runs-on: ubuntu-24.04', 4, 'hosted runner'),
+    ('runs-on: ubuntu-slim', 'runs-on: macos-15-arm64', 4, 'hosted runner'),
     ('f6702be58c499d853d273f3174a2556481a3f5b4284cd9cd0b0a247160d7ac08',
      'dfcab028e1a135a0895b3f9eddec9f5f99cf5f392701b98ad14180058a284bf1',
      3, 'registry digest'),
