@@ -75,4 +75,4 @@ Exact-head and merge-candidate jobs must execute non-empty identity, source veri
 
 ## 11. Exit condition
 
-B0 becomes a package-closed candidate only after exact-head and merge-candidate gates pass and an independent reviewer accepts the final candidate. P0.7a must be qualified before activation. Runtime, effect, production, operator, promotion and release authority remain false.
+B0 becomes a package-closed candidate only after exact-head and merge-candidate gates pass and an independent reviewer accepts the final candidate. P0.7a must be qualified before activation. The package posture is normative: runtime, effect, production, operator, promotion and release authority remain false.
