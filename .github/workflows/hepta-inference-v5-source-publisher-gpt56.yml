@@ -19,8 +19,8 @@ env:
   BASE_SHA: 1a6c453884835937c802de7e90b2a7f47160725e
   TARGET_BRANCH: codex/hepta-inference-v5-runtime-integration-20260830
   LOCAL_SOURCE_SHA: bdb46157960f96dc72e4b00319da26e874d7bfd1
+  PAYLOAD_GIT_BLOB: 759de5be755e1fbe2d8081286ef440a83d67bdb4
   PATCH_SHA256: 0fe1b576dbd3d9b9c494675683d78c123e64a8c58340903f8197d92830bdb292
-  PAYLOAD_SHA256: 949276cc008ed17c7b0595f1f2dc4d59f4de05d4846c0004b741b3c7442121cc
 
 jobs:
   materialize-source:
@@ -43,7 +43,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain)"
           root=.github/qualification/hepta-inference-v5-gpt56
-          printf '%s  %s\n' "$PAYLOAD_SHA256" "$root/source.patch.xz" | sha256sum --check --strict
+          test "$(git hash-object -- "$root/source.patch.xz")" = "$PAYLOAD_GIT_BLOB"
           xz --decompress --stdout "$root/source.patch.xz" > "$RUNNER_TEMP/source.patch"
           printf '%s  %s\n' "$PATCH_SHA256" "$RUNNER_TEMP/source.patch" | sha256sum --check --strict
           cp "$root/BLOB_MANIFEST.sha1" "$RUNNER_TEMP/BLOB_MANIFEST.sha1"
