@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import stat
 from pathlib import Path
 
 
@@ -9,15 +11,26 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 WRAPPER = REPO_ROOT / ".github" / "scripts" / "run-bazel-ci.sh"
 IMPLEMENTATION = REPO_ROOT / ".github" / "scripts" / "run-bazel-ci-impl.sh"
-BOUNDARY_TEST = REPO_ROOT / ".github" / "scripts" / "test_run_bazel_qualification_boundary.sh"
+BOUNDARY_TEST = (
+    REPO_ROOT
+    / ".github"
+    / "scripts"
+    / "test_run_bazel_qualification_boundary.sh"
+)
 CI_WRAPPER_TEST = REPO_ROOT / ".github" / "scripts" / "test_run_bazel_ci_wrapper.py"
-LOCAL_GNULLVM_TEST = REPO_ROOT / ".github" / "scripts" / "test_run_bazel_local_windows_gnullvm.py"
+LOCAL_GNULLVM_TEST = (
+    REPO_ROOT
+    / ".github"
+    / "scripts"
+    / "test_run_bazel_local_windows_gnullvm.py"
+)
 DIAGNOSTIC_SCRIPT = REPO_ROOT / ".github" / "scripts" / "run-windows-msvc-diagnostic.sh"
 TOOLCHAIN_BUILD = REPO_ROOT / "bazel" / "toolchains" / "windows" / "BUILD.bazel"
 BOUNDARY_WORKFLOW = WORKFLOWS / "windows-gnullvm-qualification-boundary.yml"
 DIAGNOSTIC_WORKFLOW = WORKFLOWS / "windows-msvc-nonqualifying-diagnostic.yml"
 BLOCKING_WORKFLOW = WORKFLOWS / "blocking-ci.yml"
 REPO_CHECKS = WORKFLOWS / "repo-checks.yml"
+EXPECTED_IMPLEMENTATION_BLOB = "2fe7cf37a0fddc1bb2f42f3e8a1e3b5a9e30f96b"
 
 
 def require(condition: bool, message: str) -> None:
@@ -26,8 +39,21 @@ def require(condition: bool, message: str) -> None:
 
 
 def read(path: Path) -> str:
-    require(path.is_file(), f"missing required file: {path.relative_to(REPO_ROOT)}")
+    require(
+        path.is_file(),
+        f"missing required file: {path.relative_to(REPO_ROOT)}",
+    )
     return path.read_text(encoding="utf-8")
+
+
+def git_blob_sha(path: Path) -> str:
+    content = path.read_bytes()
+    header = f"blob {len(content)}\0".encode()
+    return hashlib.sha1(header + content).hexdigest()
+
+
+def require_contains(text: str, expected: str, owner: str) -> None:
+    require(expected in text, f"{owner} lacks required contract text: {expected}")
 
 
 def main() -> None:
@@ -43,29 +69,53 @@ def main() -> None:
     blocking_workflow = read(BLOCKING_WORKFLOW)
     repo_checks = read(REPO_CHECKS)
 
-    require(wrapper.startswith("#!/usr/bin/env bash\n"), "wrapper must remain executable Bash")
-    require("GITHUB_ACTIONS" in wrapper, "wrapper lacks GitHub Actions boundary")
     require(
-        "ALLOW_WINDOWS_MSVC_FALLBACK is forbidden in GitHub Actions qualification jobs" in wrapper,
-        "wrapper lacks ambient MSVC fallback rejection",
+        wrapper.startswith("#!/usr/bin/env bash\n"),
+        "wrapper must remain executable Bash",
     )
     require(
-        "Automated Windows gnullvm qualification requires authenticated BuildBuddy/RBE" not in wrapper,
+        bool(WRAPPER.stat().st_mode & stat.S_IXUSR),
+        "run-bazel-ci.sh lost its executable bit",
+    )
+    require(
+        bool(IMPLEMENTATION.stat().st_mode & stat.S_IXUSR),
+        "run-bazel-ci-impl.sh lost its executable bit",
+    )
+    require(
+        git_blob_sha(IMPLEMENTATION) == EXPECTED_IMPLEMENTATION_BLOB,
+        "preserved Q0.13 Bazel implementation blob drifted",
+    )
+    require_contains(wrapper, "GITHUB_ACTIONS", "wrapper")
+    require_contains(
+        wrapper,
+        "ALLOW_WINDOWS_MSVC_FALLBACK is forbidden in GitHub Actions "
+        "qualification jobs",
+        "wrapper",
+    )
+    require(
+        "Automated Windows gnullvm qualification requires authenticated "
+        "BuildBuddy/RBE" not in wrapper,
         "wrapper still blocks the source-controlled keyless gnullvm path",
     )
-    for expected in (
+
+    required_wrapper_controls = (
         "--windows-msvc-host-platform",
         "--host_platform=//:local_windows_msvc",
         "--platforms=//:windows_x86_64_gnullvm",
         "--repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0",
         "--extra_execution_platforms=//:windows_x86_64_msvc",
-        "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain,//bazel/toolchains/windows:local_msvc_cc_toolchain",
+        "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain,"
+        "//bazel/toolchains/windows:local_msvc_cc_toolchain",
         "--strategy=TestRunner=local",
         "--strategy=V8Mksnapshot=local",
         "--local_test_jobs=8",
         "--jobs=8",
         "--test_env=RUST_TEST_THREADS=1",
-        "--test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=command_safety::powershell_parser::tests::,suite::code_mode::code_mode_can_call_hidden_dynamic_tools,tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child",
+        "--test_env=CODEX_BAZEL_TEST_SKIP_FILTERS="
+        "command_safety::powershell_parser::tests::,"
+        "suite::code_mode::code_mode_can_call_hidden_dynamic_tools,"
+        "tests::windows_tests::"
+        "conpty_ctrl_c_interrupts_powershell_foreground_child",
         "--build_metadata=TAG_windows_gnullvm_local=true",
         "require_exact_ci_arg",
         "require_ci_exact_list",
@@ -73,24 +123,33 @@ def main() -> None:
         "canonicalize_ci_option",
         "canonicalize_exact_flag",
         "has_list_entry",
-    ):
-        require(expected in wrapper, f"wrapper lacks exact local gnullvm control: {expected}")
+    )
+    for expected in required_wrapper_controls:
+        require_contains(wrapper, expected, "wrapper")
+
     require(
         "require_ci_list_contains" not in wrapper,
         "wrapper retains permissive list-membership validation",
     )
-    require(
-        "rejects non-allowlisted Bazel config" in wrapper,
-        "wrapper lacks keyless qualification config allowlist",
+    require_contains(
+        wrapper,
+        "rejects non-allowlisted Bazel config",
+        "wrapper",
     )
-    require(
-        'canonicalize_exact_flag "--config=ci-windows"' in wrapper,
-        "wrapper does not place ci-windows before canonical authority options",
+    require_contains(
+        wrapper,
+        'canonicalize_exact_flag "--config=ci-windows"',
+        "wrapper",
     )
-    require('exec "$impl"' in wrapper, "wrapper must delegate only after exact boundary construction")
-    require(
-        "ALLOW_WINDOWS_MSVC_FALLBACK" in implementation,
-        "preserved implementation lost the manual diagnostic path",
+    require_contains(
+        wrapper,
+        'exec "$impl"',
+        "wrapper",
+    )
+    require_contains(
+        implementation,
+        "ALLOW_WINDOWS_MSVC_FALLBACK",
+        "preserved implementation",
     )
 
     for expected in (
@@ -98,7 +157,8 @@ def main() -> None:
         "test_run_bazel_ci_wrapper.py",
         "test_run_bazel_local_windows_gnullvm.py",
     ):
-        require(expected in boundary_test, f"boundary fixture lacks {expected}")
+        require_contains(boundary_test, expected, "boundary fixture")
+
     for expected in (
         "test_keyless_github_cross_uses_exact_split_toolchain_contract",
         "test_github_actions_rejects_ambient_msvc_fallback",
@@ -113,14 +173,15 @@ def main() -> None:
         "test_github_actions_rejects_remote_config",
         "CI_TEST_FILTERS",
     ):
-        require(expected in ci_wrapper_test, f"CI wrapper test lacks {expected}")
+        require_contains(ci_wrapper_test, expected, "CI wrapper test")
+
     for expected in (
         "test_keyless_cross_uses_real_local_gnullvm_target",
         "test_conflicting_target_fails_before_bazel",
         "test_explicit_msvc_diagnostic_gets_real_local_cc_toolchain",
         "test_authenticated_cross_path_is_byte_for_byte_passthrough",
     ):
-        require(expected in local_gnullvm_test, f"local gnullvm test lacks {expected}")
+        require_contains(local_gnullvm_test, expected, "local gnullvm test")
 
     for expected in (
         'name = "local_msvc_cc_toolchain"',
@@ -128,10 +189,11 @@ def main() -> None:
         '"@llvm//constraints/windows/abi:msvc"',
         'toolchain_type = "@bazel_tools//tools/cpp:toolchain_type"',
     ):
-        require(expected in toolchain_build, f"MSVC exec toolchain lacks {expected}")
+        require_contains(toolchain_build, expected, "MSVC exec toolchain")
 
     require(
-        "qualification_mode" in diagnostic_script and "non_qualifying_msvc_diagnostic" in diagnostic_script,
+        "qualification_mode" in diagnostic_script
+        and "non_qualifying_msvc_diagnostic" in diagnostic_script,
         "diagnostic script lacks machine-readable non-qualifying mode",
     )
     for expected in (
@@ -141,17 +203,29 @@ def main() -> None:
         '"production_authority": False',
         '"release_authority": False',
     ):
-        require(expected in diagnostic_script, f"diagnostic receipt lacks {expected}")
+        require_contains(diagnostic_script, expected, "diagnostic receipt")
 
     require(
-        diagnostic_workflow.startswith("name: Windows MSVC non-qualifying diagnostic\n"),
+        diagnostic_workflow.startswith(
+            "name: Windows MSVC non-qualifying diagnostic\n"
+        ),
         "manual diagnostic workflow name drifted",
     )
-    require("on:\n  workflow_dispatch:" in diagnostic_workflow, "manual diagnostic must be workflow_dispatch-only")
-    for forbidden_trigger in ("  pull_request:", "  push:", "  schedule:", "  workflow_call:"):
+    require_contains(
+        diagnostic_workflow,
+        "on:\n  workflow_dispatch:",
+        "manual diagnostic workflow",
+    )
+    for forbidden_trigger in (
+        "  pull_request:",
+        "  push:",
+        "  schedule:",
+        "  workflow_call:",
+    ):
         require(
             forbidden_trigger not in diagnostic_workflow,
-            f"manual diagnostic contains forbidden trigger: {forbidden_trigger.strip()}",
+            "manual diagnostic contains forbidden trigger: "
+            f"{forbidden_trigger.strip()}",
         )
     for expected in (
         "contents: read",
@@ -161,10 +235,12 @@ def main() -> None:
         "run-windows-msvc-diagnostic.sh",
         "eligible_for_repository_admission=false",
     ):
-        require(expected in diagnostic_workflow, f"manual workflow lacks {expected}")
+        require_contains(diagnostic_workflow, expected, "manual workflow")
 
     require(
-        boundary_workflow.startswith("name: Windows gnullvm qualification boundary\n"),
+        boundary_workflow.startswith(
+            "name: Windows gnullvm qualification boundary\n"
+        ),
         "qualification boundary workflow name drifted",
     )
     for expected in (
@@ -173,7 +249,7 @@ def main() -> None:
         "test_run_bazel_qualification_boundary.sh",
         "PASS_WINDOWS_GNULLVM_QUALIFICATION_BOUNDARY_SOURCE",
     ):
-        require(expected in boundary_workflow, f"boundary workflow lacks {expected}")
+        require_contains(boundary_workflow, expected, "boundary workflow")
 
     for workflow in sorted(WORKFLOWS.glob("*.y*ml")):
         text = workflow.read_text(encoding="utf-8")
@@ -190,7 +266,8 @@ def main() -> None:
         if workflow == BOUNDARY_WORKFLOW:
             require(
                 text.count("run-windows-msvc-diagnostic.sh") == 1
-                and "bash -n .github/scripts/run-windows-msvc-diagnostic.sh" in text,
+                and "bash -n .github/scripts/run-windows-msvc-diagnostic.sh"
+                in text,
                 "boundary workflow may only syntax-check the diagnostic script",
             )
         else:
@@ -204,11 +281,13 @@ def main() -> None:
         "uses: ./.github/workflows/windows-gnullvm-qualification-boundary.yml",
         "      - windows-gnullvm-boundary",
     ):
-        require(expected in blocking_workflow, f"blocking-ci lacks ratchet: {expected}")
+        require_contains(blocking_workflow, expected, "blocking-ci")
 
-    require(
-        "python3 -m unittest discover -s .github/scripts -p 'test_run_bazel*.py'" in repo_checks,
-        "ordinary repo-checks does not execute Bazel launcher regressions",
+    require_contains(
+        repo_checks,
+        "python3 -m unittest discover -s .github/scripts "
+        "-p 'test_run_bazel*.py'",
+        "ordinary repo-checks",
     )
 
     print("PASS_WINDOWS_GNULLVM_QUALIFICATION_BOUNDARY_SOURCE")
