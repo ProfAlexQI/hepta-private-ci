@@ -1,0 +1,81 @@
+{
+  "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+  "source_intake": {
+    "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R13.json",
+    "manifest_sha256": "a6ab68fe550c824d752106cb1b2efc55e79d79d2b531de410ec2c85a70aef444",
+    "commit": "1279b5f3a7abe4fd02bd182f41158a6ff8b725ab",
+    "range_start_exclusive": "dde85b435b16994f956bce08e5fb796ed94c27fd",
+    "range_end_inclusive": "cefa060695594cdeebfb4306170cc27487c8a088",
+    "ordinary_merge_performed": false,
+    "ordinary_rebase_performed": false,
+    "cherry_pick_performed": false
+  },
+  "absorptions": [],
+  "deferrals": [
+    {
+      "upstream_commit": "28327355b861ab6cc76b01c7248663eb1be440cf",
+      "upstream_title": "Update tests for default-enabled update_plan (#41630)",
+      "disposition": "deferred_test_fixture_alignment_without_runtime_delta",
+      "scope": "update_plan_default_enabled_test_fixture_alignment",
+      "reason": "The upstream commit aligns tests and fixtures with an already default-enabled update_plan tool and contains no production-runtime source delta. Hepta does not claim fixture parity without a repository-specific harness review.",
+      "missing_prerequisites": [
+        "commit-specific fixture review",
+        "Hepta test-harness semantic mapping",
+        "bounded exact regression evidence if adopted"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "Deferral does not claim upstream fixture parity, source import, or any change to Hepta tool exposure."
+      ]
+    },
+    {
+      "upstream_commit": "0a12b855a0b21068108a8a3b311d492712737e0f",
+      "upstream_title": "Preserve Guardian authorization across history compaction (#41660)",
+      "disposition": "deferred_guardian_authorization_revision_compaction_semantics",
+      "scope": "guardian_user_authorization_revision_across_compaction_and_internal_context",
+      "reason": "The upstream security behavior introduces a host-owned user-authorization revision that survives compaction and internal context injection. Hepta has not mapped that exact revision ownership through its Guardian, history, rollback, resume, and extension boundaries.",
+      "missing_prerequisites": [
+        "Hepta Guardian authorization-version ownership decision",
+        "history compaction and reset semantic mapping",
+        "rollback resume and internal-context invalidation regressions",
+        "bounded security evidence for any semantic transplant"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "Current Guardian and history controls are not claimed as equivalent to the upstream user-message revision model."
+      ]
+    },
+    {
+      "upstream_commit": "cefa060695594cdeebfb4306170cc27487c8a088",
+      "upstream_title": "Approve the first Node REPL execution without a Guardian wait (#41666)",
+      "disposition": "deferred_first_node_repl_execution_guardian_authority_semantics",
+      "scope": "first_node_repl_execution_guardian_wait_bypass",
+      "reason": "The upstream behavior permits the first Node REPL-backed JavaScript execution to proceed before Guardian classification completes. Hepta has not mapped that allowance through its Node REPL, browser, computer-use, replay, rollback, resume, and effect-authority boundaries.",
+      "missing_prerequisites": [
+        "first-execution authority owner decision",
+        "Node REPL browser and computer-use equivalence mapping",
+        "replay resume and rollback authorization regressions",
+        "bounded security evidence for any semantic transplant"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "Deferral does not enable an immediate first-execution bypass, change live Guardian policy, or claim runtime equivalence."
+      ]
+    }
+  ],
+  "claims": {
+    "absorbed_commit_count": 0,
+    "existing_semantic_equivalent_count": 0,
+    "deferred_commit_count": 3,
+    "upstream_fully_consumed": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "live_enablement": false,
+    "deployment": false,
+    "publication": false
+  }
+}
