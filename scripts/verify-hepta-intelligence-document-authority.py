@@ -51,8 +51,10 @@ def require(condition: bool, message: str) -> None:
 
 
 def all_false(mapping: Any) -> bool:
-    return isinstance(mapping, dict) and bool(mapping) and all(
-        value is False for value in mapping.values()
+    return (
+        isinstance(mapping, dict)
+        and bool(mapping)
+        and all(value is False for value in mapping.values())
     )
 
 
@@ -114,8 +116,7 @@ def main() -> int:
     )
 
     require(
-        registry.get("schema")
-        == "hepta_intelligence_document_authority_registry_v1",
+        registry.get("schema") == "hepta_intelligence_document_authority_registry_v1",
         "registry schema drift",
     )
     rules = registry.get("rules", {})
@@ -132,8 +133,7 @@ def main() -> int:
         "compatibility contracts gained current authority",
     )
     require(
-        rules.get("breaking_a_registered_consumer_requires_migration_receipt")
-        is True,
+        rules.get("breaking_a_registered_consumer_requires_migration_receipt") is True,
         "consumer migration receipt gate disabled",
     )
     require(
@@ -146,7 +146,9 @@ def main() -> int:
         == "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
         "registry human authority drift",
     )
-    require(all_false(registry.get("authority")), "registry authority must remain false")
+    require(
+        all_false(registry.get("authority")), "registry authority must remain false"
+    )
 
     compatibility = registry.get("compatibility_contracts")
     require(
@@ -182,7 +184,9 @@ def main() -> int:
             f"compatibility consumers missing: {item.get('path')}",
         )
         for consumer in consumers:
-            require((ROOT / consumer).exists(), f"registered consumer missing: {consumer}")
+            require(
+                (ROOT / consumer).exists(), f"registered consumer missing: {consumer}"
+            )
 
     policy_documents = registry.get("policy_documents")
     require(
@@ -231,7 +235,9 @@ def main() -> int:
         == "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
         "claim ladder current-state pointer drift",
     )
-    require(all_false(claims.get("authority")), "claim policy authority must remain false")
+    require(
+        all_false(claims.get("authority")), "claim policy authority must remain false"
+    )
 
     require(
         legacy_v2.get("schema") == "hepta_intelligence_execution_status_v2",
@@ -241,8 +247,12 @@ def main() -> int:
         legacy_v3.get("schema") == "hepta_intelligence_execution_status_v3",
         "legacy V3 schema was replaced",
     )
-    require(all_false(legacy_v2.get("authority")), "legacy V2 authority must remain false")
-    require(all_false(legacy_v3.get("authority")), "legacy V3 authority must remain false")
+    require(
+        all_false(legacy_v2.get("authority")), "legacy V2 authority must remain false"
+    )
+    require(
+        all_false(legacy_v3.get("authority")), "legacy V3 authority must remain false"
+    )
 
     require(
         evidence.get("schema") == "hepta_intelligence_evidence_index_v1",
@@ -252,14 +262,17 @@ def main() -> int:
         evidence.get("not_current_plan_authority") is True,
         "evidence index gained plan authority",
     )
-    require(isinstance(evidence.get("as_of_utc"), str), "evidence index lacks as_of_utc")
-    require(all_false(evidence.get("authority")), "evidence authority must remain false")
+    require(
+        isinstance(evidence.get("as_of_utc"), str), "evidence index lacks as_of_utc"
+    )
+    require(
+        all_false(evidence.get("authority")), "evidence authority must remain false"
+    )
 
     for tranche, path in SNAPSHOTS.items():
         snapshot = load(path)
         require(
-            snapshot.get("schema")
-            == "hepta_intelligence_tranche_status_snapshot_v1",
+            snapshot.get("schema") == "hepta_intelligence_tranche_status_snapshot_v1",
             f"snapshot schema drift: {tranche}",
         )
         require(snapshot.get("snapshot_id") == tranche, f"snapshot id drift: {tranche}")
