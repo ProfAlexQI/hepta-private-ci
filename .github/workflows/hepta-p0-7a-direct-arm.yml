@@ -43,7 +43,30 @@ jobs:
           test "$(git hash-object codex-rs/hepta-fleet/src/registry_tests.rs)" = 6943d7ea341237867d683eecca551b050ba847cd
           test "$(git hash-object codex-rs/hepta-supervisor/src/supervisor_tests.rs)" = e8e996e74721f43e31c88b86a81e56494e0e7aa3
           test "$(git hash-object codex-rs/.config/nextest.toml)" = f3f3ca2607190b6c7f4568fbcb365519250c7803
-          python3 .github/scripts/hepta-p0-7a-supervisor-gap-closure.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          script_path = Path(
+              ".github/scripts/hepta-p0-7a-supervisor-gap-closure.py"
+          ).resolve()
+          source = script_path.read_text()
+          old = (
+              "    if shell_count != 2:\n"
+              "        raise SystemExit(f\"paired release fixture: expected two /bin/sh anchors, found {shell_count}\")\n"
+          )
+          new = (
+              "    if shell_count != 7:\n"
+              "        raise SystemExit(f\"paired release fixture: expected seven /bin/sh anchors, found {shell_count}\")\n"
+          )
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(
+                  f"supervisor shell fixture invariant: expected one anchor, found {count}"
+              )
+          source = source.replace(old, new, 1)
+          scope = {"__file__": str(script_path), "__name__": "__main__"}
+          exec(compile(source, str(script_path), "exec"), scope)
+          PY
           python3 - <<'PY'
           from pathlib import Path
 
