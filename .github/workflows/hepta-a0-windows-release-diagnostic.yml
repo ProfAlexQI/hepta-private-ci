@@ -1,4 +1,4 @@
-name: Hepta A0 Windows release diagnostic
+name: Hepta A0 Windows local gnullvm diagnostic
 
 on:
   push:
@@ -14,14 +14,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  QUALIFICATION_SHA: 6170ea18c4205904461c8ae9c5c272091ba2b188
-  QUALIFICATION_TREE: c39831605fc57e6c40df11dc3c26a18b6a21af98
+  QUALIFICATION_SHA: 0f1d7e8fdeedac0ac81d17b89748372249a32e40
+  QUALIFICATION_TREE: 0c1dc4111e446d1aac5d01420038fc543587e5da
 
 jobs:
-  rustls-provider-release-build:
-    name: Exact-tree Windows rustls-provider release diagnostic
+  local-gnullvm-rustls-provider:
+    name: Exact-tree credentialless local gnullvm target
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Enable Windows long paths before checkout
         shell: pwsh
@@ -45,43 +45,53 @@ jobs:
         uses: ./.github/actions/prepare-bazel-ci
         with:
           target: x86_64-pc-windows-gnullvm
-          cache-scope: bazel-hepta-a0-windows-release-diagnostic
+          cache-scope: bazel-hepta-a0-local-gnullvm-diagnostic
 
-      - name: Run exact failing release target and capture stderr
+      - name: Build exact gnullvm integration-test binaries on local MSVC host
         env:
-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+          BUILDBUDDY_API_KEY: ""
         shell: bash
         run: |
           set -uo pipefail
-          log_file="${RUNNER_TEMP}/rustls-provider-release-windows.log"
+          log_file="${RUNNER_TEMP}/local-gnullvm-rustls-provider.log"
           set +e
           ./.github/scripts/run-bazel-ci.sh \
             --print-failed-action-summary \
             --windows-cross-compile \
             -- \
             build \
+            --config=ci-windows \
+            --platforms=//:windows_x86_64_gnullvm \
+            --host_platform=//:local_windows_msvc \
+            --extra_execution_platforms=//:windows_x86_64_msvc \
+            --extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain \
+            --strategy=TestRunner=local \
+            --strategy=V8Mksnapshot=local \
+            --local_test_jobs=8 \
+            --jobs=8 \
             --compilation_mode=fastbuild \
             --@rules_rust//rust/settings:extra_rustc_flag=-Cdebug-assertions=no \
             --@rules_rust//rust/settings:extra_exec_rustc_flag=-Cdebug-assertions=no \
             --build_metadata=COMMIT_SHA=${QUALIFICATION_SHA} \
-            --build_metadata=TAG_job=hepta-a0-focused-verify-release-build \
+            --build_metadata=TAG_job=hepta-a0-local-gnullvm-diagnostic \
             --build_metadata=TAG_rust_debug_assertions=off \
             -- \
-            //codex-rs/utils/rustls-provider:rustls-provider-preinstalled-test \
+            //codex-rs/utils/rustls-provider:rustls-provider-preinstalled-test-windows-cross-bin \
+            //codex-rs/utils/rustls-provider:rustls-provider-provider-test-windows-cross-bin \
             2>&1 | tee "${log_file}"
           status=${PIPESTATUS[0]}
           set -e
-          printf '%s\n' "${status}" > "${RUNNER_TEMP}/rustls-provider-release-exit-code.txt"
+          printf '%s\n' "${status}" > "${RUNNER_TEMP}/local-gnullvm-exit-code.txt"
           exit "${status}"
 
       - name: Upload exact diagnostic
         if: always() && !cancelled()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-a0-windows-release-diagnostic-6170ea18
+          name: hepta-a0-local-gnullvm-diagnostic-0f1d7e8f
           path: |
-            ${{ runner.temp }}/rustls-provider-release-windows.log
-            ${{ runner.temp }}/rustls-provider-release-exit-code.txt
+            ${{ runner.temp }}/local-gnullvm-rustls-provider.log
+            ${{ runner.temp }}/local-gnullvm-exit-code.txt
             ${{ runner.temp }}/bazel-execution-logs
           if-no-files-found: error
           retention-days: 30
