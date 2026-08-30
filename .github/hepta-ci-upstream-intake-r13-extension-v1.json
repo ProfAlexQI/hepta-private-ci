@@ -1,0 +1,35 @@
+{
+  "schema": "hepta_ci_upstream_intake_r13_extension_v1",
+  "registry_extension": {
+    "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_EXTENSION_R13_V1.json",
+    "sha256": "70090d6247bf2029ca48e6f6e54507b2481bbb2fd43f5aa1f9221828f96b39c7"
+  },
+  "source_intake": {
+    "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R13.json",
+    "sha256": "8035c1bfc8ae806d2cbf5a8deac55fbaa861ed31e7c3ef1c61d37bd15d2aee28",
+    "commit": "1a52577075c423cec6d7e442674b85935726a4c8"
+  },
+  "semantic_record": {
+    "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R13_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json",
+    "sha256": "16c80935e255ed2298b01b8e4d2206654d62f9689af7379c03c70e6497aaa49f"
+  },
+  "upstream": {
+    "url": "https://github.com/openai/codex.git",
+    "previous_head": "dde85b435b16994f956bce08e5fb796ed94c27fd",
+    "frozen_ref": "refs/remotes/upstream/hepta-intake-20260830-r13",
+    "expected_head": "da23e131e68b171909407f469da1b2f72d9c4f4a",
+    "exact_fetch_only": true
+  },
+  "claims": {
+    "base_registry_unchanged": true,
+    "effective_record_count": 13,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "checkout_performed": false,
+    "push_performed": false,
+    "deployment_performed": false,
+    "live_enablement_performed": false,
+    "publication_performed": false
+  }
+}
