@@ -272,8 +272,7 @@ def main() -> int:
         and claims.get("external_effects") is False
     )
     checks["status.p0_4b_unqualified_dependency"] = (
-        dependency.get("id") == "P0.4b"
-        and dependency.get("qualified") is False
+        dependency.get("id") == "P0.4b" and dependency.get("qualified") is False
     )
     checks["plan.boundary"] = contains_all(
         plan,
