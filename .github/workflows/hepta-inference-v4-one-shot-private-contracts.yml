@@ -22,18 +22,20 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: true
 
       - uses: ./.github/actions/setup-ci
 
-      - name: Guard exact successor parent
+      - name: Guard exact successor commit and parent
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_REF_NAME" = codex/hepta-inference-v4-closure-20260830
-          test "$(git rev-parse HEAD^)" = c450e6629157eb0fd5b3f2b344a74b445b9f8760
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = 192ee83547db7b35ef568258e93575166d820f35
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/hepta-inference-v4-one-shot-private-contracts.yml"
           test -z "$(git status --porcelain)"
 
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
@@ -128,8 +130,10 @@ jobs:
           python3 scripts/hepta-inference-v4-source-truth.py \
             | tee "$RUNNER_TEMP/hepta-inference-v4-private-contracts-source-truth.json"
 
-      - name: Push qualified candidate
+      - name: Push qualified candidate with exact-head lease
         shell: bash
         run: |
           set -euo pipefail
-          git push origin HEAD:codex/hepta-inference-v4-closure-20260830
+          git push \
+            --force-with-lease=refs/heads/codex/hepta-inference-v4-closure-20260830:$GITHUB_SHA \
+            origin HEAD:refs/heads/codex/hepta-inference-v4-closure-20260830
