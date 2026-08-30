@@ -51,6 +51,6 @@
     "fetch_url": "https://github.com/project-robius/robrix.git",
     "push_url": "DISABLED",
     "whole_tree_overwrite_allowed": false,
-    "downstream_patch_ledger": "DOWNSTREAM_PATCHES.md"
+    "downstream_patch_ledger": "DOWNSTREAM_PATCHES_V2.md"
   }
 }
