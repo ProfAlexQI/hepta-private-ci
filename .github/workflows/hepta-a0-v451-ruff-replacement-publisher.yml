@@ -26,7 +26,7 @@ env:
 jobs:
   publish:
     name: Build and validate one Ruff-clean Q0-single-parent replacement
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout publisher source
