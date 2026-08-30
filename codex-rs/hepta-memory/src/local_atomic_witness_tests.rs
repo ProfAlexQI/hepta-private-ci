@@ -220,11 +220,21 @@ async fn writer_rejects_stale_or_terminal_lease_and_fence_rebinding() {
 
 #[test]
 fn writer_boundary_flags_are_fail_closed() {
-    const { assert!(!LOCAL_ATOMIC_WITNESS_EXTERNAL_EFFECTS); }
-    const { assert!(!LOCAL_ATOMIC_WITNESS_KG_WRITE_AUTHORITY); }
-    const { assert!(!LOCAL_ATOMIC_WITNESS_LIFECYCLE_REGISTERED); }
-    const { assert!(LOCAL_ATOMIC_WITNESS_LEASE_EPOCH_BOUND); }
-    const { assert!(LOCAL_ATOMIC_WITNESS_LEASE_EXPIRY_BOUND); }
+    const {
+        assert!(!LOCAL_ATOMIC_WITNESS_EXTERNAL_EFFECTS);
+    }
+    const {
+        assert!(!LOCAL_ATOMIC_WITNESS_KG_WRITE_AUTHORITY);
+    }
+    const {
+        assert!(!LOCAL_ATOMIC_WITNESS_LIFECYCLE_REGISTERED);
+    }
+    const {
+        assert!(LOCAL_ATOMIC_WITNESS_LEASE_EPOCH_BOUND);
+    }
+    const {
+        assert!(LOCAL_ATOMIC_WITNESS_LEASE_EXPIRY_BOUND);
+    }
 }
 
 #[tokio::test]
