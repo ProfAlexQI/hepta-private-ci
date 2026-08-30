@@ -36,6 +36,7 @@ jobs:
               [System.StringComparer]::Ordinal
           )
           @(
+              'ops/ui-v5-remediation-v25-x64-20260830',
               'ops/ui-v5-remediation-v26-macos-20260830',
               'ops/ui-v5-remediation-v27-windows-20260830'
           ) | ForEach-Object { [void]$keep.Add($_) }
@@ -84,4 +85,4 @@ jobs:
               }
           }
 
-          Write-Host 'Retained only v26 macOS, v27 Windows, and all non-helper qualification runs.'
+          Write-Host 'Retained only v25 x64, v26 macOS, v27 Windows, and all non-helper qualification runs.'
