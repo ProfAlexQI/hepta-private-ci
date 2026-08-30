@@ -1,0 +1,104 @@
+name: Hepta UI v5 extract Windows Bazel failure log
+
+on:
+  push:
+    branches:
+      - diagnostic/ui-v5-windows-log-extract-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-windows-log-extract.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: hepta-ui-v5-windows-log-extract
+  cancel-in-progress: true
+
+jobs:
+  extract:
+    name: Extract exact Windows test failure context
+    runs-on: macos-14
+    timeout-minutes: 15
+    env:
+      SOURCE_JOB_ID: "99213891944"
+      EXPECTED_PRODUCT_HEAD: 1e6f7cf3db498153fd52250dee1112f89489e094
+    steps:
+      - name: Download and summarize the existing job log
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/hepta-ui-v5-windows-log-extract"
+          mkdir -p "$output"
+          raw="$output/windows-bazel-job.log"
+          summary="$output/failure-context.txt"
+
+          curl --fail --location --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/jobs/${SOURCE_JOB_ID}/logs" \
+            --output "$raw"
+          test -s "$raw"
+
+          python3 - "$raw" "$summary" <<'PY'
+          from __future__ import annotations
+
+          import re
+          import sys
+          from pathlib import Path
+
+          source = Path(sys.argv[1])
+          target = Path(sys.argv[2])
+          text = source.read_text(encoding="utf-8", errors="replace")
+          lines = text.splitlines()
+          needles = (
+              "http-client-unit-tests",
+              "core-plugins-unit-tests",
+              "panicked at",
+              "thread '",
+              "FAILED",
+              "failures:",
+              "test result:",
+              "custom_ca_probe",
+              "remote_installed",
+              "assertion `left == right` failed",
+              "assertion failed",
+              "Caused by:",
+              "ERROR:",
+          )
+          selected: set[int] = set()
+          for index, line in enumerate(lines):
+              if any(needle.casefold() in line.casefold() for needle in needles):
+                  selected.update(range(max(0, index - 12), min(len(lines), index + 25)))
+          if not selected:
+              raise SystemExit("no relevant failure context found in source job log")
+
+          rendered: list[str] = []
+          previous = -2
+          for index in sorted(selected):
+              if index != previous + 1:
+                  rendered.append("\n--- omitted ---\n")
+              # Strip the Actions timestamp/command prefix only; retain test output verbatim.
+              line = re.sub(r"^\ufeff?\d{4}-\d{2}-\d{2}T[^ ]+Z ", "", lines[index])
+              rendered.append(f"{index + 1:07d}: {line}")
+              previous = index
+          target.write_text("\n".join(rendered).rstrip() + "\n", encoding="utf-8")
+          print(target.read_text(encoding="utf-8"))
+          PY
+
+          test -s "$summary"
+          grep -F "http-client-unit-tests" "$summary" >/dev/null
+          grep -F "core-plugins-unit-tests" "$summary" >/dev/null
+
+      - name: Upload extracted failure context
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-ui-v5-windows-bazel-failure-context
+          path: ${{ runner.temp }}/hepta-ui-v5-windows-log-extract
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 6
