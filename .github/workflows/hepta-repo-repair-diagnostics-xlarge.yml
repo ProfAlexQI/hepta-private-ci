@@ -1,0 +1,156 @@
+name: Hepta exact-head repository repair diagnostics xlarge
+
+on:
+  push:
+    branches:
+      - "automation/hepta-repo-repair-diagnostics-xlarge-73a636-20260830"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-repo-repair-diagnostics-xlarge-73a636
+  cancel-in-progress: true
+
+env:
+  EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+  EXPECTED_HEAD: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
+  EXPECTED_TREE: be18f73ac54f21a7b0b862940ab6007c6589300c
+  EXPECTED_PARENT: c768bcbeb4c1168088d2499828c24da521a2a73a
+  ARTIFACT_DIR: artifacts/hepta-repo-repair-diagnostics
+
+jobs:
+  diagnose:
+    name: Generate canonical format patch and dependency diagnostics
+    runs-on: macos-15-xlarge
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ProfHepta/hepta-private-ci
+          ref: ${{ env.EXPECTED_HEAD }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify exact candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git rev-list --count "$EXPECTED_PARENT"..HEAD)" = 1
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Set up repository CI tools
+        uses: ./.github/actions/setup-ci
+
+      - name: Install locked uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: 0.11.3
+
+      - name: Install Rust 1.95 rustfmt
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+
+      - name: Install cargo-shear
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: cargo-shear@1.11.2
+
+      - name: Generate canonical repository formatting patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          set +e
+          just fmt >"$ARTIFACT_DIR/format.log" 2>&1
+          format_rc=$?
+          set -e
+          printf '%s\n' "$format_rc" >"$ARTIFACT_DIR/format.exit"
+          git diff --binary >"$ARTIFACT_DIR/repository-format.patch"
+          git diff --name-only | LC_ALL=C sort >"$ARTIFACT_DIR/format-changed-paths.txt"
+          test -s "$ARTIFACT_DIR/repository-format.patch"
+          test -s "$ARTIFACT_DIR/format-changed-paths.txt"
+          git diff --check
+          tar -czf "$ARTIFACT_DIR/format-changed-files.tar.gz" -T "$ARTIFACT_DIR/format-changed-paths.txt"
+
+      - name: Run cargo-shear without mutating source
+        shell: bash
+        run: |
+          set -uo pipefail
+          set +e
+          (
+            cd codex-rs
+            cargo shear --deny-warnings
+          ) >"$ARTIFACT_DIR/cargo-shear.log" 2>&1
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" >"$ARTIFACT_DIR/cargo-shear.exit"
+
+      - name: Build content-addressed diagnostic manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import subprocess
+
+          root = pathlib.Path(os.environ["ARTIFACT_DIR"])
+          paths = root.joinpath("format-changed-paths.txt").read_text(encoding="utf-8").splitlines()
+          manifest = {
+              "schema": "hepta_repository_repair_diagnostics_v1",
+              "classification": "DIAGNOSTIC_PROPOSED_REPAIR_NO_AUTHORITY_EFFECT",
+              "repository": os.environ["EXPECTED_REPOSITORY"],
+              "candidate": {
+                  "head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+                  "tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(),
+                  "parent": subprocess.check_output(["git", "rev-parse", "HEAD^"], text=True).strip(),
+              },
+              "format_exit": int(root.joinpath("format.exit").read_text().strip()),
+              "cargo_shear_exit": int(root.joinpath("cargo-shear.exit").read_text().strip()),
+              "format_changed_path_count": len(paths),
+              "format_changed_paths": paths,
+              "format_patch_sha256": hashlib.sha256(root.joinpath("repository-format.patch").read_bytes()).hexdigest(),
+              "format_archive_sha256": hashlib.sha256(root.joinpath("format-changed-files.tar.gz").read_bytes()).hexdigest(),
+              "format_log_sha256": hashlib.sha256(root.joinpath("format.log").read_bytes()).hexdigest(),
+              "cargo_shear_log_sha256": hashlib.sha256(root.joinpath("cargo-shear.log").read_bytes()).hexdigest(),
+              "source_writeback": False,
+              "a0_candidate_qualified": False,
+              "selected": False,
+              "full_repository_merge_green": False,
+              "runtime_authority": False,
+              "production_authority": False,
+          }
+          root.joinpath("manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          (
+            cd "$ARTIFACT_DIR"
+            shasum -a 256 \
+              repository-format.patch \
+              format-changed-files.tar.gz \
+              format-changed-paths.txt \
+              format.log \
+              cargo-shear.log \
+              manifest.json \
+              > SHA256SUMS
+          )
+
+      - name: Upload repository repair diagnostics
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-repo-repair-diagnostics-${{ env.EXPECTED_HEAD }}
+          path: artifacts/hepta-repo-repair-diagnostics/**
+          if-no-files-found: error
+          retention-days: 30
