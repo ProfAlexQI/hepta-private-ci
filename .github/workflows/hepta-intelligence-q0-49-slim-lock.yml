@@ -1,0 +1,226 @@
+name: Hepta Intelligence Q0.49 slim Cargo lock reconstruction
+
+on:
+  push:
+    branches:
+      - diagnostic/hepta-intelligence-q0-49-slim-lock-20260830
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-q0-49-slim-lock
+  cancel-in-progress: true
+
+jobs:
+  reconstruct-cargo-lock:
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    env:
+      SOURCE_SHA: f2f200969fa0076178276bceab2eb21d23f0519e
+      SOURCE_TREE: e6d9a631345927a8c0817080a2f8cab150c516f3
+      BYTES_VERSION: 1.12.1
+      BYTES_CHECKSUM: fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04
+      ARTIFACT_DIR: artifacts/q049-slim
+      CARGO_NET_GIT_FETCH_WITH_CLI: true
+
+    steps:
+      - name: Checkout exact diagnostic head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind one diagnostic path and select Q0.48
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mapfile -t changed < <(
+            git diff --name-only --no-renames "$SOURCE_SHA" HEAD
+          )
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = \
+            ".github/workflows/hepta-intelligence-q0-49-slim-lock.yml"
+          git diff --check "$SOURCE_SHA" HEAD
+          git switch --detach "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git show -s --format=%T HEAD)" = "$SOURCE_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+
+      - name: Reconstruct deterministic Q0.49 source and Cargo lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR/files/.github/workflows"
+          mkdir -p "$ARTIFACT_DIR/files/codex-rs/hepta-automation"
+          mkdir -p "$ARTIFACT_DIR/files/codex-rs/hepta-contracts"
+          mkdir -p "$ARTIFACT_DIR/files/codex-rs/hepta-fleet"
+          cp codex-rs/Cargo.lock "$ARTIFACT_DIR/Cargo.lock.before"
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"expected one token in {path}: {old!r}; count={count}"
+                  )
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "codex-rs/Cargo.toml",
+              'bytes = "1.10.1"',
+              'bytes = "1.12.1"',
+          )
+          replace_once(
+              ".github/workflows/rust-ci.yml",
+              "        run: cargo shear --deny-warnings\n",
+              "        run: cargo shear --locked --deny-warnings\n",
+          )
+          replace_once(
+              "codex-rs/hepta-automation/Cargo.toml",
+              "publish = false\n\n[lib]\n",
+              "publish = false\n\n[package.metadata.cargo-shear]\n"
+              "# sha2 is used by the unconditionally linked path module "
+              "src/taskflow.rs.\n"
+              'ignored = ["sha2"]\n\n[lib]\n',
+          )
+          replace_once(
+              "codex-rs/hepta-contracts/Cargo.toml",
+              "version.workspace = true\n\n[lib]\n",
+              "version.workspace = true\n\n[package.metadata.cargo-shear]\n"
+              "# The path-mounted agent_id_tests module imports "
+              "pretty_assertions.\n"
+              'ignored = ["pretty_assertions"]\n\n[lib]\n',
+          )
+          replace_once(
+              "codex-rs/hepta-fleet/Cargo.toml",
+              "publish = false\n\n[lib]\n",
+              "publish = false\n\n[package.metadata.cargo-shear]\n"
+              "# The path-mounted registry_tests module imports "
+              "pretty_assertions.\n"
+              'ignored = ["pretty_assertions"]\n\n[lib]\n',
+          )
+
+          old = """      - name: Run cargo-deny
+                  uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
+                  with:
+                    rust-version: 1.95.0
+                    manifest-path: ./codex-rs/Cargo.toml
+                    # Docker actions do not inherit defaults.run.working-directory. Keep
+                    # global flags before `check`, but pass `--config` as a command flag;
+                    # cargo-deny 0.19 rejects `--config` in the global argument position.
+                    arguments: --all-features
+                    command-arguments: --config ./codex-rs/deny.toml
+          """
+          new = """      - name: Install pinned cargo-deny
+                  uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+                  with:
+                    tool: cargo-deny@0.19.0
+
+                - name: Run cargo-deny
+                  run: cargo +1.95.0 deny --all-features check --config deny.toml
+          """
+          replace_once(".github/workflows/cargo-deny.yml", old, new)
+          PY
+
+          cargo +1.95.0 update \
+            --manifest-path codex-rs/Cargo.toml \
+            -p bytes \
+            --precise "$BYTES_VERSION"
+
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          lock = Path("codex-rs/Cargo.lock").read_text(encoding="utf-8")
+          blocks = re.findall(
+              r'\[\[package\]\]\nname = "bytes"\nversion = "([^"]+)"\n'
+              r'source = "registry\+https://github.com/rust-lang/crates.io-index"\n'
+              r'checksum = "([0-9a-f]{64})"',
+              lock,
+          )
+          expected = [(os.environ["BYTES_VERSION"], os.environ["BYTES_CHECKSUM"])]
+          if blocks != expected:
+              raise SystemExit(f"unexpected bytes lock block: {blocks!r}")
+          PY
+
+          cargo +1.95.0 metadata \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --no-deps \
+            --format-version=1 \
+            >"$ARTIFACT_DIR/cargo-metadata.json"
+
+          git diff --check "$SOURCE_SHA" --
+          git diff --binary "$SOURCE_SHA" -- >"$ARTIFACT_DIR/q049-source.patch"
+          git diff --name-only --no-renames "$SOURCE_SHA" -- \
+            >"$ARTIFACT_DIR/changed-paths.txt"
+
+          expected=(
+            .github/workflows/cargo-deny.yml
+            .github/workflows/rust-ci.yml
+            codex-rs/Cargo.lock
+            codex-rs/Cargo.toml
+            codex-rs/hepta-automation/Cargo.toml
+            codex-rs/hepta-contracts/Cargo.toml
+            codex-rs/hepta-fleet/Cargo.toml
+          )
+          mapfile -t observed <"$ARTIFACT_DIR/changed-paths.txt"
+          test "${observed[*]}" = "${expected[*]}"
+
+          cp .github/workflows/cargo-deny.yml \
+            "$ARTIFACT_DIR/files/.github/workflows/cargo-deny.yml"
+          cp .github/workflows/rust-ci.yml \
+            "$ARTIFACT_DIR/files/.github/workflows/rust-ci.yml"
+          cp codex-rs/Cargo.toml "$ARTIFACT_DIR/files/codex-rs/Cargo.toml"
+          cp codex-rs/Cargo.lock "$ARTIFACT_DIR/files/codex-rs/Cargo.lock"
+          cp codex-rs/hepta-automation/Cargo.toml \
+            "$ARTIFACT_DIR/files/codex-rs/hepta-automation/Cargo.toml"
+          cp codex-rs/hepta-contracts/Cargo.toml \
+            "$ARTIFACT_DIR/files/codex-rs/hepta-contracts/Cargo.toml"
+          cp codex-rs/hepta-fleet/Cargo.toml \
+            "$ARTIFACT_DIR/files/codex-rs/hepta-fleet/Cargo.toml"
+
+          git config user.name "Hepta Q0.49 slim diagnostic"
+          git config user.email "q049-slim-diagnostic@invalid"
+          git add -- "${expected[@]}"
+          tree=$(git write-tree)
+          commit=$(
+            printf '%s\n' \
+              "fix(ci): close Q0.49 locked dependency policy blockers" \
+              "" \
+              "Slim diagnostic-created immutable object only; no ref moved." |
+              git commit-tree "$tree" -p "$SOURCE_SHA"
+          )
+          {
+            echo "source_sha=$SOURCE_SHA"
+            echo "source_tree=$SOURCE_TREE"
+            echo "diagnostic_head=$GITHUB_SHA"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "bytes_version=$BYTES_VERSION"
+            echo "bytes_checksum=$BYTES_CHECKSUM"
+            echo "cargo_lock_sha256=$(sha256sum codex-rs/Cargo.lock | awk '{print $1}')"
+            echo "candidate_tree=$tree"
+            echo "candidate_commit=$commit"
+          } >"$ARTIFACT_DIR/summary.env"
+          cat "$ARTIFACT_DIR/summary.env"
+
+      - name: Upload slim reconstruction
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-q0-49-slim-${{ github.sha }}
+          path: ${{ env.ARTIFACT_DIR }}
+          if-no-files-found: error
+          retention-days: 30
