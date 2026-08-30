@@ -1,0 +1,83 @@
+name: Windows gnullvm qualification boundary
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  qualification-boundary:
+    name: Windows gnullvm qualification boundary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Validate shell sources
+        shell: bash
+        run: |
+          bash -n .github/scripts/run-bazel-ci.sh
+          bash -n .github/scripts/run-windows-msvc-diagnostic.sh
+          bash -n .github/scripts/test_run_bazel_qualification_boundary.sh
+
+      - name: Verify source ratchet
+        shell: bash
+        run: |
+          python3 scripts/verify-windows-gnullvm-qualification-boundary.py
+          python3 scripts/verify-windows-gnullvm-option-grammar.py
+          python3 scripts/verify-windows-gnullvm-job-executable.py
+
+      - name: Exercise default, diagnostic and authenticated branches
+        shell: bash
+        run: .github/scripts/test_run_bazel_qualification_boundary.sh
+
+      - name: Emit qualification-boundary receipt
+        shell: bash
+        run: |
+          mkdir -p artifacts/windows-gnullvm-qualification-boundary
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          receipt = {
+              "schema": "hepta_windows_gnullvm_qualification_boundary_v1",
+              "status": "PASS_WINDOWS_GNULLVM_QUALIFICATION_BOUNDARY_SOURCE",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "commit": os.environ["GITHUB_SHA"],
+              "workflow": os.environ["GITHUB_WORKFLOW"],
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "workflow_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "workflow_job": os.environ["GITHUB_JOB"],
+              "qualification_mode": "qualifying_gnullvm_only",
+              "keyless_msvc_fallback_allowed_in_github_actions": False,
+              "msvc_diagnostic_eligible_for_repository_admission": False,
+              "source_writeback": False,
+              "runtime_authority": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "release_authority": False,
+              "callers_ratchet": False,
+          }
+          canonical = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+          receipt["receipt_binding_sha256"] = hashlib.sha256(canonical).hexdigest()
+          path = Path("artifacts/windows-gnullvm-qualification-boundary/receipt.json")
+          path.write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(path.read_text(encoding="utf-8"))
+          PY
+
+      - name: Upload qualification-boundary receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-gnullvm-qualification-boundary-${{ github.sha }}
+          path: artifacts/windows-gnullvm-qualification-boundary/receipt.json
+          if-no-files-found: error
+          retention-days: 30
