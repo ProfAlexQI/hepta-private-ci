@@ -1,0 +1,72 @@
+name: Hepta Intelligence Q0.16 exact source probe
+
+on:
+  push:
+    branches:
+      - ops/hepta-intelligence-q0-16-source-probe-20260830
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-q0-16-exact-source-probe
+  cancel-in-progress: true
+
+env:
+  EXACT_INTEGRATION_HEAD: 4e84c45c647f37bb6d5188e82de9a364f59151b9
+  EXACT_INTEGRATION_TREE: 90fb2ee16d7f97feecacb5569b015dc1df62076e
+  EXACT_A0_PARENT: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
+  EXACT_Q0_16_PARENT: 8d6412cb0925cf68e8b9505594d46c99db38277e
+
+jobs:
+  source-probe:
+    name: Exact source probe / ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04-arm
+          - macos-15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact integration head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.EXACT_INTEGRATION_HEAD }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify exact commit topology and tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXACT_INTEGRATION_HEAD"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$EXACT_INTEGRATION_TREE"
+          mapfile -t parents < <(git show -s --format='%P' HEAD | tr ' ' '\n')
+          test "${#parents[@]}" -eq 2
+          test "${parents[0]}" = "$EXACT_A0_PARENT"
+          test "${parents[1]}" = "$EXACT_Q0_16_PARENT"
+
+      - name: Verify shell and Python syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n .github/scripts/run-bazel-ci.sh
+          bash -n .github/scripts/run-bazel-ci-impl.sh
+          python3 -m py_compile \
+            .github/scripts/test_run_bazel_local_windows_gnullvm.py \
+            scripts/verify-windows-gnullvm-qualification-contract.py
+
+      - name: Run fail-closed Windows qualification source verifier
+        shell: bash
+        run: python3 scripts/verify-windows-gnullvm-qualification-contract.py
+
+      - name: Run complete Bazel wrapper policy tests
+        shell: bash
+        run: python3 -m unittest discover -s .github/scripts -p 'test_run_bazel*.py'
+
+      - name: Confirm probe did not mutate checkout
+        if: ${{ always() && !cancelled() }}
+        shell: bash
+        run: git diff --exit-code && test -z "$(git status --porcelain)"
