@@ -1,0 +1,117 @@
+name: Hepta Intelligence selected Q0 source binding
+
+on:
+  pull_request:
+    branches:
+      - codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  workflow_dispatch:
+    inputs:
+      expected_head:
+        description: Exact two-parent integration head
+        required: true
+        type: string
+      expected_head_branch:
+        description: Exact integration admission branch
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hi-selected-q0-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  selected-q0-source:
+    name: Selected Q0 source-ref binding
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.head_ref, 'integration/hepta-intelligence-a0-q0-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_HEAD_BRANCH: ${{ github.head_ref || inputs.expected_head_branch }}
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || inputs.expected_head }}
+      EXPECTED_Q0_SOURCE_BRANCH: >-
+        codex/hepta-intelligence-q0-61-selected-source-binding-20260831
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONNOUSERSITE: "1"
+    steps:
+      - name: Checkout exact integration candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.EXPECTED_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compile and exercise selected-source fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/hepta-intelligence-selected-q0-source"
+          cache_dir="$RUNNER_TEMP/hepta-intelligence-selected-q0-cache"
+          mkdir -p "$artifact_dir" "$cache_dir"
+          PYTHONPYCACHEPREFIX="$cache_dir" \
+            python3 -m py_compile \
+              scripts/hepta_q046_git_context.py \
+              scripts/hepta_q061_selected_source.py
+          PYTHONPYCACHEPREFIX="$cache_dir" \
+            python3 scripts/hepta_q061_selected_source.py --self-test \
+            | tee "$artifact_dir/fixtures.txt"
+
+      - name: Verify selected Q0 live ref twice
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/hepta-intelligence-selected-q0-source"
+          cache_dir="$RUNNER_TEMP/hepta-intelligence-selected-q0-cache"
+          clean_home="$RUNNER_TEMP/hepta-intelligence-selected-q0-home"
+          mkdir -p "$artifact_dir" "$cache_dir" "$clean_home"
+          for suffix in a b; do
+            env -i \
+              PATH=/usr/bin:/bin \
+              HOME="$clean_home" \
+              LANG=C \
+              LC_ALL=C \
+              PYTHONHASHSEED=0 \
+              PYTHONPYCACHEPREFIX="$cache_dir" \
+              PYTHONDONTWRITEBYTECODE=1 \
+              PYTHONNOUSERSITE=1 \
+              GITHUB_ACTIONS=true \
+              RUNNER_OS=Linux \
+              GITHUB_REPOSITORY="$GITHUB_REPOSITORY" \
+              EXPECTED_HEAD="$EXPECTED_HEAD" \
+              EXPECTED_HEAD_BRANCH="$EXPECTED_HEAD_BRANCH" \
+              HEPTA_EXPECTED_Q0_SOURCE_BRANCH="$EXPECTED_Q0_SOURCE_BRANCH" \
+              GH_TOKEN="$GH_TOKEN" \
+              /usr/bin/python3 \
+                scripts/hepta_q061_selected_source.py \
+                --check \
+                --output "$artifact_dir/selected-q0-$suffix.json"
+          done
+          cmp \
+            "$artifact_dir/selected-q0-a.json" \
+            "$artifact_dir/selected-q0-b.json"
+          cp \
+            "$artifact_dir/selected-q0-a.json" \
+            "$artifact_dir/selected-q0.json"
+          sha256sum "$artifact_dir/selected-q0.json" \
+            > "$artifact_dir/selected-q0.json.sha256"
+
+      - name: Require clean candidate worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Upload selected Q0 source binding receipt
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-intelligence-selected-q0-${{ env.EXPECTED_HEAD }}
+          path: ${{ runner.temp }}/hepta-intelligence-selected-q0-source
+          if-no-files-found: error
+          retention-days: 30
