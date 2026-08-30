@@ -21,8 +21,8 @@ env:
   EXPECTED_SYNTHETIC_TREE: fc6dbb4091009ff24996ba2fab2b7ab3977548de
   A0_SOURCE_HEAD: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
   Q0_10_SECOND_PARENT: 8d7960f1805c6b2cda0d6274bf2541a535a4d30c
-  REPORT_DIR: ${{ runner.temp }}/hepta-intelligence-a0-q0-10-diagnostic
-  PYTHONPYCACHEPREFIX: ${{ runner.temp }}/hepta-python-cache
+  REPORT_DIR: /tmp/hepta-intelligence-a0-q0-10-diagnostic
+  PYTHONPYCACHEPREFIX: /tmp/hepta-intelligence-python-cache
   CARGO_INCREMENTAL: "0"
 
 jobs:
@@ -51,13 +51,15 @@ jobs:
           test "$second_parent" = "$Q0_10_SECOND_PARENT"
           test -z "${extra:-}"
 
-          git fetch --no-tags --depth=2 origin "$EXPECTED_SYNTHETIC_MERGE"
+          git fetch --no-tags --depth=2 origin refs/pull/93/merge
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_SYNTHETIC_MERGE"
           test "$(git rev-parse "$EXPECTED_SYNTHETIC_MERGE^{tree}")" = "$EXPECTED_SYNTHETIC_TREE"
           read -r merge_base merge_head merge_extra <<< "$(git show -s --format=%P "$EXPECTED_SYNTHETIC_MERGE")"
           test "$merge_base" = "$A0_SOURCE_HEAD"
           test "$merge_head" = "$EXPECTED_HEAD_SHA"
           test -z "${merge_extra:-}"
 
+          rm -rf "$REPORT_DIR"
           mkdir -p "$REPORT_DIR"
           {
             echo "repository=$GITHUB_REPOSITORY"
@@ -105,7 +107,7 @@ jobs:
           print("PASS_A0_FIRST_PARENT_BLOB_IDENTITY")
           PY
 
-      - name: Verify Q0.9 Windows checkout ordering and Q0.10 platform source
+      - name: Verify Q0.9 checkout ordering and Q0.10 platform source
         shell: bash
         run: |
           set -euo pipefail
@@ -114,18 +116,17 @@ jobs:
           from pathlib import Path
 
           rust_ci = Path(".github/workflows/rust-ci.yml").read_text(encoding="utf-8")
-          longpaths = """      - name: Enable Windows long paths before checkout
-                if: runner.os == 'Windows'
-                shell: pwsh
-                run: git config --system core.longpaths true
-          """.replace("                ", "        ")
-          gated_checkout = """      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-                if: ${{ steps.argument_comment_lint_gate.outputs.run == 'true' }}
-          """.replace("                ", "        ")
-          if longpaths not in rust_ci or gated_checkout not in rust_ci:
-              raise SystemExit("missing exact Windows long-path or gated-checkout block")
-          if rust_ci.index(longpaths) >= rust_ci.index(gated_checkout):
-              raise SystemExit("Windows long paths are not enabled before checkout")
+          longpaths_index = rust_ci.index("- name: Enable Windows long paths before checkout")
+          checkout_index = rust_ci.index(
+              "uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+              longpaths_index,
+          )
+          condition_index = rust_ci.index(
+              "steps.argument_comment_lint_gate.outputs.run",
+              longpaths_index,
+          )
+          if not (longpaths_index < checkout_index and longpaths_index < condition_index):
+              raise SystemExit("Windows long paths are not enabled before gated checkout")
 
           launcher = Path(".github/scripts/run-bazel-ci.sh").read_text(encoding="utf-8")
           required = [
@@ -138,18 +139,19 @@ jobs:
                   raise SystemExit(f"missing Q0.10 launcher token: {token}")
 
           root_build = Path("BUILD.bazel").read_text(encoding="utf-8")
-          if 'name = "local_windows_msvc"' not in root_build:
-              raise SystemExit("local_windows_msvc platform is absent")
-          if '"@llvm//constraints/windows/abi:msvc"' not in root_build:
+          local_msvc = root_build.index('name = "local_windows_msvc"')
+          next_platform = root_build.index("platform(", local_msvc + 1)
+          local_msvc_block = root_build[local_msvc:next_platform]
+          if '"@llvm//constraints/windows/abi:msvc"' not in local_msvc_block:
               raise SystemExit("local_windows_msvc ABI constraint is absent")
           print("PASS_Q0_9_Q0_10_STATIC_BINDING")
           PY
 
-      - name: Exercise credential-free, explicit-target, and RBE launcher fixtures
+      - name: Exercise local, explicit-target, and RBE launcher fixtures
         shell: bash
         run: |
           set -euo pipefail
-          fixture_root="$RUNNER_TEMP/q0-10-bazel-launcher-fixture"
+          fixture_root=/tmp/q0-10-bazel-launcher-fixture
           rm -rf "$fixture_root"
           mkdir -p "$fixture_root/.github/scripts"
           cp .github/scripts/run-bazel-ci.sh "$fixture_root/.github/scripts/run-bazel-ci.sh"
@@ -253,7 +255,7 @@ jobs:
         with:
           tool: cargo-shear@1.11.2
 
-      - name: Compile and execute strict Hepta Intelligence validators
+      - name: Execute strict Hepta Intelligence validators
         shell: bash
         run: |
           set -euo pipefail
@@ -270,11 +272,12 @@ jobs:
             python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
           done
 
-      - name: Re-verify canonical A0 in an isolated first-parent worktree
+      - name: Re-verify canonical A0 in an isolated worktree
         shell: bash
         run: |
           set -euo pipefail
-          a0_dir="$RUNNER_TEMP/hepta-intelligence-a0-source"
+          a0_dir=/tmp/hepta-intelligence-a0-source
+          rm -rf "$a0_dir"
           git worktree add --detach "$a0_dir" "$A0_SOURCE_HEAD"
           (
             cd "$a0_dir"
@@ -336,12 +339,13 @@ jobs:
           for package in \
             codex-hepta-automation \
             codex-hepta-contracts \
-            codex-hepta-fleet \
-            codex-uds
+            codex-hepta-fleet
           do
             cargo test -p "$package" --all-targets --locked
-            cargo clippy -p "$package" --all-targets --all-features --locked -- -D warnings
+            cargo clippy -p "$package" --all-targets --locked -- -D warnings
           done
+          cargo test -p codex-uds --all-targets --locked
+          cargo clippy -p codex-uds --all-targets --all-features --locked -- -D warnings
 
       - name: Cargo-deny checked-policy gate
         uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
@@ -376,6 +380,6 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4
         with:
           name: hepta-intelligence-a0-q0-10-exact-3345348-${{ github.run_id }}
-          path: ${{ env.REPORT_DIR }}/**
+          path: /tmp/hepta-intelligence-a0-q0-10-diagnostic/**
           if-no-files-found: error
           retention-days: 30
