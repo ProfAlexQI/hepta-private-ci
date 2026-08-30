@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Compatibility wrapper plus Q0.17-Q0.27 qualification ratchets."""
+"""Compatibility wrapper plus Q0.17-Q0.28 qualification ratchets."""
 
 import os
 import subprocess
@@ -18,12 +18,16 @@ from run_bazel_q022_negative_targets import (
     validate_keyless_windows_gnullvm_final_args as _validate_q026_compatibility_base,
 )
 from run_bazel_q027_lane_semantics import (
+    validate_keyless_windows_gnullvm_final_args as _validate_q027_compatibility_base,
+)
+from run_bazel_q028_startup_contract import (
     validate_keyless_windows_gnullvm_final_args,
 )
 
-# Keep the selected Q0.26 compatibility base import machine-visible while the
-# Q0.27 validator composes and invokes it internally.
+# Keep both selected compatibility layers machine-visible while Q0.28 composes
+# and invokes them transitively through its exact startup-vector contract.
 assert _validate_q026_compatibility_base is not None
+assert _validate_q027_compatibility_base is not None
 
 
 def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]:
@@ -37,7 +41,11 @@ def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]
         expected_blob=QUALIFICATION_BAZELRC_GIT_BLOB_SHA1,
     )
     command_idx = next(
-        (index for index, arg in enumerate(command[1:], start=1) if not arg.startswith("-")),
+        (
+            index
+            for index, arg in enumerate(command[1:], start=1)
+            if not arg.startswith("-")
+        ),
         len(command),
     )
     startup = command[1:command_idx]
@@ -69,7 +77,9 @@ def main() -> None:
             file=sys.stderr,
         )
     else:
-        host = "OpenAI tenant" if uses_openai_host(os.environ) else "generic"  # noqa: F405
+        host = (
+            "OpenAI tenant" if uses_openai_host(os.environ) else "generic"  # noqa: F405
+        )
         print(f"Using {host} BuildBuddy configuration: {config}.", file=sys.stderr)
 
     try:
