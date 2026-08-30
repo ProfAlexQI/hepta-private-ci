@@ -1,0 +1,53 @@
+{
+  "schema_version": "hepta_upstream_codex_current_intake_v13",
+  "observation": {
+    "state": "observed_and_classified",
+    "observed_at": "2026-08-30T13:02:11Z",
+    "upstream_repository": "https://github.com/openai/codex.git",
+    "target_branch": "main",
+    "target_ref": "refs/remotes/upstream/main",
+    "observed_upstream_head": "cefa060695594cdeebfb4306170cc27487c8a088",
+    "range_start_exclusive": "dde85b435b16994f956bce08e5fb796ed94c27fd",
+    "range_end_inclusive": "cefa060695594cdeebfb4306170cc27487c8a088",
+    "commit_count": 3,
+    "merge_commit_count": 0,
+    "net_changed_file_count": 37,
+    "net_insertions": 566,
+    "net_deletions": 59,
+    "predecessor_relationship": "linear_ancestor",
+    "ordinary_merge_allowed": false,
+    "ordinary_rebase_allowed": false,
+    "direct_cherry_pick_default": false,
+    "required_integration_mode": "selective_semantic_transplant_with_behavioral_evidence",
+    "fetch_command": "git fetch --no-tags https://github.com/openai/codex.git cefa060695594cdeebfb4306170cc27487c8a088:refs/remotes/upstream/hepta-intake-20260830-r13"
+  },
+  "commit_inventory": [
+    {
+      "upstream_commit": "28327355b861ab6cc76b01c7248663eb1be440cf",
+      "title": "Update tests for default-enabled update_plan (#41630)",
+      "status": "deferred",
+      "hepta_v2_priority": "P2"
+    },
+    {
+      "upstream_commit": "0a12b855a0b21068108a8a3b311d492712737e0f",
+      "title": "Preserve Guardian authorization across history compaction (#41660)",
+      "status": "deferred",
+      "hepta_v2_priority": "P0"
+    },
+    {
+      "upstream_commit": "cefa060695594cdeebfb4306170cc27487c8a088",
+      "title": "Approve the first Node REPL execution without a Guardian wait (#41666)",
+      "status": "deferred",
+      "hepta_v2_priority": "P0"
+    }
+  ],
+  "claims": {
+    "upstream_fully_consumed": false,
+    "source_imported_at_observation": false,
+    "merge_performed": false,
+    "rebase_performed": false,
+    "cherry_pick_performed": false,
+    "deployment_performed": false,
+    "live_enablement_performed": false
+  }
+}
