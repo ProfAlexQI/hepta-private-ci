@@ -1,0 +1,88 @@
+name: Hepta UI v5 Windows Bazel root fixes v2 Windows relay
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-windows-bazel-root-fixes-v2-windows-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-windows-bazel-root-fixes-v2-windows.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-windows-bazel-root-fixes-v2-windows
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    env:
+      TARGET_BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_HEAD: 1e6f7cf3db498153fd52250dee1112f89489e094
+      SOURCE_COMMIT: 04dd10bfbb236a32d754748464f08af03815ddbe
+      SOURCE_PATH: .github/scripts/hepta-ui-v5-windows-bazel-root-fixes-v2.py
+    steps:
+      - name: Enable Windows long paths before checkout
+        shell: pwsh
+        run: git config --global core.longpaths true
+
+      - name: Check out exact relay commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Materialize and compile the immutable patcher
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          git cat-file -e "$env:SOURCE_COMMIT^{commit}" 2>$null
+          if ($LASTEXITCODE -ne 0) {
+              git fetch --no-tags origin $env:SOURCE_COMMIT
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $patcher = Join-Path $env:RUNNER_TEMP "hepta-ui-v5-windows-bazel-root-fixes-v2.py"
+          $sourceSpec = "$($env:SOURCE_COMMIT):$($env:SOURCE_PATH)"
+          git show $sourceSpec | Out-File -FilePath $patcher -Encoding utf8NoBOM
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:PATCHER_COPY = $patcher
+          @'
+          from pathlib import Path
+          import os
+
+          path = Path(os.environ["PATCHER_COPY"])
+          text = path.read_text(encoding="utf-8-sig")
+          old = '            "\\\"#;",'
+          new = '            "\\\"#,",'
+          if text.count(old) != 2:
+              raise SystemExit(
+                  f"raw-string fixture terminator repair: expected 2 anchors, found {text.count(old)}"
+              )
+          text = text.replace(old, new)
+          path.write_text(text, encoding="utf-8", newline="\n")
+          compile(text, str(path), "exec")
+          if old in text or text.count(new) != 2:
+              raise SystemExit("raw-string fixture terminator repair did not converge")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "PATCHER_COPY=$patcher" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8NoBOM -Append
+
+      - name: Execute exact-head source publication
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          git fetch --no-tags origin $env:TARGET_BRANCH
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $remoteHead = (git rev-parse "origin/$env:TARGET_BRANCH").Trim()
+          if ($remoteHead -ne $env:EXPECTED_HEAD) {
+              throw "target branch moved: expected=$env:EXPECTED_HEAD actual=$remoteHead"
+          }
+          git checkout --detach $env:EXPECTED_HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $status = git status --porcelain
+          if ($status) { throw "worktree is not clean after exact-head checkout: $status" }
+          python $env:PATCHER_COPY
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
