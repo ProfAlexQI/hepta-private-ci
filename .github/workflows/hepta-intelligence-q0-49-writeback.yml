@@ -1,0 +1,328 @@
+name: Hepta Intelligence Q0.49 dependency-policy writeback
+
+on:
+  push:
+    branches:
+      - diagnostic/hepta-intelligence-q0-49-writeback-20260830
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-q0-49-writeback-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  build-candidate:
+    name: build exact Q0.49 candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SOURCE_SHA: f2f200969fa0076178276bceab2eb21d23f0519e
+      SOURCE_TREE: e6d9a631345927a8c0817080a2f8cab150c516f3
+      BYTES_VERSION: 1.12.1
+      BYTES_CHECKSUM: fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04
+      TARGET_BRANCH: codex/hepta-intelligence-q0-49-dependency-policy-20260830
+      CARGO_NET_GIT_FETCH_WITH_CLI: true
+
+    steps:
+      - name: Checkout exact diagnostic head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify isolated workflow delta and select Q0.48
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mapfile -t changed < <(
+            git diff --name-only --no-renames "$SOURCE_SHA" HEAD
+          )
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = \
+            ".github/workflows/hepta-intelligence-q0-49-writeback.yml"
+          git diff --check "$SOURCE_SHA" HEAD
+          git switch --detach "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git show -s --format=%T HEAD)" = "$SOURCE_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Install repository CI prerequisites
+        uses: ./.github/actions/setup-ci
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt,clippy
+
+      - name: Install pinned cargo-shear and cargo-deny
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: cargo-shear@1.11.2,cargo-deny@0.19.0
+
+      - name: Apply exact Cargo dependency-policy repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"expected one token in {path}: {old!r}; count={count}"
+                  )
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "codex-rs/Cargo.toml",
+              'bytes = "1.10.1"',
+              'bytes = "1.12.1"',
+          )
+          replace_once(
+              ".github/workflows/rust-ci.yml",
+              "        run: cargo shear --deny-warnings\n",
+              "        run: cargo shear --locked --deny-warnings\n",
+          )
+          replace_once(
+              "codex-rs/hepta-automation/Cargo.toml",
+              "publish = false\n\n[lib]\n",
+              "publish = false\n\n[package.metadata.cargo-shear]\n"
+              "# sha2 is used by the unconditionally linked path module "
+              "src/taskflow.rs.\n"
+              'ignored = ["sha2"]\n\n[lib]\n',
+          )
+          replace_once(
+              "codex-rs/hepta-contracts/Cargo.toml",
+              "version.workspace = true\n\n[lib]\n",
+              "version.workspace = true\n\n[package.metadata.cargo-shear]\n"
+              "# The path-mounted agent_id_tests module imports "
+              "pretty_assertions.\n"
+              'ignored = ["pretty_assertions"]\n\n[lib]\n',
+          )
+          replace_once(
+              "codex-rs/hepta-fleet/Cargo.toml",
+              "publish = false\n\n[lib]\n",
+              "publish = false\n\n[package.metadata.cargo-shear]\n"
+              "# The path-mounted registry_tests module imports "
+              "pretty_assertions.\n"
+              'ignored = ["pretty_assertions"]\n\n[lib]\n',
+          )
+
+          old = """      - name: Run cargo-deny
+                  uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
+                  with:
+                    rust-version: 1.95.0
+                    manifest-path: ./codex-rs/Cargo.toml
+                    # Docker actions do not inherit defaults.run.working-directory. Keep
+                    # global flags before `check`, but pass `--config` as a command flag;
+                    # cargo-deny 0.19 rejects `--config` in the global argument position.
+                    arguments: --all-features
+                    command-arguments: --config ./codex-rs/deny.toml
+          """
+          new = """      - name: Install pinned cargo-deny
+                  uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+                  with:
+                    tool: cargo-deny@0.19.0
+
+                - name: Run cargo-deny
+                  run: cargo +1.95.0 deny --all-features check --config deny.toml
+          """
+          replace_once(".github/workflows/cargo-deny.yml", old, new)
+          PY
+
+          cargo +1.95.0 update \
+            --manifest-path codex-rs/Cargo.toml \
+            -p bytes \
+            --precise "$BYTES_VERSION"
+
+          python3 - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          for path in (
+              "codex-rs/Cargo.toml",
+              "codex-rs/hepta-automation/Cargo.toml",
+              "codex-rs/hepta-contracts/Cargo.toml",
+              "codex-rs/hepta-fleet/Cargo.toml",
+          ):
+              with Path(path).open("rb") as source:
+                  tomllib.load(source)
+
+          lock = Path("codex-rs/Cargo.lock").read_text(encoding="utf-8")
+          blocks = re.findall(
+              r'\[\[package\]\]\nname = "bytes"\nversion = "([^"]+)"\n'
+              r'source = "registry\+https://github.com/rust-lang/crates.io-index"\n'
+              r'checksum = "([0-9a-f]{64})"',
+              lock,
+          )
+          expected = [
+              (os.environ["BYTES_VERSION"], os.environ["BYTES_CHECKSUM"])
+          ]
+          if blocks != expected:
+              raise SystemExit(
+                  f"unexpected bytes lock block: {blocks!r} != {expected!r}"
+              )
+          PY
+
+          cargo +1.95.0 metadata \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --no-deps \
+            --format-version=1 \
+            >/tmp/q049-cargo-metadata.json
+
+          cargo +1.95.0 shear \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --deny-warnings
+
+          (
+            cd codex-rs
+            cargo +1.95.0 deny --all-features check --config deny.toml
+          )
+
+      - name: Set up Bazel for module-lock regeneration
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          target: x86_64-unknown-linux-gnu
+
+      - name: Regenerate and validate exact candidate
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          just bazel-lock-update
+
+          mapfile -t paths < <(
+            git diff --name-only --no-renames "$SOURCE_SHA" --
+          )
+          expected=(
+            .github/workflows/cargo-deny.yml
+            .github/workflows/rust-ci.yml
+            MODULE.bazel.lock
+            codex-rs/Cargo.lock
+            codex-rs/Cargo.toml
+            codex-rs/hepta-automation/Cargo.toml
+            codex-rs/hepta-contracts/Cargo.toml
+            codex-rs/hepta-fleet/Cargo.toml
+          )
+          test "${paths[*]}" = "${expected[*]}"
+          git diff --check "$SOURCE_SHA" --
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          module = Path("MODULE.bazel.lock").read_text(encoding="utf-8")
+          if '"bytes_1.12.1"' not in module:
+              raise SystemExit("MODULE.bazel.lock lacks bytes_1.12.1")
+          if '"bytes_1.11.1"' in module:
+              raise SystemExit("MODULE.bazel.lock retains bytes_1.11.1")
+          cargo_deny = Path(
+              ".github/workflows/cargo-deny.yml"
+          ).read_text(encoding="utf-8")
+          if "EmbarkStudios/cargo-deny-action@" in cargo_deny:
+              raise SystemExit("retained broken cargo-deny Docker action")
+          if cargo_deny.count("cargo-deny@0.19.0") != 1:
+              raise SystemExit("cargo-deny pin is not exact")
+          rust_ci = Path(
+              ".github/workflows/rust-ci.yml"
+          ).read_text(encoding="utf-8")
+          if rust_ci.count(
+              "cargo shear --locked --deny-warnings"
+          ) != 1:
+              raise SystemExit("locked cargo-shear command is not exact")
+          PY
+
+          git config user.name "Hepta Q0.49 candidate builder"
+          git config user.email "q049-candidate-builder@invalid"
+          git add -- "${paths[@]}"
+          tree="$(git write-tree)"
+          commit="$(
+            printf '%s\n' \
+              "fix(ci): close Q0.49 dependency-policy blockers" \
+              "" \
+              "Regenerate Cargo/Bazel locks, pin cargo-deny, and bind cargo-shear." |
+              git commit-tree "$tree" -p "$SOURCE_SHA"
+          )"
+
+          test "$(git show -s --format=%P "$commit")" = "$SOURCE_SHA"
+          test "$(git show -s --format=%T "$commit")" = "$tree"
+          mapfile -t committed_paths < <(
+            git diff-tree --no-commit-id --name-only -r "$commit"
+          )
+          test "${committed_paths[*]}" = "${expected[*]}"
+          echo "tree=$tree" >>"$GITHUB_OUTPUT"
+          echo "commit=$commit" >>"$GITHUB_OUTPUT"
+
+          artifact_root="artifacts/q049"
+          mkdir -p "$artifact_root/files/.github/workflows"
+          mkdir -p "$artifact_root/files/codex-rs/hepta-automation"
+          mkdir -p "$artifact_root/files/codex-rs/hepta-contracts"
+          mkdir -p "$artifact_root/files/codex-rs/hepta-fleet"
+          cp .github/workflows/cargo-deny.yml             "$artifact_root/files/.github/workflows/cargo-deny.yml"
+          cp .github/workflows/rust-ci.yml             "$artifact_root/files/.github/workflows/rust-ci.yml"
+          cp MODULE.bazel.lock             "$artifact_root/files/MODULE.bazel.lock"
+          cp codex-rs/Cargo.lock             "$artifact_root/files/codex-rs/Cargo.lock"
+          cp codex-rs/Cargo.toml             "$artifact_root/files/codex-rs/Cargo.toml"
+          cp codex-rs/hepta-automation/Cargo.toml             "$artifact_root/files/codex-rs/hepta-automation/Cargo.toml"
+          cp codex-rs/hepta-contracts/Cargo.toml             "$artifact_root/files/codex-rs/hepta-contracts/Cargo.toml"
+          cp codex-rs/hepta-fleet/Cargo.toml             "$artifact_root/files/codex-rs/hepta-fleet/Cargo.toml"
+          git diff --binary "$SOURCE_SHA" -- >"$artifact_root/q049.patch"
+          printf '%s\n' "${paths[@]}" >"$artifact_root/changed-paths.txt"
+          {
+            echo "source_sha=$SOURCE_SHA"
+            echo "source_tree=$SOURCE_TREE"
+            echo "candidate_commit=$commit"
+            echo "candidate_tree=$tree"
+            sha256sum codex-rs/Cargo.lock MODULE.bazel.lock
+          } >"$artifact_root/summary.txt"
+
+      - name: Upload Q0.49 reconstruction
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hepta-intelligence-q0-49-${{ github.sha }}
+          path: artifacts/q049
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Publish exact one-parent Q0.49 branch
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.commit }}
+          CANDIDATE_TREE: ${{ steps.candidate.outputs.tree }}
+        run: |
+          set -euo pipefail
+          test -n "$CANDIDATE_COMMIT"
+          test -n "$CANDIDATE_TREE"
+          if git ls-remote --exit-code origin \
+            "refs/heads/$TARGET_BRANCH" >/dev/null 2>&1; then
+            echo "target branch already exists" >&2
+            exit 1
+          fi
+          auth="$(
+            printf 'x-access-token:%s' "$GITHUB_TOKEN" |
+              base64 |
+              tr -d '\n'
+          )"
+          git -c \
+            http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" \
+            push origin \
+            "$CANDIDATE_COMMIT:refs/heads/$TARGET_BRANCH"
+          remote="$(
+            git ls-remote origin "refs/heads/$TARGET_BRANCH" |
+              awk '{print $1}'
+          )"
+          test "$remote" = "$CANDIDATE_COMMIT"
+          printf 'Q0.49 commit=%s tree=%s parent=%s\n' \
+            "$CANDIDATE_COMMIT" "$CANDIDATE_TREE" "$SOURCE_SHA"
