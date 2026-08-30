@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: hepta-v5-b0-trusted-boundary-hardening-once
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   harden:
@@ -20,7 +20,7 @@ jobs:
     if: >-
       github.repository == 'ProfHepta/hepta-private-ci' &&
       github.ref == 'refs/heads/codex/hepta-architecture-v5-b0-verified-use-kernel-20260830'
-    runs-on: ubuntu-24.04
+    runs-on: macos-14
     timeout-minutes: 120
     steps:
       - name: Checkout exact branch head
@@ -38,9 +38,11 @@ jobs:
             "001a40f931dc439c50eb09f81d89a666c943db81"
           test "$(git hash-object codex-rs/hepta-contracts/src/verified_use_tests.rs)" = \
             "61117f806ef436b346e905395587bb0b95389b76"
-          test -f scripts/apply-hepta-v5-b0-trusted-hardening.py
+          test "$(git hash-object scripts/apply-hepta-v5-b0-trusted-hardening.py)" = \
+            "5c25ff3d29cae7c6d133b24741bf04ca36ba5537"
           git diff --exit-code
           git diff --cached --exit-code
+          python3 -m py_compile scripts/apply-hepta-v5-b0-trusted-hardening.py
 
       - name: Apply bounded source-contract update
         shell: bash
