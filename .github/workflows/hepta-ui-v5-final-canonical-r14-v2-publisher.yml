@@ -1,0 +1,454 @@
+name: Hepta UI v5 final canonical R14 v2 publisher
+
+on:
+  push:
+    branches:
+      - automation/ui-v5-final-canonical-r14-v2-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-final-canonical-r14-v2-publisher.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-final-canonical-r14-v2
+  cancel-in-progress: false
+
+jobs:
+  canonicalize-and-publish:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      SOURCE_BRANCH: codex/ui-v5-final-repository-blockers-v2-20260830
+      EXPECTED_SOURCE_HEAD: 3e9268d6e4d60e5e61b26dc1b6de28b095d54674
+      OUTPUT_BRANCH: staging/ui-v5-final-canonical-r14-v2-20260830
+      DRIVER_PATH: .github/workflows/hepta-ui-v5-final-canonical-r14-v2-publisher.yml
+      UPSTREAM_URL: https://github.com/openai/codex.git
+      R12_HEAD: dde85b435b16994f956bce08e5fb796ed94c27fd
+      R13_HEAD: da23e131e68b171909407f469da1b2f72d9c4f4a
+      R14_HEAD: 88f776588f5e73467e7659c268f8358a9a2378b6
+      R13_REF: refs/remotes/upstream/hepta-intake-20260830-r13
+      R14_REF: refs/remotes/upstream/hepta-intake-20260830-r14
+      R13_INTAKE: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R13.json
+      R13_RECORD: docs/architecture/HEPTA_UPSTREAM_CODEX_R13_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+      R14_INTAKE: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R14.json
+      R14_RECORD: docs/architecture/HEPTA_UPSTREAM_CODEX_R14_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+      REGISTRY: docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json
+      CONTRACT: .github/hepta-ci-contract-v1.json
+      MATERIALIZER: scripts/hepta-ci-materialize-upstream-intake
+      BASELINE_CONTRACT: scripts/hepta-ci-baseline-contract
+      R13_EXTENSION: docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_EXTENSION_R13_V1.json
+      R13_EXTENSION_CONTRACT: .github/hepta-ci-upstream-intake-r13-extension-v1.json
+
+    steps:
+      - name: Check out exact publisher driver
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify publisher ancestry and select exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_SOURCE_HEAD"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$DRIVER_PATH"
+          git fetch --no-tags origin "refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
+          test "$(git rev-parse "refs/remotes/origin/$SOURCE_BRANCH")" = "$EXPECTED_SOURCE_HEAD"
+          git checkout --detach "$EXPECTED_SOURCE_HEAD"
+          git config user.name 'hepta-gap-closure[bot]'
+          git config user.email 'hepta-gap-closure[bot]@users.noreply.github.com'
+          test -z "$(git status --short)"
+
+      - name: Install bounded validation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes jq ripgrep
+
+      - name: Fetch and verify exact R13 and R14 ranges
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --filter=blob:none "$UPSTREAM_URL" "$R12_HEAD" "$R13_HEAD" "$R14_HEAD"
+          for commit in "$R12_HEAD" "$R13_HEAD" "$R14_HEAD"; do
+            test "$(git cat-file -t "$commit")" = commit
+          done
+          git merge-base --is-ancestor "$R12_HEAD" "$R13_HEAD"
+          git merge-base --is-ancestor "$R13_HEAD" "$R14_HEAD"
+          test "$(git rev-list --count "$R12_HEAD..$R13_HEAD")" = 4
+          test "$(git rev-list --merges --count "$R12_HEAD..$R13_HEAD")" = 0
+          test "$(git rev-list --count "$R13_HEAD..$R14_HEAD")" = 1
+          test "$(git rev-list --merges --count "$R13_HEAD..$R14_HEAD")" = 0
+          mapfile -t r13_actual < <(git rev-list --reverse "$R12_HEAD..$R13_HEAD")
+          r13_expected=(
+            28327355b861ab6cc76b01c7248663eb1be440cf
+            0a12b855a0b21068108a8a3b311d492712737e0f
+            cefa060695594cdeebfb4306170cc27487c8a088
+            da23e131e68b171909407f469da1b2f72d9c4f4a
+          )
+          test "${r13_actual[*]}" = "${r13_expected[*]}"
+          mapfile -t r14_actual < <(git rev-list --reverse "$R13_HEAD..$R14_HEAD")
+          test "${r14_actual[*]}" = "$R14_HEAD"
+          remote_head="$(git ls-remote --exit-code "$UPSTREAM_URL" refs/heads/main | awk 'NR == 1 {print $1}')"
+          test "$remote_head" = "$R14_HEAD"
+
+      - name: Canonicalize append-only R13 and R14 truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+          from typing import Any
+
+          source_head = os.environ["EXPECTED_SOURCE_HEAD"]
+          r12 = os.environ["R12_HEAD"]
+          r13 = os.environ["R13_HEAD"]
+          r14 = os.environ["R14_HEAD"]
+          r13_ref = os.environ["R13_REF"]
+          r14_ref = os.environ["R14_REF"]
+
+          r13_intake_path = Path(os.environ["R13_INTAKE"])
+          r13_record_path = Path(os.environ["R13_RECORD"])
+          r14_intake_path = Path(os.environ["R14_INTAKE"])
+          r14_record_path = Path(os.environ["R14_RECORD"])
+          registry_path = Path(os.environ["REGISTRY"])
+          contract_path = Path(os.environ["CONTRACT"])
+          materializer_path = Path(os.environ["MATERIALIZER"])
+          baseline_contract_path = Path(os.environ["BASELINE_CONTRACT"])
+
+          def load(path: Path) -> dict[str, Any]:
+              value = json.loads(path.read_text(encoding="utf-8"))
+              if not isinstance(value, dict):
+                  raise SystemExit(f"JSON root is not an object: {path}")
+              return value
+
+          def write(path: Path, value: dict[str, Any]) -> None:
+              path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+          def digest(path: Path) -> str:
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          def git(*args: str) -> str:
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+          def require(condition: bool, message: str) -> None:
+              if not condition:
+                  raise SystemExit(message)
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label} anchor expected once, found {count}")
+              return text.replace(old, new, 1)
+
+          expected_r13 = [
+              "28327355b861ab6cc76b01c7248663eb1be440cf",
+              "0a12b855a0b21068108a8a3b311d492712737e0f",
+              "cefa060695594cdeebfb4306170cc27487c8a088",
+              "da23e131e68b171909407f469da1b2f72d9c4f4a",
+          ]
+          expected_r14 = ["88f776588f5e73467e7659c268f8358a9a2378b6"]
+
+          r13_intake = load(r13_intake_path)
+          r14_intake = load(r14_intake_path)
+          r13_observation = r13_intake.get("observation", {})
+          r14_observation = r14_intake.get("observation", {})
+          require(r13_intake.get("schema_version") == "hepta_upstream_codex_current_intake_v13", "unexpected R13 intake schema")
+          require(r14_intake.get("schema_version") == "hepta_upstream_codex_current_intake_v14", "unexpected R14 intake schema")
+          require(r13_observation.get("range_start_exclusive") == r12, "R13 start drifted")
+          require(r13_observation.get("range_end_inclusive") == r13, "R13 end drifted")
+          require(r13_observation.get("observed_upstream_head") == r13, "R13 observed head drifted")
+          require(r14_observation.get("range_start_exclusive") == r13, "R14 start drifted")
+          require(r14_observation.get("range_end_inclusive") == r14, "R14 end drifted")
+          require(r14_observation.get("observed_upstream_head") == r14, "R14 observed head drifted")
+          require([item.get("upstream_commit") for item in r13_intake.get("commit_inventory", [])] == expected_r13, "R13 inventory drifted")
+          require([item.get("upstream_commit") for item in r14_intake.get("commit_inventory", [])] == expected_r14, "R14 inventory drifted")
+          for item in r13_intake["commit_inventory"] + r14_intake["commit_inventory"]:
+              commit = item["upstream_commit"]
+              require(item.get("title") == git("show", "-s", "--format=%s", commit), f"title drifted: {commit}")
+              require(item.get("status") == "deferred", f"unexpected status: {commit}")
+
+          r13_record = load(r13_record_path)
+          require(r13_record.get("schema_version") == "hepta_upstream_codex_semantic_absorption_record_v1", "unexpected R13 record schema")
+          r13_source = r13_record.get("source_intake", {})
+          require(r13_source.get("path") == str(r13_intake_path), "R13 record source path drifted")
+          require(r13_source.get("manifest_sha256") == digest(r13_intake_path), "R13 record source hash drifted")
+          require(r13_source.get("range_start_exclusive") == r12, "R13 record start drifted")
+          require(r13_source.get("range_end_inclusive") == r13, "R13 record end drifted")
+          require(len(r13_record.get("deferrals", [])) == 4, "R13 deferral count drifted")
+
+          r14_entry = r14_intake["commit_inventory"][0]
+          r14_deferral = {
+              "upstream_commit": r14,
+              "upstream_title": r14_entry["title"],
+              "disposition": "deferred_environment_mcp_test_fixture_cwd_alignment_without_runtime_delta",
+              "scope": "environment_backed_stdio_mcp_test_fixture_explicit_cwd",
+              "reason": (
+                  "The upstream commit changes only core integration-test fixtures so "
+                  "environment-backed stdio MCP servers receive an explicit workspace cwd. "
+                  "It contains no production-runtime source delta, and Hepta does not claim "
+                  "fixture equivalence without mapping its environment MCP harness and "
+                  "workspace ownership."
+              ),
+              "missing_prerequisites": [
+                  "Hepta environment MCP fixture inventory",
+                  "workspace cwd ownership mapping",
+                  "bounded integration-test equivalence review if adopted",
+              ],
+              "tests_run": False,
+              "hepta_commit": None,
+              "non_claims": [
+                  "Deferral does not change Hepta MCP runtime cwd behavior, import upstream test fixtures, or claim integration-harness parity."
+              ],
+          }
+          r14_record = {
+              "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+              "source_intake": {
+                  "path": str(r14_intake_path),
+                  "manifest_sha256": digest(r14_intake_path),
+                  "commit": source_head,
+                  "range_start_exclusive": r13,
+                  "range_end_inclusive": r14,
+                  "ordinary_merge_performed": False,
+                  "ordinary_rebase_performed": False,
+                  "cherry_pick_performed": False,
+              },
+              "absorptions": [],
+              "deferrals": [r14_deferral],
+              "claims": {
+                  "absorbed_commit_count": 0,
+                  "existing_semantic_equivalent_count": 0,
+                  "deferred_commit_count": 1,
+                  "upstream_fully_consumed": False,
+                  "merge_performed": False,
+                  "rebase_performed": False,
+                  "cherry_pick_performed": False,
+                  "live_enablement": False,
+                  "deployment": False,
+                  "publication": False,
+              },
+          }
+          write(r14_record_path, r14_record)
+
+          def descriptor(record_id: str, intake_path: Path, record_path: Path, start: str, end: str, frozen_ref: str, record: dict[str, Any]) -> dict[str, Any]:
+              bindings = []
+              for item in record.get("absorptions", []):
+                  bindings.append({
+                      "kind": "absorption",
+                      "upstream_commit": item["upstream_commit"],
+                      "local_commit": item.get("hepta_commit"),
+                      "scope": item["scope"],
+                      "non_claims": item["non_claims"],
+                  })
+              for item in record.get("deferrals", []):
+                  bindings.append({
+                      "kind": "deferral",
+                      "upstream_commit": item["upstream_commit"],
+                      "local_commit": None,
+                      "scope": item["scope"],
+                      "non_claims": item["non_claims"],
+                  })
+              return {
+                  "id": record_id,
+                  "source_intake": {
+                      "path": str(intake_path),
+                      "sha256": digest(intake_path),
+                      "range_start_exclusive": start,
+                      "range_end_inclusive": end,
+                      "frozen_ref": frozen_ref,
+                  },
+                  "record": {
+                      "path": str(record_path),
+                      "sha256": digest(record_path),
+                      "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+                  },
+                  "disposition_bindings": bindings,
+              }
+
+          registry = load(registry_path)
+          require(registry.get("schema_version") == "hepta_upstream_codex_semantic_absorption_registry_v1", "unexpected registry schema")
+          require(registry.get("upstream", {}).get("expected_head") == r12, "registry is not bound to R12")
+          ids = {item.get("id") for item in registry.get("records", [])}
+          require("r13" not in ids and "r14" not in ids, "R13 or R14 already exists in canonical registry")
+          registry["upstream"]["frozen_ref"] = r14_ref
+          registry["upstream"]["expected_head"] = r14
+          registry["records"].append(descriptor("r13", r13_intake_path, r13_record_path, r12, r13, r13_ref, r13_record))
+          registry["records"].append(descriptor("r14", r14_intake_path, r14_record_path, r13, r14, r14_ref, r14_record))
+          claims = registry.setdefault("claims", {})
+          for key in ("record_count", "semantic_record_count", "effective_record_count"):
+              if isinstance(claims.get(key), int):
+                  claims[key] = len(registry["records"])
+          write(registry_path, registry)
+
+          contract = load(contract_path)
+          refs = contract.get("upstream_intake", {}).get("refs", [])
+          roles = {item.get("role") for item in refs}
+          require("current_r13" not in roles and "current_r14" not in roles, "R13 or R14 already exists in CI contract")
+          refs.extend([
+              {"role": "current_r13", "ref": r13_ref, "sha": r13},
+              {"role": "current_r14", "ref": r14_ref, "sha": r14},
+          ])
+          contract["upstream_truth"]["registry_sha256"] = digest(registry_path)
+          write(contract_path, contract)
+
+          materializer = materializer_path.read_text(encoding="utf-8")
+          materializer = replace_once(
+              materializer,
+              f'EXPECTED_R12_SHA="{r12}"\n',
+              f'EXPECTED_R12_SHA="{r12}"\n'
+              f'EXPECTED_R13_REF="{r13_ref}"\n'
+              f'EXPECTED_R13_SHA="{r13}"\n'
+              f'EXPECTED_R14_REF="{r14_ref}"\n'
+              f'EXPECTED_R14_SHA="{r14}"\n',
+              "materializer constants",
+          )
+          materializer = replace_once(
+              materializer,
+              '    --arg r12_sha "$EXPECTED_R12_SHA" \\\n',
+              '    --arg r12_sha "$EXPECTED_R12_SHA" \\\n'
+              '    --arg r13_ref "$EXPECTED_R13_REF" \\\n'
+              '    --arg r13_sha "$EXPECTED_R13_SHA" \\\n'
+              '    --arg r14_ref "$EXPECTED_R14_REF" \\\n'
+              '    --arg r14_sha "$EXPECTED_R14_SHA" \\\n',
+              "materializer jq args",
+          )
+          materializer = replace_once(
+              materializer,
+              '          {role:"current_r12",ref:$r12_ref,sha:$r12_sha}\n        ]',
+              '          {role:"current_r12",ref:$r12_ref,sha:$r12_sha},\n'
+              '          {role:"current_r13",ref:$r13_ref,sha:$r13_sha},\n'
+              '          {role:"current_r14",ref:$r14_ref,sha:$r14_sha}\n'
+              '        ]',
+              "materializer ref array",
+          )
+          materializer = replace_once(
+              materializer,
+              'current_r12_ref_materialized:true,merge_performed:false',
+              'current_r12_ref_materialized:true,current_r13_ref_materialized:true,current_r14_ref_materialized:true,merge_performed:false',
+              "materializer receipt flags",
+          )
+          materializer_path.write_text(materializer, encoding="utf-8")
+
+          baseline = baseline_contract_path.read_text(encoding="utf-8")
+          old = (
+              '        {\n'
+              '          role:"current_r12",\n'
+              '          ref:"refs/remotes/upstream/hepta-intake-20260830-r12",\n'
+              f'          sha:"{r12}"\n'
+              '        }\n'
+              '      ]'
+          )
+          new = (
+              '        {\n'
+              '          role:"current_r12",\n'
+              '          ref:"refs/remotes/upstream/hepta-intake-20260830-r12",\n'
+              f'          sha:"{r12}"\n'
+              '        },\n'
+              '        {\n'
+              '          role:"current_r13",\n'
+              f'          ref:"{r13_ref}",\n'
+              f'          sha:"{r13}"\n'
+              '        },\n'
+              '        {\n'
+              '          role:"current_r14",\n'
+              f'          ref:"{r14_ref}",\n'
+              f'          sha:"{r14}"\n'
+              '        }\n'
+              '      ]'
+          )
+          baseline = replace_once(baseline, old, new, "baseline contract ref array")
+          baseline_contract_path.write_text(baseline, encoding="utf-8")
+          PY
+
+          git rm -f -- "$R13_EXTENSION" "$R13_EXTENSION_CONTRACT"
+          python3 -m json.tool "$R13_INTAKE" >/dev/null
+          python3 -m json.tool "$R13_RECORD" >/dev/null
+          python3 -m json.tool "$R14_INTAKE" >/dev/null
+          python3 -m json.tool "$R14_RECORD" >/dev/null
+          python3 -m json.tool "$REGISTRY" >/dev/null
+          python3 -m json.tool "$CONTRACT" >/dev/null
+          bash -n "$MATERIALIZER"
+          bash -n "$BASELINE_CONTRACT"
+          git diff --check
+          git add -- \
+            "$R13_RECORD" \
+            "$R14_RECORD" \
+            "$REGISTRY" \
+            "$CONTRACT" \
+            "$MATERIALIZER" \
+            "$BASELINE_CONTRACT"
+          git commit -m 'ci(upstream): canonicalize append-only Codex R13 and R14 truth'
+
+      - name: Execute repository-controlled blocker gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          scripts/hepta-budgeted-test self-test > /tmp/budgeted-self-test.json
+          jq -e '.status == "ready" and .embedded_repository_state_enforced == true' /tmp/budgeted-self-test.json >/dev/null
+
+          scripts/hepta-ci-materialize-upstream-intake materialize > /tmp/upstream-materialize.json
+          jq -e '
+            .status == "ready"
+            and .current_r13_ref_materialized == true
+            and .current_r14_ref_materialized == true
+            and ([.refs[] | select(.role == "current_r13" and .sha == "da23e131e68b171909407f469da1b2f72d9c4f4a")] | length) == 1
+            and ([.refs[] | select(.role == "current_r14" and .sha == "88f776588f5e73467e7659c268f8358a9a2378b6")] | length) == 1
+          ' /tmp/upstream-materialize.json >/dev/null
+          scripts/hepta-ci-materialize-upstream-intake verify
+
+          scripts/hepta-upstream-truth-gate verify-semantic > /tmp/upstream-semantic.json
+          jq -e '
+            .status == "ready"
+            and .record_count == 14
+            and .upstream_fully_consumed == false
+          ' /tmp/upstream-semantic.json >/dev/null
+          scripts/hepta-upstream-truth-gate self-test > /tmp/upstream-self-test.json
+          jq -e '.status == "ready"' /tmp/upstream-self-test.json >/dev/null
+          scripts/hepta-upstream-truth-gate network-receipt /tmp/upstream-network.json >/dev/null
+          scripts/hepta-upstream-truth-gate verify-network-receipt /tmp/upstream-network.json > /tmp/upstream-network-verified.json
+          jq -e '.status == "ready" and .remote_head == "88f776588f5e73467e7659c268f8358a9a2378b6"' /tmp/upstream-network-verified.json >/dev/null
+
+          scripts/hepta-ci-baseline contract > /tmp/ci-contract.json
+          jq -e '.status == "ready"' /tmp/ci-contract.json >/dev/null
+          scripts/hepta-ci-baseline contract-self-test > /tmp/ci-contract-self-test.json
+          jq -e '.status == "ready"' /tmp/ci-contract-self-test.json >/dev/null
+
+          scripts/hepta-native-robrix-upstream-sync-check-v2.sh --json --strict > /tmp/native-sync.json
+          jq -e '
+            .status == "ready"
+            and .provenance_ready == true
+            and .downstream_overlay_accounted == true
+            and (.undeclared_drift | length) == 0
+            and (.ambiguous_drift | length) == 0
+            and (.unused_ledger_rules | length) == 0
+          ' /tmp/native-sync.json >/dev/null
+          scripts/hepta-native-product-shell-gate-v2.sh --output /tmp/native-product-shell.json
+          jq -e '.status == "ready"' /tmp/native-product-shell.json >/dev/null
+
+          git diff --exit-code
+          git diff --cached --exit-code
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_SOURCE_HEAD"
+          remote_head="$(git ls-remote --exit-code "$UPSTREAM_URL" refs/heads/main | awk 'NR == 1 {print $1}')"
+          test "$remote_head" = "$R14_HEAD"
+
+      - name: Publish qualified canonical blocker closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
+          test "$(git rev-parse "refs/remotes/origin/$SOURCE_BRANCH")" = "$EXPECTED_SOURCE_HEAD"
+          git push origin "HEAD:refs/heads/$OUTPUT_BRANCH"
+          {
+            printf 'source_head=%s\n' "$EXPECTED_SOURCE_HEAD"
+            printf 'qualified_head=%s\n' "$(git rev-parse HEAD)"
+            printf 'upstream_r13_head=%s\n' "$R13_HEAD"
+            printf 'upstream_r14_head=%s\n' "$R14_HEAD"
+          } >> "$GITHUB_STEP_SUMMARY"
