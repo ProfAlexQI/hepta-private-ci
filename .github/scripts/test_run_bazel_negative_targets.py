@@ -22,6 +22,14 @@ class NegativeTargetQualificationTest(unittest.TestCase):
     def test_non_release_positive_targets_pass(self) -> None:
         self.validate("build", "--", "//codex-rs/cli:codex")
 
+    def test_one_non_release_job_metadata_passes(self) -> None:
+        self.validate(
+            "test",
+            "--build_metadata=TAG_job=clippy",
+            "--",
+            "//codex-rs/cli:codex",
+        )
+
     def test_exact_release_target_set_passes(self) -> None:
         self.validate(
             "build",
@@ -29,6 +37,65 @@ class NegativeTargetQualificationTest(unittest.TestCase):
             "--",
             *subject.CANONICAL_RELEASE_TARGETS,
         )
+
+    def test_duplicate_release_job_metadata_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "ambiguous TAG_job build metadata"):
+            self.validate(
+                "build",
+                subject.RELEASE_JOB_METADATA,
+                subject.RELEASE_JOB_METADATA,
+                "--",
+                *subject.CANONICAL_RELEASE_TARGETS,
+            )
+
+    def test_release_plus_alternate_job_metadata_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "ambiguous TAG_job build metadata"):
+            self.validate(
+                "build",
+                subject.RELEASE_JOB_METADATA,
+                "--build_metadata=TAG_job=ordinary-test",
+                "--",
+                *subject.CANONICAL_RELEASE_TARGETS,
+            )
+
+    def test_split_build_metadata_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "split-form --build_metadata"):
+            self.validate(
+                "build",
+                subject.RELEASE_JOB_METADATA,
+                "--build_metadata",
+                "TAG_job=ordinary-test",
+                "--",
+                *subject.CANONICAL_RELEASE_TARGETS,
+            )
+
+    def test_malformed_job_metadata_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "malformed TAG_job build metadata"):
+            self.validate(
+                "build",
+                "--build_metadata=TAG_job",
+                "--",
+                "//codex-rs/cli:codex",
+            )
+
+    def test_empty_job_metadata_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "malformed TAG_job build metadata"):
+            self.validate(
+                "build",
+                subject.JOB_METADATA_PREFIX,
+                "--",
+                "//codex-rs/cli:codex",
+            )
+
+    def test_non_release_duplicate_job_metadata_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "ambiguous TAG_job build metadata"):
+            self.validate(
+                "test",
+                "--build_metadata=TAG_job=clippy",
+                "--build_metadata=TAG_job=test",
+                "--",
+                "//codex-rs/cli:codex",
+            )
 
     def test_non_release_exclude_all_fails_closed(self) -> None:
         with self.assertRaisesRegex(ValueError, "outside the release lane"):
