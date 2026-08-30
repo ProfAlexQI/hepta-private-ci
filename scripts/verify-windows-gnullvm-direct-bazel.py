@@ -15,6 +15,7 @@ Q029_POLICY = SCRIPTS / "run_bazel_q029_job_executable.py"
 Q030_POLICY = SCRIPTS / "run_bazel_q030_direct_bazel.py"
 WRAPPER = SCRIPTS / "run_bazel_with_buildbuddy.py"
 TEST = SCRIPTS / "test_run_bazel_direct_bazel.py"
+TOKEN_TEST = SCRIPTS / "test_run_bazel_transport_token.py"
 STARTUP_TEST = SCRIPTS / "test_run_bazel_startup_contract.py"
 BOUNDARY = SCRIPTS / "test_run_bazel_qualification_boundary.sh"
 WORKFLOW = ROOT / ".github" / "workflows" / "windows-gnullvm-qualification-boundary.yml"
@@ -23,7 +24,7 @@ BAZELVERSION = ROOT / ".bazelversion"
 EXPECTED_Q026_BLOB = "e0729bd796b342568c624d15faf3638a1372d01d"
 EXPECTED_Q028_BLOB = "86225acd9158132df8cd5ae9dc6720205a7c47a6"
 EXPECTED_Q029_BLOB = "2d57d5e222b87a89b2f8b1c93c476f450b03e646"
-EXPECTED_Q030_BLOB = "e26ef4a5cfb46e4714c36039db89163563c4a7ae"
+EXPECTED_Q030_BLOB = "cadc4ffd91e16171e92091a092f020a10ae7cfb0"
 EXPECTED_WRAPPER_BLOB = "233d98f151b897caa42f4d762d119645cb13e641"
 EXPECTED_BAZELVERSION_BLOB = "f7ee06693c17a06e2a0f51ef7eb2a61866e77b8e"
 
@@ -34,7 +35,7 @@ def fail(message: str) -> None:
 
 def read(path: Path) -> str:
     if not path.is_file():
-        fail(f"missing Q0.30 contract path: {path.relative_to(ROOT)}")
+        fail(f"missing Q0.30/Q0.32 contract path: {path.relative_to(ROOT)}")
     return path.read_text(encoding="utf-8")
 
 
@@ -50,7 +51,7 @@ def require(condition: bool, message: str) -> None:
 
 
 def require_token(text: str, token: str, owner: str) -> None:
-    require(token in text, f"{owner} lacks Q0.30 token: {token}")
+    require(token in text, f"{owner} lacks Q0.30/Q0.32 token: {token}")
 
 
 def require_executable(path: Path) -> None:
@@ -67,18 +68,19 @@ def main() -> None:
     q030 = read(Q030_POLICY)
     wrapper = read(WRAPPER)
     test = read(TEST)
+    token_test = read(TOKEN_TEST)
     startup_test = read(STARTUP_TEST)
     boundary = read(BOUNDARY)
     workflow = read(WORKFLOW)
 
-    for path in (WRAPPER, TEST, STARTUP_TEST, BOUNDARY):
+    for path in (WRAPPER, TEST, TOKEN_TEST, STARTUP_TEST, BOUNDARY):
         require_executable(path)
 
     for path, expected, owner in (
         (Q026_POLICY, EXPECTED_Q026_BLOB, "Q0.26 compatibility policy"),
         (Q028_POLICY, EXPECTED_Q028_BLOB, "Q0.28 startup policy"),
         (Q029_POLICY, EXPECTED_Q029_BLOB, "Q0.29 job policy"),
-        (Q030_POLICY, EXPECTED_Q030_BLOB, "Q0.30 direct Bazel policy"),
+        (Q030_POLICY, EXPECTED_Q030_BLOB, "Q0.30/Q0.32 direct Bazel policy"),
         (WRAPPER, EXPECTED_WRAPPER_BLOB, "public Bazel wrapper"),
     ):
         require(git_blob_sha(path) == expected, f"{owner} drifted")
@@ -107,10 +109,16 @@ def main() -> None:
         require_token(q029, token, "Q0.29 job policy")
 
     for token in (
-        "Q0.30 direct Bazel CAS and pre-launch authority contract",
+        "Q0.30/Q0.32 direct Bazel CAS, token, and launch authority.",
         'BAZELISK_BARE_OVERRIDE = "BAZELISK"',
+        'SETUP_BAZEL_TRANSPORT_TOKEN = "BAZELISK_GITHUB_TOKEN"',
+        "resolver_env = dict(env)",
+        "env.pop(SETUP_BAZEL_TRANSPORT_TOKEN, None)",
+        "resolver_env.pop(SETUP_BAZEL_TRANSPORT_TOKEN, None)",
+        "Bazelisk --print_env leaked the setup-only transport token",
+        "setup-bazel transport token reached direct Bazel launch",
         "resolve_verified_bazel_command",
-        'run(\n        [str(bazelisk), "--print_env"]',
+        'run(\n            [str(bazelisk), "--print_env"]',
         "Bazelisk executable changed during child resolution",
         "cached Bazel executable SHA-256 drifted",
         "content-addressed store",
@@ -119,7 +127,7 @@ def main() -> None:
         "_validate_q028(command[1:], env)",
         "verified direct Bazel executable changed before launch",
     ):
-        require_token(q030, token, "Q0.30 direct Bazel policy")
+        require_token(q030, token, "Q0.30/Q0.32 direct Bazel policy")
 
     for token in (
         "Q0.17-Q0.30 qualification ratchets",
@@ -147,6 +155,14 @@ def main() -> None:
         require_token(test, token, "Q0.30 regression")
 
     for token in (
+        "test_transport_token_is_resolver_only",
+        "test_print_env_transport_token_leak_fails_closed",
+        "test_resolution_failure_still_scrubs_transport_token",
+        "test_direct_launch_rejects_reintroduced_transport_token",
+    ):
+        require_token(token_test, token, "Q0.32 token regression")
+
+    for token in (
         "test_canonical_startup_vector_passes",
         "test_missing_output_user_root_fails_closed",
         "test_missing_output_base_fails_closed",
@@ -156,6 +172,7 @@ def main() -> None:
 
     for token in (
         "python3 .github/scripts/test_run_bazel_direct_bazel.py",
+        "python3 .github/scripts/test_run_bazel_transport_token.py",
         "python3 scripts/verify-windows-gnullvm-direct-bazel.py",
     ):
         require_token(boundary, token, "qualification boundary fixture")
@@ -174,7 +191,7 @@ def main() -> None:
         ".bazelversion Git blob drifted",
     )
 
-    print("PASS_WINDOWS_GNULLVM_Q0_30_DIRECT_BAZEL_SOURCE")
+    print("PASS_WINDOWS_GNULLVM_Q0_32_TRANSPORT_TOKEN_SOURCE")
 
 
 if __name__ == "__main__":

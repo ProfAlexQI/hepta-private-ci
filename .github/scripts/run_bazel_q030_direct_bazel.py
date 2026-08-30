@@ -1,4 +1,4 @@
-"""Q0.30 direct Bazel CAS and pre-launch authority contract."""
+"""Q0.30/Q0.32 direct Bazel CAS, token, and launch authority."""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from run_bazel_q029_job_executable import (
 )
 
 BAZELISK_BARE_OVERRIDE = "BAZELISK"
+SETUP_BAZEL_TRANSPORT_TOKEN = "BAZELISK_GITHUB_TOKEN"
 
 
 def prepare_bazelisk_environment(env: MutableMapping[str, str]) -> None:
@@ -50,7 +51,13 @@ def _parse_bazelisk_child_path(stdout: str) -> str:
     path_values: list[str] = []
     for line in stdout.splitlines():
         name, separator, value = line.partition("=")
-        if separator and name.casefold() == "path":
+        if not separator:
+            continue
+        if name.casefold() == SETUP_BAZEL_TRANSPORT_TOKEN.casefold():
+            raise ValueError(
+                "Bazelisk --print_env leaked the setup-only transport token"
+            )
+        if name.casefold() == "path":
             path_values.append(value)
     if len(path_values) != 1:
         raise ValueError(
@@ -107,15 +114,22 @@ def resolve_verified_bazel_command(
             f"observed {observed_bazelisk}"
         )
 
-    result = run(
-        [str(bazelisk), "--print_env"],
-        cwd=workspace,
-        env=dict(env),
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=180,
-    )
+    # The setup action's token may authenticate the public Bazelisk release
+    # lookup, but it must exist only in this private resolver environment.
+    resolver_env = dict(env)
+    env.pop(SETUP_BAZEL_TRANSPORT_TOKEN, None)
+    try:
+        result = run(
+            [str(bazelisk), "--print_env"],
+            cwd=workspace,
+            env=resolver_env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=180,
+        )
+    finally:
+        resolver_env.pop(SETUP_BAZEL_TRANSPORT_TOKEN, None)
     if result.returncode != 0:
         raise ValueError(
             "Bazelisk failed to resolve the pinned Bazel binary: "
@@ -152,6 +166,11 @@ def validate_keyless_windows_gnullvm_command(
     digest_file: Callable[[Path], str] = _sha256_file,
 ) -> None:
     """Validate and rehash the direct Bazel command immediately before launch."""
+
+    if env.get(SETUP_BAZEL_TRANSPORT_TOKEN):
+        raise ValueError(
+            "setup-bazel transport token reached direct Bazel launch"
+        )
 
     _validate_bazelisk_inputs(env)
     job = _validate_runner_identity(env)
