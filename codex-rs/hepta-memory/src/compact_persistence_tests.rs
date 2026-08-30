@@ -202,6 +202,10 @@ fn reopen_rejects_tampered_hash_chain() {
 #[test]
 fn contract_carries_negative_authority_flags() {
     assert_eq!(COMPACT_PERSISTENCE_NAMESPACE, "local_development_only");
-    const { assert!(!COMPACT_PERSISTENCE_EXTERNAL_EFFECTS); }
-    const { assert!(!COMPACT_PERSISTENCE_KG_WRITE_AUTHORITY); }
+    const {
+        assert!(!COMPACT_PERSISTENCE_EXTERNAL_EFFECTS);
+    }
+    const {
+        assert!(!COMPACT_PERSISTENCE_KG_WRITE_AUTHORITY);
+    }
 }
