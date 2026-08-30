@@ -1,0 +1,314 @@
+name: Hepta UI v5 Windows two-target repair and publish
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-windows-test-fix-v1-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-windows-two-target-repair.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-windows-two-target-repair
+  cancel-in-progress: false
+
+jobs:
+  repair-test-and-publish:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: windows-2025
+    timeout-minutes: 100
+    env:
+      TARGET_BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_TARGET_HEAD: 1e6f7cf3db498153fd52250dee1112f89489e094
+      DRIVER_WORKFLOW: .github/workflows/hepta-ui-v5-windows-two-target-repair.yml
+
+    steps:
+      - name: Enable Windows long paths before checkout
+        shell: pwsh
+        run: git config --global core.longpaths true
+
+      - name: Check out exact repair driver
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify immutable driver boundary and exact target head
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $driverHead = (git rev-parse HEAD).Trim()
+          $driverParent = (git rev-parse HEAD^).Trim()
+          if ($driverHead -ne '${{ github.sha }}') {
+              throw "driver checkout drift: $driverHead"
+          }
+          if ($driverParent -ne $env:EXPECTED_TARGET_HEAD) {
+              throw "driver parent drift: $driverParent"
+          }
+          $driverPaths = @(git diff --name-only HEAD^ HEAD)
+          if ($driverPaths.Count -ne 1 -or $driverPaths[0] -ne $env:DRIVER_WORKFLOW) {
+              throw "driver must change only $env:DRIVER_WORKFLOW; got $($driverPaths -join ', ')"
+          }
+          git fetch --no-tags origin "refs/heads/$env:TARGET_BRANCH:refs/remotes/origin/$env:TARGET_BRANCH"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $targetHead = (git rev-parse "refs/remotes/origin/$env:TARGET_BRANCH").Trim()
+          if ($targetHead -ne $env:EXPECTED_TARGET_HEAD) {
+              throw "target branch moved from exact audited head: $targetHead"
+          }
+          git checkout --detach $env:EXPECTED_TARGET_HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Apply exact Windows semantic repairs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          from pathlib import Path
+
+          http_path = Path("codex-rs/http-client/src/outbound_proxy_tests.rs")
+          http_text = http_path.read_text(encoding="utf-8")
+          http_old = '''            stream
+              .set_read_timeout(Some(Duration::from_secs(10)))
+              .expect("HTTP stream should get a read timeout");
+          '''
+          http_new = '''            stream
+              .set_nonblocking(false)
+              .expect("HTTP stream should become blocking after accept");
+            stream
+              .set_read_timeout(Some(Duration::from_secs(10)))
+              .expect("HTTP stream should get a read timeout");
+          '''
+          if http_text.count(http_old) != 1:
+              raise SystemExit(
+                  f"HTTP accepted-stream anchor: expected 1 match, found {http_text.count(http_old)}"
+              )
+          http_text = http_text.replace(http_old, http_new, 1)
+          with http_path.open("w", encoding="utf-8", newline="\n") as output:
+              output.write(http_text)
+
+          manager_path = Path("codex-rs/core-plugins/src/manager_tests.rs")
+          manager_text = manager_path.read_text(encoding="utf-8")
+          manager_old = '''#[tokio::test]
+          async fn remote_installed_cache_adds_plugin_skill_roots_without_remote_plugin_flag() {
+              let codex_home = TempDir::new().unwrap();
+              let plugin_base = codex_home
+                  .path()
+                  .join("plugins/cache/chatgpt-global/linear");
+              write_plugin(&plugin_base, "local", "linear");
+              write_file(
+                  &codex_home.path().join(CONFIG_TOML_FILE),
+                  r#"[features]
+          plugins = true
+          "#,
+              );
+
+              let config = load_config(codex_home.path(), codex_home.path()).await;
+              let manager = PluginsManager::new_with_restriction_product(
+                  codex_home.path().to_path_buf(),
+                  /*restriction_product*/ None,
+              );
+              manager.write_remote_installed_plugins_cache(vec![RemoteInstalledPlugin {
+                  marketplace_name: "chatgpt-global".to_string(),
+                  id: "plugins~Plugin_linear".to_string(),
+                  name: "linear".to_string(),
+                  enabled: true,
+              }]);
+
+              let outcome = manager.plugins_for_config(&config).await;
+              let expected_skill_root = AbsolutePathBuf::try_from(
+                  std::fs::canonicalize(plugin_base.join("local/skills"))
+                      .expect("canonicalize remote-installed plugin skill root"),
+              )
+              .expect("canonical plugin skill root must be absolute");
+              assert_eq!(outcome.effective_skill_roots(), vec![expected_skill_root]);
+              assert_eq!(outcome.plugins().len(), 1);
+              assert_eq!(outcome.plugins()[0].config_name, "linear@chatgpt-global");
+          }
+          '''
+          manager_new = '''#[tokio::test]
+          async fn remote_installed_cache_adds_plugin_skill_roots_for_chatgpt_remote_route() {
+              let codex_home = TempDir::new().unwrap();
+              let plugin_base = codex_home
+                  .path()
+                  .join("plugins/cache/chatgpt-global/linear");
+              write_plugin(&plugin_base, "local", "linear");
+              write_file(
+                  &codex_home.path().join(CONFIG_TOML_FILE),
+                  r#"[features]
+          plugins = true
+          remote_plugin = true
+          "#,
+              );
+
+              let config = load_config(codex_home.path(), codex_home.path()).await;
+              let manager = PluginsManager::new_with_restriction_product(
+                  codex_home.path().to_path_buf(),
+                  /*restriction_product*/ None,
+              );
+              assert!(manager.set_auth_mode(Some(AuthMode::Chatgpt)));
+              manager.write_remote_installed_plugins_cache(vec![RemoteInstalledPlugin {
+                  marketplace_name: "chatgpt-global".to_string(),
+                  id: "plugins~Plugin_linear".to_string(),
+                  name: "linear".to_string(),
+                  enabled: true,
+              }]);
+
+              let outcome = manager.plugins_for_config(&config).await;
+              let expected_skill_root = AbsolutePathBuf::try_from(
+                  std::fs::canonicalize(plugin_base.join("local/skills"))
+                      .expect("canonicalize remote-installed plugin skill root"),
+              )
+              .expect("canonical plugin skill root must be absolute");
+              assert_eq!(outcome.effective_skill_roots(), vec![expected_skill_root]);
+              assert_eq!(outcome.plugins().len(), 1);
+              assert_eq!(outcome.plugins()[0].config_name, "linear@chatgpt-global");
+          }
+          '''
+          if manager_text.count(manager_old) != 1:
+              raise SystemExit(
+                  "remote-installed route test anchor: expected 1 match, "
+                  f"found {manager_text.count(manager_old)}"
+              )
+          manager_text = manager_text.replace(manager_old, manager_new, 1)
+          with manager_path.open("w", encoding="utf-8", newline="\n") as output:
+              output.write(manager_text)
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $changed = @(git diff --name-only)
+          $expected = @(
+              'codex-rs/core-plugins/src/manager_tests.rs',
+              'codex-rs/http-client/src/outbound_proxy_tests.rs'
+          ) | Sort-Object
+          $actual = @($changed | Sort-Object)
+          if (($actual -join "`n") -ne ($expected -join "`n")) {
+              throw "unexpected repair paths: $($actual -join ', ')"
+          }
+
+      - name: Install deterministic Windows test toolchain
+        shell: pwsh
+        run: |
+          choco install bazelisk --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --no-self-update
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup default 1.95.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Set up sandboxed rusty_v8
+        shell: bash
+        run: bash .github/workflows/scripts/setup-rusty-v8.sh x86_64-pc-windows-msvc "$RUNNER_TEMP/rusty-v8/x86_64-pc-windows-msvc" "$GITHUB_ENV"
+
+      - name: Export the x64 MSVC developer environment
+        shell: pwsh
+        run: .github/workflows/scripts/export-msvc-env.ps1
+
+      - name: Verify formatting
+        shell: pwsh
+        run: |
+          cargo +1.95.0 fmt --manifest-path codex-rs/Cargo.toml --all -- --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run the two exact failing Bazel targets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $rustfmtPath = (& rustup which --toolchain 1.95.0 rustfmt).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $rustfmtPath) {
+              throw 'Unable to resolve Rust 1.95.0 rustfmt'
+          }
+          $env:RUSTFMT = $rustfmtPath
+          $diagnosticDir = Join-Path $env:RUNNER_TEMP 'hepta-ui-v5-windows-repair'
+          New-Item -ItemType Directory -Force -Path $diagnosticDir | Out-Null
+
+          $environmentVariables = @(
+              'RUSTFMT', 'BAZEL_SH', 'BAZEL_VC', 'INCLUDE', 'LIB', 'LIBPATH', 'Path',
+              'UCRTVersion', 'UniversalCRTSdkDir', 'VCINSTALLDIR', 'VCToolsInstallDir',
+              'WindowsLibPath', 'WindowsSdkBinPath', 'WindowsSdkDir',
+              'WindowsSDKLibVersion', 'WindowsSDKVersion'
+          )
+          $environmentArguments = foreach ($name in $environmentVariables) {
+              $value = [Environment]::GetEnvironmentVariable($name)
+              if ($value) {
+                  "--action_env=$name=$value"
+                  "--host_action_env=$name=$value"
+              }
+          }
+          $bazelArguments = @(
+              'test',
+              '--config=ci-windows',
+              '--platforms=//:windows_x86_64_msvc',
+              '--host_platform=//:windows_x86_64_msvc',
+              '--extra_execution_platforms=//:windows_x86_64_msvc',
+              '--extra_toolchains=//:windows_msvc_tests_on_msvc_host_toolchain',
+              '--jobs=8',
+              '--test_tag_filters=-argument-comment-lint',
+              '--test_output=all',
+              '--test_summary=detailed',
+              "--execution_log_compact_file=$diagnosticDir/execution-log.zst",
+              "--build_event_json_file=$diagnosticDir/build-events.json",
+              "--repo_contents_cache=$env:RUNNER_TEMP/bazel-repo-contents-cache"
+          )
+          $targets = @(
+              '--',
+              '//codex-rs/http-client:http-client-unit-tests',
+              '//codex-rs/core-plugins:core-plugins-unit-tests'
+          )
+
+          & bazelisk @bazelArguments @environmentArguments @targets 2>&1 |
+              Tee-Object -FilePath (Join-Path $diagnosticDir 'bazel-output.txt')
+          $bazelExit = $LASTEXITCODE
+          if (Test-Path -LiteralPath 'bazel-testlogs') {
+              Copy-Item -Recurse -Force 'bazel-testlogs' (Join-Path $diagnosticDir 'bazel-testlogs')
+          }
+          if ($bazelExit -ne 0) { exit $bazelExit }
+
+      - name: Upload repair diagnostics
+        if: always() && !cancelled()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-ui-v5-windows-two-target-repair
+          path: ${{ runner.temp }}/hepta-ui-v5-windows-repair
+          if-no-files-found: ignore
+          retention-days: 7
+          compression-level: 6
+
+      - name: Commit and fast-forward the PR branch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git config user.name 'Hepta governed source publisher'
+          git config user.email 'hepta-source-publisher@users.noreply.github.com'
+          git add -- codex-rs/http-client/src/outbound_proxy_tests.rs codex-rs/core-plugins/src/manager_tests.rs
+          $staged = @(git diff --cached --name-only | Sort-Object)
+          $expected = @(
+              'codex-rs/core-plugins/src/manager_tests.rs',
+              'codex-rs/http-client/src/outbound_proxy_tests.rs'
+          ) | Sort-Object
+          if (($staged -join "`n") -ne ($expected -join "`n")) {
+              throw "unexpected staged paths: $($staged -join ', ')"
+          }
+          git commit -m 'test(windows): stabilize proxy fixture and remote plugin auth route'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $repairCommit = (git rev-parse HEAD).Trim()
+          $repairParent = (git rev-parse HEAD^).Trim()
+          if ($repairParent -ne $env:EXPECTED_TARGET_HEAD) {
+              throw "repair commit parent drift: $repairParent"
+          }
+          git fetch --no-tags origin "refs/heads/$env:TARGET_BRANCH:refs/remotes/origin/$env:TARGET_BRANCH"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $targetHead = (git rev-parse "refs/remotes/origin/$env:TARGET_BRANCH").Trim()
+          if ($targetHead -ne $env:EXPECTED_TARGET_HEAD) {
+              throw "target branch moved before publication: $targetHead"
+          }
+          git push origin "HEAD:refs/heads/$env:TARGET_BRANCH"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host "published_repair_commit=$repairCommit"
