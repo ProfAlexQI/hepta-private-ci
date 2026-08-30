@@ -171,7 +171,8 @@ def validate_startup_increment() -> None:
         policy,
         (
             "def canonicalize_keyless_windows_gnullvm_base_startup",
-            "requires BAZEL_OUTPUT_USER_ROOT",
+            'output_user_root = env.get("BAZEL_OUTPUT_USER_ROOT")',
+            "if not output_user_root:",
             "exact startup vector requires exactly",
             "exact startup vector rejects unreviewed",
             "return [expected_output_root, DISABLED_REPO_CONTENTS_CACHE]",
