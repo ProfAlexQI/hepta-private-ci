@@ -1,14 +1,14 @@
 {
   "schema": "hepta.inference.stage_matrix.v5",
   "plan_id": "HEPTA-INFERENCE-RUNTIME-V4",
-  "plan_version": "4.0.0",
+  "plan_version": "4.1.0",
   "repository": "ProfHepta/hepta-private-ci",
-  "development_pr": 73,
-  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "development_pr": 87,
+  "development_branch": "codex/hepta-inference-v4-closure-20260830",
   "source_binding": {
-    "mode": "tracked matrix binds observed parent; exact candidate evidence is CI-generated",
-    "observed_parent_commit": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
-    "observed_parent_tree": "4bbc59481ca90ccd62e702baa3b865a221d4b2e5"
+    "mode": "tracked truth binds the observed parent; exact candidate head/tree and execution receipts are CI-generated",
+    "observed_parent_commit": "5693819c1fe8873fba8da76edd85d9e31bb61afb",
+    "observed_parent_tree": "a6ea97e2f357096f6e812a47cfceb6b79ebdccb4"
   },
   "packages": [
     {
@@ -69,7 +69,7 @@
     },
     {
       "id": "INF-D0",
-      "name": "V4 documentation and single current truth",
+      "name": "V4.1 documentation and single current truth",
       "status": "SOURCE_PRESENT_NOT_QUALIFIED",
       "gap_class": "REPOSITORY_SOURCE",
       "qualified_for_current_candidate": false
@@ -77,27 +77,27 @@
     {
       "id": "INF-Q0",
       "name": "exact-head qualification and historical gate isolation",
-      "status": "EXECUTED_FAILED",
+      "status": "NOT_EXECUTED",
       "gap_class": "EXACT_HEAD_EXECUTION",
       "qualified_for_current_candidate": false
     },
     {
       "id": "INF-S1",
-      "name": "request capability and private role channels",
+      "name": "principals request capability and private role channels",
       "status": "NOT_STARTED",
       "gap_class": "REPOSITORY_SOURCE",
       "qualified_for_current_candidate": false
     },
     {
       "id": "INF-S2",
-      "name": "worker cancellation acknowledgement and kill",
+      "name": "worker cancellation acknowledgement and process kill/wait",
       "status": "NOT_STARTED",
       "gap_class": "REPOSITORY_SOURCE",
       "qualified_for_current_candidate": false
     },
     {
       "id": "INF-S3",
-      "name": "receipt retention and compaction",
+      "name": "receipt retention tombstone and compaction",
       "status": "NOT_STARTED",
       "gap_class": "REPOSITORY_SOURCE",
       "qualified_for_current_candidate": false
@@ -160,66 +160,21 @@
     }
   ],
   "dependency_edges": [
-    [
-      "INF-D0",
-      "INF-Q0"
-    ],
-    [
-      "INF-Q0",
-      "INF-S1"
-    ],
-    [
-      "INF-S1",
-      "INF-S2"
-    ],
-    [
-      "INF-S1",
-      "INF-S3"
-    ],
-    [
-      "INF-S1",
-      "INF-S4"
-    ],
-    [
-      "INF-S2",
-      "INF-R1"
-    ],
-    [
-      "INF-S2",
-      "INF-R2"
-    ],
-    [
-      "INF-S4",
-      "INF-R1"
-    ],
-    [
-      "INF-S4",
-      "INF-R2"
-    ],
-    [
-      "INF-R1",
-      "INF-E1"
-    ],
-    [
-      "INF-R2",
-      "INF-E2"
-    ],
-    [
-      "INF-E1",
-      "INF-R3"
-    ],
-    [
-      "INF-E2",
-      "INF-R3"
-    ],
-    [
-      "INF-R3",
-      "INF-E3"
-    ],
-    [
-      "INF-E3",
-      "INF-A1"
-    ]
+    ["INF-D0", "INF-Q0"],
+    ["INF-Q0", "INF-S1"],
+    ["INF-S1", "INF-S2"],
+    ["INF-S1", "INF-S3"],
+    ["INF-S1", "INF-S4"],
+    ["INF-S2", "INF-R1"],
+    ["INF-S2", "INF-R2"],
+    ["INF-S4", "INF-R1"],
+    ["INF-S4", "INF-R2"],
+    ["INF-R1", "INF-E1"],
+    ["INF-R2", "INF-E2"],
+    ["INF-E1", "INF-R3"],
+    ["INF-E2", "INF-R3"],
+    ["INF-R3", "INF-E3"],
+    ["INF-E3", "INF-A1"]
   ],
   "global_claims": {
     "repository_source_closed": false,

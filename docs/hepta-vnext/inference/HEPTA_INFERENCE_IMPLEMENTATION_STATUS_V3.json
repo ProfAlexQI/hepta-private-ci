@@ -1,14 +1,14 @@
 {
   "schema": "hepta.inference.implementation_status.v3",
   "plan_id": "HEPTA-INFERENCE-RUNTIME-V4",
-  "plan_version": "4.0.0",
+  "plan_version": "4.1.0",
   "repository": "ProfHepta/hepta-private-ci",
-  "development_pr": 73,
-  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "development_pr": 87,
+  "development_branch": "codex/hepta-inference-v4-closure-20260830",
   "source_binding": {
-    "mode": "tracked implementation status binds observed parent; exact candidate is CI-generated",
-    "observed_parent_commit": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
-    "observed_parent_tree": "4bbc59481ca90ccd62e702baa3b865a221d4b2e5"
+    "mode": "tracked truth binds the observed parent; exact candidate head/tree and execution receipts are CI-generated",
+    "observed_parent_commit": "5693819c1fe8873fba8da76edd85d9e31bb61afb",
+    "observed_parent_tree": "a6ea97e2f357096f6e812a47cfceb6b79ebdccb4"
   },
   "status": "SOURCE_PRESENT_NOT_QUALIFIED",
   "workspace_packages": {
@@ -35,12 +35,16 @@
     "terminal_controller_eviction_after_persist": true,
     "durable_request_id_replay_guard": true,
     "fixed_adapter_tuple_contract": true,
+    "capability_hmac_and_constant_time_primitives": true,
     "native_abi_manifest_shared_region_contract": true,
-    "in_process_worker_supervisor_contract": true
+    "in_process_worker_supervisor_contract": true,
+    "current_pr_truth_binding_source": true,
+    "ci_branch_mutation_retired": true
   },
   "not_implemented_source": {
-    "request_capability_secret_and_digest": false,
-    "worker_session_nonce": false,
+    "daemon_os_csprng_epoch_key": false,
+    "public_principal_and_request_ownership": false,
+    "one_time_request_grant_ledger": false,
     "private_worker_protocol_and_endpoint": false,
     "private_operator_protocol_and_endpoint": false,
     "cancel_requested_dispatched_ack_timeout_states": false,
@@ -54,11 +58,11 @@
     "typed_product_shadow_bridge": false
   },
   "execution_status": {
-    "v4_source_truth": "NOT_EXECUTED",
-    "formatting": "FAILED_ON_OBSERVED_PARENT",
-    "locked_check": "NOT_EXECUTED_FOR_CURRENT_CANDIDATE",
-    "all_target_tests": "NOT_EXECUTED_FOR_CURRENT_CANDIDATE",
-    "strict_clippy": "NOT_EXECUTED_FOR_CURRENT_CANDIDATE",
+    "v4_1_source_truth": "NOT_EXECUTED_FOR_CANDIDATE",
+    "formatting": "NOT_EXECUTED_FOR_CANDIDATE",
+    "locked_check": "NOT_EXECUTED_FOR_CANDIDATE",
+    "all_target_tests": "NOT_EXECUTED_FOR_CANDIDATE",
+    "strict_clippy": "NOT_EXECUTED_FOR_CANDIDATE",
     "real_provider": "NOT_EXECUTED",
     "real_native_model": "NOT_EXECUTED",
     "exact_device": "NOT_EXECUTED"

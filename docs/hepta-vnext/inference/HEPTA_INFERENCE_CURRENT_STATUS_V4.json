@@ -1,19 +1,19 @@
 {
   "schema": "hepta.inference.current_status.v4",
   "plan_id": "HEPTA-INFERENCE-RUNTIME-V4",
-  "plan_version": "4.0.0",
+  "plan_version": "4.1.0",
   "repository": "ProfHepta/hepta-private-ci",
   "canonical_default_branch": "integration/vnext-main-20260811",
-  "canonical_default_head_observed": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
-  "development_pr": 73,
-  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "canonical_default_head_observed": "b621768b70a09d56626bb8a2c331e3dc424e6a4d",
+  "development_pr": 87,
+  "development_branch": "codex/hepta-inference-v4-closure-20260830",
   "development_base_commit": "6f3286f99f5576b4cc545003889437bf388bb28a",
   "source_binding": {
-    "mode": "tracked status binds observed parent; exact candidate head/tree are emitted only by CI",
-    "observed_parent_commit": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
-    "observed_parent_tree": "4bbc59481ca90ccd62e702baa3b865a221d4b2e5"
+    "mode": "tracked truth binds the observed parent; exact candidate head/tree and execution receipts are CI-generated",
+    "observed_parent_commit": "5693819c1fe8873fba8da76edd85d9e31bb61afb",
+    "observed_parent_tree": "a6ea97e2f357096f6e812a47cfceb6b79ebdccb4"
   },
-  "current_status": "EXECUTED_FAILED",
+  "current_status": "SOURCE_PRESENT_NOT_QUALIFIED",
   "maximum_valid_claim": "SOURCE_PRESENT_NOT_QUALIFIED",
   "current_packages": [
     "INF-D0",
@@ -21,27 +21,24 @@
   ],
   "truth_documents": {
     "current_plan": "HEPTA_INFERENCE_CURRENT_PLAN_V1.json",
-    "active_plan": "HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V4.md",
+    "active_plan": "HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V4_1.md",
     "implementation_status": "HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V3.json",
     "stage_matrix": "HEPTA_INFERENCE_STAGE_MATRIX_V5.json",
     "blocker_ledger": "HEPTA_INFERENCE_BLOCKER_LEDGER_V2.json",
     "evidence_contract": "HEPTA_INFERENCE_V4_CLOSURE_EVIDENCE_CONTRACT_V1.json"
   },
-  "observed_exact_head_execution": {
-    "head": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
-    "tree": "4bbc59481ca90ccd62e702baa3b865a221d4b2e5",
-    "source_truth": "EXECUTED_PASSED_QUALIFICATION_ONLY",
-    "rust_linux_x64": "EXECUTED_FAILED_FORMATTING",
-    "rust_linux_arm64": "EXECUTED_FAILED_FORMATTING",
-    "rust_macos_intel": "EXECUTED_FAILED_FORMATTING",
-    "locked_check": "SKIPPED_AFTER_FORMATTING_FAILURE",
-    "all_target_tests": "SKIPPED_AFTER_FORMATTING_FAILURE",
-    "strict_clippy": "SKIPPED_AFTER_FORMATTING_FAILURE",
+  "observed_parent_execution": {
+    "head": "5693819c1fe8873fba8da76edd85d9e31bb61afb",
+    "tree": "a6ea97e2f357096f6e812a47cfceb6b79ebdccb4",
     "runs": {
-      "single_platform": 33265631214,
-      "multi_platform": 33265631127,
-      "historical_protocol": 33265631140
-    }
+      "single_platform": 33322796815,
+      "multi_platform": 33322796822
+    },
+    "source_truth": "PENDING_WITHOUT_JOBS",
+    "rust_linux_x64": "PENDING_WITHOUT_JOBS",
+    "rust_linux_arm64": "PENDING_WITHOUT_JOBS",
+    "rust_macos_intel": "PENDING_WITHOUT_JOBS",
+    "claim": "NOT_PASS"
   },
   "source_present_not_qualified": {
     "public_worker_operator_role_denial": true,
@@ -51,16 +48,18 @@
     "connection_semaphore_and_io_timeouts": true,
     "atomic_receipt_recovery_and_budget": true,
     "terminal_memory_release_after_durable_persist": true,
-    "durable_request_id_replay_guard": true
+    "durable_request_id_replay_guard": true,
+    "capability_primitives": true,
+    "adapter_and_worker_contracts": true
   },
   "repository_source_gaps": {
-    "v4_current_truth_gate": false,
-    "exact_head_format_check": false,
-    "historical_current_gate_isolation": false,
+    "truth_bound_to_current_pr": true,
+    "ci_branch_mutation_removed": true,
+    "complete_managed_source_inventory_gate": true,
     "daemon_minted_request_capability": false,
     "authenticated_private_worker_channel": false,
     "authenticated_private_operator_channel": false,
-    "worker_session_nonce": false,
+    "worker_session_nonce_and_one_time_grant_ledger": false,
     "running_cancel_ack_and_forced_kill": false,
     "receipt_retention_or_compaction": false,
     "scheduler_and_reservation_ledger": false,

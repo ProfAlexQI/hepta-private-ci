@@ -1,20 +1,20 @@
 {
   "schema": "hepta.inference.current_plan.v1",
   "active_plan_id": "HEPTA-INFERENCE-RUNTIME-V4",
-  "active_plan_version": "4.0.0",
-  "active_plan_path": "docs/hepta-vnext/inference/HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V4.md",
+  "active_plan_version": "4.1.0",
+  "active_plan_path": "docs/hepta-vnext/inference/HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V4_1.md",
   "repository": "ProfHepta/hepta-private-ci",
   "canonical_default_branch": "integration/vnext-main-20260811",
-  "development_pr": 73,
-  "development_branch": "codex/hepta-inference-gap-closure-20260829",
+  "development_pr": 87,
+  "development_branch": "codex/hepta-inference-v4-closure-20260830",
   "development_base_commit": "6f3286f99f5576b4cc545003889437bf388bb28a",
   "source_binding": {
-    "mode": "tracked current pointer binds observed parent; exact candidate head/tree are CI-generated",
-    "observed_parent_commit": "2d6fa9c01af0c98a81cd804b1f35ba6a171f0c10",
-    "observed_parent_tree": "4bbc59481ca90ccd62e702baa3b865a221d4b2e5"
+    "mode": "tracked truth binds the observed parent; exact candidate head/tree and execution receipts are CI-generated",
+    "observed_parent_commit": "5693819c1fe8873fba8da76edd85d9e31bb61afb",
+    "observed_parent_tree": "a6ea97e2f357096f6e812a47cfceb6b79ebdccb4"
   },
   "supersedes_for_current_execution": [
-    "HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V3.md",
+    "HEPTA_INFERENCE_RUNTIME_DEVELOPMENT_PLAN_V4.md",
     "HEPTA_INFERENCE_CURRENT_STATUS_V3.json",
     "HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V2.json",
     "HEPTA_INFERENCE_STAGE_MATRIX_V4.json",
