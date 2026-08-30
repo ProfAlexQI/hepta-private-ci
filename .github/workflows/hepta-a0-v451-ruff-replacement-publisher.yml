@@ -1,4 +1,4 @@
-name: Hepta A0 V4.5.1 provenance replacement publisher macOS
+name: Hepta A0 V4.5.1 provenance replacement publisher Linux
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-a0-v451-provenance-publisher-macos-20260830-0040
+  group: hepta-a0-v451-provenance-publisher-20260830-0040
   cancel-in-progress: true
 
 env:
@@ -20,13 +20,13 @@ env:
   Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
   Q0_TREE: ca455a9ef797cd95164c880c7b8faba80b305589
   PREDECESSOR_HEADS_JSON: '["08e6ed017e8cbfb94f86a5fa8397eb00eb396ed2","7a8052aa8949c8b1be361b5231389ee193baec3c"]'
-  STAGING_BRANCH: staging/hepta-a0-v451-provenance-ruff-macos-20260830-0040
+  STAGING_BRANCH: staging/hepta-a0-v451-provenance-ruff-linux-20260830-0105
   REPORT_DIR: artifacts/hepta-a0-v451-ruff-replacement
 
 jobs:
   publish:
-    name: Build and validate one Ruff-clean Q0-single-parent replacement on macOS
-    runs-on: macos-15
+    name: Build and validate one Ruff-clean Q0-single-parent replacement on Linux
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout publisher source
@@ -49,39 +49,16 @@ jobs:
         with:
           version: 0.11.3
 
-      - name: Install modern Bash
-        shell: bash
-        run: |
-          set -euo pipefail
-          brew list bash >/dev/null 2>&1 || brew install bash
-
-      - name: Normalize publisher parser for Ruff trailing commas
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path("publisher/automation/run-hepta-a0-v451-ruff-replacement-publisher.sh")
-          text = path.read_text(encoding="utf-8")
-          old = r'''    r"(\s*,\s*['\"]A0 provenance drift['\"]\s*\))",'''
-          new = r'''    r"(\s*,\s*['\"]A0 provenance drift['\"]\s*,?\s*\))",'''
-          if text.count(old) != 1:
-              raise SystemExit("expected exactly one provenance parser clause")
-          path.write_text(text.replace(old, new), encoding="utf-8")
-          PY
-
       - name: Build, validate and publish immutable staging candidate
         shell: bash
         run: |
           set -euo pipefail
-          "$(brew --prefix bash)/bin/bash" \
-            publisher/automation/run-hepta-a0-v451-ruff-replacement-publisher.sh
+          bash publisher/automation/run-hepta-a0-v451-ruff-replacement-publisher.sh
 
       - name: Upload deterministic publisher evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: hepta-a0-v451-provenance-macos-${{ github.sha }}
+          name: hepta-a0-v451-provenance-linux-${{ github.sha }}
           path: target/artifacts/hepta-a0-v451-ruff-replacement/**
           if-no-files-found: error
           retention-days: 30
