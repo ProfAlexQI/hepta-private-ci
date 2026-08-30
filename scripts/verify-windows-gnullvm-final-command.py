@@ -11,9 +11,13 @@ ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = ROOT / ".github" / "scripts" / "run_bazel_with_buildbuddy.py"
 BASE = ROOT / ".github" / "scripts" / "run_bazel_with_buildbuddy_base.py"
 POLICY = ROOT / ".github" / "scripts" / "run_bazel_q017_policy.py"
+NEGATIVE_POLICY = ROOT / ".github" / "scripts" / "run_bazel_q022_negative_targets.py"
 TEST = ROOT / ".github" / "scripts" / "test_run_bazel_final_command.py"
+NEGATIVE_TEST = ROOT / ".github" / "scripts" / "test_run_bazel_negative_targets.py"
 BOUNDARY = ROOT / ".github" / "scripts" / "test_run_bazel_qualification_boundary.sh"
 BAZELRC = ROOT / ".bazelrc"
+BAZEL_WORKFLOW = ROOT / ".github" / "workflows" / "bazel.yml"
+RELEASE_TARGETS = ROOT / "scripts" / "list-bazel-release-targets.sh"
 EXPECTED_BASE_BLOB = "913708d5651678c1623faac2b18656c2b86300bb"
 EXPECTED_BAZELRC_BLOB = "0736ecbb6e8183b31f0e2739abef901c47235e9d"
 
@@ -54,11 +58,15 @@ def main() -> None:
     wrapper = read(WRAPPER)
     base = read(BASE)
     policy = read(POLICY)
+    negative_policy = read(NEGATIVE_POLICY)
     test = read(TEST)
+    negative_test = read(NEGATIVE_TEST)
     boundary = read(BOUNDARY)
     read(BAZELRC)
+    bazel_workflow = read(BAZEL_WORKFLOW)
+    release_targets = read(RELEASE_TARGETS)
 
-    for path in (WRAPPER, BASE, TEST, BOUNDARY):
+    for path in (WRAPPER, BASE, TEST, NEGATIVE_TEST, BOUNDARY, RELEASE_TARGETS):
         require_executable(path)
 
     require(
@@ -74,6 +82,7 @@ def main() -> None:
         "import run_bazel_with_buildbuddy_base as _base",
         "from run_bazel_with_buildbuddy_base import *",
         "from run_bazel_q017_policy import QUALIFICATION_BAZELRC_GIT_BLOB_SHA1",
+        "from run_bazel_q022_negative_targets import (",
         "validate_keyless_windows_gnullvm_final_args(command[1:], env)",
         '"--nomaster_bazelrc"',
         '"--nosystem_rc"',
@@ -100,6 +109,22 @@ def main() -> None:
         require_token(policy, token, "run_bazel_q017_policy.py")
 
     for token in (
+        'RELEASE_JOB_METADATA = "--build_metadata=TAG_job=verify-release-build"',
+        'CANONICAL_RELEASE_TARGETS = (',
+        '"//codex-rs/..."',
+        '"-//codex-rs/core/tests/remote_env_windows:smoke-test"',
+        '"-//codex-rs/v8-poc:all"',
+        "the exact canonical target set",
+        "rejects negative targets outside the release lane",
+        "validate_keyless_windows_gnullvm_final_args as _validate_q021",
+    ):
+        require_token(
+            negative_policy,
+            token,
+            "run_bazel_q022_negative_targets.py",
+        )
+
+    for token in (
         "test_exact_command_is_bound_to_one_reviewed_rc_and_announces_it",
         "test_workspace_bazelrc_drift_fails_closed",
         "test_workspace_user_bazelrc_fails_closed",
@@ -112,21 +137,49 @@ def main() -> None:
         "test_boolean_equals_rc_reenable_fails_closed",
         "test_master_bazelrc_reenable_fails_closed",
         "test_option_smuggling_after_target_separator_fails_closed",
+        "test_release_target_exclusions_remain_canonical_payload",
         "test_authenticated_windows_path_remains_remote_passthrough",
         "test_pinned_blob_identity_is_explicit",
     ):
         require_token(test, token, "test_run_bazel_final_command.py")
 
-    require_token(
-        boundary,
+    for token in (
+        "test_non_release_positive_targets_pass",
+        "test_exact_release_target_set_passes",
+        "test_non_release_exclude_all_fails_closed",
+        "test_non_release_arbitrary_exclusion_fails_closed",
+        "test_release_target_drop_fails_closed",
+        "test_release_target_addition_fails_closed",
+        "test_release_metadata_on_test_command_fails_closed",
+        "test_release_script_matches_policy_constant",
+        "test_wrapper_imports_q022_validator",
+    ):
+        require_token(
+            negative_test,
+            token,
+            "test_run_bazel_negative_targets.py",
+        )
+
+    for token in (
+        '"//codex-rs/..."',
+        '"-//codex-rs/core/tests/remote_env_windows:smoke-test"',
+        '"-//codex-rs/v8-poc:all"',
+    ):
+        require_token(release_targets, token, "list-bazel-release-targets.sh")
+
+    for token in (
+        'bazel_target_lines="$(bash ./scripts/list-bazel-release-targets.sh)"',
+        "--build_metadata=TAG_job=verify-release-build",
+        "bazel_wrapper_args+=(--windows-cross-compile)",
+    ):
+        require_token(bazel_workflow, token, "bazel.yml")
+
+    for token in (
         "python3 .github/scripts/test_run_bazel_final_command.py",
-        "qualification boundary fixture",
-    )
-    require_token(
-        boundary,
+        "python3 .github/scripts/test_run_bazel_negative_targets.py",
         "python3 scripts/verify-windows-gnullvm-final-command.py",
-        "qualification boundary fixture",
-    )
+    ):
+        require_token(boundary, token, "qualification boundary fixture")
 
     print("PASS_WINDOWS_GNULLVM_FINAL_COMMAND_SOURCE")
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Compatibility wrapper plus Q0.17 qualification ratchet."""
+"""Compatibility wrapper plus Q0.17/Q0.22 qualification ratchets."""
 
 import os
 import subprocess
@@ -14,7 +14,9 @@ from run_bazel_q017_policy import _git_blob_sha1
 from run_bazel_q017_policy import _insert_before_separator
 from run_bazel_q017_policy import _is_keyless_windows_gnullvm
 from run_bazel_q017_policy import _qualification_workspace_bazelrc
-from run_bazel_q017_policy import validate_keyless_windows_gnullvm_final_args
+from run_bazel_q022_negative_targets import (
+    validate_keyless_windows_gnullvm_final_args,
+)
 
 
 def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]:
