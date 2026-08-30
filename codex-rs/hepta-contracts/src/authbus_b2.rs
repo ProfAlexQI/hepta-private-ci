@@ -308,7 +308,8 @@ impl QuotaReservationState {
     }
 }
 
-/// Quota hold created after admission and before a physical effect.
+/// Decode-only four-dimensional quota hold retained for compatibility.
+/// New v1.3 encoders use [`QuotaReservationV1_3`] and [`crate::UsageVector`].
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct QuotaReservation {
@@ -779,3 +780,157 @@ impl_contract_methods!(ResourceAdvertisement, "resource-advertisement");
 #[cfg(test)]
 #[path = "authbus_b2_tests.rs"]
 mod tests;
+
+/// One durable window identity carried by a canonical v1.3 reservation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct QuotaWindowBindingV1_3 {
+    pub window_kind: String,
+    pub starts_at_unix_seconds: u64,
+    pub ends_at_unix_seconds: u64,
+    pub timezone_or_offset: String,
+}
+
+impl QuotaWindowBindingV1_3 {
+    fn validate(&self) -> Result<(), AuthBusContractError> {
+        validate_text(&self.window_kind, "quota window kind", 128)?;
+        validate_text(
+            &self.timezone_or_offset,
+            "quota window timezone or offset",
+            128,
+        )?;
+        validate_window(self.starts_at_unix_seconds, self.ends_at_unix_seconds)
+    }
+}
+
+/// Canonical v1.3 reservation projection. Every quantity uses the same
+/// six-dimensional UsageVector declaration state, and source registry identity
+/// is carried on the wire so stale or lossy projections fail closed.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct QuotaReservationV1_3 {
+    pub schema_version: u32,
+    pub reservation_id: String,
+    pub command_id: String,
+    pub idempotency_key: String,
+    pub resource_id: String,
+    pub resource_digest: Sha256Digest,
+    pub quota_domain: String,
+    pub window_bindings: Vec<QuotaWindowBindingV1_3>,
+    pub estimated_vector: crate::UsageVector,
+    pub safety_margin_vector: crate::UsageVector,
+    pub held_vector: crate::UsageVector,
+    pub consumed_vector: crate::UsageVector,
+    pub remaining_vector: crate::UsageVector,
+    pub state: QuotaReservationState,
+    pub issued_at_unix_seconds: u64,
+    pub expires_at_unix_seconds: u64,
+    pub payload_digest: Sha256Digest,
+    pub policy_digest: Sha256Digest,
+    pub authority_epoch: u64,
+    pub owner_epoch: u64,
+    pub generation: u64,
+    pub fencing_token_sha256: Sha256Digest,
+    pub expected_revision: u64,
+    pub revision: u64,
+    pub prior_state_digest: Sha256Digest,
+    pub state_digest: Sha256Digest,
+    pub source_registry_ref: String,
+    pub source_registry_sha256: String,
+    pub source_domain_ref: String,
+    pub projection_transform: String,
+    pub semantic_revision: String,
+    #[serde(default)]
+    pub authority: bool,
+}
+
+impl QuotaReservationV1_3 {
+    pub fn validate(&self) -> Result<(), AuthBusContractError> {
+        validate_schema(self.schema_version, "QuotaReservationV1_3")?;
+        validate_id(&self.reservation_id, "reservation id")?;
+        validate_id(&self.command_id, "reservation command id")?;
+        validate_id(&self.idempotency_key, "reservation idempotency key")?;
+        validate_id(&self.resource_id, "reservation resource id")?;
+        validate_digest(&self.resource_digest, "reservation resource digest")?;
+        validate_text(&self.quota_domain, "reservation quota domain", 512)?;
+        if self.window_bindings.len() > MAX_LIST_ITEMS {
+            return Err(error("too many quota window bindings"));
+        }
+        for window in &self.window_bindings {
+            window.validate()?;
+        }
+        self.estimated_vector
+            .validate_for_admission()
+            .map_err(|_| error("estimated UsageVector is not admission-safe"))?;
+        self.held_vector
+            .validate_for_admission()
+            .map_err(|_| error("held UsageVector is not admission-safe"))?;
+        for vector in [
+            self.safety_margin_vector,
+            self.consumed_vector,
+            self.remaining_vector,
+        ] {
+            vector
+                .validate_declared_shape()
+                .map_err(|_| error("UsageVector contains an explicit unknown"))?;
+        }
+        for vector in [
+            self.safety_margin_vector,
+            self.held_vector,
+            self.consumed_vector,
+            self.remaining_vector,
+        ] {
+            if !self.estimated_vector.declarations_match(vector) {
+                return Err(error("UsageVector declaration mismatch"));
+            }
+        }
+        if !matches!(
+            self.consumed_vector
+                .quantity(crate::QuotaDimension::Concurrency),
+            crate::QuotaQuantity::NotDeclared | crate::QuotaQuantity::Known(0)
+        ) {
+            return Err(error("concurrency is released and cannot be consumed"));
+        }
+        let requires_window = [
+            crate::QuotaDimension::Rpm,
+            crate::QuotaDimension::Tpm,
+            crate::QuotaDimension::Concurrency,
+            crate::QuotaDimension::DayBudget,
+        ]
+        .into_iter()
+        .any(|dimension| {
+            matches!(
+                self.estimated_vector.quantity(dimension),
+                crate::QuotaQuantity::Known(value) if value > 0
+            )
+        });
+        if requires_window && self.window_bindings.is_empty() {
+            return Err(error(
+                "windowed UsageVector requires a durable window identity",
+            ));
+        }
+        validate_window(self.issued_at_unix_seconds, self.expires_at_unix_seconds)?;
+        validate_digest(&self.payload_digest, "reservation payload digest")?;
+        validate_digest(&self.policy_digest, "reservation policy digest")?;
+        validate_epochs(
+            self.authority_epoch,
+            self.owner_epoch,
+            self.generation,
+            &self.fencing_token_sha256,
+        )?;
+        validate_revision_pair(self.expected_revision, self.revision)?;
+        validate_digest(&self.prior_state_digest, "reservation prior state digest")?;
+        validate_digest(&self.state_digest, "reservation state digest")?;
+        crate::validate_authbus_quota_source_binding(
+            &self.source_registry_ref,
+            &self.source_registry_sha256,
+            &self.source_domain_ref,
+            &self.projection_transform,
+            &self.semantic_revision,
+        )
+        .map_err(|_| error("quota registry projection binding mismatch"))?;
+        validate_authority(self.authority)
+    }
+}
+
+impl_contract_methods!(QuotaReservationV1_3, "quota-reservation-v1-3");
