@@ -327,7 +327,10 @@ impl LogicalTurnEvidence {
 
 /// Result of one serialized reservation attempt.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[allow(clippy::large_enum_variant, reason = "reservation variants preserve a stable explicit qualification API")]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "reservation variants preserve a stable explicit qualification API"
+)]
 pub enum LogicalTurnReservation {
     Acquired {
         attempt: LogicalTurnAttempt,
@@ -1250,7 +1253,10 @@ fn attempt_from_existing_for_supersede(attempt: &LogicalTurnAttempt) -> LogicalT
     }
 }
 
-#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the signature is an explicit ordered protocol or test-harness contract"
+)]
 async fn append_attempt(
     transaction: &mut Transaction<'_, Sqlite>,
     owner: &AgentId,
@@ -1658,7 +1664,10 @@ fn logical_identity_digest(
     )
 }
 
-#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the signature is an explicit ordered protocol or test-harness contract"
+)]
 fn attempt_digest(
     owner: &AgentId,
     request: &LogicalTurnRequest,
@@ -1684,7 +1693,10 @@ fn attempt_digest(
     )
 }
 
-#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the signature is an explicit ordered protocol or test-harness contract"
+)]
 fn attempt_digest_without_scope(
     owner: &AgentId,
     logical_turn_id: &str,

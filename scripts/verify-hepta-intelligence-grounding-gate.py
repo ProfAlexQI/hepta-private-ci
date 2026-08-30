@@ -196,8 +196,7 @@ def main() -> int:
         and current.get("claims", {}).get("production_projection_gate") is False
     )
     checks["status.p0_2_unqualified_dependency"] = (
-        dependency.get("id") == "P0.2"
-        and dependency.get("qualified") is False
+        dependency.get("id") == "P0.2" and dependency.get("qualified") is False
     )
     checks["plan.boundary"] = contains_all(
         plan,

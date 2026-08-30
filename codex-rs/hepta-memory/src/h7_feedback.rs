@@ -368,7 +368,10 @@ impl H7FeedbackKey {
 // keeps all delimiters in trajectory/event ids unambiguous while preserving a
 // stable wire form for snapshots.
 impl From<H7FeedbackKey> for String {
-    #[allow(clippy::expect_used, reason = "serializing a tuple of strings and an integer is infallible")]
+    #[allow(
+        clippy::expect_used,
+        reason = "serializing a tuple of strings and an integer is infallible"
+    )]
     fn from(key: H7FeedbackKey) -> Self {
         serde_json::to_string(&(key.trajectory_id, key.event_seq, key.event_id))
             .expect("feedback key tuple is serializable")
