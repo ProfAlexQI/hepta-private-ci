@@ -11,6 +11,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 import run_bazel_with_buildbuddy as subject
+from run_bazel_q017_policy import _git_blob_sha1
 
 
 CI_WINDOWS_PATH = r"C:\Program Files\Git\bin;C:\Windows\System32"
@@ -103,7 +104,7 @@ class FinalCommandQualificationTest(unittest.TestCase):
     def run_exact(self, args: list[str] | None = None) -> list[str]:
         temp, bazelrc, env = self.fixture()
         self.addCleanup(temp.cleanup)
-        expected_blob = subject._git_blob_sha1(bazelrc.read_bytes())
+        expected_blob = _git_blob_sha1(bazelrc.read_bytes())
         with patch.object(
             subject,
             "QUALIFICATION_BAZELRC_GIT_BLOB_SHA1",
@@ -132,7 +133,7 @@ class FinalCommandQualificationTest(unittest.TestCase):
     def test_workspace_bazelrc_drift_fails_closed(self) -> None:
         temp, bazelrc, env = self.fixture()
         self.addCleanup(temp.cleanup)
-        expected_blob = subject._git_blob_sha1(bazelrc.read_bytes())
+        expected_blob = _git_blob_sha1(bazelrc.read_bytes())
         bazelrc.write_text("common --jobs=999\n", encoding="utf-8")
         with patch.object(
             subject,
@@ -149,7 +150,7 @@ class FinalCommandQualificationTest(unittest.TestCase):
             "common --jobs=999\n",
             encoding="utf-8",
         )
-        expected_blob = subject._git_blob_sha1(bazelrc.read_bytes())
+        expected_blob = _git_blob_sha1(bazelrc.read_bytes())
         with patch.object(
             subject,
             "QUALIFICATION_BAZELRC_GIT_BLOB_SHA1",
