@@ -1,4 +1,4 @@
-name: AuthBus P1.3 semantic source publisher Windows v5
+name: AuthBus P1.3 semantic source publisher Windows v6
 
 on:
   push:
@@ -7,11 +7,12 @@ on:
     paths:
       - .github/workflows/authbus-p1-3-semantic-closure-builder.yml
       - scripts/authbus-p1-3-semantic-closure-builder.py
+      - scripts/authbus-p1-3-semantic-closure-builder.b64.*
   workflow_dispatch:
 
 concurrency:
-  group: authbus-p1-3-semantic-source-publisher-windows-v5
-  cancel-in-progress: false
+  group: authbus-p1-3-semantic-source-publisher-windows-v6
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -22,9 +23,6 @@ env:
   STAGING_BRANCH: staging/authbus-p1-3-semantic-closure-v11-20260830
   P03: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
   P13: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
-  # actions/checkout temporarily replaces HOME on Windows, so a normal
-  # --global core.longpaths setting is not reliable. Inject the setting into
-  # every Git invocation, including checkout itself.
   GIT_CONFIG_COUNT: "1"
   GIT_CONFIG_KEY_0: core.longpaths
   GIT_CONFIG_VALUE_0: "true"
@@ -33,21 +31,24 @@ jobs:
   publish_source:
     name: Materialize and publish unqualified semantic source on Windows
     runs-on: windows-2022
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
-      - name: Checkout exact publisher seed with long paths enabled
+      - name: Checkout exact publisher seed with complete history
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 8
+          fetch-depth: 0
           persist-credentials: true
 
       - name: Bind exact seed and helper-only delta
         shell: bash
         run: |
           set -euo pipefail
+          git config core.autocrlf false
+          git config core.eol lf
           test "${GITHUB_REF_NAME}" = "${SEED_BRANCH}"
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git cat-file -t "${SOURCE_HEAD}")" = "commit"
           git merge-base --is-ancestor "${SOURCE_HEAD}" HEAD
           mapfile -t changed < <(git diff --name-only "${SOURCE_HEAD}...HEAD" | sort)
           expected=(
@@ -83,7 +84,7 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt
 
-      - name: Format and source-verify the candidate
+      - name: Format, normalize, and source-verify the candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -91,6 +92,32 @@ jobs:
           cargo fmt --manifest-path codex-rs/Cargo.toml --package codex-hepta-contracts
           cargo fmt --manifest-path "${P03}" --all
           cargo fmt --manifest-path "${P13}" --all
+          python - <<'PY'
+          from pathlib import Path
+
+          paths = [
+              ".github/workflows/authbus-p1-3-qualification.yml",
+              "codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs",
+              "codex-rs/hepta-authbus-p0-3-qualification/tests/p0_3.rs",
+              "codex-rs/hepta-authbus-p1-3-qualification/README.md",
+              "codex-rs/hepta-authbus-p1-3-qualification/tests/p1_3.rs",
+              "codex-rs/hepta-contracts/src/authbus_b2.rs",
+              "codex-rs/hepta-contracts/src/lib.rs",
+              "codex-rs/hepta-contracts/src/quota_registry.rs",
+              "docs/hepta-vnext/authbus/AUTHBUS_P1_3_DEVELOPMENT_PLAN_2026-08-29.md",
+              "docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.json",
+              "docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.md",
+              "scripts/verify-authbus-p0-3.py",
+              "scripts/verify-authbus-p1-3.py",
+          ]
+          for raw in paths:
+              path = Path(raw)
+              data = path.read_bytes().replace(b"\r\n", b"\n").rstrip(b"\n") + b"\n"
+              path.write_bytes(data)
+          PY
+          cargo fmt --manifest-path codex-rs/Cargo.toml --package codex-hepta-contracts -- --check
+          cargo fmt --manifest-path "${P03}" --all -- --check
+          cargo fmt --manifest-path "${P13}" --all -- --check
           AUTHBUS_SKIP_EXACT_GIT_BINDING=1 python scripts/verify-authbus-p0-2.py
           AUTHBUS_SKIP_EXACT_GIT_BINDING=1 python scripts/verify-authbus-p0-3.py
           AUTHBUS_SKIP_EXACT_GIT_BINDING=1 python scripts/verify-authbus-p1-1.py
@@ -124,6 +151,7 @@ jobs:
             docs/hepta-vnext/authbus/AUTHBUS_P1_3_DEVELOPMENT_PLAN_2026-08-29.md
             docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.json
             docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.md
+            scripts/verify-authbus-p0-3.py
             scripts/verify-authbus-p1-3.py
           )
           test "${#changed[@]}" = "${#expected[@]}"
@@ -140,5 +168,5 @@ jobs:
           git config user.email "102159240+ProfHepta@users.noreply.github.com"
           git add -A
           git commit -m "fix(authbus): close P1.3 semantic lifecycle blockers"
-          test "$(git diff --name-only HEAD^..HEAD | wc -l | tr -d ' ')" = "12"
-          git push origin "HEAD:${STAGING_BRANCH}"
+          test "$(git diff --name-only HEAD^..HEAD | wc -l | tr -d ' ')" = "13"
+          git push --force-with-lease origin "HEAD:${STAGING_BRANCH}"
