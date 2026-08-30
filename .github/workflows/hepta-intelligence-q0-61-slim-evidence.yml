@@ -1,0 +1,163 @@
+name: Hepta Intelligence Q0.61 slim evidence
+
+on:
+  push:
+    branches:
+      - diagnostic/hepta-intelligence-q0-61-slim-evidence-20260831
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-q0-61-slim-evidence
+  cancel-in-progress: true
+
+env:
+  TARGET_HEAD: a94e5333b51c190df0e8757f14af70184e8b1328
+  TARGET_TREE: 49f325f6e12e68ffd090b864d05d167284e6bcf6
+  TARGET_BRANCH: integration/hepta-intelligence-a0-q0-61-compose-20260831
+  SOURCE_BRANCH: codex/hepta-intelligence-q0-61-selected-source-binding-20260831
+
+jobs:
+  verify-exact-candidate:
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - name: Checkout isolated diagnostic head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind one-workflow diagnostic delta and select Q0.61
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mapfile -t changed < <(
+            git diff --name-only --no-renames "$TARGET_HEAD" "$GITHUB_SHA"
+          )
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = \
+            ".github/workflows/hepta-intelligence-q0-61-slim-evidence.yml"
+          git diff --check "$TARGET_HEAD" "$GITHUB_SHA"
+          git cat-file -e "${TARGET_HEAD}^{commit}"
+          git switch --detach "$TARGET_HEAD"
+          test "$(git rev-parse HEAD)" = "$TARGET_HEAD"
+          test "$(git show -s --format=%T HEAD)" = "$TARGET_TREE"
+          test "$(git show -s --format=%P HEAD)" = \
+            "73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358 770a52ed0c8306e9a6f8acb7c2138e92475fa975"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          mkdir -p "$RUNNER_TEMP/q061" "$RUNNER_TEMP/q061-home"
+          printf '%s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/q061/diagnostic-head.txt"
+          printf '%s\n' "$TARGET_HEAD" > "$RUNNER_TEMP/q061/target-head.txt"
+          printf '%s\n' "$TARGET_TREE" > "$RUNNER_TEMP/q061/target-tree.txt"
+
+      - name: Compile and exercise fail-closed fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache="$RUNNER_TEMP/q061-cache"
+          mkdir -p "$cache"
+          PYTHONPYCACHEPREFIX="$cache" \
+            python3 -m py_compile \
+              scripts/hepta_q046_git_context.py \
+              scripts/hepta_q061_selected_source.py \
+              scripts/verify-hepta-intelligence-integration-admission.py \
+              scripts/verify-hepta-intelligence-integration-admission-api-v2.py
+          PYTHONPYCACHEPREFIX="$cache" \
+            python3 scripts/hepta_q061_selected_source.py --self-test \
+            | tee "$RUNNER_TEMP/q061/fixtures.txt"
+
+      - name: Execute selected-source binding twice
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cache="$RUNNER_TEMP/q061-cache"
+          for suffix in a b; do
+            env -i \
+              PATH=/usr/bin:/bin \
+              HOME="$RUNNER_TEMP/q061-home" \
+              LANG=C \
+              LC_ALL=C \
+              PYTHONHASHSEED=0 \
+              PYTHONPYCACHEPREFIX="$cache" \
+              PYTHONDONTWRITEBYTECODE=1 \
+              PYTHONNOUSERSITE=1 \
+              GITHUB_ACTIONS=true \
+              RUNNER_OS=Linux \
+              GITHUB_REPOSITORY="$GITHUB_REPOSITORY" \
+              EXPECTED_HEAD="$TARGET_HEAD" \
+              EXPECTED_HEAD_BRANCH="$TARGET_BRANCH" \
+              HEPTA_EXPECTED_Q0_SOURCE_BRANCH="$SOURCE_BRANCH" \
+              GH_TOKEN="$GH_TOKEN" \
+              /usr/bin/python3 \
+                scripts/hepta_q061_selected_source.py \
+                --check \
+                --output "$RUNNER_TEMP/q061/selected-q0-$suffix.json"
+          done
+          cmp \
+            "$RUNNER_TEMP/q061/selected-q0-a.json" \
+            "$RUNNER_TEMP/q061/selected-q0-b.json"
+          cp \
+            "$RUNNER_TEMP/q061/selected-q0-a.json" \
+            "$RUNNER_TEMP/q061/selected-q0.json"
+          sha256sum "$RUNNER_TEMP/q061/selected-q0.json" \
+            > "$RUNNER_TEMP/q061/selected-q0.json.sha256"
+
+      - name: Validate receipt and preserve negative authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path(os.environ["RUNNER_TEMP"]) / "q061" / "selected-q0.json"
+          receipt = json.loads(path.read_text(encoding="utf-8"))
+          expected = {
+              "status": "PASS_HEPTA_INTELLIGENCE_SELECTED_Q0_SOURCE_BINDING",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "integration_head": os.environ["TARGET_HEAD"],
+              "integration_branch": os.environ["TARGET_BRANCH"],
+              "first_parent_a0": "73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358",
+              "second_parent_q0": "770a52ed0c8306e9a6f8acb7c2138e92475fa975",
+              "selected_q0_source_branch": os.environ["SOURCE_BRANCH"],
+              "q0_ordinal": 61,
+          }
+          for key, value in expected.items():
+              if receipt.get(key) != value:
+                  raise SystemExit(f"receipt field drifted: {key}")
+          if re.fullmatch(r"[0-9a-f]{64}", receipt.get("binding_sha256", "")) is None:
+              raise SystemExit("receipt binding digest drifted")
+          for key in (
+              "source_writeback",
+              "a0_candidate_qualified",
+              "independent_review",
+              "selected",
+              "full_repository_merge_green",
+              "runtime_wired",
+              "production_authority",
+              "operator_acceptance",
+              "promotion",
+              "release_authority",
+              "callers_ratchet",
+          ):
+              if receipt.get(key) is not False:
+                  raise SystemExit(f"authority escaped: {key}")
+          print("PASS_Q061_SLIM_RECEIPT_AND_AUTHORITY")
+          PY
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Upload exact-candidate diagnostic evidence
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-intelligence-q0-61-slim-${{ env.TARGET_HEAD }}
+          path: ${{ runner.temp }}/q061
+          if-no-files-found: error
+          retention-days: 30
