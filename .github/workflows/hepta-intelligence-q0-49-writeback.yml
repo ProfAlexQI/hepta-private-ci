@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build-candidate:
     name: build exact Q0.49 candidate
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     timeout-minutes: 90
     env:
       SOURCE_SHA: f2f200969fa0076178276bceab2eb21d23f0519e
