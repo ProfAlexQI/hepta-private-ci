@@ -1,0 +1,134 @@
+name: Hepta UI v5 final canonical R14 v2 macOS xlarge replay
+
+on:
+  push:
+    branches:
+      - automation/ui-v5-final-canonical-r14-v2-macos-xlarge-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-final-canonical-r14-v2-macos-xlarge-replay.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-final-canonical-r14-v2-macos-xlarge
+  cancel-in-progress: false
+
+jobs:
+  replay-qualified-publisher:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: macos-15-xlarge
+    timeout-minutes: 90
+    env:
+      DRIVER_PARENT: 79cf70112da4ca61b2615a80807d6b37f9dc14e0
+      DRIVER_PATH: .github/workflows/hepta-ui-v5-final-canonical-r14-v2-macos-xlarge-replay.yml
+      PUBLISHER_PATH: .github/workflows/hepta-ui-v5-final-canonical-r14-v2-publisher.yml
+      SOURCE_BRANCH: codex/ui-v5-final-repository-blockers-v2-20260830
+      EXPECTED_SOURCE_HEAD: 3e9268d6e4d60e5e61b26dc1b6de28b095d54674
+      OUTPUT_BRANCH: staging/ui-v5-final-canonical-r14-v2-macos-20260830
+      UPSTREAM_URL: https://github.com/openai/codex.git
+      R12_HEAD: dde85b435b16994f956bce08e5fb796ed94c27fd
+      R13_HEAD: da23e131e68b171909407f469da1b2f72d9c4f4a
+      R14_HEAD: 88f776588f5e73467e7659c268f8358a9a2378b6
+      R13_REF: refs/remotes/upstream/hepta-intake-20260830-r13
+      R14_REF: refs/remotes/upstream/hepta-intake-20260830-r14
+      R13_INTAKE: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R13.json
+      R13_RECORD: docs/architecture/HEPTA_UPSTREAM_CODEX_R13_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+      R14_INTAKE: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R14.json
+      R14_RECORD: docs/architecture/HEPTA_UPSTREAM_CODEX_R14_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+      REGISTRY: docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json
+      CONTRACT: .github/hepta-ci-contract-v1.json
+      MATERIALIZER: scripts/hepta-ci-materialize-upstream-intake
+      BASELINE_CONTRACT: scripts/hepta-ci-baseline-contract
+      R13_EXTENSION: docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_EXTENSION_R13_V1.json
+      R13_EXTENSION_CONTRACT: .github/hepta-ci-upstream-intake-r13-extension-v1.json
+
+    steps:
+      - name: Check out exact xlarge replay driver
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify replay provenance and select exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$DRIVER_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$DRIVER_PATH"
+          test -s "$PUBLISHER_PATH"
+          cp "$PUBLISHER_PATH" /tmp/hepta-r14-publisher.yml
+          git fetch --no-tags origin "refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
+          test "$(git rev-parse "refs/remotes/origin/$SOURCE_BRANCH")" = "$EXPECTED_SOURCE_HEAD"
+          git checkout --detach "$EXPECTED_SOURCE_HEAD"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_HEAD"
+          git config user.name 'hepta-gap-closure[bot]'
+          git config user.email 'hepta-gap-closure[bot]@users.noreply.github.com'
+          test -z "$(git status --short)"
+
+      - name: Install deterministic GNU qualification tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install bash coreutils findutils gnu-sed jq ripgrep
+          printf '%s\n' \
+            "$(brew --prefix bash)/bin" \
+            "$(brew --prefix coreutils)/libexec/gnubin" \
+            "$(brew --prefix findutils)/libexec/gnubin" \
+            "$(brew --prefix gnu-sed)/libexec/gnubin" \
+            >> "$GITHUB_PATH"
+
+      - name: Extract the reviewed publisher run blocks
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -ryaml -e '
+            config = YAML.load_file("/tmp/hepta-r14-publisher.yml", aliases: true)
+            steps = config.dig("jobs", "canonicalize-and-publish", "steps")
+            abort "publisher steps missing" unless steps.is_a?(Array)
+            wanted = {
+              "Fetch and verify exact R13 and R14 ranges" => "/tmp/hepta-r14-fetch.sh",
+              "Canonicalize append-only R13 and R14 truth" => "/tmp/hepta-r14-canonicalize.sh",
+              "Execute repository-controlled blocker gates" => "/tmp/hepta-r14-gates.sh",
+              "Publish qualified canonical blocker closure" => "/tmp/hepta-r14-publish.sh"
+            }
+            wanted.each do |name, path|
+              matches = steps.select { |step| step["name"] == name }
+              abort "publisher step #{name.inspect} count=#{matches.length}" unless matches.length == 1
+              run = matches.first["run"]
+              abort "publisher step #{name.inspect} has no run block" unless run.is_a?(String) && !run.empty?
+              File.write(path, run.end_with?("\n") ? run : run + "\n")
+            end
+          '
+          for path in /tmp/hepta-r14-{fetch,canonicalize,gates,publish}.sh; do
+            test -s "$path"
+          done
+
+      - name: Replay exact upstream-range verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix bash)/bin:$(brew --prefix coreutils)/libexec/gnubin:$(brew --prefix findutils)/libexec/gnubin:$(brew --prefix gnu-sed)/libexec/gnubin:$PATH"
+          "$(brew --prefix bash)/bin/bash" /tmp/hepta-r14-fetch.sh
+
+      - name: Replay canonical append-only R13 and R14 generation
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix bash)/bin:$(brew --prefix coreutils)/libexec/gnubin:$(brew --prefix findutils)/libexec/gnubin:$(brew --prefix gnu-sed)/libexec/gnubin:$PATH"
+          "$(brew --prefix bash)/bin/bash" /tmp/hepta-r14-canonicalize.sh
+
+      - name: Replay all repository-controlled blocker gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix bash)/bin:$(brew --prefix coreutils)/libexec/gnubin:$(brew --prefix findutils)/libexec/gnubin:$(brew --prefix gnu-sed)/libexec/gnubin:$PATH"
+          "$(brew --prefix bash)/bin/bash" /tmp/hepta-r14-gates.sh
+
+      - name: Publish qualified xlarge staging successor
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$(brew --prefix bash)/bin:$(brew --prefix coreutils)/libexec/gnubin:$(brew --prefix findutils)/libexec/gnubin:$(brew --prefix g sed)/libexec/gnubin:$PATH"
+          "$(brew --prefix bash)/bin/bash" /tmp/hepta-r14-publish.sh
