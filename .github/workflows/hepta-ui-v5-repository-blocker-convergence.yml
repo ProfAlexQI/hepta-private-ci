@@ -1,0 +1,331 @@
+name: Hepta UI v5 repository blocker convergence
+
+on:
+  push:
+    branches:
+      - automation/ui-v5-repository-blocker-convergence-322200-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-repository-blocker-convergence.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-repository-blocker-convergence-322200
+  cancel-in-progress: false
+
+jobs:
+  converge:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DRIVER_PATH: .github/workflows/hepta-ui-v5-repository-blocker-convergence.yml
+      TARGET_BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_PR_HEAD: dba1fce798e3c5ce7964a64c2f41114c375f12d0
+      CANDIDATE_HEAD: 322200c8c1acb66ff9d010b5ecca9e9b9a9b26fe
+      OUTPUT_BRANCH: staging/ui-v5-repository-blocker-convergence-322200-20260830
+      R13_PREVIOUS_HEAD: dde85b435b16994f956bce08e5fb796ed94c27fd
+      R13_HEAD: da23e131e68b171909407f469da1b2f72d9c4f4a
+      R13_REF: refs/remotes/upstream/hepta-intake-20260830-r13
+      INTAKE_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R13.json
+      RECORD_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_R13_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+      REGISTRY_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json
+      CONTRACT_PATH: .github/hepta-ci-contract-v1.json
+      MATERIALIZER_PATH: scripts/hepta-ci-materialize-upstream-intake
+      SIDECAR_CONTRACT_PATH: .github/hepta-ci-upstream-intake-r13-extension-v1.json
+      SIDECAR_REGISTRY_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_EXTENSION_R13_V1.json
+
+    steps:
+      - name: Check out exact convergence driver
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify driver ancestry and select exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$CANDIDATE_HEAD"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$DRIVER_PATH"
+          git fetch --no-tags origin "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          test "$(git rev-parse refs/remotes/origin/$TARGET_BRANCH)" = "$EXPECTED_PR_HEAD"
+          git merge-base --is-ancestor "$EXPECTED_PR_HEAD" "$CANDIDATE_HEAD"
+          git checkout --detach "$CANDIDATE_HEAD"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_HEAD"
+          test -z "$(git status --short)"
+
+      - name: Verify exact current upstream head and materialize R13 object
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git ls-remote https://github.com/openai/codex.git refs/heads/main | awk 'NR == 1 {print $1}')"
+          test "$actual" = "$R13_HEAD"
+          git fetch --no-tags --filter=blob:none https://github.com/openai/codex.git "$R13_HEAD"
+          test "$(git rev-parse FETCH_HEAD)" = "$R13_HEAD"
+          test "$(git cat-file -t "$R13_HEAD")" = commit
+          git merge-base --is-ancestor "$R13_PREVIOUS_HEAD" "$R13_HEAD"
+          existing="$(git rev-parse --verify "$R13_REF" 2>/dev/null || true)"
+          if [[ -n "$existing" ]]; then
+            test "$existing" = "$R13_HEAD"
+          else
+            git update-ref "$R13_REF" "$R13_HEAD" 0000000000000000000000000000000000000000
+          fi
+          test "$(git rev-parse "$R13_REF")" = "$R13_HEAD"
+
+      - name: Qualify candidate Native ledger and budget runner repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/hepta-ui-v5-convergence
+          scripts/hepta-budgeted-test self-test \
+            > /tmp/hepta-ui-v5-convergence/budgeted-test-self-test.json
+          jq -e '.status == "ready" and .embedded_repository_state_enforced == true' \
+            /tmp/hepta-ui-v5-convergence/budgeted-test-self-test.json >/dev/null
+          scripts/hepta-native-robrix-upstream-sync-check-v2.sh --json --strict \
+            > /tmp/hepta-ui-v5-convergence/native-sync.json
+          jq -e '.status == "ready" and .provenance_ready == true and .downstream_overlay_accounted == true' \
+            /tmp/hepta-ui-v5-convergence/native-sync.json >/dev/null
+          scripts/hepta-native-product-shell-gate-v2.sh \
+            --output /tmp/hepta-ui-v5-convergence/native-product-shell.json
+          jq -e '.status == "ready"' \
+            /tmp/hepta-ui-v5-convergence/native-product-shell.json >/dev/null
+          test -z "$(git status --short)"
+
+      - name: Fold R13 into canonical registry contract and materializer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          root = Path.cwd()
+          intake_path = root / os.environ["INTAKE_PATH"]
+          record_path = root / os.environ["RECORD_PATH"]
+          registry_path = root / os.environ["REGISTRY_PATH"]
+          contract_path = root / os.environ["CONTRACT_PATH"]
+          materializer_path = root / os.environ["MATERIALIZER_PATH"]
+          sidecars = [
+              root / os.environ["SIDECAR_CONTRACT_PATH"],
+              root / os.environ["SIDECAR_REGISTRY_PATH"],
+          ]
+          previous_head = os.environ["R13_PREVIOUS_HEAD"]
+          r13_head = os.environ["R13_HEAD"]
+          r13_ref = os.environ["R13_REF"]
+          candidate_head = os.environ["CANDIDATE_HEAD"]
+
+          def load(path: Path):
+              return json.loads(path.read_text(encoding="utf-8"))
+
+          def write(path: Path, value):
+              path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+          def digest(path: Path) -> str:
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          intake = load(intake_path)
+          record = load(record_path)
+          observation = intake.get("observation", {})
+          assert intake.get("schema_version") == "hepta_upstream_codex_current_intake_v13"
+          assert observation.get("range_start_exclusive") == previous_head
+          assert observation.get("range_end_inclusive") == r13_head
+          assert observation.get("observed_upstream_head") == r13_head
+          assert observation.get("commit_count") == 4
+          assert observation.get("merge_commit_count") == 0
+          inventory = intake.get("commit_inventory")
+          assert isinstance(inventory, list) and len(inventory) == 4
+          assert inventory[-1].get("upstream_commit") == r13_head
+
+          intake_sha = digest(intake_path)
+          source = record.get("source_intake", {})
+          assert record.get("schema_version") == "hepta_upstream_codex_semantic_absorption_record_v1"
+          assert source.get("path") == os.environ["INTAKE_PATH"]
+          assert source.get("manifest_sha256") == intake_sha
+          assert source.get("range_start_exclusive") == previous_head
+          assert source.get("range_end_inclusive") == r13_head
+          source_commit = source.get("commit")
+          assert isinstance(source_commit, str) and len(source_commit) == 40
+          subprocess.run(["git", "cat-file", "-e", f"{source_commit}^{{commit}}"], check=True)
+          subprocess.run(["git", "merge-base", "--is-ancestor", source_commit, candidate_head], check=True)
+          absorptions = record.get("absorptions")
+          deferrals = record.get("deferrals")
+          assert absorptions == []
+          assert isinstance(deferrals, list) and len(deferrals) == 4
+          assert {item["upstream_commit"] for item in deferrals} == {
+              item["upstream_commit"] for item in inventory
+          }
+          record_sha = digest(record_path)
+
+          registry = load(registry_path)
+          assert registry.get("schema_version") == "hepta_upstream_codex_semantic_absorption_registry_v1"
+          assert registry.get("status") == "ready"
+          upstream = registry.get("upstream")
+          assert isinstance(upstream, dict)
+          assert upstream.get("expected_head") == previous_head
+          assert upstream.get("frozen_ref") == "refs/remotes/upstream/hepta-intake-20260830-r12"
+          records = registry.get("records")
+          assert isinstance(records, list) and len(records) == 12
+          assert all(item.get("id") != "r13" for item in records)
+
+          bindings = []
+          for item in deferrals:
+              scope = item.get("scope")
+              non_claims = item.get("non_claims")
+              assert isinstance(scope, str) and scope.strip()
+              assert isinstance(non_claims, list) and non_claims
+              assert item.get("hepta_commit") is None
+              bindings.append({
+                  "kind": "deferral",
+                  "upstream_commit": item["upstream_commit"],
+                  "local_commit": None,
+                  "scope": scope,
+                  "non_claims": non_claims,
+              })
+
+          records.append({
+              "id": "r13",
+              "source_intake": {
+                  "path": os.environ["INTAKE_PATH"],
+                  "sha256": intake_sha,
+                  "range_start_exclusive": previous_head,
+                  "range_end_inclusive": r13_head,
+                  "frozen_ref": r13_ref,
+              },
+              "record": {
+                  "path": os.environ["RECORD_PATH"],
+                  "sha256": record_sha,
+                  "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+              },
+              "disposition_bindings": bindings,
+          })
+          upstream["frozen_ref"] = r13_ref
+          upstream["expected_head"] = r13_head
+          write(registry_path, registry)
+          registry_sha = digest(registry_path)
+
+          contract = load(contract_path)
+          refs = contract.get("upstream_intake", {}).get("refs")
+          assert isinstance(refs, list) and refs
+          assert refs[-1] == {
+              "role": "current_r12",
+              "ref": "refs/remotes/upstream/hepta-intake-20260830-r12",
+              "sha": previous_head,
+          }
+          assert all(item.get("role") != "current_r13" for item in refs)
+          refs.append({"role": "current_r13", "ref": r13_ref, "sha": r13_head})
+          truth = contract.get("upstream_truth")
+          assert isinstance(truth, dict)
+          truth["registry_sha256"] = registry_sha
+          write(contract_path, contract)
+
+          text = materializer_path.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str) -> None:
+              nonlocal_text[0] = nonlocal_text[0].replace(old, new, 1)
+
+          nonlocal_text = [text]
+          constant_anchor = f'EXPECTED_R12_SHA="{previous_head}"\n'
+          assert nonlocal_text[0].count(constant_anchor) == 1
+          replace_once(
+              constant_anchor,
+              constant_anchor
+              + f'EXPECTED_R13_REF="{r13_ref}"\n'
+              + f'EXPECTED_R13_SHA="{r13_head}"\n',
+          )
+
+          lines = nonlocal_text[0].splitlines(keepends=True)
+          argument_indexes = [
+              index for index, line in enumerate(lines)
+              if '--arg r12_sha "$EXPECTED_R12_SHA"' in line
+          ]
+          assert len(argument_indexes) == 1
+          continuation = " " + chr(92) + "\n"
+          insertion = argument_indexes[0] + 1
+          lines[insertion:insertion] = [
+              '    --arg r13_ref "$EXPECTED_R13_REF"' + continuation,
+              '    --arg r13_sha "$EXPECTED_R13_SHA"' + continuation,
+          ]
+          nonlocal_text[0] = "".join(lines)
+
+          list_anchor = '{role:"current_r12",ref:$r12_ref,sha:$r12_sha}\n        ]'
+          assert nonlocal_text[0].count(list_anchor) == 1
+          replace_once(
+              list_anchor,
+              '{role:"current_r12",ref:$r12_ref,sha:$r12_sha},\n'
+              '          {role:"current_r13",ref:$r13_ref,sha:$r13_sha}\n'
+              '        ]',
+          )
+          output_anchor = 'current_r12_ref_materialized:true,merge_performed:false'
+          assert nonlocal_text[0].count(output_anchor) == 1
+          replace_once(
+              output_anchor,
+              'current_r12_ref_materialized:true,current_r13_ref_materialized:true,merge_performed:false',
+          )
+          materializer_path.write_text(nonlocal_text[0], encoding="utf-8")
+
+          for sidecar in sidecars:
+              assert sidecar.is_file(), sidecar
+              sidecar.unlink()
+          PY
+          python3 -m json.tool "$REGISTRY_PATH" >/dev/null
+          python3 -m json.tool "$CONTRACT_PATH" >/dev/null
+          bash -n "$MATERIALIZER_PATH"
+          git diff --check
+          git config user.name hepta-ui-v5-convergence
+          git config user.email hepta-ui-v5-convergence@invalid
+          git add -A -- "$REGISTRY_PATH" "$CONTRACT_PATH" "$MATERIALIZER_PATH" \
+            "$SIDECAR_CONTRACT_PATH" "$SIDECAR_REGISTRY_PATH"
+          git diff --cached --check
+          git commit -m 'fix(upstream): fold R13 into canonical truth contracts'
+
+      - name: Execute canonical R13 and repository contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/hepta-ui-v5-convergence
+          scripts/hepta-ci-materialize-upstream-intake materialize \
+            > /tmp/hepta-ui-v5-convergence/materialize.json
+          jq -e '
+            .status == "ready"
+            and .current_r13_ref_materialized == true
+            and .refs[-1].role == "current_r13"
+            and .refs[-1].sha == "da23e131e68b171909407f469da1b2f72d9c4f4a"
+          ' /tmp/hepta-ui-v5-convergence/materialize.json >/dev/null
+          scripts/hepta-ci-materialize-upstream-intake verify
+          scripts/hepta-upstream-truth-gate verify-semantic \
+            > /tmp/hepta-ui-v5-convergence/semantic.json
+          jq -e '.status == "ready" and .record_count == 13' \
+            /tmp/hepta-ui-v5-convergence/semantic.json >/dev/null
+          scripts/hepta-upstream-truth-gate self-test \
+            > /tmp/hepta-ui-v5-convergence/upstream-self-test.json
+          scripts/hepta-ci-baseline contract
+          scripts/hepta-ci-baseline contract-self-test
+          scripts/hepta-budgeted-test self-test \
+            > /tmp/hepta-ui-v5-convergence/final-budgeted-test-self-test.json
+          scripts/hepta-native-robrix-upstream-sync-check-v2.sh --json --strict \
+            > /tmp/hepta-ui-v5-convergence/final-native-sync.json
+          scripts/hepta-native-product-shell-gate-v2.sh \
+            --output /tmp/hepta-ui-v5-convergence/final-native-product-shell.json
+          git diff --check
+          test -z "$(git status --short)"
+
+      - name: Publish qualified convergence candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$CANDIDATE_HEAD"
+          git fetch --no-tags origin "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          test "$(git rev-parse refs/remotes/origin/$TARGET_BRANCH)" = "$EXPECTED_PR_HEAD"
+          git merge-base --is-ancestor "$EXPECTED_PR_HEAD" HEAD
+          git push origin "HEAD:refs/heads/$OUTPUT_BRANCH"
+          {
+            echo "qualified_head=$(git rev-parse HEAD)"
+            echo "candidate_head=$CANDIDATE_HEAD"
+            echo "upstream_head=$R13_HEAD"
+          } >> "$GITHUB_STEP_SUMMARY"
