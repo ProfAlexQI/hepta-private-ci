@@ -1,0 +1,60 @@
+name: Hepta audit source export
+
+on:
+  push:
+    branches:
+      - audit/multimodal-memory-gap-closure-20260831
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-audit-source-export-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  export:
+    name: Export exact source tree
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Record exact binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' "${GITHUB_SHA}" > HEAD.txt
+          git rev-parse 'HEAD^{tree}' > TREE.txt
+          git rev-parse 'HEAD^' > PARENT.txt
+
+      - name: Build bounded source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar \
+            --exclude=.git \
+            --sort=name \
+            --mtime='UTC 1970-01-01' \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -czf hepta-audit-source.tar.gz .
+          sha256sum hepta-audit-source.tar.gz > hepta-audit-source.tar.gz.sha256
+
+      - name: Upload exact source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-audit-source-${{ github.sha }}
+          path: |
+            HEAD.txt
+            TREE.txt
+            PARENT.txt
+            hepta-audit-source.tar.gz
+            hepta-audit-source.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 1
