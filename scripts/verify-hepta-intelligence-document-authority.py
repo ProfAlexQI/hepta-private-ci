@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Thin wrapper over the strict canonical current-truth validator."""
+
 from __future__ import annotations
 import importlib.util
 from pathlib import Path
@@ -16,9 +17,8 @@ def main() -> int:
     spec.loader.exec_module(module)
     truth = module.validate_and_build()
 
-    print('PASS_HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_V4_5')
+    print("PASS_HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_V4_5")
     return 0
-
 
 
 if __name__ == "__main__":

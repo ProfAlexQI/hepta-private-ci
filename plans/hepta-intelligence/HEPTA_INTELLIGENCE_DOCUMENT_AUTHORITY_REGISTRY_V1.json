@@ -141,7 +141,7 @@
   "registered_canonical_inputs": [
     {
       "conflict_rule": "EARLIER_READ_ORDER_ENTRY_CONTROLS; ANY_SEMANTIC_MISMATCH_FAILS_CLOSED",
-      "content_sha256": "ee5d24ec2e68554243de3c006ca39d38ac9633c793be35bde13e093c1c6dd67c",
+      "content_sha256": "767e238f24735d07465324206f33768228a34735bda80a4c4b3951732f835420",
       "current_plan_authority": true,
       "digest_scope": "RAW_FILE_BYTES",
       "mutation_policy": "UPDATE_ONLY_WITH_CANONICAL_CROSS_VERIFIER_AND_EXACT_HEAD_EVIDENCE",
@@ -151,7 +151,7 @@
     },
     {
       "conflict_rule": "EARLIER_READ_ORDER_ENTRY_CONTROLS; ANY_SEMANTIC_MISMATCH_FAILS_CLOSED",
-      "content_sha256": "7c6a1de8fae055b7d3234af835a4226f52596bbac3d8a78aa97fe427894dc82c",
+      "content_sha256": "a999057d95195e63629d43008aa9e107e527598cd70087267d3970ec63ce53ba",
       "current_plan_authority": false,
       "digest_scope": "CANONICAL_JSON_WITH_SELF_DIGEST_NULL",
       "mutation_policy": "UPDATE_ONLY_WITH_CANONICAL_CROSS_VERIFIER_AND_EXACT_HEAD_EVIDENCE",
