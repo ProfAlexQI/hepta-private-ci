@@ -12,12 +12,12 @@ permissions:
 
 concurrency:
   group: hepta-inference-v4-one-shot-private-contracts
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   integrate-qualify-commit:
     if: github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF_NAME" = codex/hepta-inference-v4-closure-20260830
-          test "$(git rev-parse HEAD^)" = 58a39243854ea227376724c4cede29a77a3706fc
+          test "$(git rev-parse HEAD^)" = 6befe3a5b0ad03d9da36d0b4766d8d5eacd55a5e
           test -z "$(git status --porcelain)"
 
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
