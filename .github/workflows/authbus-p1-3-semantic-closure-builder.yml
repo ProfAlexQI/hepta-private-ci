@@ -1,16 +1,16 @@
-name: AuthBus P1.3 semantic source publisher macOS v3
+name: AuthBus P1.3 semantic source publisher Windows v4
 
 on:
   push:
     branches:
-      - ops/authbus-p1-3-semantic-closure-publisher-macos-v3-20260830
+      - ops/authbus-p1-3-semantic-closure-publisher-windows-v4-20260830
     paths:
       - .github/workflows/authbus-p1-3-semantic-closure-builder.yml
       - scripts/authbus-p1-3-semantic-closure-builder.py
   workflow_dispatch:
 
 concurrency:
-  group: authbus-p1-3-semantic-source-publisher-macos-v3
+  group: authbus-p1-3-semantic-source-publisher-windows-v4
   cancel-in-progress: false
 
 permissions:
@@ -18,15 +18,15 @@ permissions:
 
 env:
   SOURCE_HEAD: 8572f3d2182541b14e0719b229ccd8754494f134
-  SEED_BRANCH: ops/authbus-p1-3-semantic-closure-publisher-macos-v3-20260830
+  SEED_BRANCH: ops/authbus-p1-3-semantic-closure-publisher-windows-v4-20260830
   STAGING_BRANCH: staging/authbus-p1-3-semantic-closure-v11-20260830
   P03: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
   P13: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
 
 jobs:
   publish_source:
-    name: Materialize and publish unqualified semantic source
-    runs-on: macos-15
+    name: Materialize and publish unqualified semantic source on Windows
+    runs-on: windows-2022
     timeout-minutes: 45
     steps:
       - name: Checkout exact publisher seed
@@ -58,17 +58,17 @@ jobs:
           for index in "${!expected[@]}"; do
             test "${changed[$index]}" = "${expected[$index]}"
           done
-          python3 -m py_compile scripts/authbus-p1-3-semantic-closure-builder.py
+          python -m py_compile scripts/authbus-p1-3-semantic-closure-builder.py
 
       - name: Materialize exact semantic closure source
         shell: bash
         run: |
           set -euo pipefail
+          output="${RUNNER_TEMP}/authbus-p1-3-semantic-closure.json"
           AUTHBUS_SKIP_EXACT_GIT_BINDING=1 \
-            python3 scripts/authbus-p1-3-semantic-closure-builder.py \
-              | tee /tmp/authbus-p1-3-semantic-closure.json
-          grep -q '"applied_authbus_p1_3_semantic_closure": true' \
-            /tmp/authbus-p1-3-semantic-closure.json
+            python scripts/authbus-p1-3-semantic-closure-builder.py \
+              | tee "${output}"
+          grep -q '"applied_authbus_p1_3_semantic_closure": true' "${output}"
           git diff --check
 
       - name: Install Rust 1.95 rustfmt
@@ -85,13 +85,14 @@ jobs:
           cargo fmt --manifest-path codex-rs/Cargo.toml --package codex-hepta-contracts
           cargo fmt --manifest-path "${P03}" --all
           cargo fmt --manifest-path "${P13}" --all
-          AUTHBUS_SKIP_EXACT_GIT_BINDING=1 python3 scripts/verify-authbus-p0-2.py
-          AUTHBUS_SKIP_EXACT_GIT_BINDING=1 python3 scripts/verify-authbus-p0-3.py
-          AUTHBUS_SKIP_EXACT_GIT_BINDING=1 python3 scripts/verify-authbus-p1-1.py
-          AUTHBUS_SKIP_EXACT_GIT_BINDING=1 python3 scripts/verify-authbus-p1-2.py
-          AUTHBUS_SKIP_EXACT_GIT_BINDING=1 python3 scripts/verify-authbus-p1-3.py \
-            | tee /tmp/authbus-p1-3-source.json
-          grep -q PASS_AUTHBUS_P1_3_SOURCE_ONLY /tmp/authbus-p1-3-source.json
+          AUTHBUS_SKIP_EXACT_GIT_BINDING=1 python scripts/verify-authbus-p0-2.py
+          AUTHBUS_SKIP_EXACT_GIT_BINDING=1 python scripts/verify-authbus-p0-3.py
+          AUTHBUS_SKIP_EXACT_GIT_BINDING=1 python scripts/verify-authbus-p1-1.py
+          AUTHBUS_SKIP_EXACT_GIT_BINDING=1 python scripts/verify-authbus-p1-2.py
+          output="${RUNNER_TEMP}/authbus-p1-3-source.json"
+          AUTHBUS_SKIP_EXACT_GIT_BINDING=1 python scripts/verify-authbus-p1-3.py \
+            | tee "${output}"
+          grep -q PASS_AUTHBUS_P1_3_SOURCE_ONLY "${output}"
           git diff --check
 
       - name: Remove one-shot publisher and enforce the final allowlist
