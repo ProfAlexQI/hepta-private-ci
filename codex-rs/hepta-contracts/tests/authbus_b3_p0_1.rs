@@ -168,8 +168,7 @@ fn backend(reference: &OpaqueSecretRef, bytes: &[u8]) -> QualificationSecretBack
 
 #[derive(Clone, Default)]
 struct ScriptedProvider {
-    refresh_results:
-        Arc<Mutex<VecDeque<Result<ProviderRefreshResult, ProviderAdapterError>>>>,
+    refresh_results: Arc<Mutex<VecDeque<Result<ProviderRefreshResult, ProviderAdapterError>>>>,
     status_results: Arc<Mutex<VecDeque<Result<ProviderStatusResult, ProviderAdapterError>>>>,
     refresh_calls: Arc<AtomicUsize>,
     status_calls: Arc<AtomicUsize>,
@@ -245,7 +244,9 @@ fn provider_timeout_is_indeterminate_lookup_only_and_terminal_replay_updates() {
     let mut adapter =
         ProcessBoundSecretRefAdapter::new(backend(&reference, bytes), provider.clone());
 
-    let first = adapter.refresh(request.clone()).expect("timeout observation");
+    let first = adapter
+        .refresh(request.clone())
+        .expect("timeout observation");
     assert_eq!(first.outcome, SecretRefOutcome::Indeterminate);
     assert_eq!(first.provider_status, SecretProviderStatus::Unknown);
     assert_eq!(
@@ -318,7 +319,9 @@ fn verified_transient_replays_locally_until_explicit_retry() {
     let mut adapter =
         ProcessBoundSecretRefAdapter::new(backend(&reference, bytes), provider.clone());
 
-    let first = adapter.refresh(request.clone()).expect("transient response");
+    let first = adapter
+        .refresh(request.clone())
+        .expect("transient response");
     assert_eq!(first.outcome, SecretRefOutcome::TransientFailure);
     assert_eq!(
         adapter.operation_state(&request.operation_id),
@@ -354,7 +357,9 @@ fn zero_retry_budget_moves_verified_failure_to_manual_required() {
         0,
     );
 
-    let response = adapter.refresh(request.clone()).expect("transient response");
+    let response = adapter
+        .refresh(request.clone())
+        .expect("transient response");
     assert_eq!(response.outcome, SecretRefOutcome::TransientFailure);
     assert_eq!(
         adapter.operation_state(&request.operation_id),
@@ -382,7 +387,9 @@ fn provider_schema_error_is_indeterminate_not_retryable() {
     let mut adapter =
         ProcessBoundSecretRefAdapter::new(backend(&reference, bytes), provider.clone());
 
-    let response = adapter.refresh(request.clone()).expect("schema observation");
+    let response = adapter
+        .refresh(request.clone())
+        .expect("schema observation");
     assert_eq!(response.outcome, SecretRefOutcome::Indeterminate);
     assert_eq!(response.provider_status, SecretProviderStatus::Unknown);
     assert_eq!(
@@ -414,7 +421,9 @@ fn unknown_lookup_moves_to_backoff_before_explicit_retry() {
         Some(SecretRefState::Backoff)
     );
     assert_eq!(
-        adapter.refresh(request.clone()).expect("nonterminal replay"),
+        adapter
+            .refresh(request.clone())
+            .expect("nonterminal replay"),
         initial
     );
 

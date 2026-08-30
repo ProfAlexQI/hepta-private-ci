@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - integration/vnext-main-full-ci-authbus-p1-3-20260829
+      - codex/authbus-p1-3-clean-replay-20260830
     paths:
       - .github/workflows/authbus-p1-3-materialize.yml
       - .github/workflows/authbus-p1-3-qualification.yml
@@ -12,6 +12,7 @@ on:
       - codex-rs/hepta-contracts/src/lib.rs
       - codex-rs/hepta-contracts/src/quota_registry.rs
       - codex-rs/hepta-authbus-qualification/src/model.rs
+      - codex-rs/hepta-authbus-p0-3-qualification/src/lib.rs
       - codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
       - codex-rs/hepta-authbus-p0-3-qualification/tests/p0_3.rs
       - codex-rs/hepta-authbus-p1-3-qualification/**
@@ -36,7 +37,7 @@ env:
 jobs:
   source:
     name: Exact registry, cleanup, receipt, and negative-authority contracts
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
       ready: ${{ steps.mode.outputs.ready }}
@@ -86,7 +87,7 @@ jobs:
               r = json.loads(p.read_text())
               assert r["schema"] == "hepta.authbus.p1.3.executable-qualification.v1"
               assert r["qualified"] is True and r["qualification_only"] is True
-              assert r["registry_sha256"] == "f6702be58c499d853d273f3174a2556481a3f5b4284cd9cd0b0a247160d7ac08"
+              assert r["registry_sha256"] == "dfcab028e1a135a0895b3f9eddec9f5f99cf5f392701b98ad14180058a284bf1"
               for k in ("authority","effect_authority","production_caller","production_writer",
                         "operator_acceptance","promotion","g5_allowed","execute_allowed",
                         "listener_enabled","provider_call_enabled","openbao_enabled",
@@ -122,7 +123,7 @@ jobs:
           Path("p1-3-source-contract.json").write_text(json.dumps({
               "schema":"hepta.authbus.p1.3.source-contract.v1",
               "commit":os.environ["GITHUB_SHA"],
-              "registry_sha256":"f6702be58c499d853d273f3174a2556481a3f5b4284cd9cd0b0a247160d7ac08",
+              "registry_sha256":"dfcab028e1a135a0895b3f9eddec9f5f99cf5f392701b98ad14180058a284bf1",
               "dimensions":6,"projection_surfaces":6,"legacy_adapter_count":2,
               "qualification_only":True,"authority":False,"effect_authority":False,
               "production_caller":False,"production_writer":False
@@ -144,7 +145,7 @@ jobs:
     name: Contract registry and inherited P0.3 scheduler matrix
     needs: source
     if: needs.source.outputs.ready == 'true'
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
       CARGO_TARGET_DIR: /tmp/p13-contracts
@@ -191,7 +192,7 @@ jobs:
     name: Inherited P0.2 SQLite WAL compatibility matrix
     needs: source
     if: needs.source.outputs.ready == 'true'
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
       CARGO_TARGET_DIR: /tmp/p13-p02
@@ -234,7 +235,7 @@ jobs:
       - contracts-p0-3
       - p0-2
     if: needs.source.outputs.ready == 'true'
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
       CARGO_TARGET_DIR: /tmp/p13
@@ -262,7 +263,7 @@ jobs:
           cargo clippy --manifest-path "${P13}" --locked \
             --features p1-3-qualification --all-targets -- -D warnings
           printf '%s\n' \
-            '{"schema":"hepta.authbus.p1.3.rust-receipt.v1","qualified":true,"qualification_only":true,"registry_sha256":"f6702be58c499d853d273f3174a2556481a3f5b4284cd9cd0b0a247160d7ac08","dimensions":6,"projection_surfaces":6,"legacy_adapter_count":2,"p0_3_duplicate_removed":true,"missing_request_count_default":"reject","lossy_downgrade_rejected":true,"authority":false,"effect_authority":false,"production_caller":false,"production_writer":false,"listener_enabled":false,"provider_call_enabled":false,"openbao_enabled":false}' \
+            '{"schema":"hepta.authbus.p1.3.rust-receipt.v1","qualified":true,"qualification_only":true,"registry_sha256":"dfcab028e1a135a0895b3f9eddec9f5f99cf5f392701b98ad14180058a284bf1","dimensions":6,"projection_surfaces":6,"legacy_adapter_count":2,"p0_3_duplicate_removed":true,"missing_request_count_default":"reject","lossy_downgrade_rejected":true,"authority":false,"effect_authority":false,"production_caller":false,"production_writer":false,"listener_enabled":false,"provider_call_enabled":false,"openbao_enabled":false}' \
             > p1-3.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
