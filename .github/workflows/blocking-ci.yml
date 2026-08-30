@@ -62,7 +62,6 @@ jobs:
   windows-setup-bazel-token-boundary:
     name: Windows setup Bazel token boundary
     uses: ./.github/workflows/windows-setup-bazel-token-boundary.yml
-    secrets: inherit
 
   required:
     name: CI required

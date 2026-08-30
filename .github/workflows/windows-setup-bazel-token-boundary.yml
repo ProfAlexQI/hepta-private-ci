@@ -20,6 +20,23 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     steps:
+      - name: Enable and verify Windows long paths before checkout
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          git config --system core.longpaths true
+          if ($LASTEXITCODE -ne 0) {
+            throw "failed to set system Git core.longpaths"
+          }
+          $observed = (
+            git config --system --type=bool --get core.longpaths | Out-String
+          ).Trim().ToLowerInvariant()
+          if ($LASTEXITCODE -ne 0 -or $observed -ne 'true') {
+            throw "system Git core.longpaths readback is not true"
+          }
+          "HEPTA_WINDOWS_LONG_PATHS_VERIFIED=true" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
@@ -69,8 +86,21 @@ jobs:
           assertion = Path(
               ".github/scripts/assert-bazelisk-setup-token-scrubbed.sh"
           )
+          runner_os = os.environ["RUNNER_OS"]
+          long_paths_verified = os.environ.get(
+              "HEPTA_WINDOWS_LONG_PATHS_VERIFIED"
+          )
+          if runner_os == "Windows" and long_paths_verified != "true":
+              raise SystemExit(
+                  "Windows long-path readback was not preserved after checkout"
+              )
+          if runner_os != "Windows" and long_paths_verified not in (None, ""):
+              raise SystemExit(
+                  "non-Windows runner unexpectedly received long-path evidence"
+              )
+
           receipt = {
-              "schema": "hepta_windows_setup_bazel_token_boundary_v2",
+              "schema": "hepta_windows_setup_bazel_token_boundary_v4",
               "status": "PASS_WINDOWS_SETUP_BAZEL_TOKEN_BOUNDARY",
               "repository": os.environ["GITHUB_REPOSITORY"],
               "commit": os.environ["GITHUB_SHA"],
@@ -78,11 +108,20 @@ jobs:
               "workflow_run_id": os.environ["GITHUB_RUN_ID"],
               "workflow_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
               "workflow_job": os.environ["GITHUB_JOB"],
-              "runner_os": os.environ["RUNNER_OS"],
+              "runner_os": runner_os,
               "matrix_os": os.environ["MATRIX_OS"],
               "matrix_target": os.environ["MATRIX_TARGET"],
               "setup_bazel_action_git_blob_sha1": git_blob_sha(action),
               "assertion_script_git_blob_sha1": git_blob_sha(assertion),
+              "windows_long_paths_required": runner_os == "Windows",
+              "windows_long_paths_verified_before_checkout": (
+                  long_paths_verified == "true"
+              ),
+              "windows_long_paths_verification_source": (
+                  "system_git_config_boolean_readback"
+                  if runner_os == "Windows"
+                  else "not_applicable"
+              ),
               "strict_step_parser_executed_before_setup_action": True,
               "cross_platform_verifier_executed_before_setup_action": True,
               "anonymous_step_between_setup_and_scrub_allowed": False,
