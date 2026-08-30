@@ -42,3 +42,13 @@ index c45c5fd954..2e3a01f12a 100644
 +        kwargs["deps"] = (kwargs.get("deps", []) or []) + _RUSTY_V8_CUSTOM_LIBCXX_DEPS
 +        kwargs["features"] = (kwargs.get("features", []) or []) + ["-module_maps"]
      _cc_library(**kwargs)
+diff --git a/MODULE.bazel b/MODULE.bazel
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -21,7 +21,6 @@ cc_configure = use_extension("//cc:extensions.bzl", "cc_configure_extension")
+ use_repo(cc_configure, "local_config_cc", "local_config_cc_toolchains")
+
+ register_toolchains(
+-    "@local_config_cc_toolchains//:all",
+     "//cc/private/toolchain/test:default_test_runner_toolchain",
+ )
