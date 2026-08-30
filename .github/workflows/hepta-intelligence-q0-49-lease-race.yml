@@ -1,0 +1,362 @@
+name: Hepta Intelligence Q0.49 deterministic lease race
+
+on:
+  push:
+    branches:
+      - diagnostic/hepta-intelligence-q0-49-lease-race-20260830
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-q0-49-lease-race
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: publish on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-22.04
+          - ubuntu-24.04-arm
+          - ubuntu-slim
+          - macos-15
+    env:
+      SOURCE_SHA: f2f200969fa0076178276bceab2eb21d23f0519e
+      SOURCE_TREE: e6d9a631345927a8c0817080a2f8cab150c516f3
+      TARGET_BRANCH: codex/hepta-intelligence-q0-49-dependency-policy-20260830
+      DIAGNOSTIC_PATH: .github/workflows/hepta-intelligence-q0-49-lease-race.yml
+      MODULE_LOCK_BLOB: b563f19f51fff22a4cddcb3cd1a043192befbf84
+
+    steps:
+      - name: Checkout exact diagnostic head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Construct, verify, and publish deterministic Q0.49 candidate
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git show -s --format=%T "$SOURCE_SHA")" = "$SOURCE_TREE"
+
+          python3 - <<'PY'
+          import os
+          import subprocess
+
+          source = os.environ["SOURCE_SHA"]
+          diagnostic = os.environ["DIAGNOSTIC_PATH"]
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only", "--no-renames", source, "HEAD"],
+              text=True,
+          ).splitlines()
+          if changed != [diagnostic]:
+              raise SystemExit(f"unexpected diagnostic delta: {changed!r}")
+          PY
+
+          git diff --check "$SOURCE_SHA" HEAD
+          git switch --detach "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+          cat >"$RUNNER_TEMP/q049.patch" <<'PATCH'
+          diff --git a/.github/workflows/cargo-deny.yml b/.github/workflows/cargo-deny.yml
+          index a54ddd2..d2161b9 100644
+          --- a/.github/workflows/cargo-deny.yml
+          +++ b/.github/workflows/cargo-deny.yml
+          @@ -20,16 +20,13 @@
+                - name: Install Rust toolchain
+                  uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+          
+          +      - name: Install pinned cargo-deny
+          +        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+          +        with:
+          +          tool: cargo-deny@0.19.0
+          +
+                - name: Run cargo-deny
+          -        uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
+          -        with:
+          -          rust-version: 1.95.0
+          -          manifest-path: ./codex-rs/Cargo.toml
+          -          # Docker actions do not inherit defaults.run.working-directory. Keep
+          -          # global flags before `check`, but pass `--config` as a command flag;
+          -          # cargo-deny 0.19 rejects `--config` in the global argument position.
+          -          arguments: --all-features
+          -          command-arguments: --config ./codex-rs/deny.toml
+          +        run: cargo +1.95.0 deny --locked --all-features check --config deny.toml
+          
+                - name: Check for a clean worktree
+                  if: always() && !cancelled()
+          diff --git a/.github/workflows/rust-ci.yml b/.github/workflows/rust-ci.yml
+          --- a/.github/workflows/rust-ci.yml
+          +++ b/.github/workflows/rust-ci.yml
+          @@ -101,7 +101,7 @@ jobs:
+                  with:
+                    tool: cargo-shear@1.11.2
+                - name: cargo shear
+          -        run: cargo shear --deny-warnings
+          +        run: cargo shear --locked --deny-warnings
+          
+                - name: Check for a clean worktree
+                  if: always() && !cancelled()
+          diff --git a/codex-rs/hepta-evidence/Cargo.toml b/codex-rs/hepta-evidence/Cargo.toml
+          index 65e64e9..f029db0 100644
+          --- a/codex-rs/hepta-evidence/Cargo.toml
+          +++ b/codex-rs/hepta-evidence/Cargo.toml
+          @@ -17,7 +17,6 @@
+           codex-state = { workspace = true }
+           serde = { workspace = true }
+           serde_json = { workspace = true }
+          -sha2 = { workspace = true }
+           sqlx = { workspace = true }
+           thiserror = { workspace = true }
+           tokio = { workspace = true, features = ["sync"] }
+          diff --git a/codex-rs/ext/hepta-governance/Cargo.toml b/codex-rs/ext/hepta-governance/Cargo.toml
+          index f233d74..2299915 100644
+          --- a/codex-rs/ext/hepta-governance/Cargo.toml
+          +++ b/codex-rs/ext/hepta-governance/Cargo.toml
+          @@ -23,6 +23,5 @@
+          
+           [dev-dependencies]
+           codex-utils-absolute-path = { workspace = true }
+          -pretty_assertions = { workspace = true }
+           tempfile = { workspace = true }
+           tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+          diff --git a/codex-rs/hepta-matrix-protocol/Cargo.toml b/codex-rs/hepta-matrix-protocol/Cargo.toml
+          index a1d620b..8312e8b 100644
+          --- a/codex-rs/hepta-matrix-protocol/Cargo.toml
+          +++ b/codex-rs/hepta-matrix-protocol/Cargo.toml
+          @@ -21,4 +21,3 @@
+           url = { workspace = true }
+          
+           [dev-dependencies]
+          -pretty_assertions = { workspace = true }
+          diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+          index cea7c5a..b11534b 100644
+          --- a/codex-rs/Cargo.lock
+          +++ b/codex-rs/Cargo.lock
+          @@ -3454,7 +3454,6 @@
+            "codex-hepta-automation",
+            "codex-hepta-contracts",
+            "codex-hepta-fleet",
+          - "pretty_assertions",
+            "serde",
+            "serde_json",
+           ]
+          @@ -3486,7 +3485,6 @@
+            "codex-utils-cli",
+            "codex-utils-home-dir",
+            "core_test_support",
+          - "pretty_assertions",
+            "serde",
+            "serde_json",
+            "sqlx",
+          @@ -3539,7 +3537,6 @@
+            "codex-utils-absolute-path",
+            "serde",
+            "serde_json",
+          - "sha2 0.10.9",
+            "sqlx",
+            "tempfile",
+            "thiserror 2.0.18",
+          @@ -3570,7 +3567,6 @@
+            "codex-hepta-evidence",
+            "codex-state",
+            "codex-utils-absolute-path",
+          - "pretty_assertions",
+            "serde_json",
+            "tempfile",
+            "tokio",
+          @@ -3582,7 +3578,6 @@
+           version = "0.0.0"
+           dependencies = [
+            "codex-hepta-contracts",
+          - "pretty_assertions",
+            "serde",
+            "serde_json",
+            "thiserror 2.0.18",
+          @@ -3597,7 +3592,6 @@
+            "codex-hepta-matrix-protocol",
+            "codex-hepta-matrix-store",
+            "codex-hepta-paths",
+          - "futures",
+            "matrix-sdk",
+            "pretty_assertions",
+            "serde_json",
+          @@ -3737,7 +3731,6 @@
+            "anyhow",
+            "codex-hepta-contracts",
+            "pretty_assertions",
+          - "tempfile",
+           ]
+          
+           [[package]]
+          PATCH
+
+          # Strip the six YAML indentation spaces used to embed the patch.
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["RUNNER_TEMP"]) / "q049.patch"
+          lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+          cleaned = []
+          for line in lines:
+              if line.strip():
+                  if not line.startswith("          "):
+                      raise SystemExit(f"patch indentation drift: {line!r}")
+                  cleaned.append(line[10:])
+              else:
+                  cleaned.append(line)
+          path.write_text("".join(cleaned), encoding="utf-8")
+          PY
+
+          git apply --check "$RUNNER_TEMP/q049.patch"
+          git apply "$RUNNER_TEMP/q049.patch"
+          git diff --check "$SOURCE_SHA" --
+
+          expected=(
+            .github/workflows/cargo-deny.yml
+            .github/workflows/rust-ci.yml
+            codex-rs/Cargo.lock
+            codex-rs/ext/hepta-governance/Cargo.toml
+            codex-rs/hepta-evidence/Cargo.toml
+            codex-rs/hepta-matrix-protocol/Cargo.toml
+          )
+          observed="$(git diff --name-only --no-renames "$SOURCE_SHA" --)"
+          expected_text="$(printf '%s\n' "${expected[@]}")"
+          test "$observed" = "$expected_text"
+
+          test "$(git rev-parse "$SOURCE_SHA:.github/workflows/cargo-deny.yml")" = a54ddd2c78f7fb184ec558b032e40beeeeee128a
+          test "$(git rev-parse "$SOURCE_SHA:.github/workflows/rust-ci.yml")" = 95609a6d9833dfa150ea82c1edcc6a1391e94b6d
+          test "$(git rev-parse "$SOURCE_SHA:codex-rs/Cargo.lock")" = cea7c5af476fc2f1cf636fe3fcccf7af61d59d07
+          test "$(git rev-parse "$SOURCE_SHA:codex-rs/hepta-evidence/Cargo.toml")" = 65e64e94a5b1ed8a1043543e81d15d3735ab4340
+          test "$(git rev-parse "$SOURCE_SHA:codex-rs/ext/hepta-governance/Cargo.toml")" = f233d74a09e3893c2a64968b74881d107d889ac7
+          test "$(git rev-parse "$SOURCE_SHA:codex-rs/hepta-matrix-protocol/Cargo.toml")" = a1d620ba63f4bdca5a7a463dbe4d2246c9fa62ce
+
+          test "$(git hash-object .github/workflows/cargo-deny.yml)" = d2161b9ec1c3eddac070f3c554717cec82b0909d
+          test "$(git hash-object .github/workflows/rust-ci.yml)" = a1c811364f1703ab731752e64629418f00040306
+          test "$(git hash-object codex-rs/Cargo.lock)" = b11534ba203ef8ea77b4d365add30bf883704938
+          test "$(git hash-object codex-rs/hepta-evidence/Cargo.toml)" = f029db0c1475bc9aeec81655a68eff004a2f7e98
+          test "$(git hash-object codex-rs/ext/hepta-governance/Cargo.toml)" = 229991524ea3a5219054f2b36b87c7708a2d93a6
+          test "$(git hash-object codex-rs/hepta-matrix-protocol/Cargo.toml)" = 8312e8b0a739d033976c0058a25e5850e3af66a9
+          test "$(git hash-object MODULE.bazel.lock)" = "$MODULE_LOCK_BLOB"
+
+          git show "$SOURCE_SHA:codex-rs/Cargo.lock" >"$RUNNER_TEMP/Cargo.lock.before"
+          python3 - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          before = tomllib.loads(
+              (Path(os.environ["RUNNER_TEMP"]) / "Cargo.lock.before").read_text()
+          )["package"]
+          after = tomllib.loads(Path("codex-rs/Cargo.lock").read_text())["package"]
+
+          identity = lambda p: (p["name"], p["version"], p.get("source"))
+          if [identity(p) for p in before] != [identity(p) for p in after]:
+              raise SystemExit("Cargo package identity/order changed")
+
+          before_external = {
+              identity(p): p for p in before if p.get("source") is not None
+          }
+          after_external = {
+              identity(p): p for p in after if p.get("source") is not None
+          }
+          if before_external != after_external:
+              raise SystemExit("external Cargo dependency graph changed")
+
+          before_local = {p["name"]: p for p in before if p.get("source") is None}
+          after_local = {p["name"]: p for p in after if p.get("source") is None}
+          expected = {
+              "codex-hepta-agent-protocol": "pretty_assertions",
+              "codex-hepta-agentd": "pretty_assertions",
+              "codex-hepta-evidence": "sha2 0.10.9",
+              "codex-hepta-governance": "pretty_assertions",
+              "codex-hepta-matrix-protocol": "pretty_assertions",
+              "codex-hepta-matrix-sdk": "futures",
+              "codex-hepta-paths": "tempfile",
+          }
+          changed = {
+              name
+              for name in before_local.keys() | after_local.keys()
+              if before_local.get(name) != after_local.get(name)
+          }
+          if changed != set(expected):
+              raise SystemExit(f"unexpected local lock delta: {sorted(changed)!r}")
+          for name, dependency in expected.items():
+              old = set(before_local[name].get("dependencies", []))
+              new = set(after_local[name].get("dependencies", []))
+              if old - new != {dependency} or new - old:
+                  raise SystemExit(f"unexpected lock delta for {name}")
+          PY
+
+          git add -- "${expected[@]}"
+          tree="$(git write-tree)"
+          export GIT_AUTHOR_NAME='Hepta Q0.49 candidate builder'
+          export GIT_AUTHOR_EMAIL='q049-candidate-builder@invalid'
+          export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
+          export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+          export GIT_AUTHOR_DATE='2026-08-30T14:34:51Z'
+          export GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE"
+          candidate="$(
+            cat <<'MESSAGE' | git commit-tree "$tree" -p "$SOURCE_SHA"
+          fix(ci): close Q0.49 locked dependency-policy gaps
+
+          Replace the runner-broken cargo-deny Docker action with pinned cargo-deny
+          0.19.0 executed under Rust 1.95.0 and --locked. Make cargo-shear fail closed on
+          lock drift, remove the three assigned-runner-proven unused dependencies, and
+          reconcile seven stale local dependency edges in Cargo.lock without changing
+          any package version or MODULE.bazel.lock.
+
+          Reject the broad generated lock because it upgrades Rama packages to releases
+          requiring Rust 1.96. Preserve the complete Q0.1-Q0.48 repair ancestry and all
+          runtime, product, operator, production, promotion, release, ruleset, and
+          CALLERS authority boundaries.
+          MESSAGE
+          )"
+          test "$(git show -s --format=%P "$candidate")" = "$SOURCE_SHA"
+          test "$(git show -s --format=%T "$candidate")" = "$tree"
+          echo "candidate=$candidate"
+          echo "tree=$tree"
+
+          current="$(
+            git ls-remote origin "refs/heads/$TARGET_BRANCH" |
+              awk '{print $1}'
+          )"
+          if [[ "$current" == "$candidate" ]]; then
+            echo "target already equals deterministic candidate"
+            exit 0
+          fi
+          test "$current" = "$SOURCE_SHA"
+
+          auth="$(
+            printf 'x-access-token:%s' "$GITHUB_TOKEN" |
+              base64 |
+              tr -d '\n'
+          )"
+          if git -c \
+            http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" \
+            push \
+            --force-with-lease="refs/heads/$TARGET_BRANCH:$SOURCE_SHA" \
+            origin \
+            "$candidate:refs/heads/$TARGET_BRANCH"; then
+            exit 0
+          fi
+
+          current="$(
+            git ls-remote origin "refs/heads/$TARGET_BRANCH" |
+              awk '{print $1}'
+          )"
+          test "$current" = "$candidate"
+          echo "another deterministic lane published the same candidate"
