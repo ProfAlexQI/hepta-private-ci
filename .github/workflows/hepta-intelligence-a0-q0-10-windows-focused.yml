@@ -1,4 +1,4 @@
-name: Hepta Intelligence Q0.10 focused Windows link diagnostic
+name: Hepta Intelligence Q0.11 focused Windows link diagnostic
 
 on:
   push:
@@ -15,15 +15,15 @@ concurrency:
 
 env:
   EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
-  EXPECTED_HEAD_SHA: 3345348133276d33d13e7a30115a754b81cc4734
-  EXPECTED_TREE_SHA: fc6dbb4091009ff24996ba2fab2b7ab3977548de
+  EXPECTED_HEAD_SHA: d156ca6f2add0b196e6928b29f55c8274e52e8cf
+  EXPECTED_TREE_SHA: 55cc54698efb7f07d33592da218fe9a5bdad3464
   A0_SOURCE_HEAD: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
-  Q0_10_SECOND_PARENT: 8d7960f1805c6b2cda0d6274bf2541a535a4d30c
+  Q0_11_SECOND_PARENT: b32a278a2f8d3cbef0a931919f460a2e177d599f
   CARGO_INCREMENTAL: "0"
 
 jobs:
   focused-windows-link:
-    name: Q0.10 MSVC fallback focused native-link chain
+    name: Q0.11 MSVC ABI-fenced focused native-link chain
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
@@ -38,21 +38,37 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
 
-      - name: Verify immutable candidate identity
+      - name: Verify immutable candidate and Q0.11 source identity
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
           test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE_SHA"
-          test "$(git show -s --format=%P HEAD)" = "$A0_SOURCE_HEAD $Q0_10_SECOND_PARENT"
+          test "$(git show -s --format=%P HEAD)" = "$A0_SOURCE_HEAD $Q0_11_SECOND_PARENT"
           bash -n .github/scripts/run-bazel-ci.sh
+          python3 - <<'PY'
+          from pathlib import Path
+
+          patch = Path("patches/llvm_windows_mingw_compat.patch").read_text(encoding="utf-8")
+          required = (
+              "diff --git a/toolchain/declare_toolchains.bzl b/toolchain/declare_toolchains.bzl",
+              'if target_os == "windows":',
+              'target_compatible_with.append("//constraints/windows/abi:gnullvm")',
+              "target_compatible_with = target_compatible_with",
+          )
+          for token in required:
+              if token not in patch:
+                  raise SystemExit(f"missing Q0.11 token: {token}")
+          print("PASS_Q0_11_PATCH_SOURCE")
+          PY
+          ./scripts/check-module-bazel-lock.sh
 
       - name: Prepare Windows Bazel environment
         uses: ./.github/actions/prepare-bazel-ci
         with:
           target: x86_64-pc-windows-gnullvm
-          cache-scope: q0-10-windows-focused
+          cache-scope: q0-11-windows-focused
 
       - name: Prove credential-free effective platform arguments
         shell: bash
@@ -60,7 +76,7 @@ jobs:
           BUILDBUDDY_API_KEY: ""
         run: |
           set -euo pipefail
-          fixture="$RUNNER_TEMP/q0-10-argument-fixture"
+          fixture="$RUNNER_TEMP/q0-11-argument-fixture"
           rm -rf "$fixture"
           mkdir -p "$fixture/.github/scripts"
           cp .github/scripts/run-bazel-ci.sh "$fixture/.github/scripts/run-bazel-ci.sh"
@@ -77,7 +93,7 @@ jobs:
           PY
           chmod +x "$fixture/.github/scripts/run-bazel-ci.sh" \
             "$fixture/.github/scripts/run_bazel_with_buildbuddy.py"
-          capture="$RUNNER_TEMP/q0-10-effective-args.json"
+          capture="$RUNNER_TEMP/q0-11-effective-args.json"
           (
             cd "$fixture"
             RUNNER_OS=Windows \
@@ -107,6 +123,26 @@ jobs:
           print("PASS_Q0_10_WINDOWS_EFFECTIVE_ARGUMENTS")
           PY
 
+      - name: Analyze MSVC target after the C-toolchain ABI fence
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ""
+        run: |
+          set -euo pipefail
+          ./.github/scripts/run-bazel-ci.sh \
+            --print-failed-action-summary \
+            --windows-cross-compile \
+            -- \
+            build \
+            --nobuild \
+            --verbose_failures \
+            --toolchain_resolution_debug='@bazel_tools//tools/cpp:toolchain_type' \
+            --build_metadata=COMMIT_SHA="$EXPECTED_HEAD_SHA" \
+            --build_metadata=TAG_q0_11_analysis=true \
+            -- \
+            //codex-rs/hepta-agent-protocol:hepta-agent-protocol-unit-tests \
+            //codex-rs/utils/rustls-provider:rustls-provider-provider-test
+
       - name: Build the former mixed-ABI dependency chain
         shell: bash
         env:
@@ -121,7 +157,7 @@ jobs:
             build \
             --verbose_failures \
             --build_metadata=COMMIT_SHA="$EXPECTED_HEAD_SHA" \
-            --build_metadata=TAG_q0_10_focused=true \
+            --build_metadata=TAG_q0_11_focused=true \
             -- \
             //codex-rs/hepta-agent-protocol:hepta-agent-protocol-unit-tests \
             //codex-rs/utils/rustls-provider:rustls-provider-provider-test
@@ -141,7 +177,7 @@ jobs:
             --test_output=errors \
             --test_verbose_timeout_warnings \
             --build_metadata=COMMIT_SHA="$EXPECTED_HEAD_SHA" \
-            --build_metadata=TAG_q0_10_focused=true \
+            --build_metadata=TAG_q0_11_focused=true \
             -- \
             //codex-rs/hepta-agent-protocol:hepta-agent-protocol-unit-tests \
             //codex-rs/utils/rustls-provider:rustls-provider-provider-test
@@ -154,7 +190,7 @@ jobs:
         if: always() && !cancelled()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4
         with:
-          name: hepta-intelligence-q0-10-windows-focused-${{ github.run_id }}
+          name: hepta-intelligence-q0-11-windows-focused-${{ github.run_id }}
           path: ${{ runner.temp }}/bazel-execution-logs/**
           if-no-files-found: ignore
           retention-days: 30
