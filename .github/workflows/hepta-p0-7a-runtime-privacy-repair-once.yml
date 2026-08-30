@@ -1,0 +1,173 @@
+name: Hepta P0.7a runtime privacy repair (one shot)
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-v4-p0-7a-executable-closure-20260830
+    paths:
+      - .github/workflows/hepta-p0-7a-runtime-privacy-repair-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-p0-7a-runtime-privacy-repair-once
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    name: Repair runtime privacy and qualification fixtures
+    if: >-
+      github.repository == 'ProfHepta/hepta-private-ci' &&
+      github.ref == 'refs/heads/codex/hepta-architecture-v4-p0-7a-executable-closure-20260830'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact repair input
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          fetch-depth: 2
+
+      - name: Verify exact parent and source blobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "047d1c1546176349f25992c9494ebadd452520f3"
+          test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = \
+            ".github/workflows/hepta-p0-7a-runtime-privacy-repair-once.yml"
+          test "$(git hash-object codex-rs/hepta-fleet/src/registry.rs)" = \
+            "a95f8402f50792f9d00182202e083656a2bbb125"
+          test "$(git hash-object codex-rs/hepta-fleet/src/registry_tests.rs)" = \
+            "6943d7ea341237867d683eecca551b050ba847cd"
+          test "$(git hash-object codex-rs/hepta-supervisor/src/supervisor_tests.rs)" = \
+            "e8e996e74721f43e31c88b86a81e56494e0e7aa3"
+          test "$(git hash-object codex-rs/.config/nextest.toml)" = \
+            "f3f3ca2607190b6c7f4568fbcb365519250c7803"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: nextest@0.9.143
+
+      - name: Apply exact bounded repair
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          import subprocess
+          import urllib.request
+
+          request = urllib.request.Request(
+              "https://api.github.com/repos/ProfHepta/hepta-private-ci/git/blobs/b9565804e986ef6219384d26415ee1706d1b4b87",
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+          with urllib.request.urlopen(request, timeout=30) as response:
+              payload = json.load(response)
+          patch = base64.b64decode(payload["content"], validate=True)
+          subprocess.run(["git", "apply", "-p0", "--check", "-"], input=patch, check=True)
+          subprocess.run(["git", "apply", "-p0", "-"], input=patch, check=True)
+          PY
+          rustfmt --edition 2024 \
+            codex-rs/hepta-fleet/src/registry.rs \
+            codex-rs/hepta-fleet/src/registry_tests.rs \
+            codex-rs/hepta-supervisor/src/supervisor_tests.rs
+          python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          tomllib.loads(Path("codex-rs/.config/nextest.toml").read_text())
+          PY
+          git diff --check
+
+      - name: Run complete P0.7a package tests
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          just test -p codex-hepta-contracts
+          just test -p codex-hepta-fleet
+          just test -p codex-hepta-supervisor
+          just test -p codex-hepta-agentd
+
+      - name: Check all P0.7a targets
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd
+
+      - name: Run strict P0.7a Clippy
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd \
+            -- -D warnings
+
+      - name: Verify locks and architecture source truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --manifest-path codex-rs/Cargo.toml --locked --no-deps --format-version 1 >/dev/null
+          python3 scripts/verify-hepta-p0-7a-format.py --check
+          python3 scripts/verify-hepta-architecture-plan-v4.py
+          just bazel-lock-check
+          git diff --check
+
+      - name: Commit qualified repair and self-delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/hepta-p0-7a-runtime-privacy-repair-once.yml
+          python3 - <<'PY'
+          import subprocess
+
+          expected = sorted([
+              ".github/workflows/hepta-p0-7a-runtime-privacy-repair-once.yml",
+              "codex-rs/.config/nextest.toml",
+              "codex-rs/hepta-fleet/src/registry.rs",
+              "codex-rs/hepta-fleet/src/registry_tests.rs",
+              "codex-rs/hepta-supervisor/src/supervisor_tests.rs",
+          ])
+          changed = sorted(subprocess.check_output(
+              ["git", "diff", "--name-only"], text=True
+          ).splitlines())
+          if changed != expected:
+              raise SystemExit(f"unexpected repair set: expected={expected!r}, observed={changed!r}")
+          PY
+          git diff --check
+          git config user.name "hepta-closure-bot"
+          git config user.email "hepta-closure-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(hepta): align runtime privacy and qualification fixtures"
+          printf 'qualified_commit=%s\nqualified_tree=%s\n' \
+            "$(git rev-parse HEAD)" \
+            "$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_STEP_SUMMARY"
+          git push origin HEAD:refs/heads/codex/hepta-architecture-v4-p0-7a-executable-closure-20260830
