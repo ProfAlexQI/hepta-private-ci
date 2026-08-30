@@ -20,6 +20,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     steps:
+      # The repository contains deliberately long, tracked qualification paths.
+      # Enable Git's native long-path support before checkout on Windows so the
+      # boundary reaches the setup action instead of failing in source materialization.
+      - name: Enable Windows long paths before checkout
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --system core.longpaths true
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
@@ -70,7 +78,7 @@ jobs:
               ".github/scripts/assert-bazelisk-setup-token-scrubbed.sh"
           )
           receipt = {
-              "schema": "hepta_windows_setup_bazel_token_boundary_v2",
+              "schema": "hepta_windows_setup_bazel_token_boundary_v3",
               "status": "PASS_WINDOWS_SETUP_BAZEL_TOKEN_BOUNDARY",
               "repository": os.environ["GITHUB_REPOSITORY"],
               "commit": os.environ["GITHUB_SHA"],
@@ -83,6 +91,9 @@ jobs:
               "matrix_target": os.environ["MATRIX_TARGET"],
               "setup_bazel_action_git_blob_sha1": git_blob_sha(action),
               "assertion_script_git_blob_sha1": git_blob_sha(assertion),
+              "windows_long_paths_enabled_before_checkout": (
+                  os.environ["RUNNER_OS"] == "Windows"
+              ),
               "strict_step_parser_executed_before_setup_action": True,
               "cross_platform_verifier_executed_before_setup_action": True,
               "anonymous_step_between_setup_and_scrub_allowed": False,
