@@ -14,12 +14,12 @@ permissions:
 
 concurrency:
   group: hepta-v5-b1-boundary-hardening-bootstrap
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   harden-and-qualify:
     name: Apply and qualify exact B1 boundary hardening
-    runs-on: ubuntu-24.04
+    runs-on: macos-14
     timeout-minutes: 90
     steps:
       - name: Checkout exact branch head
@@ -46,6 +46,8 @@ jobs:
           set -euo pipefail
           [[ "$GITHUB_REF" == "refs/heads/codex/hepta-architecture-v5-b1-model-provider-boundaries-20260830" ]]
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git hash-object scripts/apply-hepta-v5-b1-boundary-hardening.py)" = \
+            "152dd7a4a303df679cce931e6e5b7d480f7f237c"
           git diff --exit-code
           git diff --cached --exit-code
           python3 -m py_compile scripts/apply-hepta-v5-b1-boundary-hardening.py
@@ -54,6 +56,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/apply-hepta-v5-b1-boundary-hardening.py")
+          text = path.read_text(encoding="utf-8")
+          old = "        decoded = gzip.decompress(base64.b64decode(payload, validate=True))\n"
+          new = (
+              "        padded_payload = payload + \"=\" * (-len(payload) % 4)\n"
+              "        decoded = gzip.decompress(\n"
+              "            base64.b64decode(padded_payload, validate=True)\n"
+              "        )\n"
+          )
+          if text.count(old) != 1:
+              raise SystemExit("B1 Base64 decoder preimage is ambiguous")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+          python3 -m py_compile scripts/apply-hepta-v5-b1-boundary-hardening.py
           python3 scripts/apply-hepta-v5-b1-boundary-hardening.py
           python3 scripts/verify-hepta-v5-b1-format.py
           git diff --check
@@ -133,17 +152,26 @@ jobs:
           rm scripts/apply-hepta-v5-b1-boundary-hardening.py
           rm .github/workflows/hepta-v5-b1-boundary-hardening-bootstrap.yml
           git diff --check
-          mapfile -t actual < <(git diff --name-only | LC_ALL=C sort)
-          expected=(
-            .github/workflows/hepta-v5-b1-boundary-hardening-bootstrap.yml
-            codex-rs/hepta-contracts/src/checked_provider_operation.rs
-            codex-rs/hepta-contracts/src/lib.rs
-            codex-rs/hepta-contracts/tests/provider_verified_use_boundary.rs
-            scripts/apply-hepta-v5-b1-boundary-hardening.py
-            scripts/verify-hepta-v5-b1-format.py
+          python3 - <<'PY'
+          import subprocess
+
+          expected = sorted([
+              ".github/workflows/hepta-v5-b1-boundary-hardening-bootstrap.yml",
+              "codex-rs/hepta-contracts/src/checked_provider_operation.rs",
+              "codex-rs/hepta-contracts/src/lib.rs",
+              "codex-rs/hepta-contracts/tests/provider_verified_use_boundary.rs",
+              "scripts/apply-hepta-v5-b1-boundary-hardening.py",
+              "scripts/verify-hepta-v5-b1-format.py",
+          ])
+          actual = sorted(
+              subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
           )
-          mapfile -t expected < <(printf '%s\n' "${expected[@]}" | LC_ALL=C sort)
-          diff -u <(printf '%s\n' "${expected[@]}") <(printf '%s\n' "${actual[@]}")
+          if actual != expected:
+              raise SystemExit(
+                  f"unexpected B1 change set: expected={expected!r}, observed={actual!r}"
+              )
+          print("PASS_HEPTA_V5_B1_EXACT_CHANGE_SET")
+          PY
 
       - name: Commit qualified hardening without force
         shell: bash
