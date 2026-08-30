@@ -7,6 +7,7 @@ print_failed_bazel_action_summary=0
 remote_download_toplevel=0
 windows_msvc_host_platform=0
 windows_cross_compile=0
+credentialless_windows_cross_compile=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -256,13 +257,30 @@ if [[ ${#bazel_args[@]} -eq 0 || ${#bazel_targets[@]} -eq 0 ]]; then
 fi
 
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
-  # Windows cross-compilation depends on authenticated RBE. Preserve the local
-  # Windows build shape when credentials are unavailable.
+  # Preserve the requested gnullvm target even when tenant RBE credentials
+  # are unavailable. Build actions run locally on an MSVC host platform,
+  # while target selection and generated Windows test binaries remain
+  # gnullvm. This prevents a credentialless fork from silently testing a
+  # different ABI under a gnullvm-labelled job.
   ci_config=ci-windows
   windows_msvc_host_platform=1
+  credentialless_windows_cross_compile=1
 fi
 
 post_config_bazel_args=()
+if [[ $credentialless_windows_cross_compile -eq 1 ]]; then
+  post_config_bazel_args+=(
+    --platforms=//:windows_x86_64_gnullvm
+    --extra_execution_platforms=//:windows_x86_64_msvc
+    --extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain
+    --strategy=TestRunner=local
+    --strategy=V8Mksnapshot=local
+    --local_test_jobs=8
+    --test_env=RUST_TEST_THREADS=1
+    --test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=command_safety::powershell_parser::tests::,suite::code_mode::code_mode_can_call_hidden_dynamic_tools,tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child
+  )
+fi
+
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; then
   has_host_platform_override=0
   for arg in "${bazel_args[@]}"; do
@@ -388,6 +406,12 @@ if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
   bazel_run_args+=("--config=${ci_config}")
 else
   echo "BuildBuddy API key is not available; using local Bazel configuration."
+  if [[ $credentialless_windows_cross_compile -eq 1 ]]; then
+    # Load the ordinary Windows CI policy without activating a remote
+    # endpoint. The explicit post-config flags above retain the gnullvm
+    # target and MSVC execution host.
+    bazel_run_args+=(--config=ci-windows)
+  fi
 fi
 if (( ${#post_config_bazel_args[@]} > 0 )); then
   bazel_run_args+=("${post_config_bazel_args[@]}")
