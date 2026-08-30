@@ -1,0 +1,421 @@
+name: Hepta Intelligence Q0.49 slim lock blob uploader
+
+on:
+  push:
+    branches:
+      - automation/hepta-intelligence-q0-49-slim-blob-uploader-20260830
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-q0-49-slim-blob-uploader
+  cancel-in-progress: true
+
+jobs:
+  upload-candidate-objects:
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    env:
+      SOURCE_SHA: f2f200969fa0076178276bceab2eb21d23f0519e
+      SOURCE_TREE: e6d9a631345927a8c0817080a2f8cab150c516f3
+      ARTIFACT_ID: "9732763424"
+      ARTIFACT_SHA256: 858fc06b3b544946c269e04bccd5965423aa59c655199cfcbc00102d1e7aa06c
+      CARGO_LOCK_SOURCE_SHA256: 6d6d7956dad40a63a8a7a1844bb747decc1876a9c3fb042bbc4a6626cdd1e58a
+      CARGO_LOCK_TARGET_SHA256: 7326db8c0c6c1c87c12c676a533b2a9566f79609e051cd399b8ce0ceb606b4d0
+      CARGO_LOCK_TARGET_BLOB: dabafa677a39cae1a1e5bea820ec13440f26b1b2
+      BAZEL_LOCK_SOURCE_SHA256: c03b95ff14a8c813ea4cbb27498437293057540d2374b7f9b6903c1a0a4749d4
+      BAZEL_LOCK_GENERATED_SHA256: db14a106aa31497b013d8784e13463bbe4ffb5778437fc06deefabe40cea6116
+      BAZEL_LOCK_TARGET_SHA256: 60e49e947ecde4ac2d9725c9e875e93eab852675f1ea76f8d9b5204933bcc6c8
+      BAZEL_LOCK_TARGET_BLOB: 2a8fb061317a86ba8f218d9faccc04dc22cb507c
+      BYTES_OLD_VERSION: 1.11.1
+      BYTES_OLD_CHECKSUM: 1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33
+      BYTES_VERSION: 1.12.1
+      BYTES_CHECKSUM: fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04
+      OUT: artifacts/q049-slim-object-upload
+
+    steps:
+      - name: Checkout exact uploader head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind uploader and select exact Q0.48
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mapfile -t changed < <(git diff --name-only --no-renames "$SOURCE_SHA" HEAD)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = ".github/workflows/hepta-intelligence-q0-49-slim-blob-uploader.yml"
+          git diff --check "$SOURCE_SHA" HEAD
+          git switch --detach "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git show -s --format=%T HEAD)" = "$SOURCE_TREE"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Download and safely verify prior ARM diagnostic artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/q049-artifact"
+          curl --fail --silent --show-error --location \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" \
+            --output "$RUNNER_TEMP/q049-artifact.zip"
+          printf '%s  %s\n' "$ARTIFACT_SHA256" "$RUNNER_TEMP/q049-artifact.zip" | sha256sum --check --strict
+          python3 - <<'PY'
+          import os
+          import stat
+          import zipfile
+          from pathlib import Path, PurePosixPath
+
+          archive = Path(os.environ["RUNNER_TEMP"]) / "q049-artifact.zip"
+          target = Path(os.environ["RUNNER_TEMP"]) / "q049-artifact"
+          total = 0
+          with zipfile.ZipFile(archive) as zf:
+              for info in zf.infolist():
+                  path = PurePosixPath(info.filename)
+                  if path.is_absolute() or ".." in path.parts:
+                      raise SystemExit(f"unsafe artifact member: {info.filename!r}")
+                  mode = info.external_attr >> 16
+                  if stat.S_ISLNK(mode):
+                      raise SystemExit(f"symlink artifact member: {info.filename!r}")
+                  total += info.file_size
+                  if total > 20_000_000:
+                      raise SystemExit("artifact expansion exceeds 20 MB")
+              zf.extractall(target)
+          required = {
+              "Cargo.lock.before",
+              "MODULE.bazel.lock.generated",
+              "summary.env",
+          }
+          present = {p.name for p in target.iterdir() if p.is_file()}
+          missing = required - present
+          if missing:
+              raise SystemExit(f"artifact is missing files: {sorted(missing)!r}")
+          print("PASS_Q049_SAFE_ARTIFACT_EXTRACTION")
+          PY
+          printf '%s  %s\n' "$CARGO_LOCK_SOURCE_SHA256" "$RUNNER_TEMP/q049-artifact/Cargo.lock.before" | sha256sum --check --strict
+          printf '%s  %s\n' "$BAZEL_LOCK_GENERATED_SHA256" "$RUNNER_TEMP/q049-artifact/MODULE.bazel.lock.generated" | sha256sum --check --strict
+          cmp --silent codex-rs/Cargo.lock "$RUNNER_TEMP/q049-artifact/Cargo.lock.before"
+          printf '%s  %s\n' "$BAZEL_LOCK_SOURCE_SHA256" MODULE.bazel.lock | sha256sum --check --strict
+
+      - name: Reconstruct exact eight-path Q0.49 candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected one token in {path}: {old!r}")
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once("codex-rs/Cargo.toml", 'bytes = "1.10.1"', 'bytes = "1.12.1"')
+          replace_once(
+              ".github/workflows/rust-ci.yml",
+              "        run: cargo shear --deny-warnings\n",
+              "        run: cargo shear --locked --deny-warnings\n",
+          )
+          replace_once("codex-rs/hepta-evidence/Cargo.toml", "sha2 = { workspace = true }\n", "")
+          replace_once("codex-rs/ext/hepta-governance/Cargo.toml", "pretty_assertions = { workspace = true }\n", "")
+          replace_once(
+              "codex-rs/hepta-matrix-protocol/Cargo.toml",
+              "[dev-dependencies]\npretty_assertions = { workspace = true }\n",
+              "",
+          )
+
+          cargo_deny = "\n".join([
+              "name: cargo-deny",
+              "",
+              "on:",
+              "  workflow_call:",
+              "",
+              "jobs:",
+              "  cargo-deny:",
+              "    runs-on: ubuntu-24.04",
+              "    defaults:",
+              "      run:",
+              "        working-directory: ./codex-rs",
+              "    steps:",
+              "      - name: Checkout",
+              "        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2",
+              "        with:",
+              "          persist-credentials: false",
+              "",
+              "      - uses: ./.github/actions/setup-ci",
+              "",
+              "      - name: Install Rust 1.95.0",
+              "        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0",
+              "        with:",
+              "          toolchain: 1.95.0",
+              "",
+              "      - name: Install cargo-deny 0.19.0",
+              "        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49",
+              "        with:",
+              "          tool: cargo-deny@0.19.0",
+              "",
+              "      - name: Run cargo-deny",
+              "        run: >-",
+              "          cargo +1.95.0 deny --manifest-path Cargo.toml",
+              "          --all-features --locked check --config deny.toml",
+              "",
+              "      - name: Check for a clean worktree",
+              "        if: always() && !cancelled()",
+              "        uses: ./.github/actions/check-clean-worktree",
+              "",
+          ])
+          Path(".github/workflows/cargo-deny.yml").write_text(cargo_deny, encoding="utf-8")
+
+          cargo_path = Path("codex-rs/Cargo.lock")
+          cargo = cargo_path.read_text(encoding="utf-8")
+          old_bytes = "\n".join([
+              "[[package]]",
+              'name = "bytes"',
+              f'version = "{os.environ["BYTES_OLD_VERSION"]}"',
+              'source = "registry+https://github.com/rust-lang/crates.io-index"',
+              f'checksum = "{os.environ["BYTES_OLD_CHECKSUM"]}"',
+          ])
+          new_bytes = "\n".join([
+              "[[package]]",
+              'name = "bytes"',
+              f'version = "{os.environ["BYTES_VERSION"]}"',
+              'source = "registry+https://github.com/rust-lang/crates.io-index"',
+              f'checksum = "{os.environ["BYTES_CHECKSUM"]}"',
+          ])
+          if cargo.count(old_bytes) != 1:
+              raise SystemExit("unexpected source bytes package block")
+          cargo = cargo.replace(old_bytes, new_bytes, 1)
+          removals = {
+              "codex-hepta-agent-protocol": "pretty_assertions",
+              "codex-hepta-agentd": "pretty_assertions",
+              "codex-hepta-matrix-sdk": "futures",
+              "codex-hepta-paths": "tempfile",
+              "codex-hepta-evidence": "sha2 0.10.9",
+              "codex-hepta-governance": "pretty_assertions",
+              "codex-hepta-matrix-protocol": "pretty_assertions",
+          }
+          for package, dependency in removals.items():
+              pattern = re.compile(
+                  r'(\[\[package\]\]\nname = "' + re.escape(package) + r'"\n.*?)(?=\n\[\[package\]\]|\Z)',
+                  re.S,
+              )
+              match = pattern.search(cargo)
+              if match is None:
+                  raise SystemExit(f"missing workspace lock package {package}")
+              block = match.group(1)
+              needle = f' "{dependency}",\n'
+              if block.count(needle) != 1:
+                  raise SystemExit(f"unexpected dependency {package}/{dependency}")
+              replacement = block.replace(needle, "", 1)
+              cargo = cargo[:match.start(1)] + replacement + cargo[match.end(1):]
+          cargo_path.write_text(cargo, encoding="utf-8")
+          cargo_hash = hashlib.sha256(cargo.encode()).hexdigest()
+          if cargo_hash != os.environ["CARGO_LOCK_TARGET_SHA256"]:
+              raise SystemExit(f"Cargo.lock target digest mismatch: {cargo_hash}")
+
+          module_path = Path("MODULE.bazel.lock")
+          module_text = module_path.read_text(encoding="utf-8")
+          generated_path = Path(os.environ["RUNNER_TEMP"]) / "q049-artifact" / "MODULE.bazel.lock.generated"
+          generated_text = generated_path.read_text(encoding="utf-8")
+          old_lines = [line for line in module_text.splitlines(keepends=True) if '"bytes_1.11.1"' in line]
+          new_lines = [line for line in generated_text.splitlines(keepends=True) if '"bytes_1.12.1"' in line]
+          if len(old_lines) != 1 or len(new_lines) != 1 or '"bytes_1.12.1"' in module_text:
+              raise SystemExit("unexpected Bazel bytes fact cardinality")
+          module_text = module_text.replace(old_lines[0], new_lines[0], 1)
+          module_path.write_text(module_text, encoding="utf-8")
+          module_hash = hashlib.sha256(module_text.encode()).hexdigest()
+          if module_hash != os.environ["BAZEL_LOCK_TARGET_SHA256"]:
+              raise SystemExit(f"MODULE.bazel.lock target digest mismatch: {module_hash}")
+
+          old_module = json.loads(
+              Path(os.environ["RUNNER_TEMP"] + "/q049-artifact/MODULE.bazel.lock.generated")
+              .read_text(encoding="utf-8")
+          )
+          new_module = json.loads(module_text)
+          current_source = json.loads(
+              __import__("subprocess").check_output(
+                  ["git", "show", os.environ["SOURCE_SHA"] + ":MODULE.bazel.lock"], text=True
+              )
+          )
+          extension = "@@rules_rs+//rs:extensions.bzl%crate"
+          expected = json.loads(json.dumps(current_source))
+          expected["facts"][extension].pop("bytes_1.11.1")
+          expected["facts"][extension]["bytes_1.12.1"] = old_module["facts"][extension]["bytes_1.12.1"]
+          if new_module != expected:
+              raise SystemExit("Bazel lock changed outside the bytes fact")
+          print("PASS_Q049_EXACT_MINIMAL_LOCK_RECONSTRUCTION")
+          PY
+
+          expected=(
+            .github/workflows/cargo-deny.yml
+            .github/workflows/rust-ci.yml
+            MODULE.bazel.lock
+            codex-rs/Cargo.lock
+            codex-rs/Cargo.toml
+            codex-rs/ext/hepta-governance/Cargo.toml
+            codex-rs/hepta-evidence/Cargo.toml
+            codex-rs/hepta-matrix-protocol/Cargo.toml
+          )
+          mapfile -t observed < <(git diff --name-only --no-renames "$SOURCE_SHA" -- | sort)
+          test "${observed[*]}" = "${expected[*]}"
+          git diff --check "$SOURCE_SHA" --
+          python3 - <<'PY'
+          import json
+          import tomllib
+          from pathlib import Path
+
+          for path in [
+              "codex-rs/Cargo.toml",
+              "codex-rs/hepta-evidence/Cargo.toml",
+              "codex-rs/ext/hepta-governance/Cargo.toml",
+              "codex-rs/hepta-matrix-protocol/Cargo.toml",
+              "codex-rs/Cargo.lock",
+          ]:
+              tomllib.loads(Path(path).read_text(encoding="utf-8"))
+          json.loads(Path("MODULE.bazel.lock").read_text(encoding="utf-8"))
+          print("PASS_Q049_TOML_JSON_PARSE")
+          PY
+
+      - name: Upload immutable Git objects without moving a ref
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import urllib.request
+          from pathlib import Path
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          source = os.environ["SOURCE_SHA"]
+          source_tree = os.environ["SOURCE_TREE"]
+          paths = [
+              ".github/workflows/cargo-deny.yml",
+              ".github/workflows/rust-ci.yml",
+              "MODULE.bazel.lock",
+              "codex-rs/Cargo.lock",
+              "codex-rs/Cargo.toml",
+              "codex-rs/ext/hepta-governance/Cargo.toml",
+              "codex-rs/hepta-evidence/Cargo.toml",
+              "codex-rs/hepta-matrix-protocol/Cargo.toml",
+          ]
+
+          def request(path: str, payload: dict):
+              data = json.dumps(payload, separators=(",", ":")).encode()
+              req = urllib.request.Request(
+                  f"https://api.github.com/repos/{repo}{path}",
+                  data=data,
+                  method="POST",
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "Content-Type": "application/json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "User-Agent": "hepta-q049-slim-object-uploader",
+                  },
+              )
+              with urllib.request.urlopen(req, timeout=120) as response:
+                  return json.load(response)
+
+          blobs = {}
+          for path in paths:
+              content = Path(path).read_bytes()
+              expected = hashlib.sha1(f"blob {len(content)}\0".encode() + content).hexdigest()
+              result = request(
+                  "/git/blobs",
+                  {"content": base64.b64encode(content).decode(), "encoding": "base64"},
+              )
+              if result.get("sha") != expected:
+                  raise SystemExit(f"server blob mismatch for {path}: {result!r}")
+              blobs[path] = expected
+
+          if blobs["codex-rs/Cargo.lock"] != os.environ["CARGO_LOCK_TARGET_BLOB"]:
+              raise SystemExit("Cargo lock blob identity mismatch")
+          if blobs["MODULE.bazel.lock"] != os.environ["BAZEL_LOCK_TARGET_BLOB"]:
+              raise SystemExit("Bazel lock blob identity mismatch")
+
+          tree = request(
+              "/git/trees",
+              {
+                  "base_tree": source_tree,
+                  "tree": [
+                      {"path": path, "mode": "100644", "type": "blob", "sha": blobs[path]}
+                      for path in paths
+                  ],
+              },
+          )
+          subprocess.run(["git", "add", "--", *paths], check=True)
+          local_tree = subprocess.check_output(["git", "write-tree"], text=True).strip()
+          if tree.get("sha") != local_tree:
+              raise SystemExit(f"server/local tree mismatch: {tree.get('sha')} != {local_tree}")
+
+          message = "\n".join([
+              "fix(intelligence): close Q0.49 locked dependency policy blockers",
+              "",
+              "Reconcile the exact Rust 1.95 Cargo/Bazel locks, remove the three proven unused dependencies, make cargo-shear lock-bound, and replace the runner-broken Docker cargo-deny action with a pinned native binary.",
+              "",
+              "This commit is repository qualification only. It grants no selection, runtime, production, operator, promotion, release, or CALLERS authority.",
+          ])
+          commit = request(
+              "/git/commits",
+              {"message": message, "tree": tree["sha"], "parents": [source]},
+          )
+          summary = {
+              "schema_version": 1,
+              "status": "PASS_Q049_IMMUTABLE_OBJECTS_UPLOADED",
+              "source_sha": source,
+              "source_tree": source_tree,
+              "candidate_commit": commit["sha"],
+              "candidate_tree": tree["sha"],
+              "blobs": blobs,
+              "authority": {
+                  "a0_candidate_qualified": False,
+                  "independent_review": False,
+                  "selected": False,
+                  "runtime_wired": False,
+                  "production_authority": False,
+                  "operator_acceptance": False,
+                  "promotion": False,
+                  "release_authority": False,
+                  "callers_ratchet": False,
+              },
+          }
+          out = Path(os.environ["OUT"])
+          out.mkdir(parents=True, exist_ok=True)
+          (out / "Q049-OBJECT-UPLOAD.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          print(json.dumps(summary, sort_keys=True))
+          PY
+
+      - name: Upload object receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hepta-intelligence-q0-49-slim-object-${{ github.sha }}
+          path: ${{ env.OUT }}
+          if-no-files-found: error
+          retention-days: 30
