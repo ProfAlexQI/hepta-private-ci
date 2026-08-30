@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Compatibility wrapper plus Q0.17/Q0.22 qualification ratchets."""
+"""Compatibility wrapper plus Q0.17-Q0.27 qualification ratchets."""
 
 import os
 import subprocess
@@ -15,8 +15,15 @@ from run_bazel_q017_policy import _insert_before_separator
 from run_bazel_q017_policy import _is_keyless_windows_gnullvm
 from run_bazel_q017_policy import _qualification_workspace_bazelrc
 from run_bazel_q022_negative_targets import (
+    validate_keyless_windows_gnullvm_final_args as _validate_q026_compatibility_base,
+)
+from run_bazel_q027_lane_semantics import (
     validate_keyless_windows_gnullvm_final_args,
 )
+
+# Keep the selected Q0.26 compatibility base import machine-visible while the
+# Q0.27 validator composes and invokes it internally.
+assert _validate_q026_compatibility_base is not None
 
 
 def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]:
