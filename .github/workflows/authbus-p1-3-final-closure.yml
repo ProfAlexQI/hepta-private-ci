@@ -1,0 +1,51 @@
+name: AuthBus P1.3 final clean-replay closure
+
+on:
+  push:
+    branches:
+      - codex/authbus-p1-3-gap-closure-20260829
+    paths:
+      - .github/workflows/authbus-p1-3-final-closure.yml
+      - scripts/authbus-p1-3-final-closure.sh
+      - scripts/authbus-p1-3-clippy-completion.py
+
+concurrency:
+  group: authbus-p1-3-final-clean-replay-closure
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  close:
+    name: Qualify and publish exact 29-path clean source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_BUILD_JOBS: "1"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_NET_RETRY: "10"
+      CARGO_HTTP_TIMEOUT: "120"
+      CARGO_TARGET_DIR: /tmp/authbus-p1-3-final-closure-target
+    steps:
+      - name: Checkout exact closure seed
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Execute fail-closed AuthBus P1.3 closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp scripts/authbus-p1-3-final-closure.sh /tmp/authbus-p1-3-final-closure.sh
+          bash /tmp/authbus-p1-3-final-closure.sh
