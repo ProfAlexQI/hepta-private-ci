@@ -6,7 +6,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from typing import Mapping
 
 import hepta_q046_git_context as q046_git
@@ -31,6 +31,8 @@ CANONICAL_GIT_NAMES = frozenset(
         "GIT_DIR",
         "GIT_INDEX_FILE",
         "GIT_LITERAL_PATHSPECS",
+        "GIT_NO_LAZY_FETCH",
+        "GIT_NO_REPLACE_OBJECTS",
         "GIT_OPTIONAL_LOCKS",
         "GIT_WORK_TREE",
     }
@@ -112,6 +114,21 @@ def context_fingerprints(
     }
 
 
+def immutable_git_context(
+    context: q046_git.GitContext,
+) -> q046_git.GitContext:
+    environment = dict(context.env)
+    environment["GIT_NO_LAZY_FETCH"] = "1"
+    environment["GIT_NO_REPLACE_OBJECTS"] = "1"
+    return q046_git.GitContext(
+        executable=context.executable,
+        root=context.root,
+        git_dir=context.git_dir,
+        index=context.index,
+        env=MappingProxyType(environment),
+    )
+
+
 def run_bound_git(
     context: q046_git.GitContext,
     *args: str,
@@ -156,6 +173,43 @@ def tracked_status(context: q046_git.GitContext) -> str:
     ).stdout
 
 
+def require_immutable_object_graph(context: q046_git.GitContext) -> None:
+    forbidden = (
+        ("Git common-directory redirect", context.git_dir / "commondir"),
+        ("Git graft ancestry", context.git_dir / "info" / "grafts"),
+        ("Git shallow boundary", context.git_dir / "shallow"),
+        (
+            "Git object alternates",
+            context.git_dir / "objects" / "info" / "alternates",
+        ),
+        (
+            "Git HTTP object alternates",
+            context.git_dir / "objects" / "info" / "http-alternates",
+        ),
+    )
+    for owner, path in forbidden:
+        require(
+            not path.exists() and not path.is_symlink(),
+            f"{owner} is forbidden during admission verification: {path}",
+        )
+
+    replace_root = context.git_dir / "refs" / "replace"
+    require(
+        not replace_root.is_symlink(),
+        f"Git replacement-ref root must not be a symlink: {replace_root}",
+    )
+    replacement_refs = run_bound_git(
+        context,
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/replace",
+    ).stdout.splitlines()
+    require(
+        not replacement_refs,
+        f"Git replacement refs are forbidden: {replacement_refs}",
+    )
+
+
 def child_environment(
     context: q046_git.GitContext,
     *,
@@ -180,6 +234,8 @@ def child_environment(
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_CONFIG_GLOBAL": os.devnull,
             "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_NO_LAZY_FETCH": "1",
+            "GIT_NO_REPLACE_OBJECTS": "1",
             "GIT_DIR": str(context.git_dir),
             "GIT_WORK_TREE": str(context.root),
             "GIT_INDEX_FILE": str(context.index),
@@ -232,12 +288,13 @@ def verify_context_stability(
 def run_verifier(args: list[str]) -> int:
     token_name = token_environment_name(args)
     try:
-        context = q046_git.trusted_git_context()
+        context = immutable_git_context(q046_git.trusted_git_context())
     except SystemExit as error:
         raise AdmissionRunnerError(
             f"trusted Git context rejected checkout: {error}"
         ) from error
 
+    require_immutable_object_graph(context)
     expected_head = one_line(
         run_bound_git(context, "rev-parse", "HEAD").stdout,
         "bound Git HEAD",
@@ -259,6 +316,7 @@ def run_verifier(args: list[str]) -> int:
         env=child,
         check=False,
     )
+    require_immutable_object_graph(context)
     verify_context_stability(
         context,
         expected_head=expected_head,
@@ -273,11 +331,12 @@ def run_verifier(args: list[str]) -> int:
 
 def check_clean() -> int:
     try:
-        context = q046_git.trusted_git_context()
+        context = immutable_git_context(q046_git.trusted_git_context())
     except SystemExit as error:
         raise AdmissionRunnerError(
             f"trusted Git context rejected checkout: {error}"
         ) from error
+    require_immutable_object_graph(context)
     require(tracked_status(context) == "", "tracked worktree is dirty")
     print("PASS_HEPTA_INTELLIGENCE_ADMISSION_BOUND_GIT_CLEAN")
     return 0
@@ -295,6 +354,7 @@ def self_test() -> int:
             "GITHUB_ACTIONS": "true",
             "RUNNER_OS": "Linux",
             "GIT_OBJECT_DIRECTORY": "/attacker/objects",
+            "GIT_NO_REPLACE_OBJECTS": "",
             "HTTP_PROXY": "http://attacker.invalid",
         },
     )
@@ -315,6 +375,14 @@ def self_test() -> int:
     require(
         environment["GIT_INDEX_FILE"] == "/repo/.git/index",
         "Git index was not bound",
+    )
+    require(
+        environment["GIT_NO_LAZY_FETCH"] == "1",
+        "lazy object fetching was not disabled",
+    )
+    require(
+        environment["GIT_NO_REPLACE_OBJECTS"] == "1",
+        "Git replacement objects were not disabled",
     )
     require(
         "GIT_OBJECT_DIRECTORY" not in environment,
