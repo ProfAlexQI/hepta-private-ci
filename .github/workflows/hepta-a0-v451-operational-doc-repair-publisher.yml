@@ -1,0 +1,71 @@
+name: Hepta A0 V4.5.1 operational-document replacement publisher
+
+on:
+  push:
+    branches:
+      - "automation/hepta-a0-v451-operational-doc-repair-20260831"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-a0-v451-operational-doc-repair-20260831
+  cancel-in-progress: true
+
+env:
+  EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+  TARGET_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  TARGET_HEAD: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
+  TARGET_TREE: be18f73ac54f21a7b0b862940ab6007c6589300c
+  Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
+  Q0_TREE: ca455a9ef797cd95164c880c7b8faba80b305589
+  PREDECESSOR_HEADS_JSON: '["73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358"]'
+  STAGING_BRANCH: staging/hepta-a0-v451-operational-doc-repair-20260831
+  REPORT_DIR: artifacts/hepta-a0-v451-operational-doc-repair
+
+jobs:
+  publish:
+    name: Build and validate one exact Q0-child replacement
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout publisher source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: publisher
+          persist-credentials: false
+
+      - name: Checkout exact current A0 candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.TARGET_HEAD }}
+          path: target
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Install locked uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: 0.11.3
+
+      - name: Install modern Bash
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew list bash >/dev/null 2>&1 || brew install bash
+
+      - name: Build, validate and publish immutable staging candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$(brew --prefix bash)/bin/bash" \
+            publisher/automation/run-hepta-a0-v451-operational-doc-repair-publisher-v1.sh
+
+      - name: Upload deterministic publisher evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-a0-v451-operational-doc-repair-${{ github.sha }}
+          path: target/artifacts/hepta-a0-v451-operational-doc-repair/**
+          if-no-files-found: error
+          retention-days: 30
