@@ -36,11 +36,8 @@ jobs:
               [System.StringComparer]::Ordinal
           )
           @(
-              'ops/ui-v5-remediation-v21-20260830',
-              'ops/ui-v5-remediation-v21-arm-20260830',
-              'ops/ui-v5-remediation-v21-macos-20260830',
-              'ops/ui-v5-remediation-v21-macos-xlarge-20260830',
-              'ops/ui-v5-remediation-v22-diagnostic-20260830'
+              'ops/ui-v5-remediation-v26-macos-20260830',
+              'ops/ui-v5-remediation-v27-windows-20260830'
           ) | ForEach-Object { [void]$keep.Add($_) }
 
           $selected = [System.Collections.Generic.List[object]]::new()
@@ -87,4 +84,4 @@ jobs:
               }
           }
 
-          Write-Host 'Retained current v21/v22 lanes and all non-helper qualification runs.'
+          Write-Host 'Retained only v26 macOS, v27 Windows, and all non-helper qualification runs.'
