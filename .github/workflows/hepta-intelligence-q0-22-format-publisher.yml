@@ -1,0 +1,125 @@
+name: Hepta Intelligence Q0.22 format publisher
+
+on:
+  push:
+    branches:
+      - publisher/hepta-intelligence-q0-22-format-5cf101-20260830
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-q0-22-format-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish-clean-format-commit:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BASE_SHA: 5cf101becfd9e71908e305c6e121c5cc2dd433dd
+      TARGET_BRANCH: codex/hepta-intelligence-q0-22-format-q021-20260830
+    steps:
+      - name: Checkout immutable Q0.21 base
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: 5cf101becfd9e71908e305c6e121c5cc2dd433dd
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify source and create clean target branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BASE_SHA"
+          test "$(git status --porcelain=v1)" = ""
+          git switch -C "$TARGET_BRANCH" "$BASE_SHA"
+          git config user.name "ProfHepta Q0 publisher"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+
+      - name: Install repository-pinned uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.3"
+
+      - name: Format bounded Q0.20-Q0.21 Python surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            .github/scripts/run_bazel_q017_policy.py
+            .github/scripts/run_bazel_with_buildbuddy.py
+            .github/scripts/run_bazel_with_buildbuddy_base.py
+            .github/scripts/test_run_bazel_final_command.py
+            scripts/verify-windows-gnullvm-final-command.py
+          )
+          uv run --frozen --project scripts ruff format "${files[@]}"
+          uv run --frozen --project scripts ruff format --check "${files[@]}"
+          python3 -m py_compile "${files[@]}"
+
+      - name: Execute final-command boundary tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n .github/scripts/test_run_bazel_qualification_boundary.sh
+          bash .github/scripts/test_run_bazel_qualification_boundary.sh
+          python3 scripts/verify-windows-gnullvm-final-command.py
+
+      - name: Enforce exact formatter ownership
+        id: diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed < <(git diff --name-only --diff-filter=ACMRTUXB | LC_ALL=C sort)
+          if [[ ${#changed[@]} -eq 0 ]]; then
+            echo "No formatter delta; Q0.21 was already canonical."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf 'Formatter changed:\n'
+          printf '  %s\n' "${changed[@]}"
+          for path in "${changed[@]}"; do
+            case "$path" in
+              .github/scripts/run_bazel_q017_policy.py|\
+              .github/scripts/run_bazel_with_buildbuddy.py|\
+              .github/scripts/run_bazel_with_buildbuddy_base.py|\
+              .github/scripts/test_run_bazel_final_command.py|\
+              scripts/verify-windows-gnullvm-final-command.py)
+                ;;
+              *)
+                echo "Unexpected formatter path: $path" >&2
+                exit 1
+                ;;
+            esac
+          done
+          git diff --check
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Publish clean Q0.22 branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ steps.diff.outputs.changed }}" == "true" ]]; then
+            git add \
+              .github/scripts/run_bazel_q017_policy.py \
+              .github/scripts/run_bazel_with_buildbuddy.py \
+              .github/scripts/run_bazel_with_buildbuddy_base.py \
+              .github/scripts/test_run_bazel_final_command.py \
+              scripts/verify-windows-gnullvm-final-command.py
+            git commit -m "chore(ci): format Q0.21 final-command boundary"
+            published_sha="$(git rev-parse HEAD)"
+          else
+            published_sha="$BASE_SHA"
+          fi
+          git push --force origin "HEAD:refs/heads/$TARGET_BRANCH"
+          published_tree="$(git rev-parse 'HEAD^{tree}')"
+          {
+            echo "Q0.22 clean branch: $TARGET_BRANCH"
+            echo "Published head: $published_sha"
+            echo "Published tree: $published_tree"
+            echo "A0 candidate qualified: false"
+            echo "Selected: false"
+            echo "Full repository merge green: false"
+            echo "Runtime/production/promotion/release/CALLERS authority: false"
+          } >> "$GITHUB_STEP_SUMMARY"
