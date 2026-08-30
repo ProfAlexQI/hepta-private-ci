@@ -1,0 +1,149 @@
+name: Hepta P0.7a inode identity refresh (x64 one shot)
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-v4-p0-7a-executable-closure-20260830
+    paths:
+      - .github/workflows/hepta-p0-7a-inode-refresh-x64-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-p0-7a-inode-refresh-x64-once
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Repair and qualify inode identity refresh
+    if: >-
+      github.repository == 'ProfHepta/hepta-private-ci' &&
+      github.ref == 'refs/heads/codex/hepta-architecture-v4-p0-7a-executable-closure-20260830'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Verify exact immutable input
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git hash-object codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs)" = \
+            "74abd3aa3ece1fc63f36a09acfe719b5a6f9528f"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Apply bounded inode identity repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs")
+          text = path.read_text()
+          replacements = (
+              (
+                  "    let linked = std::fs::symlink_metadata(path)?;\n",
+                  "    let held_linked = file.metadata()?;\n"
+                  "    validate_registry_metadata(&temp, &held_linked, &parent_metadata, 2)?;\n"
+                  "    let linked = std::fs::symlink_metadata(path)?;\n",
+              ),
+              (
+                  "    if metadata_identity(&held) != metadata_identity(&linked) {\n",
+                  "    if metadata_identity(&held_linked) != metadata_identity(&linked) {\n",
+              ),
+              (
+                  "    let published = std::fs::symlink_metadata(path)?;\n",
+                  "    let held_published = file.metadata()?;\n"
+                  "    validate_registry_metadata(path, &held_published, &parent_metadata, 1)?;\n"
+                  "    let published = std::fs::symlink_metadata(path)?;\n",
+              ),
+              (
+                  "    if metadata_identity(&held) != metadata_identity(&published) {\n",
+                  "    if metadata_identity(&held_published) != metadata_identity(&published) {\n",
+              ),
+          )
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected repair anchor exactly once: {old!r}")
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+
+      - name: Configure repository CI environment
+        uses: ./.github/actions/setup-ci
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: nextest@0.9.143
+
+      - name: Format repaired crate
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --package codex-hepta-fleet
+          cargo fmt --package codex-hepta-fleet -- --check
+
+      - name: Run repaired fleet tests
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          just test -p codex-hepta-fleet
+
+      - name: Check P0.7a packages
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd
+
+      - name: Run strict P0.7a Clippy
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd \
+            -- -D warnings
+
+      - name: Verify bounded repair diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test "$(git diff --name-only)" = \
+            "codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs"
+          test -z "$(git ls-files --others --exclude-standard)"
+
+      - name: Commit repaired product source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs
+          git commit -m "fix(hepta): refresh inode identity after link transitions"
+          git push origin HEAD:refs/heads/codex/hepta-architecture-v4-p0-7a-executable-closure-20260830
