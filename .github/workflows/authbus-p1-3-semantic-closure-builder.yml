@@ -1,9 +1,9 @@
-name: AuthBus P1.3 semantic source publisher Windows v6
+name: AuthBus P1.3 semantic source publisher Windows 2025 v7
 
 on:
   push:
     branches:
-      - ops/authbus-p1-3-semantic-closure-publisher-windows-v4-20260830
+      - ops/authbus-p1-3-semantic-closure-publisher-windows2025-v7-20260830
     paths:
       - .github/workflows/authbus-p1-3-semantic-closure-builder.yml
       - scripts/authbus-p1-3-semantic-closure-builder.py
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: authbus-p1-3-semantic-source-publisher-windows-v6
+  group: authbus-p1-3-semantic-source-publisher-windows2025-v7
   cancel-in-progress: true
 
 permissions:
@@ -19,7 +19,7 @@ permissions:
 
 env:
   SOURCE_HEAD: 8572f3d2182541b14e0719b229ccd8754494f134
-  SEED_BRANCH: ops/authbus-p1-3-semantic-closure-publisher-windows-v4-20260830
+  SEED_BRANCH: ops/authbus-p1-3-semantic-closure-publisher-windows2025-v7-20260830
   STAGING_BRANCH: staging/authbus-p1-3-semantic-closure-v11-20260830
   P03: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
   P13: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
@@ -29,8 +29,8 @@ env:
 
 jobs:
   publish_source:
-    name: Materialize and publish unqualified semantic source on Windows
-    runs-on: windows-2022
+    name: Materialize and publish unqualified semantic source on Windows 2025
+    runs-on: windows-2025
     timeout-minutes: 60
     steps:
       - name: Checkout exact publisher seed with complete history
