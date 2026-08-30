@@ -7,6 +7,7 @@ set -euo pipefail
 : "${TARGET_TREE:?}"
 : "${Q0_HEAD:?}"
 : "${Q0_TREE:?}"
+: "${PREDECESSOR_HEADS_JSON:?}"
 : "${STAGING_BRANCH:?}"
 : "${REPORT_DIR:?}"
 
@@ -27,10 +28,12 @@ cd "$target"
 python3 - <<'PY'
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 
 plan_path = Path("plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json")
 registry_path = Path(
@@ -38,27 +41,46 @@ registry_path = Path(
 )
 verifier_path = Path("scripts/hepta-intelligence-current-truth.py")
 target_head = os.environ["TARGET_HEAD"]
+required_predecessors = json.loads(os.environ["PREDECESSOR_HEADS_JSON"])
+if not isinstance(required_predecessors, list) or not required_predecessors:
+    raise SystemExit("required predecessor chain missing")
+if required_predecessors[-1] != target_head:
+    raise SystemExit("target head must be the final predecessor")
+if len(required_predecessors) != len(set(required_predecessors)):
+    raise SystemExit("duplicate required predecessor")
 
 plan = json.loads(plan_path.read_text(encoding="utf-8"))
 provenance = plan.get("a0_previous_exact_head_provenance")
 if not isinstance(provenance, list) or not provenance:
     raise SystemExit("invalid A0 provenance list")
-if target_head in provenance:
-    raise SystemExit("target head already present in predecessor provenance")
 previous = list(provenance)
-provenance.append(target_head)
+for predecessor in required_predecessors:
+    if predecessor not in provenance:
+        provenance.append(predecessor)
+if provenance[-len(required_predecessors) :] != required_predecessors:
+    raise SystemExit("predecessor order drift")
 plan_bytes = (
     json.dumps(plan, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 ).encode("utf-8")
 plan_path.write_bytes(plan_bytes)
 
 verifier = verifier_path.read_text(encoding="utf-8")
-old_literal = json.dumps(previous)
-new_literal = json.dumps(provenance)
-if verifier.count(old_literal) != 1:
-    raise SystemExit("expected exactly one hard-coded provenance list")
+pattern = re.compile(
+    r"(require\(\s*current\.get\(\s*['\"]a0_previous_exact_head_provenance['\"]\s*\)\s*==\s*)"
+    r"(\[[^\]]*\])"
+    r"(\s*,\s*['\"]A0 provenance drift['\"]\s*\))",
+    re.DOTALL,
+)
+match = pattern.search(verifier)
+if match is None:
+    raise SystemExit("A0 provenance verifier clause not found")
+observed = ast.literal_eval(match.group(2))
+if observed != previous:
+    raise SystemExit("source and verifier predecessor lists differ")
+replacement = match.group(1) + repr(provenance) + match.group(3)
 verifier_path.write_text(
-    verifier.replace(old_literal, new_literal, 1), encoding="utf-8"
+    verifier[: match.start()] + replacement + verifier[match.end() :],
+    encoding="utf-8",
 )
 
 registry = json.loads(registry_path.read_text(encoding="utf-8"))
@@ -106,9 +128,6 @@ expected_repairs=(
   plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json
   plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json
   scripts/hepta-intelligence-current-truth.py
-  scripts/verify-hepta-intelligence-a0-authority.py
-  scripts/verify-hepta-intelligence-document-authority.py
-  scripts/verify-hepta-intelligence-master-plan.py
 )
 [[ "${#repair_paths[@]}" -eq "${#expected_repairs[@]}" ]]
 for index in "${!expected_repairs[@]}"; do
@@ -120,9 +139,9 @@ git config user.name "Hepta governed source publisher"
 git config user.email "hepta-source-publisher@users.noreply.github.com"
 git add "${expected_repairs[@]}"
 tree="$(git write-tree)"
-message='fix(intelligence): publish Ruff-clean V4.5.1 A0 replacement
+message='fix(intelligence): complete V4.5.1 A0 predecessor provenance
 
-Format the exact A0-owned Python verifier scope, retain the superseded exact-head provenance chain, and recompute canonical document-registry bindings. Preserve the 17-path governance-only surface and every negative authority.'
+Retain the Ruff-clean verifier sources, record every superseded exact A0 head, and recompute canonical document-registry bindings. Preserve the 17-path governance-only surface and every negative authority.'
 commit="$(printf '%s\n' "$message" | git commit-tree "$tree" -p "$Q0_HEAD")"
 git reset --hard "$commit"
 [[ "$(git rev-parse HEAD^)" == "$Q0_HEAD" ]]
@@ -189,7 +208,7 @@ expected = json.loads(
 if changed != expected or len(changed) != 17:
     raise SystemExit(f"changed-path drift: {changed}")
 receipt = {
-    "schema": "hepta_a0_v451_ruff_replacement_source_publisher_v1",
+    "schema": "hepta_a0_v451_ruff_replacement_source_publisher_v2",
     "status": "PASS_HEPTA_A0_V451_RUFF_REPLACEMENT_SOURCE_PUBLISHER",
     "repository": os.environ["EXPECTED_REPOSITORY"],
     "candidate": {
@@ -202,12 +221,16 @@ receipt = {
         "head": os.environ["TARGET_HEAD"],
         "tree": os.environ["TARGET_TREE"],
     },
+    "predecessor_chain_appended": json.loads(
+        os.environ["PREDECESSOR_HEADS_JSON"]
+    ),
     "staging_branch": os.environ["STAGING_BRANCH"],
     "changed_paths": changed,
     "resolved_findings": [
         "A0_OWNED_PYTHON_RUFF_FORMATTING",
-        "SUPERSEDED_EXACT_HEAD_PROVENANCE",
+        "COMPLETE_SUPERSEDED_EXACT_HEAD_PROVENANCE",
         "CANONICAL_DOCUMENT_REGISTRY_REBINDING",
+        "BOT_PUSH_ACTION_REQUIRED_AVOIDED_BY_ACCOUNT_REF_CAS",
     ],
     "a0_candidate_qualified": False,
     "selected": False,
