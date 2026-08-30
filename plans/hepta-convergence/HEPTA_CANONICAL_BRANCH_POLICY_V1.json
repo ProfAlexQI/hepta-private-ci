@@ -1,0 +1,34 @@
+{
+  "schema": "hepta_canonical_branch_policy_v1",
+  "repository": "ProfHepta/hepta-private-ci",
+  "default_branch": "integration/vnext-main-20260811",
+  "required_merge_context": "CI required",
+  "source_parent": {
+    "pull_request": 150,
+    "commit": "925f2871754f89c31051080e20a9bd0448302245",
+    "tree": "1f821a14a2c89a170c7251c44bd0e64ba13ad8a3"
+  },
+  "source_trigger_coverage": {
+    "blocking_ci_pull_request": true,
+    "blocking_ci_main_push": true,
+    "blocking_ci_default_branch_push": true,
+    "hepta_vnext_manual_dispatch": true,
+    "hepta_vnext_main_push": true,
+    "hepta_vnext_default_branch_push": true,
+    "hepta_vnext_full_ci_integration_pattern": "integration/vnext-main-full-ci-*"
+  },
+  "ruleset": {
+    "name": "hepta-canonical-branch-protection-v1",
+    "expected_enforcement": "active",
+    "applied": false,
+    "readback_receipt": null
+  },
+  "authority": {
+    "runtime": false,
+    "production": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false,
+    "callers_ratchet": false
+  }
+}
