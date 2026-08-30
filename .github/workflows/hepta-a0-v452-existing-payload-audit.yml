@@ -1,0 +1,56 @@
+name: Hepta A0 V4.5.2 existing payload audit
+
+on:
+  push:
+    branches:
+      - "automation/hepta-a0-v452-existing-payload-audit-20260831"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-a0-v452-existing-payload-audit-20260831
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Decode and bind existing V4.5.2 payload
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact audit source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Decode and identify payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          cat ops/hepta-intelligence-a0-v452/payload.part* \
+            | tr -d '\r\n' \
+            | base64 --decode \
+            | gzip --decompress \
+            > artifacts/payload.decoded
+          sha256sum artifacts/payload.decoded | tee artifacts/SHA256SUMS
+          wc -c artifacts/payload.decoded | tee artifacts/SIZE
+          file artifacts/payload.decoded | tee artifacts/TYPE
+          head -c 256 artifacts/payload.decoded | base64 -w0 > artifacts/HEAD256.base64
+          printf '\n' >> artifacts/HEAD256.base64
+          observed="$(sha256sum artifacts/payload.decoded | awk '{print $1}')"
+          if [[ "$observed" == "5eadee056c7ad1486507b18a6547eab7c72982cf37d32a9b2423074d15035469" ]]; then
+            printf '%s\n' PASS_EXACT_HARDENED_V452_PATCH | tee artifacts/RESULT
+          else
+            printf 'MISMATCH_EXPECTED_5eadee_OBSERVED_%s\n' "$observed" | tee artifacts/RESULT
+          fi
+
+      - name: Upload audit evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-a0-v452-existing-payload-audit-${{ github.sha }}
+          path: artifacts/**
+          if-no-files-found: error
+          retention-days: 30
