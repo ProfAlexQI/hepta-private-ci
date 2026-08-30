@@ -1,0 +1,167 @@
+name: Hepta safe stale workflow-run reaper
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-safe-stale-run-reaper-20260830
+    paths:
+      - .github/workflows/hepta-safe-stale-run-reaper.yml
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: hepta-safe-stale-run-reaper
+  cancel-in-progress: false
+
+jobs:
+  reap:
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+      SELF_RUN_ID: ${{ github.run_id }}
+      PROTECTED_UI_SHA: 3e9268d6e4d60e5e61b26dc1b6de28b095d54674
+    steps:
+      - name: Cancel only provably superseded active runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          token = os.environ["GH_TOKEN"]
+          repository = os.environ["REPOSITORY"]
+          self_run_id = int(os.environ["SELF_RUN_ID"])
+          protected_sha = os.environ["PROTECTED_UI_SHA"]
+          api = f"https://api.github.com/repos/{repository}"
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {token}",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "hepta-safe-stale-run-reaper",
+          }
+
+          def request_json(url: str, method: str = "GET"):
+              request = urllib.request.Request(url, method=method, headers=headers)
+              if method != "GET":
+                  request.data = b""
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      body = response.read()
+                      return response.status, json.loads(body) if body else None
+              except urllib.error.HTTPError as error:
+                  body = error.read().decode("utf-8", "replace")
+                  return error.code, body
+
+          def active_runs(status: str):
+              output = []
+              page = 1
+              while True:
+                  query = urllib.parse.urlencode({"status": status, "per_page": 100, "page": page})
+                  code, payload = request_json(f"{api}/actions/runs?{query}")
+                  if code != 200 or not isinstance(payload, dict):
+                      raise SystemExit(f"failed to list {status} runs: HTTP {code}: {payload}")
+                  batch = payload.get("workflow_runs", [])
+                  output.extend(batch)
+                  if len(batch) < 100:
+                      return output
+                  page += 1
+
+          runs = active_runs("queued") + active_runs("in_progress")
+          latest_for_key = {}
+          for run in runs:
+              key = (run.get("workflow_id"), run.get("head_branch"), run.get("head_sha"), run.get("event"))
+              latest_for_key[key] = max(latest_for_key.get(key, 0), int(run["id"]))
+
+          branch_heads = {}
+
+          def branch_head(branch):
+              if branch in branch_heads:
+                  return branch_heads[branch]
+              if not branch:
+                  branch_heads[branch] = None
+                  return None
+              encoded = urllib.parse.quote(branch, safe="")
+              code, payload = request_json(f"{api}/git/ref/heads/{encoded}")
+              if code == 200 and isinstance(payload, dict):
+                  value = payload.get("object", {}).get("sha")
+              elif code == 404:
+                  value = None
+              else:
+                  raise SystemExit(f"failed to resolve branch {branch!r}: HTTP {code}: {payload}")
+              branch_heads[branch] = value
+              return value
+
+          now = dt.datetime.now(dt.timezone.utc)
+          cancelled = []
+          kept = []
+          for run in sorted(runs, key=lambda item: int(item["id"])):
+              run_id = int(run["id"])
+              if run_id == self_run_id:
+                  kept.append((run_id, "self"))
+                  continue
+              head_sha = run.get("head_sha")
+              branch = run.get("head_branch")
+              if head_sha == protected_sha:
+                  kept.append((run_id, "protected-ui-exact-head"))
+                  continue
+
+              created_at = dt.datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
+              age_seconds = (now - created_at).total_seconds()
+              if age_seconds < 120:
+                  kept.append((run_id, "too-new-to-reap"))
+                  continue
+
+              key = (run.get("workflow_id"), branch, head_sha, run.get("event"))
+              current_head = branch_head(branch)
+              reason = None
+              if current_head and current_head != head_sha:
+                  reason = f"branch-advanced:{head_sha}->{current_head}"
+              elif run_id != latest_for_key[key]:
+                  reason = "older-duplicate-for-same-workflow-branch-sha-event"
+              elif current_head is None and age_seconds >= 1800:
+                  reason = "source-branch-deleted"
+
+              if reason is None:
+                  kept.append((run_id, "latest-active-for-current-branch-head"))
+                  continue
+
+              code, payload = request_json(f"{api}/actions/runs/{run_id}/cancel", method="POST")
+              if code in (202, 409):
+                  cancelled.append({
+                      "id": run_id,
+                      "name": run.get("name"),
+                      "branch": branch,
+                      "sha": head_sha,
+                      "status": run.get("status"),
+                      "reason": reason,
+                      "http": code,
+                  })
+              else:
+                  raise SystemExit(f"failed to cancel run {run_id}: HTTP {code}: {payload}")
+
+          receipt = {
+              "schema": "hepta.safe-stale-run-reaper.v1",
+              "repository": repository,
+              "protected_ui_sha": protected_sha,
+              "active_runs_observed": len(runs),
+              "cancelled_count": len(cancelled),
+              "cancelled": cancelled,
+              "kept_count": len(kept),
+          }
+          print(json.dumps(receipt, indent=2))
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_path:
+              with open(summary_path, "a", encoding="utf-8") as summary:
+                  summary.write("## Safe stale-run reaper\n\n")
+                  summary.write(f"Observed **{len(runs)}** active runs; requested cancellation for **{len(cancelled)}** provably superseded runs.\n\n")
+                  summary.write(f"Protected UI exact head: `{protected_sha}`.\n")
+          PY
