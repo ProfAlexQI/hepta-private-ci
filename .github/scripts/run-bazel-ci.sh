@@ -100,13 +100,15 @@ require_exact_ci_arg() {
 require_ci_list_contains() {
   local prefix="$1"
   local required="$2"
-  local arg value entry found
+  local arg value entry
+  local seen=0
+  local found=0
   for arg in "${bazel_args[@]}"; do
     if [[ "$arg" != "$prefix"* ]]; then
       continue
     fi
+    seen=1
     value="${arg#${prefix}}"
-    found=0
     IFS=',' read -r -a entries <<< "$value"
     for entry in "${entries[@]}"; do
       if [[ "$entry" == "$required" ]]; then
@@ -114,19 +116,23 @@ require_ci_list_contains() {
         break
       fi
     done
-    if [[ $found -ne 1 ]]; then
-      echo "GitHub Actions Windows gnullvm qualification requires '$required' in '$arg'." >&2
-      exit 1
-    fi
   done
+  if [[ $seen -eq 1 && $found -ne 1 ]]; then
+    echo "GitHub Actions Windows gnullvm qualification requires '$required' in a '${prefix}' list." >&2
+    exit 1
+  fi
 }
 
 # GitHub qualification must retain one exact target/host/effect boundary. Local
 # callers may still override these defaults for diagnostics, but a required CI
-# check may not silently change ABI or omit the dedicated execution toolchain.
+# check may not silently change ABI, disable local C++ discovery, or omit either
+# the dedicated Rust bridge or ABI-constrained MSVC exec C/C++ toolchain.
 if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
   require_exact_ci_arg --host_platform= --host_platform=//:local_windows_msvc
   require_exact_ci_arg --platforms= --platforms=//:windows_x86_64_gnullvm
+  require_exact_ci_arg \
+    --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN= \
+    --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
   require_exact_ci_arg --strategy=TestRunner= --strategy=TestRunner=local
   require_exact_ci_arg --strategy=V8Mksnapshot= --strategy=V8Mksnapshot=local
   require_exact_ci_arg --test_env=RUST_TEST_THREADS= --test_env=RUST_TEST_THREADS=1
@@ -139,6 +145,9 @@ if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
   require_ci_list_contains \
     --extra_toolchains= \
     //:windows_gnullvm_tests_on_msvc_host_toolchain
+  require_ci_list_contains \
+    --extra_toolchains= \
+    //bazel/toolchains/windows:local_msvc_cc_toolchain
 fi
 
 local_defaults=(
@@ -153,11 +162,16 @@ fi
 if ! has_bazel_arg_prefix --platforms=; then
   local_defaults+=(--platforms=//:windows_x86_64_gnullvm)
 fi
+if ! has_bazel_arg_prefix --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=; then
+  local_defaults+=(--repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0)
+fi
 if ! has_bazel_arg_prefix --extra_execution_platforms=; then
   local_defaults+=(--extra_execution_platforms=//:windows_x86_64_msvc)
 fi
 if ! has_bazel_arg_prefix --extra_toolchains=; then
-  local_defaults+=(--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain)
+  local_defaults+=(
+    --extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain,//bazel/toolchains/windows:local_msvc_cc_toolchain
+  )
 fi
 if ! has_bazel_arg_prefix --strategy=TestRunner=; then
   local_defaults+=(--strategy=TestRunner=local)
@@ -189,7 +203,7 @@ local_bazel_args=(
   "${bazel_args[@]:$((command_index + 1))}"
 )
 
-echo "BuildBuddy API key is not available; using local Windows gnullvm target execution with an MSVC host platform."
+echo "BuildBuddy API key is not available; using local Windows gnullvm target execution with ABI-constrained MSVC host and exec toolchains."
 exec "$delegate" \
   "${wrapper_args[@]}" \
   -- \
