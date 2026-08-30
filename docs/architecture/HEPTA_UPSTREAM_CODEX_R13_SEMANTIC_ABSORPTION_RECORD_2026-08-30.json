@@ -2,10 +2,10 @@
   "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
   "source_intake": {
     "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R13.json",
-    "manifest_sha256": "a6ab68fe550c824d752106cb1b2efc55e79d79d2b531de410ec2c85a70aef444",
-    "commit": "1279b5f3a7abe4fd02bd182f41158a6ff8b725ab",
+    "manifest_sha256": "8035c1bfc8ae806d2cbf5a8deac55fbaa861ed31e7c3ef1c61d37bd15d2aee28",
+    "commit": "1a52577075c423cec6d7e442674b85935726a4c8",
     "range_start_exclusive": "dde85b435b16994f956bce08e5fb796ed94c27fd",
-    "range_end_inclusive": "cefa060695594cdeebfb4306170cc27487c8a088",
+    "range_end_inclusive": "da23e131e68b171909407f469da1b2f72d9c4f4a",
     "ordinary_merge_performed": false,
     "ordinary_rebase_performed": false,
     "cherry_pick_performed": false
@@ -64,12 +64,29 @@
       "non_claims": [
         "Deferral does not enable an immediate first-execution bypass, change live Guardian policy, or claim runtime equivalence."
       ]
+    },
+    {
+      "upstream_commit": "da23e131e68b171909407f469da1b2f72d9c4f4a",
+      "upstream_title": "Repair cursor-style rendering on older JediTerm terminals (#41673)",
+      "disposition": "deferred_jediterm_cursor_repair_without_terminal_equivalence_evidence",
+      "scope": "tui_cursor_style_repair_for_older_jediterm_terminals",
+      "reason": "The upstream TUI change repairs glyph damage caused by older JediTerm DECSCUSR handling. Hepta has not demonstrated that its native Makepad shell or supported terminal surfaces share this failure mode, and no equivalent terminal-owned glyph repair should be transplanted without bounded terminal evidence.",
+      "missing_prerequisites": [
+        "supported terminal applicability matrix",
+        "Hepta TUI versus native-shell ownership decision",
+        "JediTerm regression harness or explicit non-applicability proof"
+      ],
+      "tests_run": false,
+      "hepta_commit": null,
+      "non_claims": [
+        "Deferral does not claim terminal equivalence, source import, or a cursor-rendering fix in Hepta Native."
+      ]
     }
   ],
   "claims": {
     "absorbed_commit_count": 0,
     "existing_semantic_equivalent_count": 0,
-    "deferred_commit_count": 3,
+    "deferred_commit_count": 4,
     "upstream_fully_consumed": false,
     "merge_performed": false,
     "rebase_performed": false,
