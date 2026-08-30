@@ -1,0 +1,92 @@
+name: AuthBus P1.3 final clean-replay closure slim fallback
+
+on:
+  push:
+    branches:
+      - codex/authbus-p1-3-gap-closure-20260829
+    paths:
+      - .github/workflows/authbus-p1-3-final-closure-slim.yml
+
+concurrency:
+  group: authbus-p1-3-final-clean-replay-closure-slim
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  close:
+    name: Qualify and publish exact 29-path clean source on slim fallback
+    runs-on: ubuntu-slim
+    timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_BUILD_JOBS: "1"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_NET_RETRY: "10"
+      CARGO_HTTP_TIMEOUT: "120"
+      CARGO_TARGET_DIR: /tmp/authbus-p1-3-final-closure-target
+    steps:
+      - name: Checkout exact closure seed
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Rebind exact controller to this helper commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/authbus-p1-3-final-closure.sh")
+          source = path.read_text(encoding="utf-8")
+          replacements = (
+              (
+                  "EXPECTED_PARENT=3c44c4d1ee9faaf66a1bd81a7cb2f676974a9f74",
+                  "EXPECTED_PARENT=6ef49e8e13a0b04bb1b3de3ef19798f65bef5e9f",
+                  1,
+                  "exact helper parent",
+              ),
+              (
+                  "('runs-on: ubuntu-slim', 'runs-on: macos-15-arm64', 4, 'hosted runner'),",
+                  "('runs-on: ubuntu-slim', 'runs-on: ubuntu-24.04', 4, 'hosted runner'),",
+                  1,
+                  "qualification hosted runner",
+              ),
+          )
+          for before, after, expected, label in replacements:
+              count = source.count(before)
+              if count != expected:
+                  raise SystemExit(f"{label}: expected {expected} anchors, found {count}")
+              source = source.replace(before, after)
+
+          anchor = "    ('runs-on: ubuntu-slim', 'runs-on: ubuntu-24.04', 4, 'hosted runner'),\n"
+          insertion = (
+              anchor
+              + "    ('      - codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs',\n"
+              + "     '      - codex-rs/hepta-authbus-p0-3-qualification/src/lib.rs\\n"
+              + "      - codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs',\n"
+              + "     1, 'P0.3 inline assertion trigger path'),\n"
+          )
+          if source.count(anchor) != 1:
+              raise SystemExit("P0.3 trigger insertion: hosted-runner anchor is not unique")
+          source = source.replace(anchor, insertion)
+          path.write_text(source, encoding="utf-8")
+          PY
+          bash -n scripts/authbus-p1-3-final-closure.sh
+
+      - name: Execute fail-closed AuthBus P1.3 closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/authbus-p1-3-final-closure.sh
