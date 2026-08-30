@@ -25,6 +25,17 @@ runs:
         # BAZEL_OUTPUT_USER_ROOT and leaves Bazel's I/O-heavy trees on C:.
         output-base: ${{ steps.setup_ci.outputs.bazel-output-base }}
 
+    - name: Scrub setup-only Bazelisk GitHub token
+      shell: bash
+      run: |
+        set -euo pipefail
+        # setup-bazel needs its default token only while locating/downloading the
+        # pinned Bazelisk release. Empty the job-scoped export before any later
+        # repository-controlled script, target generator, verifier, or Bazel
+        # launcher executes. The Q0.32 launcher repeats this as defense in depth.
+        printf '%s\n' 'BAZELISK_GITHUB_TOKEN=' >> "$GITHUB_ENV"
+        unset BAZELISK_GITHUB_TOKEN
+
     - name: Configure Bazel repository cache
       id: configure_bazel_repository_cache
       shell: pwsh
