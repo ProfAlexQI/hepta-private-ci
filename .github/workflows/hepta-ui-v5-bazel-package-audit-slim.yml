@@ -1,0 +1,111 @@
+name: Hepta UI v5 Bazel package completeness audit slim
+
+on:
+  push:
+    branches:
+      - diagnostic/ui-v5-bazel-package-audit-slim-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-bazel-package-audit-slim.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v5-bazel-package-audit-slim
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    env:
+      EXPECTED_PARENT: 1e6f7cf3db498153fd52250dee1112f89489e094
+      REPORT_DIR: artifacts/hepta-ui-v5-bazel-package-audit
+    steps:
+      - name: Check out exact diagnostic commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Audit every workspace member
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/hepta-ui-v5-bazel-package-audit-slim.yml"
+          mkdir -p "$REPORT_DIR"
+          python3 - <<'PY'
+          from __future__ import annotations
+          import json, os, pathlib, tomllib
+          root = pathlib.Path("codex-rs")
+          workspace = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
+          members = workspace["workspace"]["members"]
+          if len(members) != len(set(members)):
+              raise SystemExit("duplicate workspace members")
+          records = []
+          for member in members:
+              directory = root / member
+              cargo_path = directory / "Cargo.toml"
+              if not directory.is_dir() or not cargo_path.is_file():
+                  raise SystemExit(f"invalid workspace member: {member}")
+              cargo = tomllib.loads(cargo_path.read_text(encoding="utf-8"))
+              package = cargo.get("package", {})
+              name = package.get("name")
+              if not isinstance(name, str) or not name:
+                  raise SystemExit(f"missing package name: {member}")
+              build_files = [value for value in ("BUILD.bazel", "BUILD") if (directory / value).is_file()]
+              explicit_bins = cargo.get("bin", [])
+              if not isinstance(explicit_bins, list):
+                  raise SystemExit(f"unexpected bin metadata: {member}")
+              records.append({
+                  "member": member,
+                  "package_name": name,
+                  "build_files": build_files,
+                  "missing_bazel_package": not build_files,
+                  "has_lib": bool(cargo.get("lib") is not None or (directory / "src/lib.rs").is_file()),
+                  "explicit_bins": explicit_bins,
+                  "has_src_main": (directory / "src/main.rs").is_file(),
+              })
+          missing = [record for record in records if record["missing_bazel_package"]]
+          report = {
+              "schema": "hepta.ui.bazel-package-completeness-audit.v1",
+              "source_commit": os.environ["EXPECTED_PARENT"],
+              "workspace_member_count": len(records),
+              "missing_bazel_package_count": len(missing),
+              "missing_members": missing,
+              "members": records,
+          }
+          out = pathlib.Path(os.environ["REPORT_DIR"])
+          (out / "workspace-bazel-audit.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          lines = [
+              "# Cargo workspace Bazel package audit",
+              "",
+              f"- source: `{os.environ['EXPECTED_PARENT']}`",
+              f"- workspace members: {len(records)}",
+              f"- missing Bazel packages: {len(missing)}",
+              "",
+          ]
+          for record in missing:
+              lines.append(f"- `{record['member']}` package=`{record['package_name']}` lib={record['has_lib']} bins={record['explicit_bins']} src_main={record['has_src_main']}")
+          if not missing:
+              lines.append("- none")
+          lines.append("")
+          rendered = "\n".join(lines)
+          (out / "workspace-bazel-audit.md").write_text(rendered, encoding="utf-8")
+          pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(rendered, encoding="utf-8")
+          print(rendered)
+          PY
+          cp codex-rs/cli/BUILD.bazel "$REPORT_DIR/cli.BUILD.bazel"
+          cp codex-rs/rmcp-client/BUILD.bazel "$REPORT_DIR/rmcp-client.BUILD.bazel"
+          git diff --check HEAD^ HEAD
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-ui-v5-bazel-package-audit-slim-${{ github.sha }}
+          path: artifacts/hepta-ui-v5-bazel-package-audit
+          if-no-files-found: error
+          retention-days: 3
