@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Q0.17-Q0.30 qualification ratchets plus Q0.34 execution binding."""
+"""Q0.17-Q0.30 qualification ratchets plus Q0.34/Q0.39 execution binding."""
 
 import os
 import subprocess
@@ -34,6 +34,9 @@ from run_bazel_q030_direct_bazel import (
 from run_bazel_q034_execution_manifest import (
     validate_keyless_windows_gnullvm_execution,
 )
+from run_bazel_q039_startup_order import (
+    canonicalize_keyless_windows_gnullvm_base_startup,
+)
 from run_bazel_with_buildbuddy_base import *  # noqa: F403
 
 # Keep selected compatibility layers machine-visible while Q0.34 composes the
@@ -66,6 +69,7 @@ def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]
         raise ValueError(
             "credential-free Windows gnullvm qualification rejects caller rc controls"
         )
+    startup = canonicalize_keyless_windows_gnullvm_base_startup(startup, env)
 
     output_base = env.get("BAZEL_OUTPUT_BASE")
     if not output_base:
