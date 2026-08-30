@@ -1,0 +1,5 @@
+diagnostic_branch=diagnostic/hepta-intelligence-q0-49-lock-shear-20260830
+source_parent=f2f200969fa0076178276bceab2eb21d23f0519e
+source_writeback=false
+runtime_authority=false
+production_authority=false
