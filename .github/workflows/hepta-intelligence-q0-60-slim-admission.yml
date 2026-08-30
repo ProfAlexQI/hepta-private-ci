@@ -1,0 +1,147 @@
+name: Hepta Intelligence Q0.60 slim admission
+
+on:
+  push:
+    branches:
+      - diagnostic/hepta-intelligence-q0-60-slim-admission-20260831
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-q0-60-slim-admission
+  cancel-in-progress: true
+
+env:
+  TARGET_SHA: c469cd75cb13e2cb3f47081ebeca66ff4bf7dfcd
+  TARGET_TREE: 547e18abcdeb06451356472a0c1a55f1b994c5db
+  TARGET_BASE: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
+  TARGET_Q0: d1073bd96b451bd1eea1be252511e46adf45e76d
+  TARGET_BASE_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  TARGET_HEAD_BRANCH: integration/hepta-intelligence-a0-q0-60-compose-20260831
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONNOUSERSITE: "1"
+
+jobs:
+  exact-admission:
+    runs-on: ubuntu-slim
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact signed integration
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind exact candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git show -s --format=%T HEAD)" = "$TARGET_TREE"
+          test "$(git rev-parse HEAD^1)" = "$TARGET_BASE"
+          test "$(git rev-parse HEAD^2)" = "$TARGET_Q0"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Compile and execute all bounded admission fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache="$RUNNER_TEMP/python-cache"
+          evidence="$RUNNER_TEMP/evidence"
+          mkdir -p "$cache" "$evidence"
+          PYTHONPYCACHEPREFIX="$cache" python3 -m py_compile \
+            scripts/hepta_q046_git_context.py \
+            scripts/hepta_q059_object_graph.py \
+            scripts/hepta_q060_config_graph.py \
+            scripts/verify-hepta-intelligence-integration-admission.py \
+            scripts/verify-hepta-intelligence-integration-admission-api-v2.py \
+            scripts/run-hepta-intelligence-integration-admission.py \
+            scripts/test-hepta-intelligence-integration-admission.py \
+            scripts/test-hepta-intelligence-integration-admission-boundaries.py \
+            scripts/test-hepta-intelligence-integration-admission-http-boundaries.py
+          python3 scripts/hepta_q046_git_context.py \
+            | tee "$evidence/q046-fixtures.txt"
+          python3 scripts/hepta_q059_object_graph.py --self-test \
+            | tee "$evidence/q059-fixtures.txt"
+          python3 scripts/hepta_q060_config_graph.py --self-test \
+            | tee "$evidence/q060-fixtures.txt"
+          python3 scripts/run-hepta-intelligence-integration-admission.py --self-test \
+            | tee "$evidence/runner-fixtures.txt"
+          python3 scripts/test-hepta-intelligence-integration-admission.py \
+            | tee "$evidence/admission-fixtures.txt"
+          python3 scripts/test-hepta-intelligence-integration-admission-boundaries.py \
+            | tee "$evidence/boundary-fixtures.txt"
+          python3 scripts/test-hepta-intelligence-integration-admission-http-boundaries.py \
+            | tee "$evidence/http-fixtures.txt"
+
+      - name: Execute exact live admission twice
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cache="$RUNNER_TEMP/python-cache"
+          evidence="$RUNNER_TEMP/evidence"
+          home="$RUNNER_TEMP/closed-home"
+          mkdir -p "$cache" "$evidence" "$home"
+          closed_python() {
+            env -i \
+              PATH=/usr/bin:/bin \
+              HOME="$home" \
+              LANG=C \
+              LC_ALL=C \
+              PYTHONHASHSEED=0 \
+              PYTHONPYCACHEPREFIX="$cache" \
+              PYTHONDONTWRITEBYTECODE=1 \
+              PYTHONNOUSERSITE=1 \
+              GITHUB_ACTIONS=true \
+              RUNNER_OS=Linux \
+              GH_TOKEN="$GH_TOKEN" \
+              /usr/bin/python3 "$@"
+          }
+          closed_python scripts/hepta_q059_object_graph.py --check
+          closed_python scripts/hepta_q060_config_graph.py --check
+          for suffix in a b; do
+            closed_python scripts/run-hepta-intelligence-integration-admission.py \
+              --repository "$GITHUB_REPOSITORY" \
+              --expected-head "$TARGET_SHA" \
+              --expected-base "$TARGET_BASE" \
+              --expected-base-branch "$TARGET_BASE_BRANCH" \
+              --expected-head-branch "$TARGET_HEAD_BRANCH" \
+              --token-env GH_TOKEN \
+              --output "$evidence/identity-$suffix.json"
+            closed_python scripts/hepta_q059_object_graph.py --check
+            closed_python scripts/hepta_q060_config_graph.py --check
+          done
+          cmp "$evidence/identity-a.json" "$evidence/identity-b.json"
+          cp "$evidence/identity-a.json" "$evidence/identity.json"
+          sha256sum "$evidence/identity.json" > "$evidence/identity.json.sha256"
+          closed_python scripts/run-hepta-intelligence-integration-admission.py --check-clean
+          closed_python scripts/hepta_q060_config_graph.py --check
+          closed_python scripts/hepta_q059_object_graph.py --check
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Stage exact evidence
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p q060-slim-evidence
+          if test -d "$RUNNER_TEMP/evidence"; then
+            cp -R "$RUNNER_TEMP/evidence/." q060-slim-evidence/
+          fi
+          git status --porcelain=v1 --untracked-files=all \
+            > q060-slim-evidence/final-git-status.txt || true
+          printf '%s\n' "$TARGET_SHA" > q060-slim-evidence/target-head.txt
+          printf '%s\n' "$TARGET_TREE" > q060-slim-evidence/target-tree.txt
+
+      - name: Upload exact evidence
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-intelligence-q0-60-slim-admission-${{ env.TARGET_SHA }}
+          path: q060-slim-evidence
+          if-no-files-found: error
+          retention-days: 30
