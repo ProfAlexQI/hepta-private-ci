@@ -37,7 +37,6 @@ jobs:
       V20_DRIVER_COMMIT: 781c237dbc81f49d3f22432b341d904aaa929291
       V24_X64_DRIVER_COMMIT: 9a1fc8005bab27e668e9cba98235fc21a3021a0d
       V25_X64_DRIVER_COMMIT: 3dbb216e9c03784f5e3175bccecd77ba808c54fc
-      HEPTA_UI_EXPORT_DIR: ${{ runner.temp }}/hepta-ui-v34-export
     steps:
       - name: Check out exact v34 export driver
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -121,7 +120,6 @@ jobs:
           import subprocess
           from pathlib import Path
 
-          root = Path.cwd()
           output = Path(os.environ["HEPTA_UI_EXPORT_DIR"])
           base_commit = os.environ["EXPECTED_PARENT"]
           implementation_commit = os.environ["HEPTA_UI_IMPLEMENTATION_COMMIT"]
@@ -270,6 +268,7 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$(brew --prefix bash)/bin:$(brew --prefix coreutils)/libexec/gnubin:$(brew --prefix findutils)/libexec/gnubin:$(brew --prefix gnu-sed)/libexec/gnubin:$PATH"
+          export HEPTA_UI_EXPORT_DIR="$RUNNER_TEMP/hepta-ui-v34-export"
           source_workflow="$RUNNER_TEMP/hepta-ui-v5-remediation-v25-x64.yml"
           generated_driver="$RUNNER_TEMP/hepta-ui-v5-current-v34-export.sh"
           if ! git cat-file -e "$V25_X64_DRIVER_COMMIT^{commit}"; then
