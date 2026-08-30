@@ -8,15 +8,25 @@ on:
 permissions:
   contents: read
 
+env:
+  EXACT_A0_HEAD: 08e6ed017e8cbfb94f86a5fa8397eb00eb396ed2
+
 jobs:
   format:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
-      - name: Checkout
+      - name: Checkout exact A0 candidate
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
+          ref: ${{ env.EXACT_A0_HEAD }}
+          fetch-depth: 2
           persist-credentials: false
+      - name: Verify exact candidate identity
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXACT_A0_HEAD"
+          test "$(git rev-parse HEAD^)" = "c768bcbeb4c1168088d2499828c24da521a2a73a"
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
         with:
@@ -24,28 +34,46 @@ jobs:
       - name: Format exact scope
         run: |
           set -euo pipefail
-          uv run --frozen --project scripts ruff format scripts/hepta-intelligence-current-truth.py scripts/verify-hepta-intelligence-a0-authority.py
-          uv run --frozen --project scripts ruff format --check scripts/hepta-intelligence-current-truth.py scripts/verify-hepta-intelligence-a0-authority.py
+          files=(
+            scripts/hepta-intelligence-current-truth.py
+            scripts/verify-hepta-intelligence-a0-authority.py
+            scripts/verify-hepta-intelligence-document-authority.py
+            scripts/verify-hepta-intelligence-master-plan.py
+          )
+          uv run --frozen --project scripts ruff format "${files[@]}"
+          uv run --frozen --project scripts ruff format --check "${files[@]}"
       - name: Assert exact diff
         run: |
           set -euo pipefail
-          mapfile -t changed < <(git diff --name-only | sort)
-          printf '%s\n' "${changed[@]}"
-          test "${#changed[@]}" -eq 2
-          test "${changed[0]}" = "scripts/hepta-intelligence-current-truth.py"
-          test "${changed[1]}" = "scripts/verify-hepta-intelligence-a0-authority.py"
+          expected="$(mktemp)"
+          actual="$(mktemp)"
+          trap 'rm -f "$expected" "$actual"' EXIT
+          printf '%s\n' \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py \
+            | sort >"$expected"
+          git diff --name-only | sort >"$actual"
+          cat "$actual"
+          cmp "$expected" "$actual"
           git diff --check
-      - name: Stage
+      - name: Stage exact formatted files and manifest
         run: |
           set -euo pipefail
           mkdir -p formatted/scripts
           cp scripts/hepta-intelligence-current-truth.py formatted/scripts/
           cp scripts/verify-hepta-intelligence-a0-authority.py formatted/scripts/
-          sha256sum formatted/scripts/*.py | sort > formatted/SHA256SUMS
+          cp scripts/verify-hepta-intelligence-document-authority.py formatted/scripts/
+          cp scripts/verify-hepta-intelligence-master-plan.py formatted/scripts/
+          sha256sum formatted/scripts/*.py | sort >formatted/SHA256SUMS
+          printf '%s\n' "$EXACT_A0_HEAD" >formatted/SOURCE_HEAD
+          git rev-parse HEAD^{tree} >formatted/SOURCE_TREE
+          git rev-parse HEAD^ >formatted/SOURCE_PARENT
       - name: Upload
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: hepta-a0-v451-exact-ruff-formatted-22
+          name: hepta-a0-08e6-exact-ruff-formatted-22
           path: formatted
           if-no-files-found: error
           retention-days: 7
