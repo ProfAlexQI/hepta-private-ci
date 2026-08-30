@@ -7,8 +7,14 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-RECEIPT_V1 = ROOT / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V1.json"
-RECEIPT = ROOT / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V2.json"
+RECEIPT_V1 = (
+    ROOT
+    / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V1.json"
+)
+RECEIPT = (
+    ROOT
+    / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_WORKFLOW_CONSOLIDATION_V2.json"
+)
 WORKFLOW_ROOT = ROOT / ".github/workflows"
 CANONICAL = WORKFLOW_ROOT / "hepta-intelligence-q0-paired-candidate-v10.yml"
 RETIRED = (
