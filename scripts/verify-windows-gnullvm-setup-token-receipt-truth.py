@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-import stat
+import subprocess
 from pathlib import Path
 
 
@@ -36,6 +36,8 @@ TRUTHFUL_RECEIPT_FIELD = (
 FALSE_POSITIVE_RECEIPT_FIELD = (
     '              "strict_step_parser_executed_before_setup_action": True,\n'
 )
+COMPAT_PASS = "PASS_WINDOWS_GNULLVM_Q0_39_RECEIPT_STEP_TRUTH_SOURCE"
+CURRENT_PASS = "PASS_WINDOWS_GNULLVM_Q0_42_RECEIPT_GIT_MODE_TRUTH_SOURCE"
 
 
 def fail(message: str) -> None:
@@ -45,6 +47,24 @@ def fail(message: str) -> None:
 def require(condition: bool, message: str) -> None:
     if not condition:
         fail(message)
+
+
+def require_git_executable(path: Path) -> None:
+    relative = str(path.relative_to(ROOT)).replace("\\", "/")
+    result = subprocess.run(
+        ["git", "ls-files", "--stage", "--", relative],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    entries = result.stdout.splitlines()
+    require(
+        result.returncode == 0
+        and len(entries) == 1
+        and entries[0].split(maxsplit=1)[0] == "100755",
+        "Q0.42 receipt-truth verifier must be one Git 100755 entry",
+    )
 
 
 def require_order(text: str, *tokens: str) -> None:
@@ -137,16 +157,14 @@ def prove_truth_gate_order_rejected(text: str) -> None:
 
 def main() -> None:
     require(WORKFLOW.is_file(), f"missing workflow: {WORKFLOW.relative_to(ROOT)}")
-    require(
-        Path(__file__).stat().st_mode & stat.S_IXUSR != 0,
-        "Q0.39 receipt-truth verifier lost executable mode",
-    )
+    require_git_executable(Path(__file__).resolve())
     text = WORKFLOW.read_text(encoding="utf-8")
     validate(text)
     prove_false_positive_rejected(text)
     prove_wrong_scope_rejected(text)
     prove_truth_gate_order_rejected(text)
-    print("PASS_WINDOWS_GNULLVM_Q0_39_RECEIPT_STEP_TRUTH_SOURCE")
+    print(COMPAT_PASS)
+    print(CURRENT_PASS)
 
 
 if __name__ == "__main__":
