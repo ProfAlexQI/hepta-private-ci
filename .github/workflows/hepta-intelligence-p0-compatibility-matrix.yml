@@ -1,38 +1,34 @@
 name: Hepta Intelligence P0 compatibility matrix
 
+# Every pull request creates the workflow check so an exact Intelligence head
+# cannot silently miss this gate merely because its final repair touched CI or
+# dependency-policy files rather than the frozen P0 source paths. The job-level
+# guard keeps unrelated repository pull requests runner-free.
 on:
-  pull_request:
-    paths:
-      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json
-      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json
-      - plans/hepta-intelligence/status-snapshots/**
-      - scripts/hepta-intelligence-status-compat.py
-      - scripts/verify-hepta-intelligence-grounding-ledger.py
-      - scripts/verify-hepta-intelligence-grounding-gate.py
-      - scripts/verify-hepta-intelligence-mutation-state.py
-      - scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py
-      - scripts/verify-hepta-intelligence-mutation-journal.py
-      - scripts/verify-hepta-intelligence-shadow-host.py
-      - .github/workflows/hepta-intelligence-p0-compatibility-matrix.yml
+  pull_request: {}
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: hepta-intelligence-p0-compatibility-${{ github.ref }}
+  group: hepta-intelligence-p0-compatibility-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   pr-head-source-compatibility:
     name: P0.2-P0.4c immutable status compatibility
-    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.head_ref, 'codex/hepta-intelligence-') ||
+      startsWith(github.head_ref, 'integration/hepta-intelligence-')
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Checkout explicit candidate identity
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.EXPECTED_SHA }}
           fetch-depth: 0
