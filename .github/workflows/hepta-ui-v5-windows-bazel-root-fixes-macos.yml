@@ -1,0 +1,50 @@
+name: Hepta UI v5 Windows Bazel root fixes macOS relay
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-windows-bazel-root-fixes-macos-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-windows-bazel-root-fixes-macos.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-windows-bazel-root-fixes-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: macos-14
+    timeout-minutes: 25
+    env:
+      SOURCE_COMMIT: 145ef0dbe2d0fda769162313113ee4a389e9348c
+      SOURCE_PATH: .github/workflows/hepta-ui-v5-windows-bazel-root-fixes.yml
+    steps:
+      - name: Check out exact relay commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Execute immutable exact-head publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "$SOURCE_COMMIT^{commit}"; then
+            git fetch --no-tags origin "$SOURCE_COMMIT"
+          fi
+          source_workflow="$RUNNER_TEMP/hepta-ui-v5-windows-bazel-root-fixes.yml"
+          generated_script="$RUNNER_TEMP/hepta-ui-v5-windows-bazel-root-fixes.sh"
+          git show "$SOURCE_COMMIT:$SOURCE_PATH" > "$source_workflow"
+          awk '
+            /      - name: Materialize and validate the exact source fix/ { found=1; next }
+            found && /        shell: bash/ { next }
+            found && /        run: \|/ { in_run=1; next }
+            in_run { sub(/^          /, ""); print }
+          ' "$source_workflow" > "$generated_script"
+          test -s "$generated_script"
+          bash -n "$generated_script"
+          bash -x "$generated_script"
