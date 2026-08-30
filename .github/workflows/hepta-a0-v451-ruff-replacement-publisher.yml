@@ -55,6 +55,22 @@ jobs:
           set -euo pipefail
           brew list bash >/dev/null 2>&1 || brew install bash
 
+      - name: Normalize publisher parser for Ruff trailing commas
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("publisher/automation/run-hepta-a0-v451-ruff-replacement-publisher.sh")
+          text = path.read_text(encoding="utf-8")
+          old = r'''    r"(\s*,\s*['\"]A0 provenance drift['\"]\s*\))",'''
+          new = r'''    r"(\s*,\s*['\"]A0 provenance drift['\"]\s*,?\s*\))",'''
+          if text.count(old) != 1:
+              raise SystemExit("expected exactly one provenance parser clause")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
+
       - name: Build, validate and publish immutable staging candidate
         shell: bash
         run: |
