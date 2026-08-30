@@ -52,8 +52,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Compile strict admission verifier
-        run: python3 -m py_compile scripts/verify-hepta-intelligence-integration-admission.py
+      - name: Compile strict admission verifiers
+        run: |
+          python3 -m py_compile \
+            scripts/verify-hepta-intelligence-integration-admission.py \
+            scripts/verify-hepta-intelligence-integration-admission-api-v2.py
 
       - name: Verify signed A0-first composition twice
         env:
@@ -62,7 +65,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$ARTIFACT_DIR"
           for suffix in a b; do
-            python3 scripts/verify-hepta-intelligence-integration-admission.py \
+            python3 scripts/verify-hepta-intelligence-integration-admission-api-v2.py \
               --repository "$GITHUB_REPOSITORY" \
               --expected-head "$EXPECTED_HEAD" \
               --expected-base "$EXPECTED_BASE" \
