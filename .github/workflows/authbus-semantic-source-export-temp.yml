@@ -1,0 +1,49 @@
+name: AuthBus semantic source export temporary
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ops/authbus-semantic-source-export-20260830
+    paths:
+      - .github/workflows/authbus-semantic-source-export-temp.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: authbus-semantic-source-export-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  export:
+    name: Export exact committed source tree
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact export head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Bind and archive exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          git archive --format=tar --prefix=authbus-source/ HEAD \
+            | gzip -9 > "/tmp/authbus-source-${GITHUB_SHA}.tar.gz"
+          sha256sum "/tmp/authbus-source-${GITHUB_SHA}.tar.gz" \
+            | tee "/tmp/authbus-source-${GITHUB_SHA}.sha256"
+
+      - name: Upload exact source archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: authbus-semantic-source-${{ github.sha }}
+          path: |
+            /tmp/authbus-source-${{ github.sha }}.tar.gz
+            /tmp/authbus-source-${{ github.sha }}.sha256
+          if-no-files-found: error
+          retention-days: 1
