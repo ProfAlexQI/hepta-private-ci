@@ -68,7 +68,7 @@ verifier = verifier_path.read_text(encoding="utf-8")
 pattern = re.compile(
     r"(require\(\s*current\.get\(\s*['\"]a0_previous_exact_head_provenance['\"]\s*\)\s*==\s*)"
     r"(\[[^\]]*\])"
-    r"(\s*,\s*['\"]A0 provenance drift['\"]\s*\))",
+    r"(\s*,\s*['\"]A0 provenance drift['\"]\s*,?\s*\))",
     re.DOTALL,
 )
 match = pattern.search(verifier)
