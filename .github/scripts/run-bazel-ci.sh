@@ -139,6 +139,18 @@ require_exact_ci_arg() {
   done
 }
 
+reject_ci_separated_value_options() {
+  local arg
+  for arg in "${bazel_args[@]}"; do
+    case "$arg" in
+      --config | --host_platform | --platforms | --repo_env | --extra_execution_platforms | --extra_toolchains | --strategy | --local_test_jobs | --jobs | --test_env)
+        echo "GitHub Actions keyless Windows gnullvm qualification requires protected Bazel options in --option=value form; rejecting separated-value option '$arg'." >&2
+        exit 1
+        ;;
+    esac
+  done
+}
+
 require_ci_allowed_configs() {
   local arg config
   for arg in "${bazel_args[@]}"; do
@@ -263,6 +275,7 @@ ci_test_filters="--test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=command_safety::powers
 # GitHub qualification has one exact target/host/toolchain/effect boundary.
 # Local non-Actions callers may retain explicit diagnostic overrides.
 if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  reject_ci_separated_value_options
   require_ci_allowed_configs
   require_exact_ci_arg --host_platform= "$ci_host_platform"
   require_exact_ci_arg --platforms= "$ci_target_platform"
