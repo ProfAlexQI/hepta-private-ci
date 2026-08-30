@@ -1,0 +1,54 @@
+name: Hepta inference V5 target base source export
+
+on:
+  push:
+    branches:
+      - ops/hepta-inference-v5-source-publisher-gpt56-20260830
+    paths:
+      - .github/workflows/hepta-inference-v5-target-source-export-gpt56.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-v5-target-source-export-gpt56
+  cancel-in-progress: true
+
+env:
+  TARGET_SHA: 1a6c453884835937c802de7e90b2a7f47160725e
+  TARGET_BRANCH: codex/hepta-inference-v5-runtime-integration-20260830
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact target base
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify and archive exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          remote_head="$(git ls-remote --heads origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
+          test "$remote_head" = "$TARGET_SHA"
+          test -z "$(git status --porcelain)"
+          out="$RUNNER_TEMP/hepta-inference-v5-target-base"
+          mkdir -p "$out"
+          printf '%s\n' "$TARGET_SHA" > "$out/HEAD"
+          git rev-parse 'HEAD^{tree}' > "$out/TREE"
+          git archive --format=tar.gz --output="$out/repository.tar.gz" HEAD
+          sha256sum "$out/repository.tar.gz" > "$out/SHA256SUMS"
+
+      - name: Upload exact target source
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-v5-target-base-${{ env.TARGET_SHA }}
+          path: ${{ runner.temp }}/hepta-inference-v5-target-base
+          if-no-files-found: error
+          retention-days: 14
