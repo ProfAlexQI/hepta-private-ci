@@ -26,6 +26,9 @@ jobs:
       - name: Verify Bazel clippy flags match Cargo workspace lints
         run: python3 .github/scripts/verify_bazel_clippy_lints.py
 
+      - name: Verify Windows gnullvm qualification contract
+        run: python3 scripts/verify-windows-gnullvm-qualification-contract.py
+
       - name: Test Bazel CI wrapper policy
         run: python3 -m unittest discover -s .github/scripts -p 'test_run_bazel*.py'
 
