@@ -10,12 +10,12 @@ permissions:
 
 concurrency:
   group: hepta-q0-format-once
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   format-q0-sources:
     if: ${{ github.actor != 'github-actions[bot]' }}
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - name: Checkout formatter branch
@@ -45,15 +45,24 @@ jobs:
           )
           git diff --check
 
-          mapfile -t changed < <(git diff --name-only)
-          test "${#changed[@]}" -gt 0
-          printf '%s\n' "${changed[@]}"
-          for path in "${changed[@]}"; do
-            case "$path" in
-              scripts/*.py|scripts/**/*.py|codex-rs/*.rs|codex-rs/**/*.rs) ;;
-              *) echo "unexpected formatted path: $path" >&2; exit 1 ;;
-            esac
-          done
+          python3 - <<'PY'
+          import subprocess
+
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only"], text=True
+          ).splitlines()
+          assert changed, "formatter produced no changes"
+          print("\n".join(changed))
+          unexpected = [
+              path
+              for path in changed
+              if not (
+                  (path.startswith("scripts/") and path.endswith(".py"))
+                  or (path.startswith("codex-rs/") and path.endswith(".rs"))
+              )
+          ]
+          assert not unexpected, {"unexpected": unexpected}
+          PY
 
           uv run --frozen --project scripts ruff format --check scripts
           (
@@ -65,7 +74,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
+          git config user.name "github-actions[bot]]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add scripts codex-rs
           git diff --cached --check
