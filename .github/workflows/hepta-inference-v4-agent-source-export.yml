@@ -3,7 +3,7 @@ name: Hepta inference V4 agent exact-head source export
 on:
   push:
     branches:
-      - codex/hepta-inference-gap-closure-20260829
+      - codex/hepta-inference-v4-closure-20260830
     paths:
       - .github/workflows/hepta-inference-v4-agent-source-export.yml
 
