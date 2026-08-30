@@ -26,7 +26,7 @@ env:
 jobs:
   publish:
     name: Build and validate one AST-stable Q0-single-parent replacement
-    runs-on: macos-15
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - name: Checkout publisher source
@@ -49,18 +49,11 @@ jobs:
         with:
           version: 0.11.3
 
-      - name: Install modern Bash
-        shell: bash
-        run: |
-          set -euo pipefail
-          brew list bash >/dev/null 2>&1 || brew install bash
-
       - name: Build, validate and publish immutable staging candidate
         shell: bash
         run: |
           set -euo pipefail
-          "$(brew --prefix bash)/bin/bash" \
-            publisher/automation/run-hepta-a0-v451-provenance-publisher-v3.sh
+          bash publisher/automation/run-hepta-a0-v451-provenance-publisher-v3.sh
 
       - name: Upload deterministic publisher evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
