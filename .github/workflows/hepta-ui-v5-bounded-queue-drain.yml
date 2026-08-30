@@ -1,9 +1,9 @@
-name: Hepta UI v5 exact-head queue drain
+name: AuthBus P1.3 exact-head bounded queue drain
 
 on:
   push:
     branches:
-      - ops/ui-v5-queue-drain-v1-20260830
+      - ops/authbus-p1-3-bounded-queue-drain-v1-20260830
     paths:
       - .github/workflows/hepta-ui-v5-bounded-queue-drain.yml
 
@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: hepta-ui-v5-bounded-queue-drain
+  group: authbus-p1-3-bounded-queue-drain
   cancel-in-progress: true
 
 jobs:
@@ -24,11 +24,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
       CURRENT_RUN_ID: ${{ github.run_id }}
-      TARGET_BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
-      TARGET_HEAD: 1e6f7cf3db498153fd52250dee1112f89489e094
-      CLEANUP_BRANCH: ops/ui-v5-queue-drain-v1-20260830
+      KEEP_BRANCH: codex/authbus-p1-3-clean-replay-v6-format-scope-20260830
+      KEEP_HEAD: e4166a92a3643d35572129233f496e9d5040879e
+      CLEANUP_BRANCH: ops/authbus-p1-3-bounded-queue-drain-v1-20260830
     steps:
-      - name: Cancel only superseded UI v5 runs
+      - name: Cancel only superseded AuthBus P1.3 runs
         shell: bash
         run: |
           set -euo pipefail
@@ -38,6 +38,7 @@ jobs:
           import json
           import os
           import sys
+          import time
           import urllib.error
           import urllib.parse
           import urllib.request
@@ -45,14 +46,14 @@ jobs:
           token = os.environ["GH_TOKEN"]
           repository = os.environ["REPOSITORY"]
           current_run_id = int(os.environ["CURRENT_RUN_ID"])
-          target_branch = os.environ["TARGET_BRANCH"]
-          target_head = os.environ["TARGET_HEAD"]
+          keep_branch = os.environ["KEEP_BRANCH"]
+          keep_head = os.environ["KEEP_HEAD"]
           cleanup_branch = os.environ["CLEANUP_BRANCH"]
           api_root = f"https://api.github.com/repos/{repository}"
           headers = {
               "Accept": "application/vnd.github+json",
               "Authorization": f"Bearer {token}",
-              "User-Agent": "hepta-ui-v5-exact-head-queue-drain",
+              "User-Agent": "hepta-authbus-p1-3-bounded-queue-drain",
               "X-GitHub-Api-Version": "2022-11-28",
           }
 
@@ -61,10 +62,22 @@ jobs:
               with urllib.request.urlopen(request, timeout=30) as response:
                   return json.load(response)
 
+          def branch_sha(branch: str) -> str:
+              encoded = urllib.parse.quote(branch, safe="")
+              payload = request_json(f"{api_root}/git/ref/heads/{encoded}")
+              return str(payload["object"]["sha"])
+
+          before_keep_sha = branch_sha(keep_branch)
+          if before_keep_sha != keep_head:
+              raise SystemExit(
+                  f"keep branch drifted before drain: expected {keep_head}, got {before_keep_sha}"
+              )
+
           candidates: dict[int, dict] = {}
           retained_current: list[dict] = []
+          observed_authbus: list[dict] = []
           for status in ("queued", "in_progress"):
-              for page in range(1, 16):
+              for page in range(1, 31):
                   query = urllib.parse.urlencode(
                       {"status": status, "per_page": 100, "page": page}
                   )
@@ -76,7 +89,25 @@ jobs:
                       head_sha = run.get("head_sha") or ""
                       if run_id == current_run_id:
                           continue
-                      if branch == target_branch and head_sha == target_head:
+
+                      is_authbus_branch = (
+                          branch.startswith("codex/authbus-p1-3-")
+                          or branch.startswith("ops/authbus-p1-3-")
+                      )
+                      if not is_authbus_branch:
+                          continue
+
+                      observed_authbus.append(
+                          {
+                              "id": run_id,
+                              "branch": branch,
+                              "head_sha": head_sha,
+                              "status": run.get("status"),
+                              "name": run.get("name"),
+                          }
+                      )
+
+                      if branch == keep_branch and head_sha == keep_head:
                           retained_current.append(
                               {
                                   "id": run_id,
@@ -86,11 +117,22 @@ jobs:
                               }
                           )
                           continue
-                      stale_target = branch == target_branch and head_sha != target_head
-                      stale_helper = branch.startswith("ops/ui-v5-") and branch != cleanup_branch
+
+                      stale_source_or_helper = branch.startswith(
+                          "codex/authbus-p1-3-"
+                      )
                       stale_cleanup = branch == cleanup_branch
-                      if not (stale_target or stale_helper or stale_cleanup):
+                      stale_other_helper = (
+                          branch.startswith("ops/authbus-p1-3-")
+                          and branch != cleanup_branch
+                      )
+                      if not (
+                          stale_source_or_helper
+                          or stale_cleanup
+                          or stale_other_helper
+                      ):
                           continue
+
                       candidates[run_id] = {
                           "id": run_id,
                           "branch": branch,
@@ -98,15 +140,20 @@ jobs:
                           "status": run.get("status"),
                           "name": run.get("name"),
                           "reason": (
-                              "stale_target_head"
-                              if stale_target
-                              else "superseded_ui_helper"
-                              if stale_helper
+                              "superseded_authbus_source_or_helper"
+                              if stale_source_or_helper
                               else "prior_cleanup_run"
+                              if stale_cleanup
+                              else "superseded_authbus_ops_helper"
                           ),
                       }
                   if len(runs) < 100:
                       break
+
+          if not retained_current:
+              raise SystemExit("no queued or in-progress run found for the exact keep head")
+          if any(item["head_sha"] != keep_head for item in retained_current):
+              raise SystemExit("retained run set contains a non-current head")
 
           cancelled: list[dict] = []
           raced: list[dict] = []
@@ -144,19 +191,25 @@ jobs:
                   )
                   raise
 
-          retained_ids = [int(item["id"]) for item in retained_current]
-          if len(retained_ids) != len(set(retained_ids)):
-              raise SystemExit("retained current-head run list contains duplicates")
-          if any(item["head_sha"] != target_head for item in retained_current):
-              raise SystemExit("queue drain retained a non-current target run")
+          # Let the cancellation requests become visible, then prove that the
+          # exact source branch itself did not move during the drain.
+          time.sleep(3)
+          after_keep_sha = branch_sha(keep_branch)
+          if after_keep_sha != keep_head:
+              raise SystemExit(
+                  f"keep branch drifted during drain: expected {keep_head}, got {after_keep_sha}"
+              )
 
           print(
               json.dumps(
                   {
-                      "schema": "hepta_ui_v5_exact_head_queue_drain_receipt_v1",
+                      "schema": "hepta_authbus_p1_3_exact_head_queue_drain_receipt_v1",
                       "status": "ready",
-                      "target_branch": target_branch,
-                      "target_head": target_head,
+                      "keep_branch": keep_branch,
+                      "keep_head": keep_head,
+                      "keep_branch_unchanged": True,
+                      "selected_count": len(candidates),
+                      "selected": [candidates[key] for key in sorted(candidates)],
                       "cancelled_count": len(cancelled),
                       "cancelled": cancelled,
                       "raced_count": len(raced),
@@ -165,6 +218,7 @@ jobs:
                       "retained_current": sorted(
                           retained_current, key=lambda item: int(item["id"])
                       ),
+                      "observed_authbus_count": len(observed_authbus),
                       "unrelated_runs_touched": 0,
                   },
                   indent=2,
