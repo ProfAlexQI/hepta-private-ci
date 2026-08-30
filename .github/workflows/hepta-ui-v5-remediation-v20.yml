@@ -1,0 +1,100 @@
+name: Hepta UI v5 remediation v20
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-remediation-v20-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-remediation-v20.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-remediation-v20
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_PARENT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
+      BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-remediation-v20.yml
+      UPSTREAM_URL: https://github.com/openai/codex.git
+      UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
+      UPSTREAM_ROLE: current_r12
+      UPSTREAM_FROZEN_REF: refs/remotes/upstream/hepta-intake-20260830-r12
+      UPSTREAM_INTAKE_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R12.json
+      UPSTREAM_RECORD_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+      V12_DRIVER_COMMIT: 554d710f6a561166553f3c01fafc5b27cd8c28b9
+      V14_DRIVER_COMMIT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
+      V18_DRIVER_COMMIT: 022b91a04f443d7fe4ca2bce853bc26bccf99f84
+    steps:
+      - name: Check out exact v20 driver commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install deterministic remediation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes jq ripgrep ruby patch
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+
+      - name: Execute v18 remediation with v20 closure patch
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source_workflow="$RUNNER_TEMP/hepta-ui-v5-remediation-v18-arm.yml"
+          generated_driver="$RUNNER_TEMP/hepta-ui-v5-remediation-v20-driver.sh"
+          git cat-file -e "$V18_DRIVER_COMMIT^{commit}"
+          git show "$V18_DRIVER_COMMIT:.github/workflows/hepta-ui-v5-remediation-v18-arm.yml" > "$source_workflow"
+          awk '
+            /      - name: Execute v14 remediation with truthful scripts-budget semantics/ { found=1; next }
+            found && /        shell: bash/ { next }
+            found && /        run: \|/ { in_run=1; next }
+            in_run { sub(/^          /, ""); print }
+          ' "$source_workflow" > "$generated_driver"
+          test -s "$generated_driver"
+
+          export V20_GENERATED_DRIVER="$generated_driver"
+          python3 <<'PY'
+          from __future__ import annotations
+
+          import base64
+          import os
+          import re
+          import zlib
+          from pathlib import Path
+
+          path = Path(os.environ["V20_GENERATED_DRIVER"])
+          text = path.read_text(encoding="utf-8")
+          matches = re.findall(r'payload = "([A-Za-z0-9+/=]+)"', text)
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"v20 embedded patch payload: expected 1 match, found {len(matches)}"
+              )
+
+          old_payload = matches[0]
+          decoded = zlib.decompress(base64.b64decode(old_payload)).decode("utf-8")
+          addon = zlib.decompress(base64.b64decode(
+              "eNq1V9tu20YQfddXTBmjphCRtlIUaIWoqOMorQvHdm0lLmoLwoociluTS2J3qUtS/3tnl5REWr62KB8EXuZ+zsyOWq9g9ma/BzeIOegY4TKTN79IlscQsCRBuXdxeAgSA+S5BrUUQSwzwb9gCHOuY6uCCxbo1iuIuFTay5nUSzgvFIlnhQwQuJih0JlcdoCJEFJ2g6UrLsJsruAd+4IJSNKIUg050zEZw0We8IBr0pmoLCk0lto6y5IgZlx4ORcCQ7/F0zyTJjYFTMGY0hnTfSuSWWqNJXwClcwZPVqhz2/2zX2rZcU1k1PU0F+/d1dWfPoyu+qO2qWgCqQpQx9qar5EFo41LrSLIshCLqZ9p9CR94NTaSVcoFoplSZ8Rdlp+8E1pUcRqv5QFlipUGV4YJWuWkAXPeMCokyWdx0wqnQPKIoUJdPobly1S5XICvlKk0O3Df0+OFOugYUheAdOa9QyEijcusM2fNOHbs8akIwrhIul0pgOFly79q25IodUTE0TTAlZpnkmQGk2pdwJpCDOZM8AiIEmnnQJcR3EHQq/IAC/bvm8dazldeoKpR6zdZkrsav9Ua2cV03ZXvNxtC6cky91nInv4O3bXQJ3fHl08v708mL87uDPwfHutXA6pdhDbNlIrO92jRg5sERxfKppXEz25tQ3UUJ03puXtPZSNQu8ieG2v0wTp30tdisDhixkwNh5jD0bBUpMUzeOy9qSquM4JRQeCJZiD45KibKXuLq5vhYrtFSMSdKDfK7i2ltZiB6QtSCDyjpMKl3wvCVxz/NE5uUym0pUijTJ53ZEEvOEBZYGFNadOF+bONc+74ZqR0TX//F7f7+cJdUEeF7of9degFUt8s1wWOdU2fdMIhFPEFIueMoSehNkBLMwga9Gj81YYRJ5RR5STzVcULe4O8cHF8PBH0fDw9P3A/CoBffb8LUhZi6kboGGbEPk9r7QQ4xYkawK8j96bsIYgeGeH1BrarcJXzULKgNb0yByVvPbArkq+JPt/7C/23t6xEpXJLsj34F7SNiBbs2IKrjGe7rGXDu4wKAwo+s4m77ndMSZI4qkfsvocLEnxQ6KWe/808nJ4Hw8HHw8A8e2iLfW9JJsqpy7RS295hIjvtjyWnHtrJwh7rcr/OcxD2Ji4IbCFXUrhbY/lDx1289hBniULnFZN9zdxxdNp/kcnE+CTag3dEYnPR22M2w0Z2XDeYTEJhDr8KpkiH906hufo17vSJmbD0WSLH8vWMIjjqHbiOuRwM5rSwFwBcbFah/oNbJ7VnTuEGlDsbX3jgkkyZIS6Doq9vtwmSMcI4teHB2dyZYetqJm5Dw/zopvF8MPH4dEjroayT3eu3WqP7tzy83Lqr6ocRvOnmzbunQHGt3xGpof681LxXiwdcWM0xpqGv4zk9yU2uxKP7tbSDn2oB9f/Op07tbP2G8eX//aSYWZ9fFs/038Ntm+EL1amC/CsObwSQQ3sh24U7YmZnalmUsDqd1pzI9ReWizcbZ2ss3CVW7Kai/GXDPP7FdT87/EK/+XeCoIPImaBrcJw5t1geV5soSf9kKc7QmaN//B1Awlj7Zsjep/F+ppOo7/F50a9R38nqxb/wAR7zjS"
+          )).decode("utf-8")
+          new_payload = base64.b64encode(
+              zlib.compress((decoded + addon).encode("utf-8"), level=9)
+          ).decode("ascii")
+          if text.count(old_payload) != 1:
+              raise SystemExit("v20 payload replacement was not unique")
+          path.write_text(text.replace(old_payload, new_payload, 1), encoding="utf-8")
+          PY
+
+          bash -n "$generated_driver"
+          bash -x "$generated_driver"
