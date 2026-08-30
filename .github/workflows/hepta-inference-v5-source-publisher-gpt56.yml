@@ -1,0 +1,118 @@
+name: Hepta inference V5 explicit source publisher
+
+on:
+  push:
+    branches:
+      - ops/hepta-inference-v5-source-publisher-gpt56-20260830
+    paths:
+      - .github/workflows/hepta-inference-v5-source-publisher-gpt56.yml
+      - .github/qualification/hepta-inference-v5-gpt56/**
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-v5-source-publisher-gpt56
+  cancel-in-progress: false
+
+env:
+  BASE_SHA: 1a6c453884835937c802de7e90b2a7f47160725e
+  TARGET_BRANCH: codex/hepta-inference-v5-runtime-integration-20260830
+  LOCAL_SOURCE_SHA: bdb46157960f96dc72e4b00319da26e874d7bfd1
+  PATCH_SHA256: 0fe1b576dbd3d9b9c494675683d78c123e64a8c58340903f8197d92830bdb292
+  PAYLOAD_SHA256: 949276cc008ed17c7b0595f1f2dc4d59f4de05d4846c0004b741b3c7442121cc
+
+jobs:
+  materialize-source:
+    name: materialize ordinary source on isolated target
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout immutable bootstrap head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify bootstrap identity and payload digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "ops/hepta-inference-v5-source-publisher-gpt56-20260830"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+          root=.github/qualification/hepta-inference-v5-gpt56
+          printf '%s  %s\n' "$PAYLOAD_SHA256" "$root/source.patch.xz" | sha256sum --check --strict
+          xz --decompress --stdout "$root/source.patch.xz" > "$RUNNER_TEMP/source.patch"
+          printf '%s  %s\n' "$PATCH_SHA256" "$RUNNER_TEMP/source.patch" | sha256sum --check --strict
+          cp "$root/BLOB_MANIFEST.sha1" "$RUNNER_TEMP/BLOB_MANIFEST.sha1"
+          cp "$root/DELETE_PATHS.txt" "$RUNNER_TEMP/DELETE_PATHS.txt"
+          cp "$root/EXPECTED_PATHS.txt" "$RUNNER_TEMP/EXPECTED_PATHS.txt"
+
+      - name: Apply only to exact target base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          remote_head="$(git rev-parse "refs/remotes/origin/$TARGET_BRANCH")"
+          test "$remote_head" = "$BASE_SHA"
+          git checkout --force -B "$TARGET_BRANCH" "refs/remotes/origin/$TARGET_BRANCH"
+          test "$(git rev-parse HEAD)" = "$BASE_SHA"
+          git apply --check "$RUNNER_TEMP/source.patch"
+          git apply --index "$RUNNER_TEMP/source.patch"
+          rm -f .github/workflows/hepta-inference-v4-full-closure-chatgpt-v3.yml
+          git add -u .github/workflows/hepta-inference-v4-full-closure-chatgpt-v3.yml
+
+          while read -r expected path; do
+            test -n "$expected"
+            test -n "$path"
+            actual="$(git hash-object -- "$path")"
+            test "$actual" = "$expected" || {
+              echo "blob mismatch: $path expected=$expected actual=$actual" >&2
+              exit 1
+            }
+          done < "$RUNNER_TEMP/BLOB_MANIFEST.sha1"
+
+          while read -r path; do
+            test -n "$path"
+            test ! -e "$path" || {
+              echo "deleted path still exists: $path" >&2
+              exit 1
+            }
+          done < "$RUNNER_TEMP/DELETE_PATHS.txt"
+
+          git diff --cached --name-only | LC_ALL=C sort > "$RUNNER_TEMP/ACTUAL_PATHS.txt"
+          LC_ALL=C sort "$RUNNER_TEMP/EXPECTED_PATHS.txt" > "$RUNNER_TEMP/EXPECTED_PATHS.sorted.txt"
+          cmp "$RUNNER_TEMP/EXPECTED_PATHS.sorted.txt" "$RUNNER_TEMP/ACTUAL_PATHS.txt"
+          git diff --cached --check
+          test -f .github/workflows/hepta-inference-v5-exact-head-qualification.yml
+          test ! -e .github/workflows/hepta-inference-v4-full-closure-chatgpt.yml
+          test ! -e .github/workflows/hepta-inference-v4-full-closure-chatgpt-v2.yml
+          test ! -e .github/workflows/hepta-inference-v4-full-closure-chatgpt-v3.yml
+          test ! -e .github/workflows/hepta-inference-v4-one-shot-s1-capability.yml
+          test ! -d tools/hepta-inference-v4-payloads
+
+      - name: Commit and publish immutable source candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "feat(inference): materialize V5 runtime and product shadow source"
+          new_head="$(git rev-parse HEAD)"
+          new_tree="$(git rev-parse 'HEAD^{tree}')"
+          test -z "$(git status --porcelain)"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          mkdir -p "$RUNNER_TEMP/publisher-receipt"
+          printf '{\n  "schema": "hepta.inference.v5.source_publisher.v2",\n  "bootstrap_sha": "%s",\n  "base_sha": "%s",\n  "local_source_sha": "%s",\n  "target_branch": "%s",\n  "target_head_sha": "%s",\n  "target_tree_sha": "%s",\n  "qualification_claimed": false,\n  "production_activated": false\n}\n' \
+            "$GITHUB_SHA" "$BASE_SHA" "$LOCAL_SOURCE_SHA" "$TARGET_BRANCH" "$new_head" "$new_tree" \
+            > "$RUNNER_TEMP/publisher-receipt/receipt.json"
+
+      - name: Upload publisher receipt
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-v5-source-publisher-${{ github.sha }}
+          path: ${{ runner.temp }}/publisher-receipt
+          if-no-files-found: error
+          retention-days: 14

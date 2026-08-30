@@ -1,0 +1,13 @@
+.github/workflows/hepta-inference-v4-full-closure-chatgpt-v2.yml
+.github/workflows/hepta-inference-v4-full-closure-chatgpt-v3.yml
+.github/workflows/hepta-inference-v4-full-closure-chatgpt.yml
+.github/workflows/hepta-inference-v4-one-shot-s1-capability.yml
+tools/hepta-inference-v4-payloads/apply_payload_steps.py
+tools/hepta-inference-v4-payloads/inf-r1.yml
+tools/hepta-inference-v4-payloads/inf-r2-chain.yml
+tools/hepta-inference-v4-payloads/inf-r3.yml
+tools/hepta-inference-v4-payloads/inf-s1.yml
+tools/hepta-inference-v4-payloads/inf-s2.yml
+tools/hepta-inference-v4-payloads/inf-s3.yml
+tools/hepta-inference-v4-payloads/inf-s4.yml
+tools/hepta-inference-v4-payloads/post_materialize_hardening.py
