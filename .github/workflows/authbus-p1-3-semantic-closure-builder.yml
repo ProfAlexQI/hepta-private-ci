@@ -1,4 +1,4 @@
-name: AuthBus P1.3 semantic source publisher Windows 2025 v7
+name: AuthBus P1.3 semantic source publisher Windows 2025 v8
 
 on:
   push:
@@ -11,16 +11,17 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: authbus-p1-3-semantic-source-publisher-windows2025-v7
+  group: authbus-p1-3-semantic-source-publisher-windows2025-v8
   cancel-in-progress: true
 
 permissions:
   contents: write
 
 env:
+  BASE_SHA: 6b7aa91d7702a92a50297b1b1bd8170ffb7cb184
   SOURCE_HEAD: 8572f3d2182541b14e0719b229ccd8754494f134
   SEED_BRANCH: ops/authbus-p1-3-semantic-closure-publisher-windows2025-v7-20260830
-  STAGING_BRANCH: staging/authbus-p1-3-semantic-closure-v11-20260830
+  TARGET_BRANCH: codex/authbus-p1-3-semantic-closure-v11-20260830
   P03: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
   P13: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
   GIT_CONFIG_COUNT: "1"
@@ -29,7 +30,7 @@ env:
 
 jobs:
   publish_source:
-    name: Materialize and publish unqualified semantic source on Windows 2025
+    name: Materialize and publish single-parent semantic source on Windows 2025
     runs-on: windows-2025
     timeout-minutes: 60
     steps:
@@ -48,7 +49,9 @@ jobs:
           git config core.eol lf
           test "${GITHUB_REF_NAME}" = "${SEED_BRANCH}"
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git cat-file -t "${BASE_SHA}")" = "commit"
           test "$(git cat-file -t "${SOURCE_HEAD}")" = "commit"
+          test "$(git rev-parse "${SOURCE_HEAD}^")" = "${BASE_SHA}"
           git merge-base --is-ancestor "${SOURCE_HEAD}" HEAD
           mapfile -t changed < <(git diff --name-only "${SOURCE_HEAD}...HEAD" | sort)
           expected=(
@@ -128,7 +131,7 @@ jobs:
           grep -q PASS_AUTHBUS_P1_3_SOURCE_ONLY "${output}"
           git diff --check
 
-      - name: Remove one-shot publisher and enforce the final allowlist
+      - name: Remove one-shot publisher and enforce the final semantic allowlist
         shell: bash
         run: |
           set -euo pipefail
@@ -160,13 +163,23 @@ jobs:
           done
           git diff --check
 
-      - name: Commit and publish the unqualified source candidate
+      - name: Publish a clean single-parent unqualified source commit
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "hepta-authbus-source-publisher"
           git config user.email "102159240+ProfHepta@users.noreply.github.com"
           git add -A
-          git commit -m "fix(authbus): close P1.3 semantic lifecycle blockers"
-          test "$(git diff --name-only HEAD^..HEAD | wc -l | tr -d ' ')" = "13"
-          git push --force-with-lease origin "HEAD:${STAGING_BRANCH}"
+          tree="$(git write-tree)"
+          commit="$(printf '%s\n\n%s\n' \
+            'fix(authbus): close P1.3 semantic lifecycle blockers' \
+            'Qualification-only source candidate. No authority, product wiring, provider call, OpenBao activation, promotion, or release.' \
+            | git commit-tree "${tree}" -p "${BASE_SHA}")"
+          test "$(git show -s --format=%P "${commit}")" = "${BASE_SHA}"
+          test "$(git show -s --format=%T "${commit}")" = "${tree}"
+          test "$(git diff --name-only "${SOURCE_HEAD}" "${commit}" | wc -l | tr -d ' ')" = "13"
+          test "$(git diff --name-only "${BASE_SHA}" "${commit}" | wc -l | tr -d ' ')" = "30"
+          test "$(git ls-tree -r --name-only "${commit}" | grep -Ec 'authbus-p1-3-semantic-closure-builder|authbus-p1-3-finalize|authbus-p1-3-semantic-completion|authbus-p1-3-materialize')" = "0"
+          git push \
+            --force-with-lease="refs/heads/${TARGET_BRANCH}:${SOURCE_HEAD}" \
+            origin "${commit}:refs/heads/${TARGET_BRANCH}"
