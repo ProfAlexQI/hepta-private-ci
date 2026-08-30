@@ -1,0 +1,91 @@
+name: Windows MSVC non-qualifying diagnostic
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Bazel target for the explicitly non-qualifying MSVC diagnostic
+        required: true
+        default: "//codex-rs/uds:uds-unit-tests-bin"
+        type: string
+      bazel_config:
+        description: Bazel configuration for the diagnostic command
+        required: true
+        default: "clippy"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-msvc-nonqualifying-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  msvc-diagnostic:
+    name: NON-QUALIFYING Windows MSVC diagnostic
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      HEPTA_QUALIFICATION_MODE: non_qualifying_msvc_diagnostic
+      ALLOW_WINDOWS_MSVC_FALLBACK: "1"
+    steps:
+      - name: Enable Windows long paths before checkout
+        shell: pwsh
+        run: git config --system core.longpaths true
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Prepare Bazel CI
+        uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-pc-windows-gnullvm
+          cache-scope: windows-msvc-nonqualifying-diagnostic
+
+      - name: Run isolated non-qualifying MSVC diagnostic
+        shell: bash
+        env:
+          DIAGNOSTIC_TARGET: ${{ inputs.target }}
+          DIAGNOSTIC_CONFIG: ${{ inputs.bazel_config }}
+          HEPTA_WINDOWS_MSVC_DIAGNOSTIC_RECEIPT_DIR: ${{ runner.temp }}/hepta-windows-msvc-diagnostic
+        run: |
+          set -euo pipefail
+          .github/scripts/run-windows-msvc-diagnostic.sh \
+            -- \
+            build \
+            "--config=${DIAGNOSTIC_CONFIG}" \
+            -- \
+            "${DIAGNOSTIC_TARGET}"
+
+      - name: Assert receipt is permanently non-qualifying
+        if: always() && !cancelled()
+        shell: bash
+        env:
+          HEPTA_WINDOWS_MSVC_DIAGNOSTIC_RECEIPT_DIR: ${{ runner.temp }}/hepta-windows-msvc-diagnostic
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["HEPTA_WINDOWS_MSVC_DIAGNOSTIC_RECEIPT_DIR"]) / "receipt.json"
+          receipt = json.loads(path.read_text(encoding="utf-8"))
+          assert receipt["qualification_mode"] == "non_qualifying_msvc_diagnostic"
+          assert receipt["eligible_for_repository_admission"] is False
+          assert receipt["gnullvm_evidence"] is False
+          assert receipt["required_check"] is False
+          assert receipt["production_authority"] is False
+          assert receipt["release_authority"] is False
+          print("eligible_for_repository_admission=false")
+          PY
+
+      - name: Upload non-qualifying diagnostic receipt
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: NON-QUALIFYING-windows-msvc-diagnostic-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-windows-msvc-diagnostic/receipt.json
+          if-no-files-found: error
+          retention-days: 7

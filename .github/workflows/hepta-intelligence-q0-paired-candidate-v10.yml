@@ -5,7 +5,14 @@ on:
   push:
     branches:
       - codex/hepta-intelligence-plan-v3-20260828
+      - "codex/hepta-intelligence-q0-*"
+      - "integration/hepta-intelligence-*"
   workflow_dispatch:
+    inputs:
+      expected_parent:
+        description: Expected sole parent SHA of the dispatched candidate
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -15,8 +22,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-  EXPECTED_PARENT: aeb8ac0bfb30d570a16c4914b6e4b31ce035dd62
+  # Push events cryptographically bind the branch, head and previous ref value.
+  # Manual dispatches must supply the candidate's sole parent explicitly.
+  EXPECTED_BRANCH: ${{ github.ref_name }}
+  EXPECTED_PARENT: ${{ github.event.before || inputs.expected_parent }}
   Q0_WORKFLOW_PATH: .github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml
   Q0_WORKFLOW_REF: ${{ github.workflow_ref }}
   Q0_WORKFLOW_SHA: ${{ github.workflow_sha }}
