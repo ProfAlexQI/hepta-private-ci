@@ -246,15 +246,20 @@ mod platform {
         #[test]
         fn peer_uid_gate_accepts_only_the_process_owner() {
             let owner = unsafe { libc::getuid() };
-            ensure_peer_uid(owner).expect("the process owner must pass the UDS peer gate");
+            assert!(
+                ensure_peer_uid(owner).is_ok(),
+                "the process owner must pass the UDS peer gate"
+            );
 
             let non_owner = if owner == libc::uid_t::MAX {
                 owner - 1
             } else {
                 owner + 1
             };
-            let error = ensure_peer_uid(non_owner)
-                .expect_err("a different UID must fail closed before reading the request");
+            let error = match ensure_peer_uid(non_owner) {
+                Ok(()) => panic!("a different UID must fail closed before reading the request"),
+                Err(error) => error,
+            };
             assert_eq!(error.kind(), ErrorKind::PermissionDenied);
         }
     }
