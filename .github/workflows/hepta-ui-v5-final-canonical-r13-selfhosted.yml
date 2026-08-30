@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: hepta-ui-v5-final-canonical-r13-selfhosted-88f776
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   replay-and-publish:
