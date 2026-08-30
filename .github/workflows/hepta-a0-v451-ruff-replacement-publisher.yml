@@ -53,12 +53,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash publisher/automation/run-hepta-a0-v451-ruff-replacement-publisher.sh
+          bash publisher/automation/run-hepta-a0-v451-provenance-publisher-v3.sh
 
       - name: Upload deterministic publisher evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: hepta-a0-v451-ruff-replacement-${{ github.sha }}
+          name: hepta-a0-v451-provenance-replacement-${{ github.sha }}
           path: target/artifacts/hepta-a0-v451-ruff-replacement/**
           if-no-files-found: error
           retention-days: 30
