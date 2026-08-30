@@ -1,0 +1,70 @@
+name: ChatGPT Hepta A0 V4.5.1 provenance publisher macOS
+
+on:
+  push:
+    branches:
+      - "automation/chatgpt-hepta-a0-provenance-macos-20260830-0110"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chatgpt-hepta-a0-provenance-macos-20260830-0110
+  cancel-in-progress: false
+
+env:
+  EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+  TARGET_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  TARGET_HEAD: 7a8052aa8949c8b1be361b5231389ee193baec3c
+  TARGET_TREE: ddea81162a5eceb5b8c52dfaf42ee1f9ee40285b
+  Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
+  Q0_TREE: ca455a9ef797cd95164c880c7b8faba80b305589
+  PREDECESSOR_HEADS_JSON: '["08e6ed017e8cbfb94f86a5fa8397eb00eb396ed2","7a8052aa8949c8b1be361b5231389ee193baec3c"]'
+  STAGING_BRANCH: staging/chatgpt-hepta-a0-v451-provenance-macos-20260830-0110
+  REPORT_DIR: artifacts/hepta-a0-v451-ruff-replacement
+
+jobs:
+  publish:
+    name: Build and validate isolated macOS Q0-single-parent replacement
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout publisher source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: publisher
+          persist-credentials: false
+
+      - name: Checkout exact current A0 candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.TARGET_HEAD }}
+          path: target
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Install locked uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: 0.11.3
+
+      - name: Install modern Bash
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew list bash >/dev/null 2>&1 || brew install bash
+
+      - name: Build, validate and publish immutable staging candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$(brew --prefix bash)/bin/bash" publisher/automation/run-hepta-a0-v451-provenance-publisher-v3.sh
+
+      - name: Upload deterministic publisher evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: chatgpt-hepta-a0-v451-provenance-macos-${{ github.sha }}
+          path: target/artifacts/hepta-a0-v451-ruff-replacement/**
+          if-no-files-found: error
+          retention-days: 30
