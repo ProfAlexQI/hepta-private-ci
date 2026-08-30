@@ -52,8 +52,20 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Compile strict admission verifier
-        run: python3 -m py_compile scripts/verify-hepta-intelligence-integration-admission.py
+      - name: Compile strict admission verifier and fixtures
+        run: |
+          python3 -m py_compile \
+            scripts/verify-hepta-intelligence-integration-admission.py \
+            scripts/test-hepta-intelligence-integration-admission.py
+
+      - name: Exercise fail-closed admission fixtures
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          python3 scripts/hepta_q046_git_context.py \
+            | tee "$ARTIFACT_DIR/trusted-git-context-fixtures.txt"
+          python3 scripts/test-hepta-intelligence-integration-admission.py \
+            | tee "$ARTIFACT_DIR/admission-negative-fixtures.txt"
 
       - name: Verify signed A0-first composition twice
         env:
@@ -61,22 +73,49 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$ARTIFACT_DIR"
+          python3 scripts/hepta_q046_git_context.py \
+            | tee "$ARTIFACT_DIR/trusted-git-context-runtime.txt"
+
+          clean_home="$RUNNER_TEMP/hepta-intelligence-admission-home"
+          mkdir -p "$clean_home"
           for suffix in a b; do
-            python3 scripts/verify-hepta-intelligence-integration-admission.py \
-              --repository "$GITHUB_REPOSITORY" \
-              --expected-head "$EXPECTED_HEAD" \
-              --expected-base "$EXPECTED_BASE" \
-              --expected-base-branch "$EXPECTED_BASE_BRANCH" \
-              --expected-head-branch "$EXPECTED_HEAD_BRANCH" \
-              --token-env GH_TOKEN \
-              --output "$ARTIFACT_DIR/identity-$suffix.json"
+            env -i \
+              PATH=/usr/bin:/bin \
+              HOME="$clean_home" \
+              LANG=C \
+              LC_ALL=C \
+              PYTHONHASHSEED=0 \
+              GIT_CONFIG_NOSYSTEM=1 \
+              GIT_CONFIG_GLOBAL=/dev/null \
+              GIT_OPTIONAL_LOCKS=0 \
+              GH_TOKEN="$GH_TOKEN" \
+              /usr/bin/python3 \
+              scripts/verify-hepta-intelligence-integration-admission.py \
+                --repository "$GITHUB_REPOSITORY" \
+                --expected-head "$EXPECTED_HEAD" \
+                --expected-base "$EXPECTED_BASE" \
+                --expected-base-branch "$EXPECTED_BASE_BRANCH" \
+                --expected-head-branch "$EXPECTED_HEAD_BRANCH" \
+                --token-env GH_TOKEN \
+                --output "$ARTIFACT_DIR/identity-$suffix.json"
           done
           cmp "$ARTIFACT_DIR/identity-a.json" "$ARTIFACT_DIR/identity-b.json"
           cp "$ARTIFACT_DIR/identity-a.json" "$ARTIFACT_DIR/identity.json"
           sha256sum "$ARTIFACT_DIR/identity.json" > "$ARTIFACT_DIR/identity.json.sha256"
 
-      - name: Require clean tracked source
-        run: git diff --exit-code
+      - name: Require clean tracked source through canonical Git
+        run: |
+          set -euo pipefail
+          clean_home="$RUNNER_TEMP/hepta-intelligence-admission-home"
+          env -i \
+            PATH=/usr/bin:/bin \
+            HOME="$clean_home" \
+            LANG=C \
+            LC_ALL=C \
+            GIT_CONFIG_NOSYSTEM=1 \
+            GIT_CONFIG_GLOBAL=/dev/null \
+            GIT_OPTIONAL_LOCKS=0 \
+            /usr/bin/git diff --exit-code
 
       - name: Upload exact admission identity receipt
         if: always()
