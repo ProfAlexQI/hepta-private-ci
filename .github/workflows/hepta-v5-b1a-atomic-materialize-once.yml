@@ -25,7 +25,7 @@ env:
 jobs:
   materialize-and-qualify:
     name: Materialize and qualify atomic B1a on current B0
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     timeout-minutes: 120
     steps:
       - name: Checkout exact staging head
