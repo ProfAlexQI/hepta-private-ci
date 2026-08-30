@@ -3,7 +3,7 @@ name: Hepta inference V4 one-shot private contracts tranche
 on:
   push:
     branches:
-      - codex/hepta-inference-v4-closure-20260830
+      - codex/hepta-inference-v4-qualification-20260830
     paths:
       - .github/workflows/hepta-inference-v4-one-shot-private-contracts.yml
 
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-inference-v4-one-shot-private-contracts
+  group: hepta-inference-v4-one-shot-private-contracts-qualification
   cancel-in-progress: true
 
 jobs:
@@ -32,8 +32,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_REF_NAME" = codex/hepta-inference-v4-closure-20260830
-          test "$(git rev-parse HEAD^)" = c450e6629157eb0fd5b3f2b344a74b445b9f8760
+          test "$GITHUB_REF_NAME" = codex/hepta-inference-v4-qualification-20260830
+          test "$(git rev-parse HEAD^)" = 244acd51114f683809225b7fd2199c9ca8f9eff4
           test -z "$(git status --porcelain)"
 
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
@@ -132,4 +132,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git push origin HEAD:codex/hepta-inference-v4-closure-20260830
+          git push origin HEAD:codex/hepta-inference-v4-qualification-20260830
