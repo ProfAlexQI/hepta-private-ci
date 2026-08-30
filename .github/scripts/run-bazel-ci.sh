@@ -6,6 +6,7 @@ print_failed_bazel_test_logs=0
 print_failed_bazel_action_summary=0
 remote_download_toplevel=0
 windows_msvc_host_platform=0
+windows_msvc_target_platform=0
 windows_cross_compile=0
 
 while [[ $# -gt 0 ]]; do
@@ -101,7 +102,7 @@ print_bazel_test_log_tails() {
   # mode can make `bazel info` fail, which would hide the real test log path.
   for arg in "${post_config_bazel_args[@]}"; do
     case "$arg" in
-      --host_platform=* | --repo_contents_cache=* | --repository_cache=*)
+      --host_platform=* | --platforms=* | --repo_contents_cache=* | --repository_cache=*)
         bazel_info_args+=("$arg")
         ;;
     esac
@@ -256,10 +257,12 @@ if [[ ${#bazel_args[@]} -eq 0 || ${#bazel_targets[@]} -eq 0 ]]; then
 fi
 
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
-  # Windows cross-compilation depends on authenticated RBE. Preserve the local
-  # Windows build shape when credentials are unavailable.
+  # Windows gnullvm cross-compilation depends on authenticated RBE. When those
+  # credentials are unavailable, execute a coherent local MSVC build instead:
+  # both target and host platforms must use the same ABI/toolchain family.
   ci_config=ci-windows
   windows_msvc_host_platform=1
+  windows_msvc_target_platform=1
 fi
 
 post_config_bazel_args=()
@@ -278,6 +281,22 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; the
     # Callers that need a different Windows target platform should pass an
     # explicit `--platforms=...` flag.
     post_config_bazel_args+=("--host_platform=//:local_windows_msvc")
+  fi
+fi
+
+if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_target_platform -eq 1 ]]; then
+  has_target_platform_override=0
+  for arg in "${bazel_args[@]}"; do
+    if [[ "$arg" == --platforms=* ]]; then
+      has_target_platform_override=1
+      break
+    fi
+  done
+
+  if [[ $has_target_platform_override -eq 0 ]]; then
+    # The no-RBE fallback is a native MSVC build, not a partial gnullvm build.
+    # Keep Rust, C/C++, generated tools and compatibility selects on one ABI.
+    post_config_bazel_args+=("--platforms=//:local_windows_msvc")
   fi
 fi
 
