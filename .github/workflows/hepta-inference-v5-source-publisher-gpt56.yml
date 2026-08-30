@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: hepta-inference-v5-source-publisher-gpt56
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   BASE_SHA: 1a6c453884835937c802de7e90b2a7f47160725e
@@ -25,7 +25,7 @@ env:
 jobs:
   materialize-source:
     name: materialize ordinary source on isolated target
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     steps:
       - name: Checkout immutable bootstrap head
