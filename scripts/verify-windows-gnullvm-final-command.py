@@ -109,11 +109,18 @@ def main() -> None:
         require_token(policy, token, "run_bazel_q017_policy.py")
 
     for token in (
+        'BUILD_METADATA_OPTION = "--build_metadata"',
+        'JOB_METADATA_PREFIX = "--build_metadata=TAG_job="',
+        'JOB_METADATA_LIKE_PREFIX = "--build_metadata=TAG_job"',
         'RELEASE_JOB_METADATA = "--build_metadata=TAG_job=verify-release-build"',
         'CANONICAL_RELEASE_TARGETS = (',
         '"//codex-rs/..."',
         '"-//codex-rs/core/tests/remote_env_windows:smoke-test"',
         '"-//codex-rs/v8-poc:all"',
+        "rejects split-form",
+        "rejects malformed",
+        "rejects ambiguous",
+        "job_metadata == [RELEASE_JOB_METADATA]",
         "the exact canonical target set",
         "rejects negative targets outside the release lane",
         "validate_keyless_windows_gnullvm_final_args as _validate_q021",
@@ -143,9 +150,22 @@ def main() -> None:
     ):
         require_token(test, token, "test_run_bazel_final_command.py")
 
+    require_token(
+        test,
+        'args = self.exact_args("--build_metadata=TAG_job=verify-release-build")',
+        "test_run_bazel_final_command.py",
+    )
+
     for token in (
         "test_non_release_positive_targets_pass",
+        "test_one_non_release_job_metadata_passes",
         "test_exact_release_target_set_passes",
+        "test_duplicate_release_job_metadata_fails_closed",
+        "test_release_plus_alternate_job_metadata_fails_closed",
+        "test_split_build_metadata_fails_closed",
+        "test_malformed_job_metadata_fails_closed",
+        "test_empty_job_metadata_fails_closed",
+        "test_non_release_duplicate_job_metadata_fails_closed",
         "test_non_release_exclude_all_fails_closed",
         "test_non_release_arbitrary_exclusion_fails_closed",
         "test_release_target_drop_fails_closed",

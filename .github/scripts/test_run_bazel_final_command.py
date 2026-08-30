@@ -111,7 +111,9 @@ class FinalCommandQualificationTest(unittest.TestCase):
     def test_workspace_user_bazelrc_fails_closed(self) -> None:
         temp, bazelrc, env = self.fixture()
         self.addCleanup(temp.cleanup)
-        (Path(temp.name) / "user.bazelrc").write_text("common --jobs=999\n", encoding="utf-8")
+        (Path(temp.name) / "user.bazelrc").write_text(
+            "common --jobs=999\n", encoding="utf-8"
+        )
         expected_blob = subject._git_blob_sha1(bazelrc.read_bytes())
         with patch.object(subject, "QUALIFICATION_BAZELRC_GIT_BLOB_SHA1", expected_blob):
             with self.assertRaisesRegex(ValueError, "forbids user.bazelrc"):
@@ -135,7 +137,9 @@ class FinalCommandQualificationTest(unittest.TestCase):
 
     def test_additional_action_environment_fails_closed(self) -> None:
         with self.assertRaisesRegex(ValueError, "rejects '--action_env=RUSTFLAGS"):
-            self.run_exact(self.exact_args("--action_env=RUSTFLAGS=-Ctarget-feature=+crt-static"))
+            self.run_exact(
+                self.exact_args("--action_env=RUSTFLAGS=-Ctarget-feature=+crt-static")
+            )
 
     def test_duplicate_exact_metadata_fails_closed(self) -> None:
         with self.assertRaisesRegex(ValueError, "requires exactly"):
@@ -147,7 +151,6 @@ class FinalCommandQualificationTest(unittest.TestCase):
         args = ["--bazelrc=attacker.bazelrc", *self.exact_args()]
         with self.assertRaisesRegex(ValueError, "rejects caller rc controls"):
             self.run_exact(args)
-
 
     def test_boolean_equals_rc_reenable_fails_closed(self) -> None:
         args = ["--system_rc=true", *self.exact_args()]
@@ -166,7 +169,7 @@ class FinalCommandQualificationTest(unittest.TestCase):
             self.run_exact(args)
 
     def test_release_target_exclusions_remain_canonical_payload(self) -> None:
-        args = self.exact_args()
+        args = self.exact_args("--build_metadata=TAG_job=verify-release-build")
         release_targets = [
             "//codex-rs/...",
             "-//codex-rs/core/tests/remote_env_windows:smoke-test",
