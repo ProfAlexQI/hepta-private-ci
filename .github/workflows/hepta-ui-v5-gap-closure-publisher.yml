@@ -1,0 +1,136 @@
+name: Hepta UI V5 exact-head gap-closure publisher
+
+on:
+  push:
+    branches:
+      - "codex/ui-v5-plan-and-repo-gap-closure-20260829"
+    paths:
+      - ".github/workflows/hepta-ui-v5-gap-closure-publisher.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-gap-closure-publisher
+  cancel-in-progress: false
+
+env:
+  HEPTA_EXPECTED_PARENT_SHA: 1e6f7cf3db498153fd52250dee1112f89489e094
+  HEPTA_TARGET_BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+
+jobs:
+  publish:
+    name: Apply verified UI V5 repository-gap patch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out the exact publisher commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.HEPTA_TARGET_BRANCH }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Verify immutable predecessor and clean tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$HEPTA_EXPECTED_PARENT_SHA"
+          test -z "$(git status --porcelain)"
+
+      - name: Apply fail-closed source binding patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          control = Path("codex-rs/hepta-core/src/control_ui.rs")
+          old = '''    include_str!("../../../apps/hepta-control-ui/styles.responsive.css"),
+              "\\n",
+              include_str!("../../../apps/hepta-control-ui/styles.accessibility.css"),'''
+          new = '''    include_str!("../../../apps/hepta-control-ui/styles.responsive.css"),
+              "\\n",
+              include_str!("../../../apps/hepta-control-ui/styles.v4.css"),
+              "\\n",
+              include_str!("../../../apps/hepta-control-ui/styles.accessibility.css"),'''
+          text = control.read_text(encoding="utf-8")
+          if text.count(old) != 1:
+              raise SystemExit("control_ui.rs canonical CSS insertion point mismatch")
+          control.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
+
+          static_assets = Path("codex-rs/hepta-core/src/control_ui_static_assets.rs")
+          expected_static = '''pub const CONTROL_UI_HEPTA_AGENT_LOGO_PNG_SHA256: &str = "eeaa030d321f566157055ae07d5f540bf06baeaaa6a2e6209227eb1bf6d3f41c";
+          pub const CONTROL_UI_HEPTA_AGENT_LOGO_PNG: &[u8] = include_bytes!("../../../apps/hepta-control-ui/assets/hepta-agent-logo.png");
+          pub const CONTROL_UI_JS_SHA256: &str = "8e4fdf8264545f3e0f1dd823c617594e5e6994463ed1723f8b3fd65fb04962b5";
+          pub const CONTROL_UI_JS: &[u8] = include_bytes!("../../../apps/hepta-control-ui/control-ui.js");
+          '''
+          replacement_static = '''mod generated_control_ui_assets {
+              include!(concat!(env!("OUT_DIR"), "/control_ui_bundle_metadata.rs"));
+          }
+
+          pub const CONTROL_UI_HEPTA_AGENT_LOGO_PNG_SHA256: &str =
+              "eeaa030d321f566157055ae07d5f540bf06baeaaa6a2e6209227eb1bf6d3f41c";
+          pub const CONTROL_UI_HEPTA_AGENT_LOGO_PNG: &[u8] =
+              include_bytes!("../../../apps/hepta-control-ui/assets/hepta-agent-logo.png");
+
+          /// Individually embedded sources remain visible for provenance and tests, but
+          /// only `CONTROL_UI_JS` is served by the gateway.
+          pub const CONTROL_UI_BASE_JS: &[u8] =
+              include_bytes!("../../../apps/hepta-control-ui/control-ui.js");
+          pub const CONTROL_UI_V4_RUNTIME_JS: &[u8] =
+              include_bytes!("../../../apps/hepta-control-ui/control-ui-v4-runtime.js");
+          pub const CONTROL_UI_BASE_JS_SHA256: &str =
+              generated_control_ui_assets::CONTROL_UI_BASE_JS_SHA256;
+          pub const CONTROL_UI_V4_RUNTIME_JS_SHA256: &str =
+              generated_control_ui_assets::CONTROL_UI_V4_RUNTIME_JS_SHA256;
+          pub const CONTROL_UI_JS_SHA256: &str = generated_control_ui_assets::CONTROL_UI_JS_SHA256;
+          pub const CONTROL_UI_JS_ETAG: &str = generated_control_ui_assets::CONTROL_UI_JS_ETAG;
+          pub const CONTROL_UI_V4_RUNTIME_BOUND: bool =
+              generated_control_ui_assets::CONTROL_UI_V4_RUNTIME_BOUND;
+          pub const CONTROL_UI_JS: &[u8] =
+              include_bytes!(concat!(env!("OUT_DIR"), "/control-ui.bundle.js"));
+          '''
+          actual_static = static_assets.read_text(encoding="utf-8")
+          if actual_static != expected_static:
+              raise SystemExit("control_ui_static_assets.rs exact predecessor mismatch")
+          static_assets.write_text(replacement_static, encoding="utf-8", newline="\n")
+
+          gateway = Path("codex-rs/hepta-native-gateway/src/ui_domain/generated_control_ui_assets.rs")
+          old_etag = '    etag: "\\"sha256-8e4fdf8264545f3e0f1dd823c617594e5e6994463ed1723f8b3fd65fb04962b5\\"",'
+          new_etag = "    etag: hepta_core::control_ui::CONTROL_UI_JS_ETAG,"
+          gateway_text = gateway.read_text(encoding="utf-8")
+          if gateway_text.count(old_etag) != 1:
+              raise SystemExit("generated gateway stale ETag predecessor mismatch")
+          gateway.write_text(gateway_text.replace(old_etag, new_etag, 1), encoding="utf-8", newline="\n")
+          PY
+
+      - name: Verify source gate and formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby scripts/hepta-ui-v4-served-bundle-gate | tee /tmp/hepta-ui-v4-served-bundle-gate.json
+          ruby -rjson -e 'result = JSON.parse(File.read("/tmp/hepta-ui-v4-served-bundle-gate.json")); abort result.inspect unless result.fetch("status") == "PASS_SERVED_BUNDLE_SOURCE_CONTRACT_ONLY"'
+          node --check apps/hepta-control-ui/control-ui-v4-runtime.js
+          git diff --check
+          git diff --exit-code -- .github/workflows/hepta-ui-v5-gap-closure-publisher.yml
+          test "$(git diff --name-only | sort)" = "$(printf '%s\n' \
+            codex-rs/hepta-core/src/control_ui.rs \
+            codex-rs/hepta-core/src/control_ui_static_assets.rs \
+            codex-rs/hepta-native-gateway/src/ui_domain/generated_control_ui_assets.rs \
+            | sort)"
+
+      - name: Publish the exact source repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "hepta-gap-closure[bot]"
+          git config user.email "hepta-gap-closure[bot]@users.noreply.github.com"
+          git add -- \
+            codex-rs/hepta-core/src/control_ui.rs \
+            codex-rs/hepta-core/src/control_ui_static_assets.rs \
+            codex-rs/hepta-native-gateway/src/ui_domain/generated_control_ui_assets.rs
+          git commit -m "fix(ui): bind generated v4 runtime bundle and canonical CSS"
+          git push origin "HEAD:$HEPTA_TARGET_BRANCH"
+          printf 'published_commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
