@@ -1,0 +1,82 @@
+{
+  "schema_version": "hepta_upstream_codex_semantic_absorption_extension_r13_v1",
+  "base_registry": {
+    "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json",
+    "sha256": "b3968ccf2c41c27344bbbb75c6765328be62ccabdba1b8ab47b7f24ee882f479",
+    "schema_version": "hepta_upstream_codex_semantic_absorption_registry_v1",
+    "record_count": 12,
+    "expected_head": "dde85b435b16994f956bce08e5fb796ed94c27fd"
+  },
+  "upstream": {
+    "url": "https://github.com/openai/codex.git",
+    "previous_head": "dde85b435b16994f956bce08e5fb796ed94c27fd",
+    "frozen_ref": "refs/remotes/upstream/hepta-intake-20260830-r13",
+    "expected_head": "da23e131e68b171909407f469da1b2f72d9c4f4a"
+  },
+  "record": {
+    "id": "r13",
+    "source_intake": {
+      "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R13.json",
+      "sha256": "8035c1bfc8ae806d2cbf5a8deac55fbaa861ed31e7c3ef1c61d37bd15d2aee28",
+      "commit": "1a52577075c423cec6d7e442674b85935726a4c8",
+      "range_start_exclusive": "dde85b435b16994f956bce08e5fb796ed94c27fd",
+      "range_end_inclusive": "da23e131e68b171909407f469da1b2f72d9c4f4a",
+      "frozen_ref": "refs/remotes/upstream/hepta-intake-20260830-r13"
+    },
+    "record": {
+      "path": "docs/architecture/HEPTA_UPSTREAM_CODEX_R13_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json",
+      "sha256": "16c80935e255ed2298b01b8e4d2206654d62f9689af7379c03c70e6497aaa49f",
+      "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1"
+    },
+    "disposition_bindings": [
+      {
+        "kind": "deferral",
+        "upstream_commit": "28327355b861ab6cc76b01c7248663eb1be440cf",
+        "local_commit": null,
+        "scope": "update_plan_default_enabled_test_fixture_alignment",
+        "non_claims": [
+          "Deferral does not claim upstream fixture parity, source import, or any change to Hepta tool exposure."
+        ]
+      },
+      {
+        "kind": "deferral",
+        "upstream_commit": "0a12b855a0b21068108a8a3b311d492712737e0f",
+        "local_commit": null,
+        "scope": "guardian_user_authorization_revision_across_compaction_and_internal_context",
+        "non_claims": [
+          "Current Guardian and history controls are not claimed as equivalent to the upstream user-message revision model."
+        ]
+      },
+      {
+        "kind": "deferral",
+        "upstream_commit": "cefa060695594cdeebfb4306170cc27487c8a088",
+        "local_commit": null,
+        "scope": "first_node_repl_execution_guardian_wait_bypass",
+        "non_claims": [
+          "Deferral does not enable an immediate first-execution bypass, change live Guardian policy, or claim runtime equivalence."
+        ]
+      },
+      {
+        "kind": "deferral",
+        "upstream_commit": "da23e131e68b171909407f469da1b2f72d9c4f4a",
+        "local_commit": null,
+        "scope": "tui_cursor_style_repair_for_older_jediterm_terminals",
+        "non_claims": [
+          "Deferral does not claim terminal equivalence, source import, or a cursor-rendering fix in Hepta Native."
+        ]
+      }
+    ]
+  },
+  "claims": {
+    "base_records_preserved": true,
+    "extension_record_count": 1,
+    "effective_record_count": 13,
+    "upstream_fully_consumed": false,
+    "ordinary_merge_performed": false,
+    "ordinary_rebase_performed": false,
+    "cherry_pick_performed": false,
+    "deployment_performed": false,
+    "live_enablement_performed": false,
+    "publication_performed": false
+  }
+}
