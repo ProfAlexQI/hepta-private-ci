@@ -10,12 +10,12 @@ permissions:
 
 concurrency:
   group: hepta-a0-v4-5-2-replacement-once
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-replacement:
     if: ${{ github.actor != 'github-actions[bot]' }}
-    runs-on: ubuntu-slim
+    runs-on: macos-15
     timeout-minutes: 15
     steps:
       - name: Checkout builder branch
