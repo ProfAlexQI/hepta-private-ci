@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
-"""Compatibility wrapper plus Q0.17-Q0.29 qualification ratchets."""
+"""Compatibility wrapper for Q0.17-Q0.29 qualification ratchets.
+
+Q0.30 adds transport-token compatibility and direct cached-Bazel binding.
+"""
 
 import os
 import subprocess
@@ -24,15 +27,23 @@ from run_bazel_q028_startup_contract import (
     validate_keyless_windows_gnullvm_final_args,
 )
 from run_bazel_q029_execution_context import bind_verified_bazelisk
-from run_bazel_q029_execution_context import prepare_bazelisk_environment
+from run_bazel_q029_execution_context import (
+    prepare_bazelisk_environment as _prepare_q029_compatibility_base,
+)
+# from run_bazel_q029_execution_context import prepare_bazelisk_environment
 from run_bazel_q029_execution_context import (
     validate_keyless_windows_gnullvm_execution_context,
 )
+from run_bazel_q030_bazel_child import prepare_bazelisk_environment
+from run_bazel_q030_bazel_child import resolve_verified_bazel_command
+from run_bazel_q030_bazel_child import validate_verified_bazel_prelaunch
 
 # Keep the selected compatibility layers machine-visible while Q0.28 composes
-# them transitively and Q0.29 binds the process-launch execution context.
+# them transitively, Q0.29 binds the process-launch execution context, and Q0.30
+# preserves setup-bazel transport while rehashing the actual cached Bazel child.
 assert _validate_q026_compatibility_base is not None
 assert _validate_q027_compatibility_base is not None
+assert _prepare_q029_compatibility_base is not None
 
 
 def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]:
@@ -85,12 +96,16 @@ def executable_command(
     if not _is_keyless_windows_gnullvm(command[1:], env):
         return command
 
-    # Q0.28 has already bound the complete startup and command semantics.
-    # Bind the remaining job, runner, path, launcher and downloaded Bazel
-    # authority immediately before process launch.
+    # Q0.28 has bound startup and command semantics. Q0.29 verifies the
+    # launcher and complete CI context. Q0.30 then resolves and rehashes the
+    # cached Bazel child, bypasses Bazelisk for the final launch, and performs
+    # one last digest/PATH check immediately before subprocess.run.
     prepare_bazelisk_environment(env)
     command = bind_verified_bazelisk(command, env)
     validate_keyless_windows_gnullvm_execution_context(command, env)
+    if os.name == "nt":
+        command = resolve_verified_bazel_command(command, env)
+        validate_verified_bazel_prelaunch(command, env)
     return command
 
 
