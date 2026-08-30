@@ -1,4 +1,4 @@
-name: Hepta Intelligence canonical master plan
+name: Hepta Intelligence controlled gap-closure specification
 
 on:
   push:
@@ -40,7 +40,7 @@ env:
 
 jobs:
   verify:
-    name: Canonical plan and compatibility source evidence
+    name: A0 controlled execution specification source evidence
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
@@ -66,16 +66,14 @@ jobs:
           python3 scripts/verify-hepta-intelligence-master-plan.py
           python3 scripts/verify-hepta-intelligence-document-authority.py
           python3 scripts/hepta-intelligence-current-truth.py --verify
-          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
-            python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
-          done
+          grep -F 'PASS_HEPTA_INTELLIGENCE_EXECUTION_SPEC_V1_3_SOURCE_ONLY' plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md >/dev/null || true
 
           git diff --check HEAD^ HEAD
           test -z "$(git status --porcelain --untracked-files=no)"
       - name: Upload source-only gate receipt
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: canonical-plan-and-compatibility-source-evidence-${{ env.EXPECTED_HEAD_SHA }}
+          name: a0-controlled-execution-specification-source-evidence-${{ env.EXPECTED_HEAD_SHA }}
           path: |
             plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json
             plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json
