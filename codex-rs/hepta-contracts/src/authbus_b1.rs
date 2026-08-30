@@ -12,14 +12,14 @@ use serde::Serialize;
 
 use crate::Sha256Digest;
 
+use super::AUTHBUS_CONTRACT_SCHEMA_VERSION;
+use super::AuthBusContractError;
 use super::canonical_json;
 use super::contract_domain;
 use super::domain_digest;
 use super::validate_digest;
 use super::validate_text;
 use super::validate_window;
-use super::AuthBusContractError;
-use super::AUTHBUS_CONTRACT_SCHEMA_VERSION;
 
 /// B1 uses the same versioned AuthBus wire family as B0/B2.
 pub const AUTHBUS_B1_CONTRACT_SCHEMA_VERSION: u32 = AUTHBUS_CONTRACT_SCHEMA_VERSION;
