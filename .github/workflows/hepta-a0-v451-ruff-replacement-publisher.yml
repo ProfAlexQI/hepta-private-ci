@@ -3,7 +3,7 @@ name: Hepta A0 V4.5.1 Ruff-clean replacement publisher
 on:
   push:
     branches:
-      - automation/hepta-a0-v451-ruff-replacement-publisher-20260830-0030
+      - "automation/hepta-a0-v451-ruff-replacement-publisher-20260830-0030"
 
 permissions:
   contents: write
@@ -28,6 +28,13 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
+      - name: Checkout publisher source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: publisher
+          persist-credentials: false
+
       - name: Checkout exact current A0 candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -41,287 +48,11 @@ jobs:
         with:
           version: 0.11.3
 
-      - name: Verify immutable source identity
+      - name: Build, validate and publish immutable staging candidate
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
-          test "$(git -C target rev-parse HEAD)" = "$TARGET_HEAD"
-          test "$(git -C target rev-parse HEAD^{tree})" = "$TARGET_TREE"
-          test "$(git -C target rev-parse HEAD^)" = "$Q0_HEAD"
-          test "$(git -C target rev-parse "$Q0_HEAD^{tree}")" = "$Q0_TREE"
-          remote_head="$(git -C target ls-remote origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
-          test "$remote_head" = "$TARGET_HEAD"
-          test -z "$(git -C target ls-remote origin "refs/heads/$STAGING_BRANCH")"
-
-      - name: Advance exact-head provenance and canonical registry bindings
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd target
-          python3 - <<'PY'
-          from __future__ import annotations
-
-          import copy
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-
-          plan_path = Path("plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json")
-          registry_path = Path(
-              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json"
-          )
-          verifier_path = Path("scripts/hepta-intelligence-current-truth.py")
-          target_head = os.environ["TARGET_HEAD"]
-
-          plan = json.loads(plan_path.read_text(encoding="utf-8"))
-          provenance = plan.get("a0_previous_exact_head_provenance")
-          if not isinstance(provenance, list) or not provenance:
-              raise SystemExit("invalid A0 provenance list")
-          if target_head in provenance:
-              raise SystemExit("target head already present in predecessor provenance")
-          previous = list(provenance)
-          provenance.append(target_head)
-          plan_bytes = (
-              json.dumps(plan, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
-          ).encode("utf-8")
-          plan_path.write_bytes(plan_bytes)
-
-          verifier = verifier_path.read_text(encoding="utf-8")
-          old_literal = json.dumps(previous)
-          new_literal = json.dumps(provenance)
-          if verifier.count(old_literal) != 1:
-              raise SystemExit("expected exactly one hard-coded provenance list")
-          verifier_path.write_text(
-              verifier.replace(old_literal, new_literal, 1), encoding="utf-8"
-          )
-
-          registry = json.loads(registry_path.read_text(encoding="utf-8"))
-          inputs = registry.get("registered_canonical_inputs")
-          if not isinstance(inputs, list):
-              raise SystemExit("registered canonical inputs missing")
-          current_entry = next(
-              item for item in inputs if item.get("path") == plan_path.as_posix()
-          )
-          current_entry["content_sha256"] = hashlib.sha256(plan_bytes).hexdigest()
-
-          self_entry = next(
-              item for item in inputs if item.get("path") == registry_path.as_posix()
-          )
-          if self_entry.get("digest_scope") != "CANONICAL_JSON_WITH_SELF_DIGEST_NULL":
-              raise SystemExit("unexpected document-registry self-digest scope")
-          self_entry["content_sha256"] = None
-          canonical = json.dumps(
-              registry,
-              sort_keys=True,
-              separators=(",", ":"),
-              ensure_ascii=False,
-          ).encode("utf-8")
-          self_entry["content_sha256"] = hashlib.sha256(canonical).hexdigest()
-          registry_path.write_text(
-              json.dumps(registry, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
-              encoding="utf-8",
-          )
-          PY
-
-      - name: Format exact A0-owned Python scope
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd target
-          uv run --frozen --project scripts ruff format \
-            scripts/hepta-intelligence-current-truth.py \
-            scripts/verify-hepta-intelligence-a0-authority.py \
-            scripts/verify-hepta-intelligence-document-authority.py \
-            scripts/verify-hepta-intelligence-master-plan.py
-          uv run --frozen --project scripts ruff format --check \
-            scripts/hepta-intelligence-current-truth.py \
-            scripts/verify-hepta-intelligence-a0-authority.py \
-            scripts/verify-hepta-intelligence-document-authority.py \
-            scripts/verify-hepta-intelligence-master-plan.py
-
-      - name: Assert exact repair scope
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd target
-          mapfile -t changed < <(git diff --name-only | sort)
-          printf '%s\n' "${changed[@]}"
-          expected=(
-            plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json
-            plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json
-            scripts/hepta-intelligence-current-truth.py
-            scripts/verify-hepta-intelligence-a0-authority.py
-            scripts/verify-hepta-intelligence-document-authority.py
-            scripts/verify-hepta-intelligence-master-plan.py
-          )
-          test "${#changed[@]}" -eq "${#expected[@]}"
-          for index in "${!expected[@]}"; do
-            test "${changed[$index]}" = "${expected[$index]}"
-          done
-          git diff --check
-
-      - name: Build sole-parent candidate commit
-        id: candidate
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd target
-          git config user.name "Hepta governed source publisher"
-          git config user.email "hepta-source-publisher@users.noreply.github.com"
-          git add \
-            plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json \
-            plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json \
-            scripts/hepta-intelligence-current-truth.py \
-            scripts/verify-hepta-intelligence-a0-authority.py \
-            scripts/verify-hepta-intelligence-document-authority.py \
-            scripts/verify-hepta-intelligence-master-plan.py
-          tree="$(git write-tree)"
-          message='fix(intelligence): publish Ruff-clean V4.5.1 A0 replacement
-
-Format the exact A0-owned Python verifier scope, retain the superseded exact-head provenance chain, and recompute canonical document-registry bindings. Preserve the 17-path governance-only surface and every negative authority.'
-          commit="$(printf '%s\n' "$message" | git commit-tree "$tree" -p "$Q0_HEAD")"
-          git reset --hard "$commit"
-          test "$(git rev-parse HEAD^)" = "$Q0_HEAD"
-          test "$(git rev-list --count "$Q0_HEAD"..HEAD)" -eq 1
-          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
-          printf 'tree=%s\n' "$tree" >> "$GITHUB_OUTPUT"
-
-      - name: Run strict source, compatibility and formatting gates
-        shell: bash
-        env:
-          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.commit }}
-        run: |
-          set -euo pipefail
-          cd target
-          mkdir -p "$REPORT_DIR"
-          python3 -m py_compile \
-            scripts/hepta-intelligence-current-truth.py \
-            scripts/verify-hepta-intelligence-a0-authority.py \
-            scripts/verify-hepta-intelligence-document-authority.py \
-            scripts/verify-hepta-intelligence-master-plan.py
-          python3 scripts/verify-hepta-intelligence-master-plan.py
-          python3 scripts/verify-hepta-intelligence-document-authority.py
-          python3 scripts/hepta-intelligence-current-truth.py --verify
-          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
-            python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
-          done
-          GITHUB_SHA="$CANDIDATE_COMMIT" \
-          GITHUB_HEAD_REF="$TARGET_BRANCH" \
-          GITHUB_REF_NAME="$TARGET_BRANCH" \
-          GITHUB_REPOSITORY="$EXPECTED_REPOSITORY" \
-            python3 scripts/verify-hepta-intelligence-a0-authority.py \
-            | tee "$REPORT_DIR/a0-source-evidence-receipt.json"
-          uv run --frozen --project scripts ruff format --check \
-            scripts/hepta-intelligence-current-truth.py \
-            scripts/verify-hepta-intelligence-a0-authority.py \
-            scripts/verify-hepta-intelligence-document-authority.py \
-            scripts/verify-hepta-intelligence-master-plan.py
-          git diff --check "$Q0_HEAD" "$CANDIDATE_COMMIT"
-          test -z "$(git status --porcelain --untracked-files=no)"
-
-      - name: Verify exact 17-path candidate surface and seal receipt
-        shell: bash
-        env:
-          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.commit }}
-          CANDIDATE_TREE: ${{ steps.candidate.outputs.tree }}
-        run: |
-          set -euo pipefail
-          cd target
-          python3 - "$REPORT_DIR/publisher-receipt.json" <<'PY'
-          from __future__ import annotations
-
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-          import subprocess
-          import sys
-
-          output = Path(sys.argv[1])
-          changed = sorted(
-              filter(
-                  None,
-                  subprocess.check_output(
-                      ["git", "diff", "--name-only", os.environ["Q0_HEAD"], os.environ["CANDIDATE_COMMIT"]],
-                      text=True,
-                  ).splitlines(),
-              )
-          )
-          expected = json.loads(
-              Path(
-                  "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json"
-              ).read_text(encoding="utf-8")
-          )["allowed_changed_paths"]
-          if changed != expected or len(changed) != 17:
-              raise SystemExit(f"changed-path drift: {changed}")
-          receipt = {
-              "schema": "hepta_a0_v451_ruff_replacement_source_publisher_v1",
-              "status": "PASS_HEPTA_A0_V451_RUFF_REPLACEMENT_SOURCE_PUBLISHER",
-              "repository": os.environ["EXPECTED_REPOSITORY"],
-              "candidate": {
-                  "branch": os.environ["TARGET_BRANCH"],
-                  "head": os.environ["CANDIDATE_COMMIT"],
-                  "tree": os.environ["CANDIDATE_TREE"],
-                  "parent": os.environ["Q0_HEAD"],
-              },
-              "predecessor": {
-                  "head": os.environ["TARGET_HEAD"],
-                  "tree": os.environ["TARGET_TREE"],
-              },
-              "staging_branch": os.environ["STAGING_BRANCH"],
-              "changed_paths": changed,
-              "resolved_findings": [
-                  "A0_OWNED_PYTHON_RUFF_FORMATTING",
-                  "SUPERSEDED_EXACT_HEAD_PROVENANCE",
-                  "CANONICAL_DOCUMENT_REGISTRY_REBINDING",
-              ],
-              "a0_candidate_qualified": False,
-              "selected": False,
-              "source_writeback_by_candidate_workflow": False,
-              "authority": {
-                  "runtime_wired": False,
-                  "default_open_wired": False,
-                  "memory_write_authority": False,
-                  "projection_write_authority": False,
-                  "learning_write_authority": False,
-                  "model_runtime_authority": False,
-                  "provider_dispatch_authority": False,
-                  "external_effects": False,
-                  "production_authority": False,
-                  "operator_acceptance": False,
-                  "promotion": False,
-                  "release_authority": False,
-                  "callers_ratchet": False,
-              },
-          }
-          canonical = json.dumps(
-              receipt, sort_keys=True, separators=(",", ":")
-          ).encode("utf-8")
-          receipt["receipt_binding_sha256"] = hashlib.sha256(canonical).hexdigest()
-          output.write_text(
-              json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-          )
-          Path(os.environ["REPORT_DIR"], "commit.txt").write_text(
-              os.environ["CANDIDATE_COMMIT"] + "\n", encoding="utf-8"
-          )
-          Path(os.environ["REPORT_DIR"], "tree.txt").write_text(
-              os.environ["CANDIDATE_TREE"] + "\n", encoding="utf-8"
-          )
-          PY
-
-      - name: Publish immutable staging candidate
-        shell: bash
-        env:
-          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.commit }}
-        run: |
-          set -euo pipefail
-          cd target
-          remote_head="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
-          test "$remote_head" = "$TARGET_HEAD"
-          test -z "$(git ls-remote origin "refs/heads/$STAGING_BRANCH")"
-          git push origin "$CANDIDATE_COMMIT:refs/heads/$STAGING_BRANCH"
+          bash publisher/automation/run-hepta-a0-v451-ruff-replacement-publisher.sh
 
       - name: Upload deterministic publisher evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
