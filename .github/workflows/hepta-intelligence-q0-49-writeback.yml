@@ -305,10 +305,20 @@ jobs:
           set -euo pipefail
           test -n "$CANDIDATE_COMMIT"
           test -n "$CANDIDATE_TREE"
-          if git ls-remote --exit-code origin \
-            "refs/heads/$TARGET_BRANCH" >/dev/null 2>&1; then
-            echo "target branch already exists" >&2
+          current="$(
+            git ls-remote origin "refs/heads/$TARGET_BRANCH" |
+              awk '{print $1}'
+          )"
+          if [[ -n "$current" && \
+                "$current" != "$SOURCE_SHA" && \
+                "$current" != "$CANDIDATE_COMMIT" ]]; then
+            echo "target branch drifted from the exact Q0.48 base" >&2
             exit 1
+          fi
+          if [[ "$current" == "$CANDIDATE_COMMIT" ]]; then
+            printf 'Q0.49 already published: commit=%s tree=%s parent=%s\n' \
+              "$CANDIDATE_COMMIT" "$CANDIDATE_TREE" "$SOURCE_SHA"
+            exit 0
           fi
           auth="$(
             printf 'x-access-token:%s' "$GITHUB_TOKEN" |
