@@ -29,6 +29,9 @@ jobs:
       - name: Test Bazel CI wrapper policy
         run: python3 -m unittest discover -s .github/scripts -p 'test_run_bazel*.py'
 
+      - name: Verify canonical branch CI coverage
+        run: python3 scripts/verify-hepta-canonical-branch-ci.py
+
       - name: Test Codex package builder
         run: python3 -m unittest discover -s scripts/codex_package -p 'test_*.py'
 
