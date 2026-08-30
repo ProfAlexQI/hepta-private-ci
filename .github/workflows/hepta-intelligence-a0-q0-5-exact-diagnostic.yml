@@ -1,4 +1,4 @@
-name: Hepta Intelligence A0 + Q0.5 exact integration diagnostic
+name: Hepta Intelligence A0 + Q0.7 exact integration diagnostic
 
 on:
   push:
@@ -15,15 +15,16 @@ concurrency:
 
 env:
   EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
-  EXPECTED_HEAD_SHA: f950ea4e81d9a33a37ae728edd31492afe192c77
-  EXPECTED_TREE_SHA: 48d7291dbe67af7c4585dff63aa77345b72406ba
+  EXPECTED_HEAD_SHA: 1b6cab3814031fa903450f893bbefadfe410adea
+  EXPECTED_TREE_SHA: 09675380e8a2d93ed836069271d7b499676c1209
   A0_SOURCE_HEAD: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
+  Q0_7_SECOND_PARENT: 5895eea863b9997d13586a2a26aef29a9f69e98e
 
 jobs:
   exact-integration-diagnostic:
-    name: Exact f950 integration high-risk gates
+    name: Exact 1b6cab integration high-risk gates
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - name: Checkout exact integration candidate
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -39,13 +40,13 @@ jobs:
           test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
           test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE_SHA"
-          mapfile -t parents < <(git show -s --format=%P HEAD)
-          read -r first_parent second_parent extra <<< "${parents[0]}"
+          read -r first_parent second_parent extra <<< "$(git show -s --format=%P HEAD)"
           test "$first_parent" = "$A0_SOURCE_HEAD"
-          test -n "$second_parent"
+          test "$second_parent" = "$Q0_7_SECOND_PARENT"
           test -z "${extra:-}"
           git cat-file -e "$A0_SOURCE_HEAD^{commit}"
-          mkdir -p "$RUNNER_TEMP/hepta-intelligence-a0-q0-5-diagnostic"
+          git cat-file -e "$Q0_7_SECOND_PARENT^{commit}"
+          mkdir -p "$RUNNER_TEMP/hepta-intelligence-a0-q0-7-diagnostic"
           {
             echo "repository=$GITHUB_REPOSITORY"
             echo "workflow_run_id=$GITHUB_RUN_ID"
@@ -54,9 +55,10 @@ jobs:
             echo "candidate_tree=$(git rev-parse HEAD^{tree})"
             echo "candidate_parents=$(git show -s --format=%P HEAD)"
             echo "a0_source_head=$A0_SOURCE_HEAD"
+            echo "q0_7_second_parent=$Q0_7_SECOND_PARENT"
             echo "runner_os=$RUNNER_OS"
             echo "runner_arch=$RUNNER_ARCH"
-          } > "$RUNNER_TEMP/hepta-intelligence-a0-q0-5-diagnostic/identity.txt"
+          } > "$RUNNER_TEMP/hepta-intelligence-a0-q0-7-diagnostic/identity.txt"
 
       - name: Verify all A0-owned blobs are byte-identical to the first parent
         shell: bash
@@ -86,6 +88,18 @@ jobs:
                   raise SystemExit(f"A0 blob drift: {path}: {current} != {source}")
           print("PASS_A0_FIRST_PARENT_BLOB_IDENTITY")
           PY
+
+      - name: Verify the bounded sha2 repair contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest=codex-rs/hepta-automation/Cargo.toml
+          grep -Fqx '[package.metadata.cargo-shear]' "$manifest"
+          grep -Fqx 'ignored = ["sha2"]' "$manifest"
+          grep -Fqx 'sha2 = { workspace = true }' "$manifest"
+          grep -Fqx 'mod taskflow;' codex-rs/hepta-automation/src/lib.rs
+          grep -Fqx 'use sha2::Digest;' codex-rs/hepta-automation/src/taskflow.rs
+          grep -Fqx 'use sha2::Sha256;' codex-rs/hepta-automation/src/taskflow.rs
 
       - name: Set up repository CI tools
         uses: ./.github/actions/setup-ci
@@ -135,7 +149,7 @@ jobs:
               GITHUB_SHA="$A0_SOURCE_HEAD" \
               GITHUB_REPOSITORY="$EXPECTED_REPOSITORY" \
               python3 scripts/verify-hepta-intelligence-a0-authority.py \
-              > "$RUNNER_TEMP/hepta-intelligence-a0-q0-5-diagnostic/a0-authority-receipt.json"
+              > "$RUNNER_TEMP/hepta-intelligence-a0-q0-7-diagnostic/a0-authority-receipt.json"
           )
           git worktree remove --force "$a0_dir"
 
@@ -160,6 +174,15 @@ jobs:
           cargo shear --deny-warnings
           cargo metadata --locked --no-deps --format-version 1 \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(p["name"] == "codex-hepta-matrixd" for p in d["packages"])'
+
+      - name: Automation compile, tests, and strict Clippy
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check -p codex-hepta-automation --all-targets --locked
+          cargo test -p codex-hepta-automation --all-targets --locked
+          cargo clippy -p codex-hepta-automation --all-targets --locked -- -D warnings
 
       - name: Cargo deny checked policy gate
         uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
@@ -198,13 +221,13 @@ jobs:
             echo "selected=false"
             echo "runtime_authority=false"
             echo "production_authority=false"
-          } > "$RUNNER_TEMP/hepta-intelligence-a0-q0-5-diagnostic/outcome.txt"
+          } > "$RUNNER_TEMP/hepta-intelligence-a0-q0-7-diagnostic/outcome.txt"
 
       - name: Upload diagnostic evidence
         if: always() && !cancelled()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4
         with:
-          name: hepta-intelligence-a0-q0-5-exact-f950-diagnostic-${{ github.run_id }}
-          path: ${{ runner.temp }}/hepta-intelligence-a0-q0-5-diagnostic/**
+          name: hepta-intelligence-a0-q0-7-exact-1b6cab-diagnostic-${{ github.run_id }}
+          path: ${{ runner.temp }}/hepta-intelligence-a0-q0-7-diagnostic/**
           if-no-files-found: error
           retention-days: 30
