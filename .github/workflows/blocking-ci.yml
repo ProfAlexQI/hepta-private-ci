@@ -59,6 +59,11 @@ jobs:
     uses: ./.github/workflows/windows-gnullvm-qualification-boundary.yml
     secrets: inherit
 
+  windows-setup-bazel-token-boundary:
+    name: Windows setup Bazel token boundary
+    uses: ./.github/workflows/windows-setup-bazel-token-boundary.yml
+    secrets: inherit
+
   required:
     name: CI required
     # Without `always()`, GitHub skips this job after a failed dependency and a
@@ -73,6 +78,7 @@ jobs:
       - rust-ci
       - sdk
       - windows-gnullvm-boundary
+      - windows-setup-bazel-token-boundary
     runs-on: ubuntu-24.04
     steps:
       # Keep the helper on the same combined revision as the child workflows so
