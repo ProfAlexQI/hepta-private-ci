@@ -13,13 +13,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 FILES = {
     "module": ROOT / "codex-rs/hepta-memory/src/fact_grounding/durable.rs",
-    "schema_module": ROOT / "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
-    "grounding_module": ROOT / "codex-rs/hepta-memory/src/fact_grounding/durable/grounding.rs",
-    "grounding_prepare_module": ROOT / "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs",
-    "grounding_ledger_module": ROOT / "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
-    "grounding_ledger_insert_module": ROOT / "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
-    "grounding_ledger_verify_module": ROOT / "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs",
-    "grounding_ledger_support_module": ROOT / "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs",
+    "schema_module": ROOT
+    / "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
+    "grounding_module": ROOT
+    / "codex-rs/hepta-memory/src/fact_grounding/durable/grounding.rs",
+    "grounding_prepare_module": ROOT
+    / "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs",
+    "grounding_ledger_module": ROOT
+    / "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
+    "grounding_ledger_insert_module": ROOT
+    / "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
+    "grounding_ledger_verify_module": ROOT
+    / "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs",
+    "grounding_ledger_support_module": ROOT
+    / "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs",
     "tests_module": ROOT / "codex-rs/hepta-memory/src/fact_grounding/durable/tests.rs",
     "framing": ROOT / "codex-rs/hepta-memory/src/framing.rs",
     "migration": ROOT
@@ -195,7 +202,7 @@ def main() -> int:
     checks["module.atomic_remember_order"] = ordered(
         module,
         "pub async fn remember_with_durable_grounded_kg",
-        "begin_with(\"BEGIN IMMEDIATE\")",
+        'begin_with("BEGIN IMMEDIATE")',
         "append_source_tx",
         "create_memory_revision_tx",
         "insert_revision_facts_tx",
@@ -206,7 +213,7 @@ def main() -> int:
     correction = module[module.find("pub async fn correct_with_durable_grounded_kg") :]
     checks["module.atomic_correct_order"] = ordered(
         correction,
-        "begin_with(\"BEGIN IMMEDIATE\")",
+        'begin_with("BEGIN IMMEDIATE")',
         "append_source_tx",
         "revise_memory_revision_tx",
         "insert_revision_facts_tx",
@@ -226,8 +233,7 @@ def main() -> int:
         )
     )
     checks["module.explicit_legacy_status"] = all(
-        marker in module
-        for marker in ("grounded_v1", "legacy_unreviewed", "zero_fact")
+        marker in module for marker in ("grounded_v1", "legacy_unreviewed", "zero_fact")
     )
     checks["module.tests"] = all(
         marker in module
