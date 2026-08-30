@@ -56,6 +56,28 @@ def require(condition: bool, message: str) -> None:
         raise V1.AdmissionError(message)
 
 
+class RejectRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        request: urllib.request.Request,
+        file_pointer: Any,
+        code: int,
+        message: str,
+        headers: Any,
+        new_url: str,
+    ) -> urllib.request.Request | None:
+        del request, file_pointer, message, headers, new_url
+        raise V1.AdmissionError(
+            f"GitHub Git commit API redirect rejected before follow: {code}"
+        )
+
+
+URL_OPENER = urllib.request.build_opener(
+    urllib.request.ProxyHandler({}),
+    RejectRedirectHandler(),
+)
+
+
 def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     value: dict[str, Any] = {}
     for key, item in pairs:
@@ -64,21 +86,73 @@ def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return value
 
 
-def response_header(response: Any, name: str) -> str | None:
+def response_header_values(response: Any, name: str) -> list[str]:
     headers = getattr(response, "headers", None)
     require(headers is not None, "GitHub Git commit API response headers are missing")
-    value = headers.get(name)
-    if value is None:
-        return None
-    require(isinstance(value, str), f"GitHub response header is not text: {name}")
+    if hasattr(headers, "get_all"):
+        values = headers.get_all(name, [])
+    else:
+        value = headers.get(name)
+        values = [] if value is None else [value]
+    require(isinstance(values, list), f"GitHub response header set is invalid: {name}")
+    result: list[str] = []
+    for value in values:
+        require(isinstance(value, str), f"GitHub response header is not text: {name}")
+        require(
+            "\r" not in value and "\n" not in value,
+            f"GitHub response header folded: {name}",
+        )
+        result.append(value)
+    return result
+
+
+def one_response_header(
+    response: Any,
+    name: str,
+    *,
+    required: bool,
+) -> str | None:
+    values = response_header_values(response, name)
+    if required:
+        require(len(values) == 1, f"GitHub response header cardinality drifted: {name}")
+    else:
+        require(len(values) <= 1, f"GitHub response header duplicated: {name}")
+    return values[0] if values else None
+
+
+def validate_content_type(raw_content_type: str) -> None:
+    parts = [part.strip() for part in raw_content_type.split(";")]
+    media_type = parts[0].casefold()
     require(
-        "\r" not in value and "\n" not in value,
-        f"GitHub response header folded: {name}",
+        media_type in ALLOWED_MEDIA_TYPES,
+        f"GitHub response media type is not JSON: {media_type!r}",
     )
-    return value
+    parameters: dict[str, str] = {}
+    for parameter in parts[1:]:
+        require(
+            parameter and "=" in parameter,
+            "GitHub Content-Type parameter is invalid",
+        )
+        name, value = parameter.split("=", 1)
+        key = name.strip().casefold()
+        normalized = value.strip().strip('"').casefold()
+        require(
+            key and key not in parameters,
+            "GitHub Content-Type parameter duplicated",
+        )
+        require(
+            key == "charset",
+            f"GitHub Content-Type parameter is not allowed: {key!r}",
+        )
+        parameters[key] = normalized
+    charset = parameters.get("charset")
+    require(
+        charset is None or charset == "utf-8",
+        f"GitHub response charset is not UTF-8: {charset!r}",
+    )
 
 
-def validate_response_envelope(response: Any, expected_url: str) -> None:
+def validate_response_envelope(response: Any, expected_url: str) -> int | None:
     require(response.status == 200, f"GitHub Git commit API returned {response.status}")
     observed_url = response.geturl()
     require(
@@ -86,46 +160,73 @@ def validate_response_envelope(response: Any, expected_url: str) -> None:
         "GitHub Git commit API redirected or changed the response URL",
     )
 
-    raw_content_type = response_header(response, "Content-Type")
-    require(raw_content_type is not None, "GitHub response Content-Type is missing")
-    media_type = raw_content_type.partition(";")[0].strip().casefold()
-    require(
-        media_type in ALLOWED_MEDIA_TYPES,
-        f"GitHub response media type is not JSON: {media_type!r}",
+    raw_content_type = one_response_header(
+        response,
+        "Content-Type",
+        required=True,
     )
+    assert raw_content_type is not None
+    validate_content_type(raw_content_type)
 
-    content_encoding = response_header(response, "Content-Encoding")
+    content_encoding = one_response_header(
+        response,
+        "Content-Encoding",
+        required=False,
+    )
     require(
         content_encoding is None
         or content_encoding.strip().casefold() in {"", "identity"},
         "GitHub response content encoding is not identity",
     )
 
-    content_length = response_header(response, "Content-Length")
-    if content_length is not None:
-        require(
-            re.fullmatch(r"0|[1-9][0-9]{0,9}", content_length) is not None,
-            "GitHub response Content-Length is not canonical",
-        )
-        require(
-            int(content_length) <= MAX_GIT_COMMIT_RESPONSE_BYTES,
-            "GitHub response Content-Length exceeds the bounded size",
-        )
+    content_length = one_response_header(
+        response,
+        "Content-Length",
+        required=False,
+    )
+    if content_length is None:
+        return None
+    require(
+        re.fullmatch(r"0|[1-9][0-9]{0,9}", content_length) is not None,
+        "GitHub response Content-Length is not canonical",
+    )
+    declared = int(content_length)
+    require(
+        declared <= MAX_GIT_COMMIT_RESPONSE_BYTES,
+        "GitHub response Content-Length exceeds the bounded size",
+    )
+    return declared
 
 
 def read_bounded(response: Any, limit: int) -> bytes:
-    payload = response.read(limit + 1)
-    require(isinstance(payload, bytes), "GitHub Git commit API payload is not bytes")
-    require(
-        len(payload) <= limit,
-        f"GitHub Git commit API payload exceeds {limit} bytes",
-    )
-    return payload
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        remaining = limit + 1 - total
+        require(remaining > 0, f"GitHub Git commit API payload exceeds {limit} bytes")
+        chunk = response.read(min(64 * 1024, remaining))
+        require(isinstance(chunk, bytes), "GitHub Git commit API payload is not bytes")
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+        require(total <= limit, f"GitHub Git commit API payload exceeds {limit} bytes")
+    return b"".join(chunks)
 
 
 def decode_strict_json(encoded: bytes) -> dict[str, Any]:
+    require(
+        not encoded.startswith(b"\xef\xbb\xbf"),
+        "GitHub Git commit API JSON must not contain a UTF-8 BOM",
+    )
     try:
-        value = json.loads(encoded, object_pairs_hook=reject_duplicate_json_keys)
+        text = encoded.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise V1.AdmissionError(
+            f"GitHub Git commit API JSON is not strict UTF-8: {error}"
+        ) from error
+    try:
+        value = json.loads(text, object_pairs_hook=reject_duplicate_json_keys)
     except json.JSONDecodeError as error:
         raise V1.AdmissionError(
             f"GitHub Git commit API returned invalid JSON: {error}"
@@ -157,8 +258,8 @@ def fetch_commit_metadata(repository: str, head: str, token: str) -> dict[str, A
         method="GET",
     )
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            validate_response_envelope(response, url)
+        with URL_OPENER.open(request, timeout=30) as response:
+            declared_length = validate_response_envelope(response, url)
             encoded = read_bounded(response, MAX_GIT_COMMIT_RESPONSE_BYTES)
     except V1.AdmissionError:
         raise
@@ -172,6 +273,10 @@ def fetch_commit_metadata(repository: str, head: str, token: str) -> dict[str, A
             f"GitHub Git commit API request failed: {error}"
         ) from error
 
+    require(
+        declared_length is None or declared_length == len(encoded),
+        "GitHub response Content-Length differs from the received body",
+    )
     value = decode_strict_json(encoded)
     require(value.get("sha") == head, "GitHub Git commit API head identity drifted")
 

@@ -63,7 +63,8 @@ jobs:
               scripts/verify-hepta-intelligence-integration-admission-api-v2.py \
               scripts/run-hepta-intelligence-integration-admission.py \
               scripts/test-hepta-intelligence-integration-admission.py \
-              scripts/test-hepta-intelligence-integration-admission-boundaries.py
+              scripts/test-hepta-intelligence-integration-admission-boundaries.py \
+              scripts/test-hepta-intelligence-integration-admission-http-boundaries.py
 
       - name: Exercise trusted-Git and fail-closed admission fixtures
         run: |
@@ -79,6 +80,9 @@ jobs:
             | tee "$artifact_dir/admission-negative-fixtures.txt"
           python3 scripts/test-hepta-intelligence-integration-admission-boundaries.py \
             | tee "$artifact_dir/admission-boundary-fixtures.txt"
+          python3 \
+            scripts/test-hepta-intelligence-integration-admission-http-boundaries.py \
+            | tee "$artifact_dir/admission-http-boundary-fixtures.txt"
 
       - name: Verify bounded signed composition twice through bound Git
         env:
