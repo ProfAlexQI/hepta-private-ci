@@ -20,7 +20,7 @@ jobs:
     if: >-
       github.repository == 'ProfHepta/hepta-private-ci' &&
       github.ref == 'refs/heads/codex/hepta-architecture-v4-p0-7a-executable-closure-20260830'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
     steps:
       - name: Checkout exact repair source
