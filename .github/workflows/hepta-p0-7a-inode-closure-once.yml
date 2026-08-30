@@ -12,18 +12,32 @@ permissions:
 
 concurrency:
   group: hepta-p0-7a-inode-closure-once
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   repair:
     name: Repair and qualify immutable publication
+    if: >-
+      github.repository == 'ProfHepta/hepta-private-ci' &&
+      github.ref == 'refs/heads/codex/hepta-architecture-v4-p0-7a-executable-closure-20260830'
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Checkout exact repair source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
+          persist-credentials: true
           fetch-depth: 0
+
+      - name: Verify exact input identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git hash-object codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs)" = \
+            "74abd3aa3ece1fc63f36a09acfe719b5a6f9528f"
+          git diff --exit-code
+          git diff --cached --exit-code
 
       - name: Configure CI environment
         uses: ./.github/actions/setup-ci
@@ -39,7 +53,7 @@ jobs:
         with:
           tool: nextest@0.9.143
 
-      - name: Apply stable inode identity repair
+      - name: Apply refreshed-handle inode identity repair
         shell: bash
         run: |
           set -euo pipefail
@@ -48,83 +62,110 @@ jobs:
 
           path = Path("codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs")
           text = path.read_text(encoding="utf-8")
-
-          linked_old = '''    if metadata_identity(&held) != metadata_identity(&linked) {
-              return Err(FleetRegistryError::Corrupt(
-                  "runtime bootstrap registry publication did not bind the fsynced inode".to_string(),
-              ));
-          }
-          '''
-          linked_new = '''    if stable_file_identity(&held) != stable_file_identity(&linked) {
-              return Err(FleetRegistryError::Corrupt(
-                  "runtime bootstrap registry publication did not bind the fsynced inode".to_string(),
-              ));
-          }
-          '''
-          published_old = '''    if metadata_identity(&held) != metadata_identity(&published) {
-              return Err(FleetRegistryError::Corrupt(
-                  "runtime bootstrap registry inode drifted after publication".to_string(),
-              ));
-          }
-          '''
-          published_new = '''    if stable_file_identity(&held) != stable_file_identity(&published) {
-              return Err(FleetRegistryError::Corrupt(
-                  "runtime bootstrap registry inode drifted after publication".to_string(),
-              ));
-          }
-          '''
-          anchor = '''#[cfg(unix)]
-          fn metadata_identity(metadata: &std::fs::Metadata) -> (u64, u64, i64, i64, u64) {
-          '''
-          helper = '''#[cfg(unix)]
-          fn stable_file_identity(metadata: &std::fs::Metadata) -> (u64, u64, u64) {
-              use std::os::unix::fs::MetadataExt as _;
-              (metadata.dev(), metadata.ino(), metadata.len())
-          }
-
-          #[cfg(not(unix))]
-          fn stable_file_identity(
-              metadata: &std::fs::Metadata,
-          ) -> (u64, Option<std::time::SystemTime>) {
-              metadata_identity(metadata)
-          }
-
-          #[cfg(unix)]
-          fn metadata_identity(metadata: &std::fs::Metadata) -> (u64, u64, i64, i64, u64) {
-          '''
-
-          for old, new, label in (
-              (linked_old, linked_new, "linked publication check"),
-              (published_old, published_new, "post-unlink publication check"),
-          ):
-              if text.count(old) != 1:
-                  raise SystemExit(f"expected exactly one {label}, found {text.count(old)}")
+          replacements = (
+              (
+                  "    let linked = std::fs::symlink_metadata(path)?;\n",
+                  "    let held_linked = file.metadata()?;\n"
+                  "    validate_registry_metadata(&temp, &held_linked, &parent_metadata, 2)?;\n"
+                  "    let linked = std::fs::symlink_metadata(path)?;\n",
+                  "post-link handle refresh",
+              ),
+              (
+                  "    if metadata_identity(&held) != metadata_identity(&linked) {\n",
+                  "    if metadata_identity(&held_linked) != metadata_identity(&linked) {\n",
+                  "post-link identity comparison",
+              ),
+              (
+                  "    let published = std::fs::symlink_metadata(path)?;\n",
+                  "    let held_published = file.metadata()?;\n"
+                  "    validate_registry_metadata(path, &held_published, &parent_metadata, 1)?;\n"
+                  "    let published = std::fs::symlink_metadata(path)?;\n",
+                  "post-unlink handle refresh",
+              ),
+              (
+                  "    if metadata_identity(&held) != metadata_identity(&published) {\n",
+                  "    if metadata_identity(&held_published) != metadata_identity(&published) {\n",
+                  "post-unlink identity comparison",
+              ),
+          )
+          for old, new, label in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one {label}, found {count}")
               text = text.replace(old, new, 1)
-
-          if text.count(anchor) != 1:
-              raise SystemExit(f"expected one metadata identity anchor, found {text.count(anchor)}")
-          text = text.replace(anchor, helper, 1)
           path.write_text(text, encoding="utf-8")
           PY
 
           rm .github/workflows/hepta-p0-7a-inode-closure-once.yml
 
-      - name: Check Rust 1.95 scoped format
-        run: python3 scripts/verify-hepta-p0-7a-format.py --check
+      - name: Format repaired fleet crate
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --package codex-hepta-fleet
+          cargo fmt --package codex-hepta-fleet -- --check
 
-      - name: Run exact fleet package tests
+      - name: Run repaired fleet tests
+        working-directory: codex-rs
         run: just test -p codex-hepta-fleet
+
+      - name: Check all P0.7a targets
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd
+
+      - name: Run strict P0.7a Clippy
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-agentd \
+            -- -D warnings
+
+      - name: Verify source and lock contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-p0-7a-format.py --check
+          python3 scripts/verify-hepta-architecture-plan-v4.py
+          just bazel-lock-check
+
+      - name: Verify minimal clean repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          mapfile -t changed < <(git diff --name-only | sort)
+          expected=(
+            ".github/workflows/hepta-p0-7a-inode-closure-once.yml"
+            "codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs"
+          )
+          test "${#changed[@]}" -eq "${#expected[@]}"
+          for index in "${!expected[@]}"; do
+            test "${changed[$index]}" = "${expected[$index]}"
+          done
+          test -z "$(git ls-files --others --exclude-standard)"
 
       - name: Commit qualified repair to staging ref
         shell: bash
         run: |
           set -euo pipefail
-          git status --short
           git config user.name "hepta-closure-bot"
           git config user.email "hepta-closure-bot@users.noreply.github.com"
           git add -A
-          git commit -m "fix(hepta): bind immutable publication by stable inode identity"
+          git commit -m "fix(hepta): refresh inode identity across publication links"
           repaired_sha="$(git rev-parse HEAD)"
           repaired_tree="$(git rev-parse 'HEAD^{tree}')"
           printf 'repaired_commit=%s\nrepaired_tree=%s\n' "$repaired_sha" "$repaired_tree" >> "$GITHUB_STEP_SUMMARY"
-          git push origin HEAD:refs/heads/automation/hepta-p0-7a-inode-closure-20260830
+          git push --force origin HEAD:refs/heads/automation/hepta-p0-7a-inode-closure-20260830
