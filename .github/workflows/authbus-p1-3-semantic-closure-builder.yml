@@ -1,16 +1,16 @@
-name: AuthBus P1.3 semantic closure builder
+name: AuthBus P1.3 semantic closure builder slim v4
 
 on:
   push:
     branches:
-      - ops/authbus-p1-3-semantic-closure-builder-v1-20260830
+      - ops/authbus-p1-3-semantic-closure-builder-slim-v4-20260830
     paths:
       - .github/workflows/authbus-p1-3-semantic-closure-builder.yml
       - scripts/authbus-p1-3-semantic-closure-builder.py
   workflow_dispatch:
 
 concurrency:
-  group: authbus-p1-3-semantic-closure-builder-v1
+  group: authbus-p1-3-semantic-closure-builder-slim-v4
   cancel-in-progress: false
 
 permissions:
@@ -19,7 +19,7 @@ permissions:
 
 env:
   SOURCE_HEAD: 8572f3d2182541b14e0719b229ccd8754494f134
-  TARGET_BRANCH: ops/authbus-p1-3-semantic-closure-builder-v1-20260830
+  TARGET_BRANCH: ops/authbus-p1-3-semantic-closure-builder-slim-v4-20260830
   P02: codex-rs/hepta-authbus-qualification/Cargo.toml
   P03: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
   P11: codex-rs/hepta-authbus-p1-qualification/Cargo.toml
@@ -31,11 +31,11 @@ env:
   CARGO_NET_RETRY: "10"
   CARGO_HTTP_TIMEOUT: "120"
   RUST_BACKTRACE: "1"
-  CARGO_TARGET_DIR: /tmp/authbus-p1-3-semantic-closure-target
+  CARGO_TARGET_DIR: /tmp/authbus-p1-3-semantic-closure-slim-v4-target
 
 jobs:
   build_and_qualify:
-    name: Apply, qualify, and publish clean semantic closure tree
+    name: Apply, qualify, and publish clean semantic closure tree on slim runner
     runs-on: ubuntu-slim
     timeout-minutes: 120
     steps:
