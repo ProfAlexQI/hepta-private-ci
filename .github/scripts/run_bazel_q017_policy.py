@@ -9,6 +9,13 @@ LOCAL_WINDOWS_GNULLVM_TARGET_PLATFORM = "--platforms=//:windows_x86_64_gnullvm"
 
 QUALIFICATION_BAZELRC_GIT_BLOB_SHA1 = "0736ecbb6e8183b31f0e2739abef901c47235e9d"
 
+CI_RELEASE_TARGET_PAYLOAD = (
+    "//codex-rs/...",
+    "-//codex-rs/core/tests/remote_env_windows:smoke-test",
+    "-//codex-rs/v8-poc:all",
+)
+CI_ALLOWED_NEGATIVE_TARGETS = frozenset(CI_RELEASE_TARGET_PAYLOAD[1:])
+
 CI_ALLOWED_CONFIGS = {
     "ci",
     "ci-bazel",
@@ -123,15 +130,18 @@ CI_RC_CONTROL_FLAGS = {
     "--bazelrc",
 }
 
+
 def _command_index(args: Sequence[str]) -> int:
     return next(
         (idx for idx, arg in enumerate(args) if not arg.startswith("-")),
         len(args),
     )
 
+
 def _git_blob_sha1(data: bytes) -> str:
     framed = f"blob {len(data)}\0".encode("ascii") + data
     return hashlib.sha1(framed, usedforsecurity=False).hexdigest()
+
 
 def _qualification_workspace_bazelrc(
     env: Mapping[str, str], *, expected_blob: str = QUALIFICATION_BAZELRC_GIT_BLOB_SHA1
@@ -174,9 +184,11 @@ def _qualification_workspace_bazelrc(
         )
     return bazelrc
 
+
 def _has_rc_control(arg: str) -> bool:
     name = arg.split("=", 1)[0]
     return name in CI_RC_CONTROL_FLAGS or arg.startswith("--bazelrc=")
+
 
 def _is_keyless_windows_gnullvm(
     args: Sequence[str], env: Mapping[str, str]
@@ -193,6 +205,7 @@ def _is_keyless_windows_gnullvm(
         separator_idx = len(args)
     return LOCAL_WINDOWS_GNULLVM_TARGET_PLATFORM in args[:separator_idx]
 
+
 def _option_args(args: Sequence[str]) -> tuple[int, int, list[str]]:
     command_idx = _command_index(args)
     if command_idx == len(args):
@@ -207,6 +220,7 @@ def _option_args(args: Sequence[str]) -> tuple[int, int, list[str]]:
         raise ValueError("credential-free Windows gnullvm qualification requires targets")
     return command_idx, separator_idx, list(args[command_idx + 1 : separator_idx])
 
+
 def _exact_option(options: Sequence[str], prefix: str, expected: str) -> None:
     observed = [arg for arg in options if arg.startswith(prefix)]
     if observed != [expected]:
@@ -214,6 +228,7 @@ def _exact_option(options: Sequence[str], prefix: str, expected: str) -> None:
             "credential-free Windows gnullvm final command requires exactly "
             f"{expected!r}; observed {observed!r}"
         )
+
 
 def _validate_windows_environment_args(
     options: Sequence[str], env: Mapping[str, str]
@@ -262,6 +277,7 @@ def _validate_windows_environment_args(
             f"test_env set: {test_env!r}"
         )
 
+
 def validate_keyless_windows_gnullvm_final_args(
     args: Sequence[str], env: Mapping[str, str]
 ) -> None:
@@ -292,7 +308,11 @@ def validate_keyless_windows_gnullvm_final_args(
                 f"credential-free Windows gnullvm qualification rejects strategy {arg!r}"
             )
 
-    configs = [arg.removeprefix("--config=") for arg in options if arg.startswith("--config=")]
+    configs = [
+        arg.removeprefix("--config=")
+        for arg in options
+        if arg.startswith("--config=")
+    ]
     if any(config not in CI_ALLOWED_CONFIGS for config in configs):
         raise ValueError(
             f"credential-free Windows gnullvm qualification has non-canonical configs: {configs!r}"
@@ -315,7 +335,9 @@ def validate_keyless_windows_gnullvm_final_args(
             raise ValueError(f"canonical option {expected!r} must follow every config")
 
     repo_env = [arg for arg in options if arg.startswith("--repo_env=")]
-    if repo_env != [CI_EXACT_OPTIONS["--repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN="]]:
+    if repo_env != [
+        CI_EXACT_OPTIONS["--repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN="]
+    ]:
         raise ValueError(f"non-canonical explicit repo_env set: {repo_env!r}")
 
     _validate_windows_environment_args(options, env)
@@ -345,14 +367,22 @@ def validate_keyless_windows_gnullvm_final_args(
     elif execution_logs:
         raise ValueError("unexpected compact execution log path")
 
-    # Do not allow options to be smuggled into the target payload. Bazel uses
-    # a single leading dash for canonical negative target patterns, which the
-    # release-build lane needs to exclude bounded first-party targets. Keep
-    # those local-workspace exclusions while rejecting every other dash-led
-    # payload, including option-shaped values.
-    for target in args[separator_idx + 1 :]:
-        if target.startswith("-") and not target.startswith("-//"):
-            raise ValueError(f"invalid Bazel target payload {target!r}")
+    target_payload = list(args[separator_idx + 1 :])
+    negative_targets = [target for target in target_payload if target.startswith("-")]
+    for target in negative_targets:
+        if target not in CI_ALLOWED_NEGATIVE_TARGETS:
+            raise ValueError(f"invalid Bazel negative target payload {target!r}")
+
+    release_lane = "--build_metadata=TAG_job=verify-release-build" in options
+    if release_lane:
+        if tuple(target_payload) != CI_RELEASE_TARGET_PAYLOAD:
+            raise ValueError(
+                "credential-free Windows gnullvm release qualification requires "
+                "the exact release target payload"
+            )
+    elif negative_targets:
+        raise ValueError("negative Bazel target payload is release-only")
+
 
 def _insert_before_separator(args: Sequence[str], value: str) -> list[str]:
     try:

@@ -86,6 +86,8 @@ def main() -> None:
 
     for token in (
         f'QUALIFICATION_BAZELRC_GIT_BLOB_SHA1 = "{EXPECTED_BAZELRC_BLOB}"',
+        "CI_RELEASE_TARGET_PAYLOAD",
+        "CI_ALLOWED_NEGATIVE_TARGETS",
         "CI_SPLIT_FORM_FORBIDDEN",
         "CI_REMOTE_ENDPOINT_PREFIXES",
         "CI_REMOTE_EXECUTION_PREFIXES",
@@ -95,7 +97,9 @@ def main() -> None:
         "credential-free Windows gnullvm qualification rejects execution override",
         "ci-windows must be the final command-line config",
         "action_env and host_action_env bindings must be identical",
-        "invalid Bazel target payload",
+        "invalid Bazel negative target payload",
+        "negative Bazel target payload is release-only",
+        "the exact release target payload",
     ):
         require_token(policy, token, "run_bazel_q017_policy.py")
 
@@ -112,6 +116,10 @@ def main() -> None:
         "test_boolean_equals_rc_reenable_fails_closed",
         "test_master_bazelrc_reenable_fails_closed",
         "test_option_smuggling_after_target_separator_fails_closed",
+        "test_release_target_exclusions_remain_canonical_payload",
+        "test_unreviewed_negative_target_exclusion_fails_closed",
+        "test_approved_negative_target_is_release_only",
+        "test_release_target_payload_must_be_exact",
         "test_authenticated_windows_path_remains_remote_passthrough",
         "test_pinned_blob_identity_is_explicit",
     ):
