@@ -1,14 +1,14 @@
 {
   "schema": "hepta.ui.active-plan.v5",
-  "status": "DRAFT_PR_OPENED_HOSTED_QUALIFICATION_REQUESTED",
+  "status": "REMEDIATION_ROUND_2_COMMITTED_HOSTED_QUALIFICATION_REQUIRED",
   "repository": "ProfHepta/hepta-private-ci",
   "baseBranch": "codex/ui-v4-executable-final-gap-closure-v3-20260829",
   "baseCommit": "304143bf362e6cc8369158309b7b9c7c9c3d3868",
   "baseTree": "a28c7808e64e2cfa21a8ed3fcbc5525cbbfbac3f",
   "workBranch": "codex/ui-v5-plan-and-repo-gap-closure-20260829",
   "implementationCandidate": {
-    "commit": "4171b464e49708a44418241fe857986dce0edb53",
-    "tree": "f52543dc64b1c831e261bb9b8ac07b6e363d231d",
+    "commit": "4cf75580508f0057237d1e070b9d9415b51b9f92",
+    "tree": "b0150abc935ad339bcd4747cd04819d70c9574b1",
     "branch": "codex/ui-v5-plan-and-repo-gap-closure-20260829"
   },
   "bootstrapValidation": {
@@ -44,5 +44,16 @@
   "releaseAuthority": false,
   "sourceControllableGapsClosed": false,
   "externalEvidenceComplete": false,
-  "allGapsClosed": false
+  "allGapsClosed": false,
+  "remediationRound2": {
+    "repositoryControlled": true,
+    "exactMaterialProfileBlobTruthUnified": true,
+    "roomScreenLiveDesignSplit": true,
+    "rustToolchainExplicitlyPinned": true,
+    "dependencyLockHashesRebound": true,
+    "upstreamR12ObservedAndClassified": true,
+    "windowsBazelPortabilityRepairs": true,
+    "upstreamHead": "dde85b435b16994f956bce08e5fb796ed94c27fd",
+    "hostedQualificationComplete": false
+  }
 }

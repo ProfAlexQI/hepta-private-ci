@@ -353,7 +353,7 @@ verify_contract() {
     and .upstream_truth == {
       capability_version:1,
       registry:"docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json",
-      registry_sha256:"40a6391f27ef2c58ca174c0d48481031687bcbe3458340eee5c5d83c811a4569",
+      registry_sha256:"ddcbd5ac3b54134de1f0e0cdff9fc30a7cdc526957d9550e52a39cbe9fb4de17",
       ci_job:"upstream-truth",
       semantic_command:"scripts/hepta-upstream-truth-gate verify-semantic",
       counted_evidence_command:"scripts/hepta-upstream-truth-gate verify-counted-evidence",

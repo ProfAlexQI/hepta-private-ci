@@ -1,11 +1,11 @@
 {
   "schema": "hepta.ui.repository-gap-ledger.v1",
   "candidate": {
-    "commit": "4171b464e49708a44418241fe857986dce0edb53",
-    "tree": "f52543dc64b1c831e261bb9b8ac07b6e363d231d",
+    "commit": "4cf75580508f0057237d1e070b9d9415b51b9f92",
+    "tree": "b0150abc935ad339bcd4747cd04819d70c9574b1",
     "branch": "codex/ui-v5-plan-and-repo-gap-closure-20260829"
   },
-  "status": "DRAFT_PR_OPENED_HOSTED_QUALIFICATION_REQUESTED",
+  "status": "REMEDIATION_ROUND_2_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
   "bootstrapValidation": {
     "runId": 33264125711,
     "jobId": 99131005577,
@@ -31,7 +31,7 @@
     {
       "id": "REPO-UI-001",
       "title": "contract fixture missing frozen Git objects",
-      "state": "PR_OPENED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
+      "state": "REMEDIATION_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
       "paths": [
         "scripts/hepta-ci-baseline-contract"
       ]
@@ -39,7 +39,7 @@
     {
       "id": "REPO-UI-002",
       "title": "DWM Windows job executes Bash continuation in PowerShell",
-      "state": "PR_OPENED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
+      "state": "REMEDIATION_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
       "paths": [
         ".github/workflows/hepta-ui-v4-windows-dwm-ack-producer.yml"
       ]
@@ -47,7 +47,7 @@
     {
       "id": "REPO-UI-003",
       "title": "aggregate Windows job executes Bash continuation in PowerShell",
-      "state": "PR_OPENED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
+      "state": "REMEDIATION_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
       "paths": [
         ".github/workflows/hepta-ui-v4-windows-material-profile-aggregate.yml"
       ]
@@ -55,7 +55,7 @@
     {
       "id": "REPO-UI-004",
       "title": "patched Makepad CxOsOp Debug match is non-exhaustive",
-      "state": "PR_OPENED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
+      "state": "REMEDIATION_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
       "paths": [
         "scripts/hepta-ui-v4-apply-makepad-windows-ack-patch",
         "scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch"
@@ -64,7 +64,7 @@
     {
       "id": "REPO-UI-005",
       "title": "pipefail gate rejects set -euo pipefail",
-      "state": "PR_OPENED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
+      "state": "REMEDIATION_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
       "paths": [
         "scripts/hepta-ui-v4-exact-candidate-materialization-gate"
       ]
@@ -72,7 +72,7 @@
     {
       "id": "REPO-UI-006",
       "title": "rmcp 1.8 non_exhaustive constructors",
-      "state": "PR_OPENED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
+      "state": "REMEDIATION_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
       "paths": [
         "codex-rs/memories/mcp/src/server.rs",
         "codex-rs/tools/src/mcp_tool_tests.rs",
@@ -82,7 +82,7 @@
     {
       "id": "REPO-UI-007",
       "title": "Windows Bazel Rust/test compatibility regressions",
-      "state": "PR_OPENED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
+      "state": "REMEDIATION_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
       "paths": [
         "codex-rs/analytics/src/analytics_client_tests.rs",
         "codex-rs/app-server-protocol/src/protocol/v2/turn.rs",
@@ -92,6 +92,42 @@
         "codex-rs/core-plugins/src/manager_tests.rs",
         ".github/workflows/windows-msvc-bazel.yml"
       ]
+    },
+    {
+      "id": "REPO-UI-008",
+      "title": "exact material-profile gate duplicated a stale Makepad patcher digest",
+      "state": "REMEDIATION_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
+      "paths": []
+    },
+    {
+      "id": "REPO-UI-009",
+      "title": "room_screen live-design block exceeded the maintainability budget",
+      "state": "REMEDIATION_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
+      "paths": []
+    },
+    {
+      "id": "REPO-UI-010",
+      "title": "SHA-pinned rust-toolchain action inferred Rust 1.93 instead of required 1.95",
+      "state": "REMEDIATION_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
+      "paths": []
+    },
+    {
+      "id": "REPO-UI-011",
+      "title": "dependency-security lockfile hash binding drifted",
+      "state": "REMEDIATION_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
+      "paths": []
+    },
+    {
+      "id": "REPO-UI-012",
+      "title": "upstream network and semantic registry lagged the observed main head",
+      "state": "REMEDIATION_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
+      "paths": []
+    },
+    {
+      "id": "REPO-UI-013",
+      "title": "Windows Bazel tests relied on map iteration and lexical path spelling",
+      "state": "REMEDIATION_COMMITTED_AWAITING_EXACT_HEAD_HOSTED_QUALIFICATION",
+      "paths": []
     }
   ],
   "closureRule": "Every gap requires a committed exact-head diff and a successful nonempty assigned-runner result; local source transformation, PR creation, queued jobs, skipped jobs, or runnerless jobs are not qualification.",

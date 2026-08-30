@@ -66,3 +66,19 @@ Any follow-up commit must:
 3. change only paths required by newly observed exact-head failures;
 4. update the repository gap ledger before claiming closure;
 5. preserve all external evidence and authority fields as false.
+
+## Remediation round 2 — exact-head failures observed on PR #78
+
+Implementation commit `4cf75580508f0057237d1e070b9d9415b51b9f92` / tree `b0150abc935ad339bcd4747cd04819d70c9574b1` closes the
+deterministic repository-controlled failures exposed by assigned-runner execution:
+
+- one canonical Makepad patcher blob truth, verified against the actual Git object;
+- a no-semantic-change live-design split that keeps `room_screen.rs` under its 4,500-line ceiling;
+- explicit Rust 1.95.0 installation and pinned mobile targets;
+- exact dependency lockfile byte hashes;
+- complete R12 upstream observation and fail-closed per-commit deferral classification at `dde85b435b16994f956bce08e5fb796ed94c27fd`;
+- deterministic plugin-manifest candidate ordering and canonical Windows path identity assertions.
+
+These changes remain unqualified until the final exact PR head receives nonempty successful
+assigned-runner jobs. Physical-device evidence, browser-human acceptance, Ed25519 operator
+acceptance, product binding, production, promotion, and release authority remain false.
