@@ -1,4 +1,4 @@
-"""Q0.22-Q0.24 fail-closed Bazel target, identity, lane, and selection policy."""
+"""Q0.22-Q0.25 fail-closed Bazel identity, lane, and selection policy."""
 
 from collections.abc import Mapping, Sequence
 
@@ -22,6 +22,17 @@ CANONICAL_RELEASE_TARGETS = (
 CANONICAL_SKIP_INCOMPATIBLE = "--skip_incompatible_explicit_targets"
 CANONICAL_TEST_VERBOSE_TIMEOUTS = "--test_verbose_timeout_warnings"
 
+FORBIDDEN_SELECTION_SPLIT_FLAGS = {
+    "--test_filter",
+    "--test_arg",
+    "--test_tag_filters",
+    "--test_lang_filters",
+    "--test_size_filters",
+    "--test_timeout_filters",
+    "--build_tag_filters",
+    "--build_tests_only",
+    "--nobuild_tests_only",
+}
 FORBIDDEN_SELECTION_PREFIXES = (
     "--test_filter=",
     "--test_arg=",
@@ -29,13 +40,15 @@ FORBIDDEN_SELECTION_PREFIXES = (
     "--test_size_filters=",
     "--test_timeout_filters=",
     "--build_tag_filters=",
-    "--build_tests_only",
+    "--build_tests_only=",
 )
 
 
 def _reject_selection_overrides(options: Sequence[str]) -> None:
     for option in options:
-        if option.startswith(FORBIDDEN_SELECTION_PREFIXES):
+        if option in FORBIDDEN_SELECTION_SPLIT_FLAGS or option.startswith(
+            FORBIDDEN_SELECTION_PREFIXES
+        ):
             raise ValueError(
                 "credential-free Windows gnullvm qualification rejects "
                 f"test-selection override {option!r}"
@@ -90,7 +103,7 @@ def _job_metadata(options: Sequence[str]) -> list[str]:
 def validate_keyless_windows_gnullvm_final_args(
     args: Sequence[str], env: Mapping[str, str]
 ) -> None:
-    """Extend Q0.21 with exact identity, target, lane, and selection contracts."""
+    """Extend Q0.21 with exact identity, lane, and selection contracts."""
 
     _validate_q021(args, env)
     command_idx, separator_idx, options = _option_args(args)
