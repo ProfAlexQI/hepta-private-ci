@@ -1,0 +1,241 @@
+name: Hepta A0+Q0 current targeted admission
+
+on:
+  push:
+    branches:
+      - "diagnostic/hepta-a0-q0-targeted-f950ea-20260830"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_SHA: f950ea4e81d9a33a37ae728edd31492afe192c77
+  TARGET_TREE: 48d7291dbe67af7c4585dff63aa77345b72406ba
+
+jobs:
+  format:
+    name: Exact combined-tree format gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact combined candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify exact candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+      - uses: ./.github/actions/setup-ci
+      - name: Run canonical repository format gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          just fmt-check
+      - name: Prove clean tracked source
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+  cargo-deny:
+    name: Exact combined-tree cargo-deny gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact combined candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify exact candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+      - name: Run repository cargo-deny policy
+        uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246
+        with:
+          rust-version: 1.95.0
+          manifest-path: ./codex-rs/Cargo.toml
+          arguments: --all-features
+          command-arguments: --config ./codex-rs/deny.toml
+      - name: Prove clean tracked source
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+  cargo-shear:
+    name: Exact combined-tree cargo-shear gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: codex-rs
+    steps:
+      - name: Checkout exact combined candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify exact candidate identity
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+      - uses: ./.github/actions/setup-ci
+        working-directory: .
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: cargo-shear@1.11.2
+      - name: Run cargo shear fail-closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo shear --deny-warnings
+      - name: Verify Matrixd remains a workspace member
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(p["name"]=="codex-hepta-matrixd" for p in d["packages"])'
+      - name: Prove clean tracked source
+        if: always() && !cancelled()
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+  uds:
+    name: Exact combined-tree UDS tests and strict Clippy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: codex-rs
+    steps:
+      - name: Checkout exact combined candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify exact candidate identity
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+      - uses: ./.github/actions/setup-ci
+        working-directory: .
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt,clippy
+      - name: Verify Rust format
+        shell: bash
+        run: cargo fmt --all -- --config imports_granularity=Item --check
+      - name: Test UDS crate
+        shell: bash
+        run: cargo test -p codex-uds --locked
+      - name: Strict Clippy for UDS crate
+        shell: bash
+        run: cargo clippy -p codex-uds --all-targets --locked -- -D warnings
+      - name: Prove clean tracked source
+        if: always() && !cancelled()
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+  receipt:
+    name: Current targeted admission receipt
+    needs: [format, cargo-deny, cargo-shear, uds]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Write authority-negative diagnostic receipt
+        shell: bash
+        env:
+          FORMAT_RESULT: ${{ needs.format.result }}
+          CARGO_DENY_RESULT: ${{ needs.cargo-deny.result }}
+          CARGO_SHEAR_RESULT: ${{ needs.cargo-shear.result }}
+          UDS_RESULT: ${{ needs.uds.result }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          receipt = {
+              "schema": "hepta_a0_q0_current_targeted_admission_v1",
+              "target": {
+                  "head": os.environ["TARGET_SHA"],
+                  "tree": os.environ["TARGET_TREE"],
+              },
+              "checks": {
+                  "format": os.environ["FORMAT_RESULT"],
+                  "cargo_deny": os.environ["CARGO_DENY_RESULT"],
+                  "cargo_shear": os.environ["CARGO_SHEAR_RESULT"],
+                  "uds": os.environ["UDS_RESULT"],
+              },
+              "authority": {
+                  "a0_candidate_qualified": False,
+                  "selected": False,
+                  "full_repository_merge_green": False,
+                  "runtime_wired": False,
+                  "production_authority": False,
+                  "operator_acceptance": False,
+                  "promotion": False,
+                  "release_authority": False,
+                  "callers_ratchet": False,
+              },
+          }
+          canonical = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+          receipt["receipt_binding_sha256"] = hashlib.sha256(
+              b"hepta.a0-q0.current-targeted-admission.v1\0" + canonical
+          ).hexdigest()
+          Path("artifacts/receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+      - name: Upload diagnostic receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-a0-q0-current-targeted-admission-${{ env.TARGET_SHA }}
+          path: artifacts/receipt.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Enforce targeted gates
+        shell: bash
+        env:
+          FORMAT_RESULT: ${{ needs.format.result }}
+          CARGO_DENY_RESULT: ${{ needs.cargo-deny.result }}
+          CARGO_SHEAR_RESULT: ${{ needs.cargo-shear.result }}
+          UDS_RESULT: ${{ needs.uds.result }}
+        run: |
+          set -euo pipefail
+          test "$FORMAT_RESULT" = success
+          test "$CARGO_DENY_RESULT" = success
+          test "$CARGO_SHEAR_RESULT" = success
+          test "$UDS_RESULT" = success
