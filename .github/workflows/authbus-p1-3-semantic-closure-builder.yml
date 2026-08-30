@@ -1,56 +1,46 @@
-name: AuthBus P1.3 semantic closure builder
+name: AuthBus P1.3 semantic source publisher macOS v3
 
 on:
   push:
     branches:
-      - ops/authbus-p1-3-semantic-closure-builder-v1-20260830
+      - ops/authbus-p1-3-semantic-closure-publisher-macos-v3-20260830
     paths:
       - .github/workflows/authbus-p1-3-semantic-closure-builder.yml
       - scripts/authbus-p1-3-semantic-closure-builder.py
   workflow_dispatch:
 
 concurrency:
-  group: authbus-p1-3-semantic-closure-builder-v1
+  group: authbus-p1-3-semantic-source-publisher-macos-v3
   cancel-in-progress: false
 
 permissions:
   contents: write
-  actions: read
 
 env:
   SOURCE_HEAD: 8572f3d2182541b14e0719b229ccd8754494f134
-  TARGET_BRANCH: ops/authbus-p1-3-semantic-closure-builder-v1-20260830
-  P02: codex-rs/hepta-authbus-qualification/Cargo.toml
+  SEED_BRANCH: ops/authbus-p1-3-semantic-closure-publisher-macos-v3-20260830
+  STAGING_BRANCH: staging/authbus-p1-3-semantic-closure-v11-20260830
   P03: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
-  P11: codex-rs/hepta-authbus-p1-qualification/Cargo.toml
-  P12: codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
   P13: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
-  CARGO_INCREMENTAL: "0"
-  CARGO_BUILD_JOBS: "1"
-  CARGO_PROFILE_DEV_DEBUG: "0"
-  CARGO_NET_RETRY: "10"
-  CARGO_HTTP_TIMEOUT: "120"
-  RUST_BACKTRACE: "1"
-  CARGO_TARGET_DIR: /tmp/authbus-p1-3-semantic-closure-target
 
 jobs:
-  build_and_qualify:
-    name: Apply, qualify, and publish clean semantic closure tree
-    runs-on: ubuntu-slim
-    timeout-minutes: 120
+  publish_source:
+    name: Materialize and publish unqualified semantic source
+    runs-on: macos-15
+    timeout-minutes: 45
     steps:
-      - name: Checkout exact builder seed
+      - name: Checkout exact publisher seed
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
           fetch-depth: 8
           persist-credentials: true
 
-      - name: Bind exact seed and allowlist
+      - name: Bind exact seed and helper-only delta
         shell: bash
         run: |
           set -euo pipefail
-          test "${GITHUB_REF_NAME}" = "${TARGET_BRANCH}"
+          test "${GITHUB_REF_NAME}" = "${SEED_BRANCH}"
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
           git merge-base --is-ancestor "${SOURCE_HEAD}" HEAD
           mapfile -t changed < <(git diff --name-only "${SOURCE_HEAD}...HEAD" | sort)
@@ -70,7 +60,7 @@ jobs:
           done
           python3 -m py_compile scripts/authbus-p1-3-semantic-closure-builder.py
 
-      - name: Apply exact semantic closure
+      - name: Materialize exact semantic closure source
         shell: bash
         run: |
           set -euo pipefail
@@ -81,13 +71,13 @@ jobs:
             /tmp/authbus-p1-3-semantic-closure.json
           git diff --check
 
-      - name: Install Rust 1.95 with rustfmt and Clippy
+      - name: Install Rust 1.95 rustfmt
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: 1.95.0
-          components: rustfmt, clippy
+          components: rustfmt
 
-      - name: Format affected Rust sources and verify source contracts
+      - name: Format and source-verify the candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -104,76 +94,7 @@ jobs:
           grep -q PASS_AUTHBUS_P1_3_SOURCE_ONLY /tmp/authbus-p1-3-source.json
           git diff --check
 
-      - name: Run complete P0.2 through P1.3 executable matrices
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo test --manifest-path codex-rs/Cargo.toml --locked \
-            -p codex-hepta-contracts --features authbus-local-qualification \
-            --lib -- --nocapture
-
-          cargo test --manifest-path "${P02}" --locked \
-            --no-default-features --lib -- --nocapture
-          cargo test --manifest-path "${P02}" --locked \
-            --features sqlite-qualification --tests -- --nocapture
-
-          cargo test --manifest-path "${P03}" --locked \
-            --no-default-features --lib -- --nocapture
-          cargo test --manifest-path "${P03}" --locked \
-            --features p0-3-qualification --tests -- --nocapture
-
-          cargo test --manifest-path "${P11}" --locked \
-            --no-default-features --lib -- --nocapture
-          cargo test --manifest-path "${P11}" --locked \
-            --features p1-qualification --tests -- --nocapture
-
-          cargo test --manifest-path "${P12}" --locked \
-            --no-default-features --lib -- --nocapture
-          cargo test --manifest-path "${P12}" --locked \
-            --features p1-2-qualification --tests -- --nocapture
-
-          cargo test --manifest-path "${P13}" --locked \
-            --no-default-features --lib -- --nocapture
-          cargo test --manifest-path "${P13}" --locked \
-            --features p1-3-qualification --tests -- --nocapture
-
-      - name: Run every affected all-target check
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo check --manifest-path codex-rs/Cargo.toml --locked \
-            -p codex-hepta-contracts --features authbus-local-qualification \
-            --all-targets
-          cargo check --manifest-path "${P02}" --locked \
-            --features sqlite-qualification --all-targets
-          cargo check --manifest-path "${P03}" --locked \
-            --features p0-3-qualification --all-targets
-          cargo check --manifest-path "${P11}" --locked \
-            --features p1-qualification --all-targets
-          cargo check --manifest-path "${P12}" --locked \
-            --features p1-2-qualification --all-targets
-          cargo check --manifest-path "${P13}" --locked \
-            --features p1-3-qualification --all-targets
-
-      - name: Run strict Clippy on every affected all-target surface
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo clippy --manifest-path codex-rs/Cargo.toml --locked \
-            -p codex-hepta-contracts --features authbus-local-qualification \
-            --all-targets -- -D warnings
-          cargo clippy --manifest-path "${P02}" --locked \
-            --features sqlite-qualification --all-targets -- -D warnings
-          cargo clippy --manifest-path "${P03}" --locked \
-            --features p0-3-qualification --all-targets -- -D warnings
-          cargo clippy --manifest-path "${P11}" --locked \
-            --features p1-qualification --all-targets -- -D warnings
-          cargo clippy --manifest-path "${P12}" --locked \
-            --features p1-2-qualification --all-targets -- -D warnings
-          cargo clippy --manifest-path "${P13}" --locked \
-            --features p1-3-qualification --all-targets -- -D warnings
-
-      - name: Remove one-shot builder and verify final source allowlist
+      - name: Remove one-shot publisher and enforce the final allowlist
         shell: bash
         run: |
           set -euo pipefail
@@ -203,15 +124,14 @@ jobs:
             test "${changed[$index]}" = "${expected[$index]}"
           done
           git diff --check
-          git status --short
 
-      - name: Commit clean semantic closure tree
+      - name: Commit and publish the unqualified source candidate
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "hepta-authbus-qualification"
+          git config user.name "hepta-authbus-source-publisher"
           git config user.email "102159240+ProfHepta@users.noreply.github.com"
           git add -A
           git commit -m "fix(authbus): close P1.3 semantic lifecycle blockers"
           test "$(git diff --name-only HEAD^..HEAD | wc -l | tr -d ' ')" = "12"
-          git push origin "HEAD:${TARGET_BRANCH}"
+          git push origin "HEAD:${STAGING_BRANCH}"
