@@ -16,7 +16,7 @@ concurrency:
 env:
   EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
   EXPECTED_HEAD_SHA: f950ea4e81d9a33a37ae728edd31492afe192c77
-  EXPECTED_TREE_SHA: 48d7291944c75a29c30ceeba62bc8216428245fa
+  EXPECTED_TREE_SHA: 48d7291dbe67af7c4585dff63aa77345b72406ba
 
 jobs:
   exact-integration-diagnostic:
