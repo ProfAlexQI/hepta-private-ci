@@ -38,14 +38,18 @@ jobs:
           python3 scripts/verify-windows-gnullvm-direct-bazel.py
           python3 scripts/verify-windows-gnullvm-setup-action-yaml.py
           python3 scripts/verify-windows-gnullvm-bazel-query-vector.py
+          python3 scripts/verify-windows-gnullvm-bazel-query-executable.py
+          python3 scripts/verify-windows-gnullvm-setup-token-receipt-truth.py
 
       - name: Exercise default, diagnostic and authenticated branches
         shell: bash
         run: .github/scripts/test_run_bazel_qualification_boundary.sh
 
-      - name: Execute pinned Bazel 9 query parser smoke
+      - name: Execute legacy and verified direct Bazel 9 query parser smoke
         shell: bash
-        run: python3 scripts/verify-windows-gnullvm-bazel-query-vector.py --execute
+        run: |
+          python3 scripts/verify-windows-gnullvm-bazel-query-vector.py --execute
+          python3 scripts/verify-windows-gnullvm-bazel-query-executable.py --execute
 
       - name: Emit qualification-boundary receipt
         shell: bash
@@ -61,7 +65,7 @@ jobs:
               "schema": "hepta_windows_gnullvm_qualification_boundary_v3",
               "status": (
                   "PASS_WINDOWS_GNULLVM_QUALIFICATION_BOUNDARY_SOURCE_"
-                  "AND_BAZEL_QUERY_PARSER"
+                  "AND_VERIFIED_DIRECT_BAZEL_QUERY_PARSER"
               ),
               "repository": os.environ["GITHUB_REPOSITORY"],
               "commit": os.environ["GITHUB_SHA"],
@@ -71,9 +75,19 @@ jobs:
               "workflow_job": os.environ["GITHUB_JOB"],
               "qualification_mode": "qualifying_gnullvm_only",
               "bazel_version": "9.0.0",
+              "bazelisk_version": "1.28.1",
+              "bazelisk_linux_x86_64_sha256": (
+                  "22e7d3a188699982f661cf4687137ee52d1f24fec1ec893d91a6c4d791a75de8"
+              ),
               "bazel_linux_x86_64_sha256": (
                   "c44a93f25398c68f904fa1d19b61d321de6c0d2f09dca375d7bc0dc9b9428403"
               ),
+              "bazelisk_executable_verified": True,
+              "bazelisk_child_path_parsed_exactly_once": True,
+              "cached_bazel_cas_path_verified": True,
+              "cached_bazel_sha256_verified": True,
+              "direct_bazel_query_parser_executed": True,
+              "direct_bazel_rehashed_immediately_before_parser": True,
               "bazel_query_parser_executed": True,
               "bazel_query_options": ["--noshow_progress", "--output=label"],
               "query_build_only_options_allowed": False,
@@ -95,7 +109,7 @@ jobs:
               "windows_test_target_manifest_recomputed_before_launch": True,
               "windows_clippy_target_manifest_recomputed_before_launch": True,
               "windows_release_target_manifest_exact_before_launch": True,
-              "cached_bazel_executed_on_this_linux_source_job": False,
+              "cached_bazel_executed_on_this_linux_source_job": True,
               "target_manifest_executed_on_this_linux_source_job": False,
               "source_writeback": False,
               "runtime_authority": False,
