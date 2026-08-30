@@ -25,7 +25,6 @@ env:
   Q0_11_HEAD: 4ebb22ef9f46a8b50e5072e58041ea27f0a6caf7
   Q0_12_HEAD: fb24739dcc415c0dc0dd06ecac9762ac19f45471
   Q0_13_HEAD: 7a7380578f67412d79218909d975d710b96cf686
-  PYTHONPYCACHEPREFIX: ${{ runner.temp }}/hepta-python-cache
 
 jobs:
   exact-integration-diagnostic:
