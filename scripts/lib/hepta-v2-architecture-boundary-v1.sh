@@ -726,7 +726,12 @@ verify_sealed_execution_boundaries() {
 
 verify_quarantined_native_process_surface() {
   local source="codex-rs/hepta-runtime/src/runtime_kernel/tool_support.rs"
-  local test_sources=("$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests.rs" "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/"part_0{1,2,3}.rs)
+  local test_sources=(
+  "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests.rs"
+  "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/part_01.rs"
+  "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/part_02.rs"
+  "$ROOT/codex-rs/hepta-runtime/src/runtime_kernel/tests/part_03.rs"
+)
   local registry_block production_tools premodel_block offering_block
   registry_block="$(sed -n '/^    fn new() -> Self {/,/^    #\[cfg(test)\]/p' "$ROOT/$source")"
   production_tools="$(sed -n '/^fn native_openclaw_compatible_tools()/,/^#\[cfg(test)\]/p' "$ROOT/$source")"
@@ -753,7 +758,7 @@ verify_quarantined_native_process_surface() {
     'explicit_exec_intent_is_quarantined_before_model_routing' \
     'explicit_process_intent_is_quarantined_before_model_routing'
   do
-    grep -Fq "$requirement" "$ROOT/$source" "${test_sources[@]}" || {
+    rg -Fq -- "$requirement" "$ROOT/$source" "${test_sources[@]}" || {
       echo "Architecture V2 exec/process quarantine regression is incomplete: $requirement" >&2
       return 1
     }
