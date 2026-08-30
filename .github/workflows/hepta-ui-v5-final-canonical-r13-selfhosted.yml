@@ -1,0 +1,155 @@
+name: Hepta UI v5 final canonical R13 self-hosted replay
+
+on:
+  push:
+    branches:
+      - automation/ui-v5-final-canonical-r13-selfhosted-88f776-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-final-canonical-r13-selfhosted.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-final-canonical-r13-selfhosted-88f776
+  cancel-in-progress: false
+
+jobs:
+  replay-and-publish:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: hepta-vnext-linux-x64-52ec
+    timeout-minutes: 90
+    env:
+      REPLAY_DRIVER_SHA: 3bab833ca82cf93f49ae9ac6e572cc8ecf359082
+      EXPECTED_REPLAY_PARENT: 322200c8c1acb66ff9d010b5ecca9e9b9a9b26fe
+      REPLAY_DRIVER_PATH: .github/workflows/hepta-ui-v5-final-canonical-r13-publisher.yml
+      WRAPPER_PATH: .github/workflows/hepta-ui-v5-final-canonical-r13-selfhosted.yml
+
+    steps:
+      - name: Check out exact self-hosted replay wrapper
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify wrapper and select exact hosted publisher driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$REPLAY_DRIVER_SHA"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$WRAPPER_PATH"
+          test "$(git rev-parse "$REPLAY_DRIVER_SHA^")" = "$EXPECTED_REPLAY_PARENT"
+          test "$(git diff --name-only "$EXPECTED_REPLAY_PARENT" "$REPLAY_DRIVER_SHA")" = "$REPLAY_DRIVER_PATH"
+          git checkout --detach "$REPLAY_DRIVER_SHA"
+          test "$(git rev-parse HEAD)" = "$REPLAY_DRIVER_SHA"
+          test -z "$(git status --short)"
+
+      - name: Install YAML replay dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! python3 -c 'import yaml' >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes python3-yaml
+          fi
+          python3 -c 'import yaml; print(yaml.__version__)'
+
+      - name: Replay every shell step from the exact hosted publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import os
+          import subprocess
+          import sys
+          import tempfile
+          from pathlib import Path
+
+          import yaml
+
+          driver_path = Path(os.environ["REPLAY_DRIVER_PATH"])
+          document = yaml.safe_load(driver_path.read_text(encoding="utf-8"))
+          job = document["jobs"]["build-and-publish"]
+          steps = job["steps"]
+
+          environment = os.environ.copy()
+          for key, value in job.get("env", {}).items():
+              environment[str(key)] = str(value)
+
+          temp_root = Path(tempfile.mkdtemp(prefix="hepta-r13-replay-"))
+          github_env = temp_root / "github-env"
+          github_summary = temp_root / "github-step-summary"
+          github_env.write_text("", encoding="utf-8")
+          github_summary.write_text("", encoding="utf-8")
+          environment["GITHUB_ENV"] = str(github_env)
+          environment["GITHUB_STEP_SUMMARY"] = str(github_summary)
+
+          def import_github_env(path: Path, target: dict[str, str]) -> None:
+              lines = path.read_text(encoding="utf-8").splitlines()
+              index = 0
+              while index < len(lines):
+                  line = lines[index]
+                  index += 1
+                  if not line:
+                      continue
+                  if "<<" in line:
+                      name, delimiter = line.split("<<", 1)
+                      values: list[str] = []
+                      while index < len(lines) and lines[index] != delimiter:
+                          values.append(lines[index])
+                          index += 1
+                      if index >= len(lines):
+                          raise SystemExit(f"unterminated GITHUB_ENV entry for {name!r}")
+                      index += 1
+                      target[name] = "\n".join(values)
+                      continue
+                  if "=" not in line:
+                      raise SystemExit(f"unsupported GITHUB_ENV line: {line!r}")
+                  name, value = line.split("=", 1)
+                  target[name] = value
+
+          runnable = [step for step in steps if "run" in step]
+          if len(runnable) != 8:
+              raise SystemExit(
+                  f"publisher shell-step count drifted: expected 8, found {len(runnable)}"
+              )
+
+          for ordinal, step in enumerate(runnable, start=1):
+              name = str(step.get("name", f"shell step {ordinal}"))
+              shell = str(step.get("shell", "bash"))
+              if shell != "bash":
+                  raise SystemExit(f"unsupported publisher shell for {name!r}: {shell!r}")
+              output_path = temp_root / f"github-output-{ordinal}"
+              output_path.write_text("", encoding="utf-8")
+              environment["GITHUB_OUTPUT"] = str(output_path)
+              print(f"::group::replay {ordinal}/{len(runnable)}: {name}", flush=True)
+              completed = subprocess.run(
+                  [
+                      "bash",
+                      "--noprofile",
+                      "--norc",
+                      "-e",
+                      "-o",
+                      "pipefail",
+                      "-c",
+                      str(step["run"]),
+                  ],
+                  cwd=Path.cwd(),
+                  env=environment,
+                  check=False,
+              )
+              print("::endgroup::", flush=True)
+              if completed.returncode != 0:
+                  raise SystemExit(
+                      f"publisher step {ordinal} {name!r} failed with rc={completed.returncode}"
+                  )
+              import_github_env(github_env, environment)
+
+          summary = github_summary.read_text(encoding="utf-8")
+          if summary:
+              print("publisher summary:\n" + summary, flush=True)
+          print("self-hosted exact publisher replay completed", flush=True)
+          PY
