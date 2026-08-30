@@ -1,0 +1,76 @@
+name: Hepta Intelligence Q0.17 exact source probe
+
+on:
+  push:
+    branches:
+      - ops/hepta-intelligence-q0-17-source-probe-20260830
+
+permissions:
+  contents: read
+
+env:
+  EXACT_INTEGRATION_HEAD: 150e97ebcc2516c37047fcbbbbe21584c9a0b24d
+  EXACT_INTEGRATION_TREE: 7ff0c58a72fe9797ed59c0bd6f26f477ed0c552c
+  EXACT_A0_PARENT: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
+  EXACT_Q0_17_PARENT: 64d4091d3d88e7fd917cd092bfb6c93396026de1
+
+jobs:
+  source-probe:
+    name: Exact Q0.17 source probe on macOS XLarge
+    runs-on: macos-15-xlarge
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact integration head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.EXACT_INTEGRATION_HEAD }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify exact commit topology and tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXACT_INTEGRATION_HEAD"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$EXACT_INTEGRATION_TREE"
+          parent_line="$(git show -s --format='%P' HEAD)"
+          set -- $parent_line
+          test "$#" -eq 2
+          test "$1" = "$EXACT_A0_PARENT"
+          test "$2" = "$EXACT_Q0_17_PARENT"
+
+      - name: Verify shell and Python syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n .github/scripts/run-bazel-ci.sh
+          bash -n .github/scripts/run-bazel-ci-impl.sh
+          bash -n .github/scripts/run-windows-msvc-diagnostic.sh
+          python3 -m py_compile \
+            .github/scripts/test_run_bazel_ci_wrapper.py \
+            .github/scripts/test_run_bazel_local_windows_gnullvm.py \
+            scripts/verify-windows-gnullvm-qualification-boundary.py
+
+      - name: Run fail-closed Windows qualification source verifier
+        shell: bash
+        run: python3 scripts/verify-windows-gnullvm-qualification-boundary.py
+
+      - name: Run complete Bazel wrapper policy tests
+        shell: bash
+        run: python3 -m unittest discover -s .github/scripts -p 'test_run_bazel*.py'
+
+      - name: Check repository-locked Python formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -LsSf https://astral.sh/uv/0.11.3/install.sh | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          uv run --project scripts --locked -- ruff format --check \
+            scripts/verify-windows-gnullvm-qualification-boundary.py \
+            .github/scripts/test_run_bazel_ci_wrapper.py \
+            .github/scripts/test_run_bazel_local_windows_gnullvm.py
+
+      - name: Confirm probe did not mutate checkout
+        if: ${{ always() && !cancelled() }}
+        shell: bash
+        run: git diff --exit-code && test -z "$(git status --porcelain)"
