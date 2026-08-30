@@ -165,7 +165,10 @@ impl CognitiveStore {
     /// Verify a provisional candidate using a local, content-bound evidence
     /// digest and a normal memory CAS update.  No external provider or signer
     /// is consulted, and the caller must explicitly choose the fact set.
-    #[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the signature is an explicit ordered protocol or test-harness contract"
+    )]
     pub async fn verify_memory_candidate(
         &self,
         access: &CognitiveAccess,
@@ -233,7 +236,10 @@ impl CognitiveStore {
     }
 
     /// Tombstone a candidate through the existing append-only forget path.
-    #[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the signature is an explicit ordered protocol or test-harness contract"
+    )]
     pub async fn tombstone_memory_candidate(
         &self,
         access: &CognitiveAccess,
