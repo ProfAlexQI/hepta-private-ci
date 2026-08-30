@@ -229,8 +229,7 @@ def main() -> int:
         ],
     )
     checks["workflow.canonical_paired"] = (
-        consolidation.get("schema")
-        == "hepta.intelligence.q0.workflow_consolidation.v1"
+        consolidation.get("schema") == "hepta.intelligence.q0.workflow_consolidation.v1"
         and consolidation.get("status") == "CANONICAL_PAIRED_WORKFLOW"
         and consolidation.get("canonical_workflow")
         == ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml"

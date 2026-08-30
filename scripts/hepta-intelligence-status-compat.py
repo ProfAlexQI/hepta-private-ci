@@ -81,9 +81,7 @@ def validate(tranche: str, snapshot: dict[str, Any]) -> None:
         raise SystemExit(f"snapshot source blob is invalid for {tranche}")
 
 
-def compatibility_projection(
-    tranche: str, snapshot: dict[str, Any]
-) -> dict[str, Any]:
+def compatibility_projection(tranche: str, snapshot: dict[str, Any]) -> dict[str, Any]:
     projected = copy.deepcopy(snapshot)
     projected["schema"] = "hepta_intelligence_execution_status_v2"
     projected["compatibility_projection"] = {
