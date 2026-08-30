@@ -53,13 +53,19 @@ jobs:
           replacements = (
               (
                   "EXPECTED_PARENT=3c44c4d1ee9faaf66a1bd81a7cb2f676974a9f74",
-                  "EXPECTED_PARENT=daee2d1ffbc8d91016a60d9159f69d863b767713",
+                  "EXPECTED_PARENT=86d12beb13ec361e10105d189774ccd7360f1540",
                   1,
                   "exact publisher parent",
               ),
               (
+                  "codex/authbus-p1-3-clean-replay-20260830",
+                  "codex/authbus-p1-3-clean-replay-v2-20260830",
+                  2,
+                  "isolated target branch",
+              ),
+              (
                   "('runs-on: ubuntu-slim', 'runs-on: macos-15-arm64', 4, 'hosted runner'),",
-                  "('runs-on: ubuntu-slim', 'runs-on: ubuntu-24.04', 4, 'hosted runner'),",
+                  "('runs-on: ubuntu-slim', 'runs-on: ubuntu-slim', 4, 'hosted runner'),",
                   1,
                   "qualification hosted runner",
               ),
@@ -70,7 +76,7 @@ jobs:
                   raise SystemExit(f"{label}: expected {expected} anchors, found {count}")
               source = source.replace(before, after)
 
-          runner_anchor = "    ('runs-on: ubuntu-slim', 'runs-on: ubuntu-24.04', 4, 'hosted runner'),\n"
+          runner_anchor = "    ('runs-on: ubuntu-slim', 'runs-on: ubuntu-slim', 4, 'hosted runner'),\n"
           trigger_insertion = (
               runner_anchor
               + "    ('      - codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs',\n"
@@ -98,7 +104,9 @@ jobs:
           path.write_text(source, encoding="utf-8")
           PY
           bash -n scripts/authbus-p1-3-final-closure.sh
-          grep -Fq 'EXPECTED_PARENT=daee2d1ffbc8d91016a60d9159f69d863b767713' \
+          grep -Fq 'EXPECTED_PARENT=86d12beb13ec361e10105d189774ccd7360f1540' \
+            scripts/authbus-p1-3-final-closure.sh
+          grep -Fq 'TARGET_BRANCH=codex/authbus-p1-3-clean-replay-v2-20260830' \
             scripts/authbus-p1-3-final-closure.sh
           grep -Fq 'defer executable matrices and strict Clippy to exact source-head qualification' \
             scripts/authbus-p1-3-final-closure.sh
