@@ -1,0 +1,122 @@
+name: Hepta UI v5 remediation v23 ARM
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-remediation-v23-arm-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-remediation-v23-arm.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-remediation-v23-arm
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_PARENT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
+      BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-remediation-v23-arm.yml
+      UPSTREAM_URL: https://github.com/openai/codex.git
+      UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
+      UPSTREAM_ROLE: current_r12
+      UPSTREAM_FROZEN_REF: refs/remotes/upstream/hepta-intake-20260830-r12
+      UPSTREAM_INTAKE_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R12.json
+      UPSTREAM_RECORD_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+      V12_DRIVER_COMMIT: 554d710f6a561166553f3c01fafc5b27cd8c28b9
+      V14_DRIVER_COMMIT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
+      V18_DRIVER_COMMIT: 022b91a04f443d7fe4ca2bce853bc26bccf99f84
+      V20_DRIVER_COMMIT: 781c237dbc81f49d3f22432b341d904aaa929291
+    steps:
+      - name: Check out exact v23 ARM driver commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install deterministic remediation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes jq ripgrep ruby patch
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+
+      - name: Execute v20 remediation with escape-correct duplicate payload patch
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source_workflow="$RUNNER_TEMP/hepta-ui-v5-remediation-v20.yml"
+          generated_driver="$RUNNER_TEMP/hepta-ui-v5-remediation-v23-driver.sh"
+          if ! git cat-file -e "$V20_DRIVER_COMMIT^{commit}"; then
+            git fetch --no-tags origin "$V20_DRIVER_COMMIT"
+          fi
+          git show "$V20_DRIVER_COMMIT:.github/workflows/hepta-ui-v5-remediation-v20.yml" > "$source_workflow"
+          awk '
+            /      - name: Execute v18 remediation with v20 closure patch/ { found=1; next }
+            found && /        shell: bash/ { next }
+            found && /        run: \|/ { in_run=1; next }
+            in_run { sub(/^          /, ""); print }
+          ' "$source_workflow" > "$generated_driver"
+          test -s "$generated_driver"
+
+          export V23_GENERATED_DRIVER="$generated_driver"
+          python3 <<'PY'
+          from __future__ import annotations
+
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["V23_GENERATED_DRIVER"])
+          text = path.read_text(encoding="utf-8")
+
+          old_guard = '''matches = re.findall(r'payload = "([A-Za-z0-9+/=]+)"', text)
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"v20 embedded patch payload: expected 1 match, found {len(matches)}"
+              )
+
+          old_payload = matches[0]
+          '''
+          new_guard = '''matches = re.findall(r'payload = "([A-Za-z0-9+/=]+)"', text)
+          if len(matches) != 2 or len(set(matches)) != 1:
+              raise SystemExit(
+                  "v23 embedded patch payload: expected exactly two identical nested matches, "
+                  f"found {len(matches)} matches and {len(set(matches))} distinct values"
+              )
+
+          old_payload = matches[0]
+          '''
+          if text.count(old_guard) != 1:
+              raise SystemExit(
+                  f"v23 payload guard anchor: expected 1 match, found {text.count(old_guard)}"
+              )
+          text = text.replace(old_guard, new_guard, 1)
+
+          old_write = '''if text.count(old_payload) != 1:
+              raise SystemExit("v20 payload replacement was not unique")
+          path.write_text(text.replace(old_payload, new_payload, 1), encoding="utf-8")
+          '''
+          new_write = '''if text.count(old_payload) != 2:
+              raise SystemExit(
+                  f"v23 payload replacement: expected 2 identical literals, found {text.count(old_payload)}"
+              )
+          path.write_text(text.replace(old_payload, new_payload, 2), encoding="utf-8")
+          '''
+          if text.count(old_write) != 1:
+              raise SystemExit(
+                  f"v23 payload write anchor: expected 1 match, found {text.count(old_write)}"
+              )
+          path.write_text(text.replace(old_write, new_write, 1), encoding="utf-8")
+          PY
+
+          bash -n "$generated_driver"
+          bash -x "$generated_driver"
