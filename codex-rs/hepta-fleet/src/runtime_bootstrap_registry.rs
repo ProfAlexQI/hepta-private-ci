@@ -301,9 +301,11 @@ fn publish_immutable_json<T: Serialize>(path: &Path, value: &T) -> Result<(), Fl
         }
     }
 
+    let held_linked = file.metadata()?;
+    validate_registry_metadata(&temp, &held_linked, &parent_metadata, 2)?;
     let linked = std::fs::symlink_metadata(path)?;
     validate_registry_metadata(path, &linked, &parent_metadata, 2)?;
-    if metadata_identity(&held) != metadata_identity(&linked) {
+    if metadata_identity(&held_linked) != metadata_identity(&linked) {
         return Err(FleetRegistryError::Corrupt(
             "runtime bootstrap registry publication did not bind the fsynced inode".to_string(),
         ));
@@ -312,9 +314,11 @@ fn publish_immutable_json<T: Serialize>(path: &Path, value: &T) -> Result<(), Fl
     std::fs::remove_file(&temp)?;
     sync_directory(parent)?;
 
+    let held_published = file.metadata()?;
+    validate_registry_metadata(path, &held_published, &parent_metadata, 1)?;
     let published = std::fs::symlink_metadata(path)?;
     validate_registry_metadata(path, &published, &parent_metadata, 1)?;
-    if metadata_identity(&held) != metadata_identity(&published) {
+    if metadata_identity(&held_published) != metadata_identity(&published) {
         return Err(FleetRegistryError::Corrupt(
             "runtime bootstrap registry inode drifted after publication".to_string(),
         ));
