@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-"""Compatibility wrapper plus Q0.17-Q0.28 qualification ratchets."""
+"""Compatibility wrapper plus Q0.17-Q0.29 qualification ratchets."""
 
 import os
 import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 
 import run_bazel_with_buildbuddy_base as _base
 from run_bazel_with_buildbuddy_base import *  # noqa: F403
@@ -23,9 +23,14 @@ from run_bazel_q027_lane_semantics import (
 from run_bazel_q028_startup_contract import (
     validate_keyless_windows_gnullvm_final_args,
 )
+from run_bazel_q029_execution_context import bind_verified_bazelisk
+from run_bazel_q029_execution_context import prepare_bazelisk_environment
+from run_bazel_q029_execution_context import (
+    validate_keyless_windows_gnullvm_execution_context,
+)
 
-# Keep both selected compatibility layers machine-visible while Q0.28 composes
-# and invokes them transitively through its exact startup-vector contract.
+# Keep the selected compatibility layers machine-visible while Q0.28 composes
+# them transitively and Q0.29 binds the process-launch execution context.
 assert _validate_q026_compatibility_base is not None
 assert _validate_q027_compatibility_base is not None
 
@@ -69,6 +74,26 @@ def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]
     return command
 
 
+def executable_command(
+    *args: str,
+    env: MutableMapping[str, str] | None = None,
+) -> list[str]:
+    """Return the command that is safe to launch for the selected CI lane."""
+
+    env = os.environ if env is None else env
+    command = bazel_command(*args, env=env)
+    if not _is_keyless_windows_gnullvm(command[1:], env):
+        return command
+
+    # Q0.28 has already bound the complete startup and command semantics.
+    # Bind the remaining job, runner, path, launcher and downloaded Bazel
+    # authority immediately before process launch.
+    prepare_bazelisk_environment(env)
+    command = bind_verified_bazelisk(command, env)
+    validate_keyless_windows_gnullvm_execution_context(command, env)
+    return command
+
+
 def main() -> None:
     config = remote_config(sys.argv[1:], os.environ)  # noqa: F405
     if config is None:
@@ -83,7 +108,7 @@ def main() -> None:
         print(f"Using {host} BuildBuddy configuration: {config}.", file=sys.stderr)
 
     try:
-        command = bazel_command(*sys.argv[1:])
+        command = executable_command(*sys.argv[1:])
     except ValueError as error:
         print(
             f"Bazel qualification boundary rejected invocation: {error}",
