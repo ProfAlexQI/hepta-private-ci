@@ -310,8 +310,12 @@ mod tests {
                 "evidence"
             ])
         );
-        const { assert!(!GROUNDED_TOOL_V3_REGISTERED); }
-        const { assert!(!GROUNDED_TOOL_V3_PRODUCTION_AUTHORITY); }
+        const {
+            assert!(!GROUNDED_TOOL_V3_REGISTERED);
+        }
+        const {
+            assert!(!GROUNDED_TOOL_V3_PRODUCTION_AUTHORITY);
+        }
     }
 
     #[test]
