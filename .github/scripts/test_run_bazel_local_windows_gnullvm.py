@@ -37,6 +37,7 @@ class LocalWindowsGnullvmTest(unittest.TestCase):
             impl.chmod(0o755)
             env = {
                 **os.environ,
+                "GITHUB_ACTIONS": "true",
                 "RUNNER_OS": "Windows",
                 "ARG_CAPTURE": str(capture),
             }
@@ -77,8 +78,8 @@ class LocalWindowsGnullvmTest(unittest.TestCase):
             "--platforms=//:windows_x86_64_gnullvm",
             "--repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0",
             "--extra_execution_platforms=//:windows_x86_64_msvc",
-            "--extra_toolchains=//bazel/toolchains/windows:local_msvc_cc_toolchain",
-            "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain",
+            "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain,"
+            "//bazel/toolchains/windows:local_msvc_cc_toolchain",
             "--strategy=TestRunner=local",
             "--strategy=V8Mksnapshot=local",
             "--local_test_jobs=8",
@@ -86,8 +87,12 @@ class LocalWindowsGnullvmTest(unittest.TestCase):
             "--jobs=8",
         ):
             self.assertIn(expected, args)
-        self.assertFalse(
-            any("CODEX_BAZEL_TEST_SKIP_FILTERS" in arg for arg in args),
+        self.assertIn(
+            "--test_env=CODEX_BAZEL_TEST_SKIP_FILTERS="
+            "command_safety::powershell_parser::tests::,"
+            "suite::code_mode::code_mode_can_call_hidden_dynamic_tools,"
+            "tests::windows_tests::"
+            "conpty_ctrl_c_interrupts_powershell_foreground_child",
             args,
         )
 
@@ -101,30 +106,26 @@ class LocalWindowsGnullvmTest(unittest.TestCase):
             "//codex-rs/uds:uds-unit-tests-bin",
             expect_success=False,
         )
-        self.assertIn("requires --platforms=//:windows_x86_64_gnullvm", result.stderr)
+        self.assertIn(
+            "rejects conflicting argument '--platforms=//:local_windows_msvc'; "
+            "expected '--platforms=//:windows_x86_64_gnullvm'",
+            result.stderr,
+        )
 
     def test_explicit_msvc_diagnostic_gets_real_local_cc_toolchain(self) -> None:
-        _, args = self.run_fixture(
+        result, _ = self.run_fixture(
             "--windows-cross-compile",
             "--",
             "build",
             "--",
             "//codex-rs/uds:uds-unit-tests-bin",
             extra_env={"ALLOW_WINDOWS_MSVC_FALLBACK": "1"},
+            expect_success=False,
         )
-        assert args is not None
-        for expected in (
-            "--host_platform=//:local_windows_msvc",
-            "--platforms=//:local_windows_msvc",
-            "--repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0",
-            "--extra_toolchains=//bazel/toolchains/windows:local_msvc_cc_toolchain",
-            "--config=ci-windows",
-            "--jobs=8",
-        ):
-            self.assertIn(expected, args)
-        self.assertNotIn(
-            "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain",
-            args,
+        self.assertIn(
+            "ALLOW_WINDOWS_MSVC_FALLBACK is forbidden in GitHub Actions "
+            "qualification jobs",
+            result.stderr,
         )
 
     def test_authenticated_cross_path_is_byte_for_byte_passthrough(self) -> None:
