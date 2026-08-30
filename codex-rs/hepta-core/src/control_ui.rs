@@ -16,6 +16,8 @@ pub const CONTROL_UI_STYLES_CSS: &str = concat!(
     "\n",
     include_str!("../../../apps/hepta-control-ui/styles.responsive.css"),
     "\n",
+    include_str!("../../../apps/hepta-control-ui/styles.v4.css"),
+    "\n",
     include_str!("../../../apps/hepta-control-ui/styles.accessibility.css"),
 );
 const CONTROL_UI_UNIFIED_LANE_STYLES_CSS_BUDGET_BYTES: usize = 300_000;
