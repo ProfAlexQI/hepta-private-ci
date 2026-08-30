@@ -28,12 +28,13 @@ jobs:
         with:
           version: 0.11.3
 
-      - name: Append exact replacement provenance
+      - name: Append exact replacement provenance and rebind document authority
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import ast
+          import hashlib
           import json
           import pathlib
           import re
@@ -41,6 +42,9 @@ jobs:
           previous_head = "08e6ed017e8cbfb94f86a5fa8397eb00eb396ed2"
           previous_tail = "f09972580e7a10781bf48890f7eeeb2d9b9e945e"
           plan_path = pathlib.Path("plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json")
+          document_path = pathlib.Path(
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json"
+          )
           script_path = pathlib.Path("scripts/hepta-intelligence-current-truth.py")
 
           plan = json.loads(plan_path.read_text(encoding="utf-8"))
@@ -67,6 +71,32 @@ jobs:
           text, count = pattern.subn(replacement, text, count=1)
           assert count == 1
           script_path.write_text(text, encoding="utf-8")
+
+          document = json.loads(document_path.read_text(encoding="utf-8"))
+          inputs = document["registered_canonical_inputs"]
+          plan_entry = next(
+              item for item in inputs if item["path"] == plan_path.as_posix()
+          )
+          self_entry = next(
+              item for item in inputs if item["path"] == document_path.as_posix()
+          )
+          assert plan_entry["digest_scope"] == "RAW_FILE_BYTES"
+          assert self_entry["digest_scope"] == "CANONICAL_JSON_WITH_SELF_DIGEST_NULL"
+
+          plan_entry["content_sha256"] = hashlib.sha256(plan_path.read_bytes()).hexdigest()
+          self_entry["content_sha256"] = None
+          self_entry["content_sha256"] = hashlib.sha256(
+              json.dumps(
+                  document,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+              ).encode("utf-8")
+          ).hexdigest()
+          document_path.write_text(
+              json.dumps(document, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
           PY
 
       - name: Format only A0 Python sources
@@ -99,6 +129,7 @@ jobs:
 
           expected = {
               "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json",
               "scripts/hepta-intelligence-current-truth.py",
               "scripts/verify-hepta-intelligence-a0-authority.py",
               "scripts/verify-hepta-intelligence-document-authority.py",
@@ -121,6 +152,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
             plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json \
             scripts/hepta-intelligence-current-truth.py \
             scripts/verify-hepta-intelligence-a0-authority.py \
             scripts/verify-hepta-intelligence-document-authority.py \
