@@ -1,4 +1,4 @@
-name: AuthBus P1.3 semantic closure builder standard v5
+name: AuthBus P1.3 semantic closure builder standard v6
 
 on:
   push:
@@ -7,11 +7,12 @@ on:
     paths:
       - .github/workflows/authbus-p1-3-semantic-closure-builder.yml
       - scripts/authbus-p1-3-semantic-closure-builder.py
+      - scripts/authbus-p1-3-semantic-closure-builder.b64.*
   workflow_dispatch:
 
 concurrency:
   group: authbus-p1-3-semantic-closure-builder-standard-v5
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -31,7 +32,7 @@ env:
   CARGO_NET_RETRY: "10"
   CARGO_HTTP_TIMEOUT: "120"
   RUST_BACKTRACE: "1"
-  CARGO_TARGET_DIR: /tmp/authbus-p1-3-semantic-closure-standard-v5-target
+  CARGO_TARGET_DIR: /tmp/authbus-p1-3-semantic-closure-standard-v6-target
 
 jobs:
   build_and_qualify:
@@ -46,7 +47,7 @@ jobs:
           fetch-depth: 8
           persist-credentials: true
 
-      - name: Bind exact seed and allowlist
+      - name: Bind exact seed and builder allowlist
         shell: bash
         run: |
           set -euo pipefail
@@ -70,7 +71,7 @@ jobs:
           done
           python3 -m py_compile scripts/authbus-p1-3-semantic-closure-builder.py
 
-      - name: Apply exact semantic closure
+      - name: Apply exact semantic closure and normalize text endings
         shell: bash
         run: |
           set -euo pipefail
@@ -79,6 +80,20 @@ jobs:
               | tee /tmp/authbus-p1-3-semantic-closure.json
           grep -q '"applied_authbus_p1_3_semantic_closure": true' \
             /tmp/authbus-p1-3-semantic-closure.json
+          python3 - <<'PY'
+          from pathlib import Path
+
+          paths = [
+              "codex-rs/hepta-authbus-p0-3-qualification/tests/p0_3.rs",
+              "codex-rs/hepta-authbus-p1-3-qualification/README.md",
+              "codex-rs/hepta-authbus-p1-3-qualification/tests/p1_3.rs",
+              "docs/hepta-vnext/authbus/AUTHBUS_P1_3_DEVELOPMENT_PLAN_2026-08-29.md",
+              "docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.md",
+          ]
+          for raw in paths:
+              path = Path(raw)
+              path.write_text(path.read_text().rstrip() + "\n")
+          PY
           git diff --check
 
       - name: Install Rust 1.95 with rustfmt and Clippy
@@ -111,27 +126,22 @@ jobs:
           cargo test --manifest-path codex-rs/Cargo.toml --locked \
             -p codex-hepta-contracts --features authbus-local-qualification \
             --lib -- --nocapture
-
           cargo test --manifest-path "${P02}" --locked \
             --no-default-features --lib -- --nocapture
           cargo test --manifest-path "${P02}" --locked \
             --features sqlite-qualification --tests -- --nocapture
-
           cargo test --manifest-path "${P03}" --locked \
             --no-default-features --lib -- --nocapture
           cargo test --manifest-path "${P03}" --locked \
             --features p0-3-qualification --tests -- --nocapture
-
           cargo test --manifest-path "${P11}" --locked \
             --no-default-features --lib -- --nocapture
           cargo test --manifest-path "${P11}" --locked \
             --features p1-qualification --tests -- --nocapture
-
           cargo test --manifest-path "${P12}" --locked \
             --no-default-features --lib -- --nocapture
           cargo test --manifest-path "${P12}" --locked \
             --features p1-2-qualification --tests -- --nocapture
-
           cargo test --manifest-path "${P13}" --locked \
             --no-default-features --lib -- --nocapture
           cargo test --manifest-path "${P13}" --locked \
@@ -196,6 +206,7 @@ jobs:
             docs/hepta-vnext/authbus/AUTHBUS_P1_3_DEVELOPMENT_PLAN_2026-08-29.md
             docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.json
             docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.md
+            scripts/verify-authbus-p0-3.py
             scripts/verify-authbus-p1-3.py
           )
           test "${#changed[@]}" = "${#expected[@]}"
@@ -213,5 +224,5 @@ jobs:
           git config user.email "102159240+ProfHepta@users.noreply.github.com"
           git add -A
           git commit -m "fix(authbus): close P1.3 semantic lifecycle blockers"
-          test "$(git diff --name-only HEAD^..HEAD | wc -l | tr -d ' ')" = "12"
+          test "$(git diff --name-only HEAD^..HEAD | wc -l | tr -d ' ')" = "13"
           git push origin "HEAD:${TARGET_BRANCH}"
