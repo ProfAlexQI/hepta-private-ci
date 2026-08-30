@@ -42,6 +42,7 @@ class LocalWindowsGnullvmTest(unittest.TestCase):
             }
             env.pop("BUILDBUDDY_API_KEY", None)
             env.pop("ALLOW_WINDOWS_MSVC_FALLBACK", None)
+            env.pop("GITHUB_ACTIONS", None)
             if extra_env:
                 env.update(extra_env)
             result = subprocess.run(
@@ -58,15 +59,23 @@ class LocalWindowsGnullvmTest(unittest.TestCase):
             self.assertFalse(capture.exists())
             return result, None
 
-    def test_keyless_cross_uses_real_local_gnullvm_target(self) -> None:
-        _, args = self.run_fixture(
+    @staticmethod
+    def base_args(*extra: str) -> tuple[str, ...]:
+        return (
             "--print-failed-action-summary",
             "--windows-cross-compile",
             "--",
             "test",
             "--skip_incompatible_explicit_targets",
+            *extra,
             "--",
             "//codex-rs/uds:uds-unit-tests-bin",
+        )
+
+    def test_keyless_cross_uses_real_local_gnullvm_target(self) -> None:
+        _, args = self.run_fixture(
+            *self.base_args(),
+            extra_env={"GITHUB_ACTIONS": "true"},
         )
         assert args is not None
         self.assertIn("--windows-msvc-host-platform", args)
@@ -93,23 +102,32 @@ class LocalWindowsGnullvmTest(unittest.TestCase):
 
     def test_conflicting_target_fails_before_bazel(self) -> None:
         result, _ = self.run_fixture(
-            "--windows-cross-compile",
-            "--",
-            "build",
-            "--platforms=//:local_windows_msvc",
-            "--",
-            "//codex-rs/uds:uds-unit-tests-bin",
+            *self.base_args("--platforms=//:local_windows_msvc"),
             expect_success=False,
         )
         self.assertIn("requires --platforms=//:windows_x86_64_gnullvm", result.stderr)
 
+    def test_later_conflicting_target_also_fails_before_bazel(self) -> None:
+        result, _ = self.run_fixture(
+            *self.base_args(
+                "--platforms=//:windows_x86_64_gnullvm",
+                "--platforms=//:local_windows_msvc",
+            ),
+            expect_success=False,
+        )
+        self.assertIn("refusing conflicting option", result.stderr)
+
+    def test_conflicting_test_strategy_fails_before_bazel(self) -> None:
+        result, _ = self.run_fixture(
+            *self.base_args("--strategy=TestRunner=remote"),
+            extra_env={"GITHUB_ACTIONS": "true"},
+            expect_success=False,
+        )
+        self.assertIn("requires --strategy=TestRunner=local", result.stderr)
+
     def test_explicit_msvc_diagnostic_gets_real_local_cc_toolchain(self) -> None:
         _, args = self.run_fixture(
-            "--windows-cross-compile",
-            "--",
-            "build",
-            "--",
-            "//codex-rs/uds:uds-unit-tests-bin",
+            *self.base_args(),
             extra_env={"ALLOW_WINDOWS_MSVC_FALLBACK": "1"},
         )
         assert args is not None
@@ -127,17 +145,25 @@ class LocalWindowsGnullvmTest(unittest.TestCase):
             args,
         )
 
+    def test_github_actions_rejects_ambient_msvc_diagnostic(self) -> None:
+        result, _ = self.run_fixture(
+            *self.base_args(),
+            extra_env={
+                "ALLOW_WINDOWS_MSVC_FALLBACK": "1",
+                "GITHUB_ACTIONS": "true",
+            },
+            expect_success=False,
+        )
+        self.assertIn("forbidden in GitHub Actions qualification jobs", result.stderr)
+
     def test_authenticated_cross_path_is_byte_for_byte_passthrough(self) -> None:
-        original = [
-            "--windows-cross-compile",
-            "--",
-            "test",
-            "--",
-            "//codex-rs/uds:uds-unit-tests-bin",
-        ]
+        original = list(self.base_args())
         _, args = self.run_fixture(
             *original,
-            extra_env={"BUILDBUDDY_API_KEY": "fixture"},
+            extra_env={
+                "BUILDBUDDY_API_KEY": "fixture",
+                "GITHUB_ACTIONS": "true",
+            },
         )
         self.assertEqual(args, original)
 

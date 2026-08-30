@@ -15,6 +15,14 @@ for arg in "$@"; do
   fi
 done
 
+# The explicit MSVC branch is a local, non-qualifying diagnostic. Never allow
+# an ambient workflow variable to turn a gnullvm-labelled GitHub check into
+# MSVC evidence.
+if [[ "${GITHUB_ACTIONS:-}" == "true" && "${ALLOW_WINDOWS_MSVC_FALLBACK:-}" == "1" ]]; then
+  echo "ALLOW_WINDOWS_MSVC_FALLBACK is forbidden in GitHub Actions qualification jobs." >&2
+  exit 1
+fi
+
 if [[ "${RUNNER_OS:-}" != "Windows" || $is_windows_cross -eq 0 || -n "${BUILDBUDDY_API_KEY:-}" ]]; then
   exec "$impl" "$@"
 fi
@@ -80,17 +88,20 @@ require_or_add_single_option() {
   local prefix="$1"
   local expected="$2"
   local description="$3"
-  local arg
+  local arg found=0
   for arg in "${bazel_args[@]}"; do
-    if [[ "$arg" == "$prefix"* ]]; then
-      if [[ "$arg" != "$expected" ]]; then
-        echo "Credential-free Windows ${description} requires ${expected}; refusing conflicting option ${arg}." >&2
-        exit 1
-      fi
-      return
+    if [[ "$arg" != "$prefix"* ]]; then
+      continue
     fi
+    if [[ "$arg" != "$expected" ]]; then
+      echo "Credential-free Windows ${description} requires ${expected}; refusing conflicting option ${arg}." >&2
+      exit 1
+    fi
+    found=1
   done
-  bazel_args+=("$expected")
+  if [[ $found -eq 0 ]]; then
+    bazel_args+=("$expected")
+  fi
 }
 
 # Bazel's hermetic LLVM toolchain is gnullvm-only after Q0.12. Local execution
@@ -106,7 +117,7 @@ require_or_add_single_option \
   "local C++ toolchain discovery"
 
 if [[ "${ALLOW_WINDOWS_MSVC_FALLBACK:-}" == "1" ]]; then
-  # Preserve Q0.13's explicit, non-qualifying diagnostic. Unlike the old
+  # Preserve Q0.13's explicit, non-qualifying local diagnostic. Unlike the old
   # fallback, this path also binds a real local MSVC C/C++ toolchain.
   require_or_add_single_option \
     "--platforms=" \
@@ -120,6 +131,18 @@ else
     "--platforms=" \
     "--platforms=//:windows_x86_64_gnullvm" \
     "gnullvm target"
+  require_or_add_single_option \
+    "--strategy=TestRunner=" \
+    "--strategy=TestRunner=local" \
+    "test execution strategy"
+  require_or_add_single_option \
+    "--strategy=V8Mksnapshot=" \
+    "--strategy=V8Mksnapshot=local" \
+    "V8 snapshot strategy"
+  require_or_add_single_option \
+    "--test_env=RUST_TEST_THREADS=" \
+    "--test_env=RUST_TEST_THREADS=1" \
+    "Rust test-thread contract"
 
   if ! has_exact_option "--extra_execution_platforms=//:windows_x86_64_msvc"; then
     bazel_args+=("--extra_execution_platforms=//:windows_x86_64_msvc")
@@ -127,17 +150,8 @@ else
   if ! has_exact_option "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain"; then
     bazel_args+=("--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain")
   fi
-  if ! has_exact_option "--strategy=TestRunner=local"; then
-    bazel_args+=("--strategy=TestRunner=local")
-  fi
-  if ! has_exact_option "--strategy=V8Mksnapshot=local"; then
-    bazel_args+=("--strategy=V8Mksnapshot=local")
-  fi
   if ! has_option_prefix "--local_test_jobs="; then
     bazel_args+=("--local_test_jobs=8")
-  fi
-  if ! has_exact_option "--test_env=RUST_TEST_THREADS=1"; then
-    bazel_args+=("--test_env=RUST_TEST_THREADS=1")
   fi
 fi
 
