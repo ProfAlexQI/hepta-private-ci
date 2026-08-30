@@ -28,6 +28,7 @@ jobs:
         run: |
           python3 scripts/verify-windows-gnullvm-qualification-boundary.py
           python3 scripts/verify-windows-gnullvm-option-grammar.py
+          python3 scripts/verify-windows-gnullvm-executable-contract.py
 
       - name: Exercise default, diagnostic and authenticated branches
         shell: bash
@@ -46,6 +47,7 @@ jobs:
           receipt = {
               "schema": "hepta_windows_gnullvm_qualification_boundary_v1",
               "status": "PASS_WINDOWS_GNULLVM_QUALIFICATION_BOUNDARY_SOURCE",
+              "executable_contract": "PASS_WINDOWS_GNULLVM_Q0_27_EXECUTABLE_CONTRACT_SOURCE",
               "repository": os.environ["GITHUB_REPOSITORY"],
               "commit": os.environ["GITHUB_SHA"],
               "workflow": os.environ["GITHUB_WORKFLOW"],
@@ -53,6 +55,11 @@ jobs:
               "workflow_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
               "workflow_job": os.environ["GITHUB_JOB"],
               "qualification_mode": "qualifying_gnullvm_only",
+              "bazelisk_version": "1.28.1",
+              "bazel_version": "9.0.0",
+              "cached_bazel_rehashed": True,
+              "job_identity_bound": True,
+              "output_base_explicit": True,
               "keyless_msvc_fallback_allowed_in_github_actions": False,
               "msvc_diagnostic_eligible_for_repository_admission": False,
               "source_writeback": False,

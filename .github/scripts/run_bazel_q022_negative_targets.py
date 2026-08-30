@@ -1,4 +1,4 @@
-"""Q0.22-Q0.26 fail-closed Bazel identity, lane, and selection policy."""
+"""Q0.22-Q0.27 fail-closed Bazel identity, lane, and selection policy."""
 
 from collections.abc import Mapping, Sequence
 
@@ -19,6 +19,7 @@ CANONICAL_RELEASE_TARGETS = (
     "-//codex-rs/core/tests/remote_env_windows:smoke-test",
     "-//codex-rs/v8-poc:all",
 )
+CANONICAL_CLIPPY_NEGATIVE_TARGET = "-//codex-rs/v8-poc:all"
 CANONICAL_SKIP_INCOMPATIBLE = "--skip_incompatible_explicit_targets"
 CANONICAL_TEST_VERBOSE_TIMEOUTS = "--test_verbose_timeout_warnings"
 
@@ -236,9 +237,14 @@ def validate_keyless_windows_gnullvm_final_args(
         SKIP_INCOMPATIBLE_FLAG_FAMILY,
         owner="clippy qualification",
     )
-    negative_targets = [target for target in targets if target.startswith("-")]
-    if negative_targets:
+    invalid_negative_targets = [
+        target
+        for target in targets
+        if target.startswith("-") and target != CANONICAL_CLIPPY_NEGATIVE_TARGET
+    ]
+    if invalid_negative_targets:
         raise ValueError(
-            "credential-free Windows gnullvm clippy qualification rejects "
-            f"negative targets: {negative_targets!r}"
+            "credential-free Windows gnullvm clippy qualification rejects negative targets "
+            "outside the canonical V8 exclusion: "
+            f"{invalid_negative_targets!r}"
         )
