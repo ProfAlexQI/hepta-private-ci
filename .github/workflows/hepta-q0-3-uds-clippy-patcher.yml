@@ -1,0 +1,125 @@
+name: Hepta Q0.3 bounded UDS Clippy patcher
+
+on:
+  push:
+    branches:
+      - automation/hepta-q0-3-uds-clippy-patcher-20260830
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-q0-3-uds-clippy-patcher
+  cancel-in-progress: false
+
+env:
+  TARGET_BRANCH: codex/hepta-intelligence-q0-3-uds-clippy-20260830
+  EXPECTED_HEAD: be4e5675bd2f7142cca5a141f3c050547f9a8bd6
+  EXPECTED_TREE: c8c0104acfb69346bb6f8b6c639f6bbb3d94cb9a
+  EXPECTED_BLOB: 95ca85723d993960832711e5488d157ddbc7b6b6
+  TARGET_PATH: codex-rs/uds/src/lib.rs
+
+jobs:
+  patch-and-qualify:
+    name: Apply exact UDS test repair and publish Q0.3
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact Q0.2 target branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Assert immutable input identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${EXPECTED_HEAD}"
+          test "$(git rev-parse HEAD^{tree})" = "${EXPECTED_TREE}"
+          test "$(git rev-parse HEAD:${TARGET_PATH})" = "${EXPECTED_BLOB}"
+          test -z "$(git status --porcelain)"
+
+      - name: Apply the single bounded source replacement
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/uds/src/lib.rs")
+          source = path.read_text(encoding="utf-8")
+          old = '''            let owner = unsafe { libc::getuid() };
+                      ensure_peer_uid(owner).expect("the process owner must pass the UDS peer gate");
+
+                      let non_owner = if owner == libc::uid_t::MAX {
+                          owner - 1
+                      } else {
+                          owner + 1
+                      };
+                      let error = ensure_peer_uid(non_owner)
+                          .expect_err("a different UID must fail closed before reading the request");
+                      assert_eq!(error.kind(), ErrorKind::PermissionDenied);
+          '''
+          # Keep the literal readable above while requiring the repository's
+          # exact 12-space indentation at the replacement boundary.
+          old = "\n".join(line[10:] if line.startswith("          ") else line for line in old.splitlines()) + "\n"
+          new = '''            let owner = unsafe { libc::getuid() };
+                      assert!(
+                          ensure_peer_uid(owner).is_ok(),
+                          "the process owner must pass the UDS peer gate"
+                      );
+
+                      let non_owner = if owner == libc::uid_t::MAX {
+                          owner - 1
+                      } else {
+                          owner + 1
+                      };
+                      let error = match ensure_peer_uid(non_owner) {
+                          Ok(()) => panic!("a different UID must fail closed before reading the request"),
+                          Err(error) => error,
+                      };
+                      assert_eq!(error.kind(), ErrorKind::PermissionDenied);
+          '''
+          new = "\n".join(line[10:] if line.startswith("          ") else line for line in new.splitlines()) + "\n"
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f"expected one exact source block, found {count}")
+          path.write_text(source.replace(old, new), encoding="utf-8", newline="\n")
+          PY
+
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "${TARGET_PATH}"
+          git diff --check
+
+      - name: Install Rust 1.95 with formatter and Clippy
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Validate package format, tests and strict Clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +1.95.0 fmt --manifest-path codex-rs/Cargo.toml -p codex-uds -- --check
+          cargo +1.95.0 test --manifest-path codex-rs/Cargo.toml -p codex-uds --locked
+          cargo +1.95.0 clippy --manifest-path codex-rs/Cargo.toml -p codex-uds --all-targets --locked -- -D warnings
+          git diff --check
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "${TARGET_PATH}"
+
+      - name: Publish one-path Q0.3 source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "hepta-ci-bot"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git add -- "${TARGET_PATH}"
+          test "$(git diff --cached --name-only)" = "${TARGET_PATH}"
+          git commit -m "fix(uds): avoid denied expect lints in peer gate test"
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
