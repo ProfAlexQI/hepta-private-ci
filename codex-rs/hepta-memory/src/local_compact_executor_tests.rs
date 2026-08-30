@@ -233,7 +233,10 @@ fn process_soak_child_timeout() -> Duration {
     )
 }
 
-#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the signature is an explicit ordered protocol or test-harness contract"
+)]
 fn process_soak_child_command(
     executable: &Path,
     mode: &str,
@@ -1231,8 +1234,7 @@ async fn sqlite_1000_operation_seeded_reopen_replay_stress() {
     );
     let reopened = CompactPersistenceJournal::reopen(after_final_reopen.clone())
         .expect("reopen final in-memory journal");
-    for (operation_index, witness_sequence) in
-        witness_sequences.iter().enumerate().take(OPERATIONS)
+    for (operation_index, witness_sequence) in witness_sequences.iter().enumerate().take(OPERATIONS)
     {
         let operation_id = format!("op:seeded:{operation_index:04}");
         assert_eq!(
@@ -2060,6 +2062,10 @@ async fn rehydration_marker_tamper_fails_closed_on_restart() {
 #[test]
 fn local_executor_keeps_production_boundaries_closed() {
     assert_eq!(LOCAL_COMPACT_EXECUTOR_NAMESPACE, "local_development_only");
-    const { assert!(!LOCAL_COMPACT_EXECUTOR_EXTERNAL_EFFECTS); }
-    const { assert!(!LOCAL_COMPACT_EXECUTOR_KG_WRITE_AUTHORITY); }
+    const {
+        assert!(!LOCAL_COMPACT_EXECUTOR_EXTERNAL_EFFECTS);
+    }
+    const {
+        assert!(!LOCAL_COMPACT_EXECUTOR_KG_WRITE_AUTHORITY);
+    }
 }

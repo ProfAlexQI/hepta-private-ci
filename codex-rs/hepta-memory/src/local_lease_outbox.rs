@@ -2407,7 +2407,10 @@ impl CognitiveStore {
         .await
     }
 
-    #[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the signature is an explicit ordered protocol or test-harness contract"
+    )]
     pub async fn acquire_local_lease_after_head_bound(
         &self,
         lease_id: impl Into<String>,
@@ -2433,7 +2436,10 @@ impl CognitiveStore {
 
     /// Host-bound qualification-only successor acquisition after an exact
     /// append-only head CAS.  Epoch regressions and stale heads fail closed.
-    #[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the signature is an explicit ordered protocol or test-harness contract"
+    )]
     pub async fn acquire_host_bound_lease_after_head(
         &self,
         lease_id: impl Into<String>,
@@ -2483,7 +2489,10 @@ impl CognitiveStore {
 }
 
 #[derive(Clone, Debug)]
-#[allow(dead_code, reason = "row mirrors preserve the complete durable chain shape for verification")]
+#[allow(
+    dead_code,
+    reason = "row mirrors preserve the complete durable chain shape for verification"
+)]
 struct EventRow {
     sequence: u64,
     event_id: String,
@@ -2499,7 +2508,10 @@ struct EventRow {
 }
 
 #[derive(Clone, Debug)]
-#[allow(dead_code, reason = "row mirrors preserve the complete durable chain shape for verification")]
+#[allow(
+    dead_code,
+    reason = "row mirrors preserve the complete durable chain shape for verification"
+)]
 struct OutboxRow {
     sequence: u64,
     outbox_id: String,
@@ -2546,7 +2558,10 @@ struct OutboxInsert<'a> {
     outbox_sha256: &'a Sha256Digest,
 }
 
-#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the signature is an explicit ordered protocol or test-harness contract"
+)]
 pub(crate) async fn append_lease(
     transaction: &mut Transaction<'_, Sqlite>,
     lease_id: &str,
@@ -3566,7 +3581,10 @@ fn validate_lease_binding(binding: &LocalLeaseBinding) -> Result<(), LocalLeaseO
     .map(|_| ())
 }
 
-#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the signature is an explicit ordered protocol or test-harness contract"
+)]
 fn lease_digest(
     lease_id: &str,
     sequence: u64,
@@ -3610,7 +3628,10 @@ fn lease_digest(
     )
 }
 
-#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the signature is an explicit ordered protocol or test-harness contract"
+)]
 fn event_digest(
     lease_id: &str,
     sequence: u64,
@@ -3640,7 +3661,10 @@ fn event_digest(
     )
 }
 
-#[allow(clippy::too_many_arguments, reason = "the signature is an explicit ordered protocol or test-harness contract")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the signature is an explicit ordered protocol or test-harness contract"
+)]
 fn outbox_digest(
     lease_id: &str,
     sequence: u64,
