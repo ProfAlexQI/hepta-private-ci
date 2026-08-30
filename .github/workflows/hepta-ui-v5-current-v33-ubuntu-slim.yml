@@ -1,0 +1,131 @@
+name: Hepta UI v5 current v33 Ubuntu slim EOF closure
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-current-v33-ubuntu-slim-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-current-v33-ubuntu-slim.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-current-v33-ubuntu-slim
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: ubuntu-slim
+    timeout-minutes: 120
+    env:
+      BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_PARENT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
+      BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-current-v33-ubuntu-slim.yml
+      ORIGINAL_BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-blocker-remediation-bootstrap.yml
+      UPSTREAM_URL: https://github.com/openai/codex.git
+      UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
+      UPSTREAM_ROLE: current_r12
+      UPSTREAM_FROZEN_REF: refs/remotes/upstream/hepta-intake-20260830-r12
+      UPSTREAM_INTAKE_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R12.json
+      UPSTREAM_RECORD_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+      V12_DRIVER_COMMIT: 554d710f6a561166553f3c01fafc5b27cd8c28b9
+      V14_DRIVER_COMMIT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
+      V18_DRIVER_COMMIT: 022b91a04f443d7fe4ca2bce853bc26bccf99f84
+      V20_DRIVER_COMMIT: 781c237dbc81f49d3f22432b341d904aaa929291
+      V24_X64_DRIVER_COMMIT: 9a1fc8005bab27e668e9cba98235fc21a3021a0d
+      V25_X64_DRIVER_COMMIT: 3dbb216e9c03784f5e3175bccecd77ba808c54fc
+    steps:
+      - name: Check out exact current-v33 driver commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install deterministic remediation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v sudo >/dev/null 2>&1; then
+            SUDO=sudo
+          else
+            SUDO=
+          fi
+          $SUDO apt-get update
+          $SUDO apt-get install --yes ca-certificates curl git jq patch ripgrep ruby xz-utils
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 --fail --silent --show-error https://sh.rustup.rs \
+              | sh -s -- -y --profile minimal --default-toolchain none
+          fi
+          export PATH="$HOME/.cargo/bin:$PATH"
+          printf '%s\n' "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+          test "$(rustc +1.95.0 --version | awk '{print $2}')" = "1.95.0"
+          git --version
+          ruby --version
+          python3 --version
+          df -h .
+
+      - name: Normalize the generated plan appendix without consuming v6 anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          test -f "$ORIGINAL_BOOTSTRAP_PATH"
+          export V33_BOOTSTRAP_PATH="$ORIGINAL_BOOTSTRAP_PATH"
+          python3 <<'PY'
+          from __future__ import annotations
+
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["V33_BOOTSTRAP_PATH"])
+          text = path.read_text(encoding="utf-8")
+          old_write = '          plan_path.write_text(plan.rstrip() + appendix + "\\n", encoding="utf-8")\n'
+          new_write = '''          normalized_appendix = __import__("textwrap").dedent(appendix).strip()
+                    if not normalized_appendix.startswith(
+                        "## Remediation round 2 — exact-head failures observed on PR #78"
+                    ):
+                        raise SystemExit("remediation appendix heading normalization failed")
+                    if any(line.startswith("          ") for line in normalized_appendix.splitlines()):
+                        raise SystemExit("remediation appendix retained generator indentation")
+                    plan_path.write_text(
+                        plan.rstrip() + "\\n\\n" + normalized_appendix + "\\n",
+                        encoding="utf-8",
+                    )
+          '''
+          if text.count(old_write) != 1:
+              raise SystemExit(
+                  f"v33 appendix writer anchor: expected 1 match, found {text.count(old_write)}"
+              )
+          text = text.replace(old_write, new_write, 1)
+          if old_write in text:
+              raise SystemExit("v33 left a superseded appendix writer anchor")
+          with path.open("w", encoding="utf-8", newline="\n") as output:
+              output.write(text)
+          PY
+          ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0), aliases: true)' "$ORIGINAL_BOOTSTRAP_PATH" >/dev/null
+          git diff --check -- "$ORIGINAL_BOOTSTRAP_PATH"
+
+      - name: Execute immutable v25 remediation with normalized bootstrap truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          source_workflow="$RUNNER_TEMP/hepta-ui-v5-remediation-v25-x64.yml"
+          generated_driver="$RUNNER_TEMP/hepta-ui-v5-current-v33-ubuntu-slim.sh"
+          if ! git cat-file -e "$V25_X64_DRIVER_COMMIT^{commit}"; then
+            git fetch --no-tags origin "$V25_X64_DRIVER_COMMIT"
+          fi
+          git show "$V25_X64_DRIVER_COMMIT:.github/workflows/hepta-ui-v5-remediation-v25-x64.yml" > "$source_workflow"
+          awk '
+            /      - name: Execute v24 remediation with semantic addon self-test/ { found=1; next }
+            found && /        shell: bash/ { next }
+            found && /        run: \|/ { in_run=1; next }
+            in_run { sub(/^          /, ""); print }
+          ' "$source_workflow" > "$generated_driver"
+          test -s "$generated_driver"
+          bash -n "$generated_driver"
+          bash -x "$generated_driver"
