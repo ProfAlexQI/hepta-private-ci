@@ -1,0 +1,60 @@
+{
+  "schema": "hepta_intelligence_q0_31_status_v1",
+  "repository": "ProfHepta/hepta-private-ci",
+  "phase": "Q0.31_DIRECT_BAZEL_EXECUTABLE_IDENTITY",
+  "parent": {
+    "pull_request": 154,
+    "commit": "043a9a7120693ddb9296c6cfdff03475511d70cb",
+    "tree": "d0f750d9c1976d06967176e99154e751311499cb"
+  },
+  "selected_prerequisites": {
+    "q0_28_pull_request": 146,
+    "q0_28_commit": "f6031d119092ca9a71e109cd94cdc56e81a3e884",
+    "q0_29_pull_request": 150,
+    "q0_29_commit": "925f2871754f89c31051080e20a9bd0448302245",
+    "q0_30_governance_pull_request": 154
+  },
+  "supersedes": {
+    "pull_request": 155,
+    "commit": "58f7df731a8c0febd8118be9a34cd69663089253",
+    "reason": "valid direct-Bazel findings restacked onto the selected Q0.29 and Q0.30 chain"
+  },
+  "source": {
+    "canonical_clippy_exclusion_bounded": true,
+    "output_user_root_required": true,
+    "output_base_required": true,
+    "bazelisk_sha256_bound": true,
+    "cached_bazel_cas_path_bound": true,
+    "cached_bazel_sha256_bound": true,
+    "cached_bazel_rehashed_before_launch": true,
+    "q0_29_execution_context_preserved": true,
+    "source_contract": "PENDING_EXACT_HEAD_EXECUTION"
+  },
+  "execution": {
+    "exact_head_runner_assigned": false,
+    "synthetic_merge_runner_assigned": false,
+    "windows_test_shards_passed": false,
+    "windows_clippy_passed": false,
+    "windows_release_passed": false,
+    "qualified": false,
+    "full_repository_merge_green": false
+  },
+  "external_evidence": {
+    "independent_review": false,
+    "canonical_selection": false,
+    "live_ruleset_readback": false,
+    "model_license_and_security": false,
+    "reviewed_corpus": false,
+    "physical_hardware": false,
+    "runtime_soak": false,
+    "operator_acceptance": false
+  },
+  "authority": {
+    "runtime_authority": false,
+    "production_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_authority": false,
+    "callers_ratchet": false
+  }
+}

@@ -28,6 +28,8 @@ class ExactStartupVectorQualificationTest(unittest.TestCase):
             "GITHUB_ACTIONS": "true",
             "RUNNER_OS": "Windows",
             "GITHUB_WORKSPACE": str(workspace),
+            "BAZEL_OUTPUT_USER_ROOT": "D:/b",
+            "BAZEL_OUTPUT_BASE": "D:/o",
             "CODEX_BAZEL_BIN": "bazel-test",
         }
         return temporary, bazelrc, env
@@ -66,7 +68,9 @@ class ExactStartupVectorQualificationTest(unittest.TestCase):
         self.assertEqual(
             startup[:-1],
             [
+                "--output_user_root=D:/b",
                 startup_contract.DISABLED_REPO_CONTENTS_CACHE,
+                "--output_base=D:/o",
                 *startup_contract.STRICT_STARTUP_FLAGS,
             ],
         )
@@ -74,11 +78,27 @@ class ExactStartupVectorQualificationTest(unittest.TestCase):
         self.assertTrue(startup[-1].endswith("/.bazelrc"))
 
     def test_exact_output_root_from_environment_passes(self) -> None:
-        output_root = str(Path.cwd() / "bazel-output")
+        output_user_root = str(Path.cwd() / "bazel-user-root")
+        output_base = str(Path.cwd() / "bazel-output-base")
         command = self.command(
-            env_updates={"BAZEL_OUTPUT_USER_ROOT": output_root}
+            env_updates={
+                "BAZEL_OUTPUT_USER_ROOT": output_user_root,
+                "BAZEL_OUTPUT_BASE": output_base,
+            }
         )
-        self.assertEqual(command[1], f"--output_user_root={output_root}")
+        self.assertEqual(
+            command[1],
+            f"--output_user_root={output_user_root}",
+        )
+        self.assertIn(f"--output_base={output_base}", command)
+
+    def test_missing_output_user_root_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "requires BAZEL_OUTPUT_USER_ROOT"):
+            self.command(env_updates={"BAZEL_OUTPUT_USER_ROOT": ""})
+
+    def test_missing_output_base_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "requires BAZEL_OUTPUT_BASE"):
+            self.command(env_updates={"BAZEL_OUTPUT_BASE": ""})
 
     def test_startup_jvm_option_fails_closed(self) -> None:
         with self.assertRaisesRegex(ValueError, "exact startup vector"):
@@ -96,12 +116,12 @@ class ExactStartupVectorQualificationTest(unittest.TestCase):
             )
 
     def test_output_root_drift_fails_closed(self) -> None:
-        expected_root = str(Path.cwd() / "expected")
         with self.assertRaisesRegex(ValueError, "exact startup vector"):
-            self.command(
-                "--output_user_root=C:/attacker",
-                env_updates={"BAZEL_OUTPUT_USER_ROOT": expected_root},
-            )
+            self.command("--output_user_root=C:/attacker")
+
+    def test_output_base_drift_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "exact startup vector"):
+            self.command("--output_base=C:/attacker")
 
 
 if __name__ == "__main__":

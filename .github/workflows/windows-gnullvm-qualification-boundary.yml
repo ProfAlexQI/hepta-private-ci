@@ -30,6 +30,7 @@ jobs:
           python3 scripts/verify-windows-gnullvm-option-grammar.py
           python3 scripts/verify-windows-gnullvm-startup-contract.py
           python3 scripts/verify-windows-gnullvm-execution-context.py
+          python3 scripts/verify-windows-gnullvm-direct-bazel.py
 
       - name: Exercise default, diagnostic and authenticated branches
         shell: bash
@@ -55,8 +56,9 @@ jobs:
               "workflow_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
               "workflow_job": os.environ["GITHUB_JOB"],
               "qualification_mode": "qualifying_gnullvm_only",
-              "startup_vector_source_contract": "PASS_WINDOWS_GNULLVM_Q0_28_STARTUP_CONTRACT_SOURCE",
+              "startup_vector_source_contract": "PASS_WINDOWS_GNULLVM_Q0_31_STARTUP_CONTRACT_SOURCE",
               "execution_context_source_contract": "PASS_WINDOWS_GNULLVM_Q0_29_EXECUTION_CONTEXT_SOURCE",
+              "direct_bazel_source_contract": "PASS_WINDOWS_GNULLVM_Q0_31_DIRECT_BAZEL_SOURCE",
               "official_bazelisk_version": "1.28.1",
               "official_bazelisk_windows_x86_64_sha256": "b9d65a1f7c2d7af885a96a4fd5aa36b40fb41816d30944390569eef908bdc954",
               "official_bazel_version": "9.0.0",
@@ -65,6 +67,9 @@ jobs:
               "runner_identity_source_bound": True,
               "runner_path_roots_source_bound": True,
               "bare_dev_drive_root_source_bound": True,
+              "explicit_output_base_source_bound": True,
+              "direct_cached_bazel_rehash_source_bound": True,
+              "canonical_clippy_v8_exclusion_source_bound": True,
               "windows_executable_digest_executed": False,
               "keyless_msvc_fallback_allowed_in_github_actions": False,
               "msvc_diagnostic_eligible_for_repository_admission": False,
@@ -80,7 +85,10 @@ jobs:
           canonical = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
           receipt["receipt_binding_sha256"] = hashlib.sha256(canonical).hexdigest()
           path = Path("artifacts/windows-gnullvm-qualification-boundary/receipt.json")
-          path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          path.write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
           print(path.read_text(encoding="utf-8"))
           PY
 
