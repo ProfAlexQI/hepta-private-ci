@@ -1,0 +1,25 @@
+name: Hepta ops cancel stale v8 canary PR 81
+
+on:
+  push:
+    branches:
+      - ops/cancel-stale-v8-pr81-20260830
+    paths:
+      - .github/workflows/hepta-ops-cancel-stale-v8-pr81.yml
+
+# PR #81 is closed and its v8-canary run already contains terminal failures.
+# Reusing the exact repository-wide concurrency key cancels only the orphaned
+# in-progress tail; the skipped job below consumes no runner and performs no mutation.
+concurrency:
+  group: v8-canary::pr-81
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cancellation-marker:
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 0
