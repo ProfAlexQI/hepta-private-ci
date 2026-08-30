@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     steps:
-      - name: Checkout controller branch
+      - name: Checkout exact controller generation
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
@@ -31,139 +31,50 @@ jobs:
         with:
           tool: nextest@0.9.143
 
-      - name: Apply fail-closed supervisor fixture closure candidate
+      - name: Verify and apply exact fail-closed closure
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          def replace_once(text: str, old: str, new: str, label: str) -> str:
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{label}: expected one anchor, found {count}")
-              return text.replace(old, new, 1)
-
-          registry = Path("codex-rs/hepta-fleet/src/registry.rs")
-          s = registry.read_text()
-          s = replace_once(
-              s,
-              '            validate_physical_directory(layout.agent_root())?;\n            migrate_private_directory(layout.agent_root(), "matrix")?;\n',
-              '            validate_physical_directory(layout.agent_root())?;\n            set_private_directory_permissions(layout.run_root())?;\n            validate_private_directory(layout.run_root())?;\n            migrate_private_directory(layout.agent_root(), "matrix")?;\n',
-              "legacy agent run-root migration",
-          )
-          s = replace_once(
-              s,
-              '        let matrix_secrets_root = staging_root.join("matrix/secrets");\n',
-              '        let run_root = staging_root.join("run");\n        set_private_directory_permissions(&run_root)?;\n        let matrix_secrets_root = staging_root.join("matrix/secrets");\n',
-              "new agent run-root permissions",
-          )
-          s = replace_once(
-              s,
-              '            layout.automation_root(),\n        ] {\n            validate_physical_directory(directory)?;\n        }\n        validate_private_directory(layout.matrix_root())?;\n',
-              '            layout.automation_root(),\n        ] {\n            validate_physical_directory(directory)?;\n        }\n        validate_private_directory(layout.run_root())?;\n        validate_private_directory(layout.matrix_root())?;\n',
-              "agent run-root reopen validation",
-          )
-          registry.write_text(s)
-
-          tests = Path("codex-rs/hepta-supervisor/src/supervisor_tests.rs")
-          s = tests.read_text()
-          old_impl = (
-              '        Ok(Self {\n'
-              '            _temp: temp,\n'
-              '            registry,\n'
-              '            first,\n'
-              '            second,\n'
-              '        })\n'
-              '    }\n'
-              '}\n\n'
-              'fn register_agent(\n'
-          )
-          new_impl = (
-              '        Ok(Self {\n'
-              '            _temp: temp,\n'
-              '            registry,\n'
-              '            first,\n'
-              '            second,\n'
-              '        })\n'
-              '    }\n\n'
-              '    fn test_program(&self, label: &str) -> Result<PathBuf, SupervisorError> {\n'
-              '        let root = self._temp.path().join("programs");\n'
-              '        std::fs::create_dir_all(&root)?;\n'
-              '        let file_name: String = label\n'
-              '            .as_bytes()\n'
-              '            .iter()\n'
-              '            .map(|byte| format!("{byte:02x}"))\n'
-              '            .collect();\n'
-              '        let path = root.join(file_name);\n'
-              '        if !path.exists() {\n'
-              '            std::fs::write(&path, b"#!/bin/sh\\nexit 0\\n")?;\n'
-              '            #[cfg(unix)]\n'
-              '            {\n'
-              '                use std::os::unix::fs::PermissionsExt;\n'
-              '                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))?;\n'
-              '            }\n'
-              '        }\n'
-              '        Ok(path.canonicalize()?)\n'
-              '    }\n'
-              '}\n\n'
-              'fn register_agent(\n'
-          )
-          s = replace_once(s, old_impl, new_impl, "test program fixture")
-          s = replace_once(
-              s,
-              'fn command() -> Result<AgentCommand, SupervisorError> {\n    AgentCommand::new("/fake/hepta-agentd", Vec::new())\n}\n\nfn release(identity: &str, program: &str) -> Result<AgentRelease, SupervisorError> {\n    AgentRelease::new(identity, AgentCommand::new(program, Vec::new())?)\n}\n',
-              'fn command(fleet: &TestFleet) -> Result<AgentCommand, SupervisorError> {\n    AgentCommand::new(fleet.test_program("unversioned-hepta-agentd")?, Vec::new())\n}\n\nfn release(\n    fleet: &TestFleet,\n    identity: &str,\n    program: &str,\n) -> Result<AgentRelease, SupervisorError> {\n    AgentRelease::new(identity, AgentCommand::new(fleet.test_program(program)?, Vec::new())?)\n}\n',
-              "command and release fixtures",
-          )
-          s = s.replace("command()?", "command(&fleet)?")
-          s = s.replace('release("', 'release(&fleet, "')
-          s = replace_once(
-              s,
-              '    control.reject_spawn_program("/fake/release-spawn-fails/hepta-agentd");\n',
-              '    control.reject_spawn_program(\n        fleet.test_program("/fake/release-spawn-fails/hepta-agentd")?,\n    );\n',
-              "rejected spawn fixture",
-          )
-          s = s.replace(
-              'Path::new("/bin/sh")',
-              'fleet.test_program("portable-shell")?.as_path()',
-          )
-          tests.write_text(s)
-
-          nextest = Path("codex-rs/.config/nextest.toml")
-          s = nextest.read_text()
-          s = replace_once(
-              s,
-              '[test-groups.windows_process_heavy]\nmax-threads = 2\n',
-              '[test-groups.windows_process_heavy]\nmax-threads = 2\n\n[test-groups.hepta_supervisor_paired_process]\nmax-threads = 1\n',
-              "nextest paired process group",
-          )
-          s = replace_once(
-              s,
-              '[[profile.default.overrides]]\n# Do not add new tests here\n',
-              '[[profile.default.overrides]]\n# These integration cases spawn real agentd+matrixd process fleets. nextest\n# executes each test in a separate process, so an in-process mutex cannot\n# serialize them. Keep the real process fleets mutually exclusive.\nfilter = \'package(codex-hepta-supervisor) & (test(two_real_pairs_restart_one_without_peer_pid_churn) | test(five_real_pairs_adopt_all_ten_children_and_isolate_one_matrix_crash))\'\ntest-group = \'hepta_supervisor_paired_process\'\n\n[[profile.default.overrides]]\n# Do not add new tests here\n',
-              "nextest paired process override",
-          )
-          nextest.write_text(s)
-          PY
-
-          python3 scripts/verify-hepta-p0-7a-format.py
+          test "$(git hash-object codex-rs/hepta-fleet/src/registry.rs)" = a95f8402f50792f9d00182202e083656a2bbb125
+          test "$(git hash-object codex-rs/hepta-fleet/src/registry_tests.rs)" = 6943d7ea341237867d683eecca551b050ba847cd
+          test "$(git hash-object codex-rs/hepta-supervisor/src/supervisor_tests.rs)" = e8e996e74721f43e31c88b86a81e56494e0e7aa3
+          test "$(git hash-object codex-rs/.config/nextest.toml)" = f3f3ca2607190b6c7f4568fbcb365519250c7803
+          python3 .github/scripts/hepta-p0-7a-supervisor-gap-closure.py
+          rustfmt --edition 2024 --config-path codex-rs/rustfmt.toml \
+            codex-rs/hepta-fleet/src/registry.rs \
+            codex-rs/hepta-fleet/src/registry_tests.rs \
+            codex-rs/hepta-supervisor/src/supervisor_tests.rs
+          rustfmt --edition 2024 --config-path codex-rs/rustfmt.toml --check \
+            codex-rs/hepta-fleet/src/registry.rs \
+            codex-rs/hepta-fleet/src/registry_tests.rs \
+            codex-rs/hepta-supervisor/src/supervisor_tests.rs
           git diff --check
-          git diff -- codex-rs/hepta-fleet/src/registry.rs codex-rs/hepta-supervisor/src/supervisor_tests.rs codex-rs/.config/nextest.toml
+          expected=$'codex-rs/.config/nextest.toml\ncodex-rs/hepta-fleet/src/registry.rs\ncodex-rs/hepta-fleet/src/registry_tests.rs\ncodex-rs/hepta-supervisor/src/supervisor_tests.rs'
+          test "$(git diff --name-only)" = "$expected"
+          test -z "$(git ls-files --others --exclude-standard)"
+          git diff --stat
 
-      - name: Run exact supervisor unit closure
+      - name: Run Fleet security regression closure
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-fleet --lib -- --test-threads=1
+
+      - name: Run Supervisor unit closure
         working-directory: codex-rs
         shell: bash
         run: |
           set -euo pipefail
           cargo test --locked -p codex-hepta-supervisor --lib -- --test-threads=1
 
-      - name: Run real paired-process diagnostics serially
+      - name: Run real paired-process closure serially
         working-directory: codex-rs
         shell: bash
         run: |
           set -euo pipefail
-          timeout 240 cargo test --locked -p codex-hepta-supervisor --test paired_process_product -- --nocapture --test-threads=1
+          timeout 300 cargo test --locked -p codex-hepta-supervisor \
+            --test paired_process_product -- --nocapture --test-threads=1
 
       - name: Prove nextest process-level serialization
         working-directory: codex-rs
@@ -172,10 +83,21 @@ jobs:
           set -euo pipefail
           just test -p codex-hepta-supervisor
 
-      - name: Check and lint candidate
+      - name: Check and lint exact candidate
         working-directory: codex-rs
         shell: bash
         run: |
           set -euo pipefail
-          cargo check --locked --all-targets -p codex-hepta-fleet -p codex-hepta-supervisor
-          cargo clippy --locked --all-targets -p codex-hepta-fleet -p codex-hepta-supervisor -- -D warnings
+          cargo check --locked --all-targets \
+            -p codex-hepta-fleet -p codex-hepta-supervisor
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-fleet -p codex-hepta-supervisor -- -D warnings
+
+      - name: Verify clean bounded diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          expected=$'codex-rs/.config/nextest.toml\ncodex-rs/hepta-fleet/src/registry.rs\ncodex-rs/hepta-fleet/src/registry_tests.rs\ncodex-rs/hepta-supervisor/src/supervisor_tests.rs'
+          test "$(git diff --name-only)" = "$expected"
+          test -z "$(git ls-files --others --exclude-standard)"
