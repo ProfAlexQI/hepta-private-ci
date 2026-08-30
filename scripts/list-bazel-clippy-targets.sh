@@ -19,13 +19,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Resolve the dynamic targets before printing anything so callers do not
-# continue with a partial list if `bazel query` fails. Target discovery is
-# local on all platforms.
+# Resolve and sort the dynamic targets before printing anything so callers do
+# not continue with a partial or order-unstable list if `bazel query` fails.
 manual_rust_test_targets="$(
   ./.github/scripts/run-bazel-query-ci.sh \
     --output=label \
-    -- 'kind("rust_test rule", attr(tags, "manual", //codex-rs/... except //codex-rs/v8-poc/...))'
+    -- 'kind("rust_test rule", attr(tags, "manual", //codex-rs/... except //codex-rs/v8-poc/...))' \
+    | LC_ALL=C sort
 )"
 if [[ "${RUNNER_OS:-}" != "Windows" ]]; then
   # Non-Windows clippy jobs lint the native test binaries; the
