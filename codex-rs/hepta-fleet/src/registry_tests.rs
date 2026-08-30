@@ -207,7 +207,7 @@ fn overlapping_workspace_bindings_are_rejected() -> Result<(), FleetRegistryErro
 
 #[cfg(unix)]
 #[test]
-fn concurrent_open_atomically_migrates_legacy_matrix_private_roots()
+fn concurrent_open_atomically_migrates_legacy_private_roots()
 -> Result<(), FleetRegistryError> {
     use std::os::unix::fs::PermissionsExt;
 
@@ -215,6 +215,7 @@ fn concurrent_open_atomically_migrates_legacy_matrix_private_roots()
     let manifest = fleet.manifest(FIRST_AGENT_ID, &fleet.first_workspace)?;
     let agent_id = manifest.agent_id.clone();
     let record = fleet.registry.register(manifest)?;
+    fs::set_permissions(record.layout.run_root(), fs::Permissions::from_mode(0o755))?;
     fs::remove_dir(record.layout.matrix_secrets_root())?;
     fs::remove_dir(record.layout.matrix_root())?;
 
@@ -237,7 +238,11 @@ fn concurrent_open_atomically_migrates_legacy_matrix_private_roots()
     }
 
     let layout = fleet.registry.layout().agent(&agent_id);
-    for private_root in [layout.matrix_root(), layout.matrix_secrets_root()] {
+    for private_root in [
+        layout.run_root(),
+        layout.matrix_root(),
+        layout.matrix_secrets_root(),
+    ] {
         let metadata = fs::symlink_metadata(private_root)?;
         assert!(metadata.file_type().is_dir() && !metadata.file_type().is_symlink());
         assert_eq!(metadata.permissions().mode() & 0o777, 0o700);
