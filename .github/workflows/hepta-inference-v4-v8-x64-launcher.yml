@@ -1,0 +1,58 @@
+name: Hepta inference V4 v8 x64 launcher
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-v4-full-closure-chatgpt-20260830
+    paths:
+      - .github/workflows/hepta-inference-v4-v8-x64-launcher.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-v4-v8-x64-launcher
+  cancel-in-progress: true
+
+jobs:
+  retarget:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: codex/hepta-inference-v4-full-closure-chatgpt-20260830
+          persist-credentials: true
+          fetch-depth: 2
+
+      - name: Retarget exact v8 workflow and self-delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = codex/hepta-inference-v4-full-closure-chatgpt-20260830
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/hepta-inference-v4-full-closure-chatgpt-v8.yml')
+          source = path.read_text(encoding='utf-8')
+          replacements = (
+              ('name: Hepta inference V4 unified closure v8', 'name: Hepta inference V4 unified closure v8 x64'),
+              ('  cancel-in-progress: false', '  cancel-in-progress: true'),
+              ("    if: github.actor != 'github-actions[bot]'\n", ''),
+              ('    runs-on: ubuntu-24.04-arm', '    runs-on: ubuntu-24.04'),
+              ('          test "$(git rev-parse HEAD^)" = 45e026e50e4ee9596df4c514bce67520ad376b6f\n', ''),
+          )
+          for old, new in replacements:
+              if source.count(old) != 1:
+                  raise SystemExit(f'unexpected marker count for {old!r}: {source.count(old)}')
+              source = source.replace(old, new, 1)
+          path.write_text(source, encoding='utf-8')
+          Path('.github/workflows/hepta-inference-v4-v8-x64-launcher.yml').unlink()
+          PY
+          git diff --check
+          git add -A
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "ci(inference): execute unified V4 closure on x64"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
