@@ -15,9 +15,12 @@
 //! * no method crosses a provider, socket, filesystem, or production flag
 //!   boundary.
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::VecDeque;
 
-use crate::{Sha256Digest, SubjectRef};
+use crate::Sha256Digest;
+use crate::SubjectRef;
 
 /// This qualification model never grants authority or executes an effect.
 pub const AUTHBUS_B4_QUALIFICATION_ONLY: bool = true;
