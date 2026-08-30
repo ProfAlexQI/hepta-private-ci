@@ -93,6 +93,21 @@ jobs:
           PY
           cp -a "$RUNNER_TEMP/hepta-v5-b1a-payload/." .
           chmod 755 scripts/verify-hepta-v5-b1a-format.py scripts/verify-hepta-v5-b1a-provider-boundary.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("docs/architecture/HEPTA_P0_7B_B1A_PROVIDER_BOUNDARY_CONTRACT_V1.md")
+          required = "Runtime, effect, production, operator, promotion and release authority remain false"
+          text = path.read_text(encoding="utf-8")
+          if not text.strip():
+              raise SystemExit("B1a contract payload is unexpectedly empty")
+          if required in text:
+              raise SystemExit("B1a contract payload unexpectedly already contains the bounded repair")
+          path.write_text(
+              text.rstrip() + "\n\n## Authority non-claims\n\n" + required + "\n",
+              encoding="utf-8",
+          )
+          PY
           git add \
             .github/workflows/hepta-architecture-v5-b1a-provider-boundary.yml \
             codex-rs/hepta-contracts/src/checked_provider_operation.rs \
