@@ -31,6 +31,10 @@ DIAGNOSTIC_WORKFLOW = WORKFLOWS / "windows-msvc-nonqualifying-diagnostic.yml"
 BLOCKING_WORKFLOW = WORKFLOWS / "blocking-ci.yml"
 REPO_CHECKS = WORKFLOWS / "repo-checks.yml"
 EXPECTED_IMPLEMENTATION_BLOB = "2fe7cf37a0fddc1bb2f42f3e8a1e3b5a9e30f96b"
+RECEIPT_DIRECTORY_ENV = (
+    "HEPTA_WINDOWS_MSVC_DIAGNOSTIC_RECEIPT_DIR: "
+    "${{ runner.temp }}/hepta-windows-msvc-diagnostic"
+)
 
 
 def require(condition: bool, message: str) -> None:
@@ -236,6 +240,22 @@ def main() -> None:
         "eligible_for_repository_admission=false",
     ):
         require_contains(diagnostic_workflow, expected, "manual workflow")
+
+    job_prefix, separator, step_body = diagnostic_workflow.partition("    steps:\n")
+    require(separator != "", "manual diagnostic workflow lacks a steps boundary")
+    require(
+        "${{ runner.temp }}" not in job_prefix,
+        "manual diagnostic job-level env illegally references runner context",
+    )
+    require(
+        step_body.count(RECEIPT_DIRECTORY_ENV) == 2,
+        "manual diagnostic receipt directory must be bound in exactly two steps",
+    )
+    require_contains(
+        step_body,
+        "path: ${{ runner.temp }}/hepta-windows-msvc-diagnostic/receipt.json",
+        "manual workflow artifact upload",
+    )
 
     require(
         boundary_workflow.startswith(
