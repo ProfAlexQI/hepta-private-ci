@@ -1,4 +1,4 @@
-name: AuthBus P1.3 final clean-replay closure slim fallback
+name: AuthBus P1.3 exact source publisher slim fallback
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
       - .github/workflows/authbus-p1-3-final-closure-slim.yml
 
 concurrency:
-  group: authbus-p1-3-final-clean-replay-closure-slim
+  group: authbus-p1-3-exact-source-publisher-slim
   cancel-in-progress: true
 
 permissions:
@@ -16,32 +16,32 @@ permissions:
   actions: read
 
 jobs:
-  close:
-    name: Qualify and publish exact 29-path clean source on slim fallback
+  publish:
+    name: Publish exact 29-path source on slim fallback
     runs-on: ubuntu-slim
-    timeout-minutes: 120
+    timeout-minutes: 30
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_BUILD_JOBS: "1"
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_NET_RETRY: "10"
       CARGO_HTTP_TIMEOUT: "120"
-      CARGO_TARGET_DIR: /tmp/authbus-p1-3-final-closure-target
+      CARGO_TARGET_DIR: /tmp/authbus-p1-3-source-publisher-target
     steps:
-      - name: Checkout exact closure seed
+      - name: Checkout exact publisher seed
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
           fetch-depth: 2
           persist-credentials: true
 
-      - name: Install Rust 1.95
+      - name: Install Rust 1.95 for lockfile and rustfmt
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: 1.95.0
           components: rustfmt, clippy
 
-      - name: Rebind exact controller to this helper commit
+      - name: Rebind publisher and defer executable gates to source head
         shell: bash
         run: |
           set -euo pipefail
@@ -53,9 +53,9 @@ jobs:
           replacements = (
               (
                   "EXPECTED_PARENT=3c44c4d1ee9faaf66a1bd81a7cb2f676974a9f74",
-                  "EXPECTED_PARENT=6ef49e8e13a0b04bb1b3de3ef19798f65bef5e9f",
+                  "EXPECTED_PARENT=daee2d1ffbc8d91016a60d9159f69d863b767713",
                   1,
-                  "exact helper parent",
+                  "exact publisher parent",
               ),
               (
                   "('runs-on: ubuntu-slim', 'runs-on: macos-15-arm64', 4, 'hosted runner'),",
@@ -70,22 +70,40 @@ jobs:
                   raise SystemExit(f"{label}: expected {expected} anchors, found {count}")
               source = source.replace(before, after)
 
-          anchor = "    ('runs-on: ubuntu-slim', 'runs-on: ubuntu-24.04', 4, 'hosted runner'),\n"
-          insertion = (
-              anchor
+          runner_anchor = "    ('runs-on: ubuntu-slim', 'runs-on: ubuntu-24.04', 4, 'hosted runner'),\n"
+          trigger_insertion = (
+              runner_anchor
               + "    ('      - codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs',\n"
               + "     '      - codex-rs/hepta-authbus-p0-3-qualification/src/lib.rs\\n"
               + "      - codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs',\n"
               + "     1, 'P0.3 inline assertion trigger path'),\n"
           )
-          if source.count(anchor) != 1:
+          if source.count(runner_anchor) != 1:
               raise SystemExit("P0.3 trigger insertion: hosted-runner anchor is not unique")
-          source = source.replace(anchor, insertion)
+          source = source.replace(runner_anchor, trigger_insertion)
+
+          start_marker = 'log "run P0.2 through P1.3 executable matrices"\n'
+          end_marker = 'log "revalidate inherited source contracts"\n'
+          if source.count(start_marker) != 1 or source.count(end_marker) != 1:
+              raise SystemExit("source-publisher gate-defer anchors are not unique")
+          start = source.index(start_marker)
+          end = source.index(end_marker)
+          if end <= start:
+              raise SystemExit("source-publisher gate-defer anchors are reversed")
+          source = (
+              source[:start]
+              + 'log "defer executable matrices and strict Clippy to exact source-head qualification"\n'
+              + source[end:]
+          )
           path.write_text(source, encoding="utf-8")
           PY
           bash -n scripts/authbus-p1-3-final-closure.sh
+          grep -Fq 'EXPECTED_PARENT=daee2d1ffbc8d91016a60d9159f69d863b767713' \
+            scripts/authbus-p1-3-final-closure.sh
+          grep -Fq 'defer executable matrices and strict Clippy to exact source-head qualification' \
+            scripts/authbus-p1-3-final-closure.sh
 
-      - name: Execute fail-closed AuthBus P1.3 closure
+      - name: Materialize, format, verify, and publish source-only candidate
         shell: bash
         run: |
           set -euo pipefail
