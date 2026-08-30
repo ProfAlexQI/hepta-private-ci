@@ -1,25 +1,25 @@
-name: Hepta Intelligence Q0.17 exact-parent source publisher
+name: Hepta Intelligence Q0.17 ARM exact-parent source publisher
 
 on:
   push:
     branches:
-      - codex/hepta-intelligence-q0-17-gnullvm-contract-closure-20260830
+      - codex/hepta-intelligence-q0-17-gnullvm-contract-closure-arm-20260830
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: hepta-intelligence-q0-17-source-publisher-${{ github.ref }}
+  group: hepta-intelligence-q0-17-arm-source-publisher-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   publish:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     env:
       BASE_SHA: 8d6412cb0925cf68e8b9505594d46c99db38277e
-      BRANCH_NAME: codex/hepta-intelligence-q0-17-gnullvm-contract-closure-20260830
+      BRANCH_NAME: codex/hepta-intelligence-q0-17-gnullvm-contract-closure-arm-20260830
       BOOTSTRAP_SHA: ${{ github.sha }}
       WORKFLOW_PATH: .github/workflows/hepta-q0-17-source-publisher.yml
     steps:
@@ -38,21 +38,34 @@ jobs:
           test "$(git merge-base HEAD "${BASE_SHA}")" = "${BASE_SHA}"
           test "$(git rev-list --count "${BASE_SHA}..HEAD")" -ge 1
 
-          mapfile -t changed < <(git diff --name-only "${BASE_SHA}" "${BOOTSTRAP_SHA}" | LC_ALL=C sort)
-          expected=(
-            ".github/scripts/run-bazel-ci.sh"
-            ".github/scripts/test_run_bazel_local_windows_gnullvm.py"
-            ".github/workflows/hepta-q0-17-source-publisher.yml"
-            "patches/rules_cc_rusty_v8_custom_libcxx.patch"
-            "scripts/verify-windows-gnullvm-qualification-contract.py"
+          python3 - <<'PY'
+          import os
+          import subprocess
+
+          changed = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only", os.environ["BASE_SHA"], os.environ["BOOTSTRAP_SHA"]],
+                  text=True,
+              ).splitlines()
           )
-          mapfile -t expected < <(printf '%s\n' "${expected[@]}" | LC_ALL=C sort)
-          diff -u <(printf '%s\n' "${expected[@]}") <(printf '%s\n' "${changed[@]}")
+          expected = {
+              ".github/scripts/run-bazel-ci.sh",
+              ".github/scripts/test_run_bazel_local_windows_gnullvm.py",
+              ".github/workflows/hepta-q0-17-source-publisher.yml",
+              "patches/rules_cc_rusty_v8_custom_libcxx.patch",
+              "scripts/verify-windows-gnullvm-qualification-contract.py",
+          }
+          if changed != expected:
+              raise SystemExit(
+                  f"invalid bootstrap surface: missing={sorted(expected - changed)}, "
+                  f"unexpected={sorted(changed - expected)}"
+              )
+          PY
 
       - name: Set up Bazel and repository tools
         uses: ./.github/actions/setup-bazel-ci
         with:
-          target: x86_64-unknown-linux-gnu
+          target: aarch64-unknown-linux-gnu
 
       - name: Validate Q0.17 source before lock regeneration
         shell: bash
@@ -155,6 +168,7 @@ jobs:
               "source_tests": 19,
               "module_lock_regenerated": True,
               "publisher_workflow_retained": False,
+              "publisher_platform": "ubuntu-24.04-arm",
               "runtime_authority": False,
               "production_authority": False,
               "operator_acceptance": False,
@@ -181,7 +195,7 @@ jobs:
       - name: Upload publisher receipt
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4.6.2
         with:
-          name: hepta-intelligence-q0-17-source-publisher-${{ steps.mint.outputs.final_head }}
+          name: hepta-intelligence-q0-17-arm-source-publisher-${{ steps.mint.outputs.final_head }}
           path: ${{ runner.temp }}/q0-17-source-publisher-receipt.json
           if-no-files-found: error
           retention-days: 30
