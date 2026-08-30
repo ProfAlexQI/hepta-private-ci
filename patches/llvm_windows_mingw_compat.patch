@@ -80,3 +80,4 @@ diff --git a/toolchain/declare_toolchains.bzl b/toolchain/declare_toolchains.bzl
                  target_settings = [
                      "@llvm//toolchain:bootstrap_stage0_prebuilt_seed",
                  ],
+                 toolchain = cc_toolchain_name,
