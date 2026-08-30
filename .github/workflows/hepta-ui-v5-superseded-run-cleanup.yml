@@ -1,0 +1,90 @@
+name: Hepta UI v5 superseded-run cleanup
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-superseded-run-cleanup-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-superseded-run-cleanup.yml
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: hepta-ui-v5-superseded-run-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cancel-superseded:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Cancel only superseded UI remediation helper runs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $headers = @{
+              Authorization = "Bearer $env:GH_TOKEN"
+              Accept = 'application/vnd.github+json'
+              'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $keep = [System.Collections.Generic.HashSet[string]]::new(
+              [System.StringComparer]::Ordinal
+          )
+          @(
+              'ops/ui-v5-remediation-v21-20260830',
+              'ops/ui-v5-remediation-v21-arm-20260830',
+              'ops/ui-v5-remediation-v21-macos-20260830',
+              'ops/ui-v5-remediation-v21-macos-xlarge-20260830',
+              'ops/ui-v5-remediation-v22-diagnostic-20260830'
+          ) | ForEach-Object { [void]$keep.Add($_) }
+
+          $selected = [System.Collections.Generic.List[object]]::new()
+          foreach ($status in @('queued', 'in_progress')) {
+              for ($page = 1; $page -le 10; $page++) {
+                  $uri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs?status=$status&per_page=100&page=$page"
+                  $response = Invoke-RestMethod -Headers $headers -Uri $uri -Method Get
+                  foreach ($run in @($response.workflow_runs)) {
+                      $branch = [string]$run.head_branch
+                      if (-not $branch.StartsWith('ops/ui-v5-remediation-', [System.StringComparison]::Ordinal)) {
+                          continue
+                      }
+                      if ($keep.Contains($branch)) {
+                          continue
+                      }
+                      $selected.Add([pscustomobject]@{
+                          id = [int64]$run.id
+                          branch = $branch
+                          status = [string]$run.status
+                          name = [string]$run.name
+                      })
+                  }
+                  if (@($response.workflow_runs).Count -lt 100) {
+                      break
+                  }
+              }
+          }
+
+          $selected = @($selected | Sort-Object id -Unique)
+          Write-Host "Selected $($selected.Count) superseded UI remediation runs."
+          foreach ($run in $selected) {
+              Write-Host "Cancelling run=$($run.id) status=$($run.status) branch=$($run.branch) name=$($run.name)"
+              $cancelUri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs/$($run.id)/cancel"
+              try {
+                  Invoke-RestMethod -Headers $headers -Uri $cancelUri -Method Post | Out-Null
+              }
+              catch {
+                  $response = $_.Exception.Response
+                  if ($null -ne $response -and [int]$response.StatusCode -eq 409) {
+                      Write-Host "Run $($run.id) already reached a terminal state."
+                      continue
+                  }
+                  throw
+              }
+          }
+
+          Write-Host 'Retained current v21/v22 lanes and all non-helper qualification runs.'
