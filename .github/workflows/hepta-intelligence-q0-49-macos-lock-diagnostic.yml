@@ -1,0 +1,254 @@
+name: Hepta Intelligence Q0.49 macOS lock reconstruction
+
+on:
+  pull_request:
+    branches:
+      - codex/hepta-intelligence-q0-48-release-target-executable-mode-20260830
+
+permissions:
+  contents: read
+
+jobs:
+  reconstruct-q049:
+    runs-on: macos-15
+    timeout-minutes: 150
+    env:
+      SOURCE_SHA: f2f200969fa0076178276bceab2eb21d23f0519e
+      SOURCE_TREE: e6d9a631345927a8c0817080a2f8cab150c516f3
+      BYTES_VERSION: 1.12.1
+      BYTES_CHECKSUM: fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04
+    steps:
+      - name: Checkout exact diagnostic head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify diagnostic isolation and select Q0.48
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          mapfile -t changed < <(git diff --name-only --no-renames "$SOURCE_SHA" HEAD)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = ".github/workflows/hepta-intelligence-q0-49-macos-lock-diagnostic.yml"
+          git diff --check "$SOURCE_SHA" HEAD
+          git switch --detach "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git show -s --format=%T HEAD)" = "$SOURCE_TREE"
+          test -z "$(git status --porcelain)"
+
+      - name: Install repository CI prerequisites
+        uses: ./.github/actions/setup-ci
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt,clippy
+
+      - name: Install pinned cargo-shear
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: cargo-shear@1.11.2
+
+      - name: Apply exact dependency-policy repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/q049-macos
+          cp codex-rs/Cargo.lock artifacts/q049-macos/Cargo.lock.before
+          cp MODULE.bazel.lock artifacts/q049-macos/MODULE.bazel.lock.before
+
+          set +e
+          cargo +1.95.0 shear \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --deny-warnings \
+            --format=json \
+            >artifacts/q049-macos/shear-before.json
+          shear_before_rc=$?
+          set -e
+          echo "$shear_before_rc" >artifacts/q049-macos/shear-before.rc
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise SystemExit(
+                      f"expected one token in {path}: {old!r}; count={text.count(old)}"
+                  )
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "codex-rs/Cargo.toml",
+              'bytes = "1.10.1"',
+              'bytes = "1.12.1"',
+          )
+          replace_once(
+              ".github/workflows/rust-ci.yml",
+              "        run: cargo shear --deny-warnings\n",
+              "        run: cargo shear --locked --deny-warnings\n",
+          )
+          replace_once(
+              "codex-rs/hepta-automation/Cargo.toml",
+              "publish = false\n\n[lib]\n",
+              "publish = false\n\n[package.metadata.cargo-shear]\n"
+              "# sha2 is used by the unconditionally linked path module src/taskflow.rs.\n"
+              'ignored = ["sha2"]\n\n[lib]\n',
+          )
+          replace_once(
+              "codex-rs/hepta-contracts/Cargo.toml",
+              "version.workspace = true\n\n[lib]\n",
+              "version.workspace = true\n\n[package.metadata.cargo-shear]\n"
+              "# The path-mounted agent_id_tests module imports pretty_assertions.\n"
+              'ignored = ["pretty_assertions"]\n\n[lib]\n',
+          )
+          replace_once(
+              "codex-rs/hepta-fleet/Cargo.toml",
+              "publish = false\n\n[lib]\n",
+              "publish = false\n\n[package.metadata.cargo-shear]\n"
+              "# The path-mounted registry_tests module imports pretty_assertions.\n"
+              'ignored = ["pretty_assertions"]\n\n[lib]\n',
+          )
+          PY
+
+          cargo +1.95.0 update \
+            --manifest-path codex-rs/Cargo.toml \
+            -p bytes \
+            --precise "$BYTES_VERSION"
+
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          lock = Path("codex-rs/Cargo.lock").read_text(encoding="utf-8")
+          blocks = re.findall(
+              r'\[\[package\]\]\nname = "bytes"\nversion = "([^"]+)"\n'
+              r'source = "registry\+https://github.com/rust-lang/crates.io-index"\n'
+              r'checksum = "([0-9a-f]{64})"',
+              lock,
+          )
+          expected = [(os.environ["BYTES_VERSION"], os.environ["BYTES_CHECKSUM"])]
+          if blocks != expected:
+              raise SystemExit(f"unexpected bytes lock block: {blocks!r} != {expected!r}")
+          PY
+
+          cargo +1.95.0 metadata \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --no-deps \
+            >artifacts/q049-macos/cargo-metadata.json
+
+          cargo +1.95.0 shear \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --deny-warnings \
+            --format=json \
+            >artifacts/q049-macos/shear-after.json
+
+          cargo +1.95.0 check \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --all-targets \
+            -p codex-hepta-automation \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            >artifacts/q049-macos/focused-check.log 2>&1
+
+          cargo +1.95.0 test \
+            --manifest-path codex-rs/Cargo.toml \
+            --locked \
+            --no-run \
+            -p codex-hepta-automation \
+            -p codex-hepta-contracts \
+            -p codex-hepta-fleet \
+            >artifacts/q049-macos/focused-test-no-run.log 2>&1
+
+      - name: Set up Bazel for module-lock regeneration
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          target: aarch64-apple-darwin
+
+      - name: Regenerate and classify Bazel module lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          just bazel-lock-update \
+            >artifacts/q049-macos/bazel-lock-update.log 2>&1
+          cp codex-rs/Cargo.lock artifacts/q049-macos/Cargo.lock.generated
+          cp MODULE.bazel.lock artifacts/q049-macos/MODULE.bazel.lock.generated
+          git diff --binary "$SOURCE_SHA" -- \
+            >artifacts/q049-macos/q049.patch
+          git diff --stat "$SOURCE_SHA" -- \
+            >artifacts/q049-macos/q049.diff-stat
+          git diff --name-only --no-renames "$SOURCE_SHA" -- \
+            >artifacts/q049-macos/q049.changed-paths
+          git diff --check "$SOURCE_SHA" --
+
+          mapfile -t paths <artifacts/q049-macos/q049.changed-paths
+          required=(
+            .github/workflows/rust-ci.yml
+            codex-rs/Cargo.lock
+            codex-rs/Cargo.toml
+            codex-rs/hepta-automation/Cargo.toml
+            codex-rs/hepta-contracts/Cargo.toml
+            codex-rs/hepta-fleet/Cargo.toml
+          )
+          for required_path in "${required[@]}"; do
+            printf '%s\n' "${paths[@]}" | grep -Fx "$required_path"
+          done
+          for path in "${paths[@]}"; do
+            case "$path" in
+              .github/workflows/rust-ci.yml|codex-rs/Cargo.lock|codex-rs/Cargo.toml|codex-rs/hepta-automation/Cargo.toml|codex-rs/hepta-contracts/Cargo.toml|codex-rs/hepta-fleet/Cargo.toml|MODULE.bazel.lock)
+                ;;
+              *)
+                echo "unexpected generated path: $path" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          module_lock_changed=false
+          if printf '%s\n' "${paths[@]}" | grep -Fxq MODULE.bazel.lock; then
+            module_lock_changed=true
+          fi
+
+          git config user.name "Hepta Q0.49 diagnostic"
+          git config user.email "q049-diagnostic@invalid"
+          git add -- "${paths[@]}"
+          tree=$(git write-tree)
+          commit=$(printf '%s\n' \
+            "fix(ci): close Q0.49 locked dependency policy blockers" \
+            "" \
+            "Diagnostic-created immutable object only; no ref moved." |
+            git commit-tree "$tree" -p "$SOURCE_SHA")
+
+          {
+            echo "source_sha=$SOURCE_SHA"
+            echo "source_tree=$SOURCE_TREE"
+            echo "diagnostic_head=${{ github.event.pull_request.head.sha }}"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "bytes_version=$BYTES_VERSION"
+            echo "bytes_checksum=$BYTES_CHECKSUM"
+            echo "module_lock_changed=$module_lock_changed"
+            echo "candidate_tree=$tree"
+            echo "candidate_commit=$commit"
+            echo "cargo_lock_sha256=$(shasum -a 256 codex-rs/Cargo.lock | awk '{print $1}')"
+            echo "module_lock_sha256=$(shasum -a 256 MODULE.bazel.lock | awk '{print $1}')"
+          } >artifacts/q049-macos/summary.env
+          cat artifacts/q049-macos/summary.env
+
+      - name: Upload macOS Q0.49 reconstruction
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-q0-49-macos-${{ github.event.pull_request.head.sha }}
+          path: artifacts/q049-macos
+          if-no-files-found: error
+          retention-days: 30
