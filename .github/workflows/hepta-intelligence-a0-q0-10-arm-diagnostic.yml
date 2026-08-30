@@ -1,4 +1,4 @@
-name: Hepta Intelligence A0 + Q0.10 ARM diagnostic
+name: Hepta Intelligence A0 + Q0.11 ARM diagnostic
 
 on:
   push:
@@ -10,24 +10,24 @@ permissions:
   contents: read
 
 concurrency:
-  group: hepta-intelligence-a0-q0-10-arm-${{ github.ref_name }}
+  group: hepta-intelligence-a0-q0-11-arm-${{ github.ref_name }}
   cancel-in-progress: true
 
 env:
   EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
-  EXPECTED_HEAD_SHA: 3345348133276d33d13e7a30115a754b81cc4734
-  EXPECTED_TREE_SHA: fc6dbb4091009ff24996ba2fab2b7ab3977548de
-  EXPECTED_SYNTHETIC_MERGE: 0a0052f06fe35ffb1fe6ed11cbfbeb7ca8ac0a50
-  EXPECTED_SYNTHETIC_TREE: fc6dbb4091009ff24996ba2fab2b7ab3977548de
+  EXPECTED_HEAD_SHA: d156ca6f2add0b196e6928b29f55c8274e52e8cf
+  EXPECTED_TREE_SHA: 55cc54698efb7f07d33592da218fe9a5bdad3464
+  EXPECTED_SYNTHETIC_MERGE: 4fa755a1c3a55a3323326b833fe3e24b28ba3f69
+  EXPECTED_SYNTHETIC_TREE: 55cc54698efb7f07d33592da218fe9a5bdad3464
   A0_SOURCE_HEAD: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
-  Q0_10_SECOND_PARENT: 8d7960f1805c6b2cda0d6274bf2541a535a4d30c
-  REPORT_DIR: /tmp/hepta-intelligence-a0-q0-10-arm
+  Q0_11_SECOND_PARENT: b32a278a2f8d3cbef0a931919f460a2e177d599f
+  REPORT_DIR: /tmp/hepta-intelligence-a0-q0-11-arm
   PYTHONPYCACHEPREFIX: /tmp/hepta-intelligence-python-cache
   CARGO_INCREMENTAL: "0"
 
 jobs:
   arm-high-risk-gates:
-    name: Exact 3345348 high-risk gates on ARM
+    name: Exact d156ca6 high-risk gates on ARM
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
     steps:
@@ -47,7 +47,7 @@ jobs:
           test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
           test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE_SHA"
-          test "$(git show -s --format=%P HEAD)" = "$A0_SOURCE_HEAD $Q0_10_SECOND_PARENT"
+          test "$(git show -s --format=%P HEAD)" = "$A0_SOURCE_HEAD $Q0_11_SECOND_PARENT"
 
           git fetch --no-tags --depth=2 origin refs/pull/93/merge
           test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_SYNTHETIC_MERGE"
@@ -97,7 +97,7 @@ jobs:
           print("PASS_A0_BLOB_IDENTITY")
           PY
 
-      - name: Validate Q0.9 and Q0.10 launcher source
+      - name: Validate Q0.9 through Q0.11 source contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -121,21 +121,33 @@ jobs:
           for token in required:
               if token not in launcher:
                   raise SystemExit(f"missing Q0.10 token: {token}")
-          forbidden = (
-              "continue-on-error",
-              "CODEX_BAZEL_TEST_SKIP_FILTERS=command_safety::powershell_parser::tests::",
+          if "continue-on-error" in launcher:
+              raise SystemExit("Q0.10 launcher masks a command failure")
+
+          patch = Path("patches/llvm_windows_mingw_compat.patch").read_text(encoding="utf-8")
+          q0_11_tokens = (
+              "diff --git a/toolchain/declare_toolchains.bzl b/toolchain/declare_toolchains.bzl",
+              'if target_os == "windows":',
+              'target_compatible_with.append("//constraints/windows/abi:gnullvm")',
+              "target_compatible_with = target_compatible_with",
           )
-          for token in forbidden:
-              if token in launcher:
-                  raise SystemExit(f"Q0.10 launcher contains masking token: {token}")
+          for token in q0_11_tokens:
+              if token not in patch:
+                  raise SystemExit(f"missing Q0.11 ABI-fence token: {token}")
 
           root_build = Path("BUILD.bazel").read_text(encoding="utf-8")
-          if 'name = "local_windows_msvc"' not in root_build:
-              raise SystemExit("local_windows_msvc platform missing")
-          if '"@llvm//constraints/windows/abi:msvc"' not in root_build:
-              raise SystemExit("MSVC ABI constraint missing")
-          print("PASS_Q0_9_Q0_10_STATIC_BINDING")
+          for token in (
+              'name = "local_windows_msvc"',
+              'name = "windows_x86_64_gnullvm"',
+              'name = "windows_x86_64_msvc"',
+              '"@llvm//constraints/windows/abi:msvc"',
+              '"@llvm//constraints/windows/abi:gnullvm"',
+          ):
+              if token not in root_build:
+                  raise SystemExit(f"missing platform contract token: {token}")
+          print("PASS_Q0_9_Q0_10_Q0_11_STATIC_BINDING")
           PY
+          ./scripts/check-module-bazel-lock.sh
 
       - name: Exercise no-key, explicit-target, and keyed launcher fixtures
         shell: bash
@@ -347,7 +359,7 @@ jobs:
         if: always() && !cancelled()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4
         with:
-          name: hepta-intelligence-a0-q0-10-arm-3345348-${{ github.run_id }}
-          path: /tmp/hepta-intelligence-a0-q0-10-arm/**
+          name: hepta-intelligence-a0-q0-11-arm-d156ca6-${{ github.run_id }}
+          path: /tmp/hepta-intelligence-a0-q0-11-arm/**
           if-no-files-found: error
           retention-days: 30
