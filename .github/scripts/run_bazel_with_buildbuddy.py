@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Compatibility wrapper plus Q0.17-Q0.28 qualification ratchets."""
+"""Compatibility wrapper plus Q0.17-Q0.28 qualification ratchets, composed at Q0.29."""
 
 import os
 import subprocess
@@ -18,6 +18,9 @@ from run_bazel_q022_negative_targets import (
     validate_keyless_windows_gnullvm_final_args as _validate_q026_compatibility_base,
 )
 from run_bazel_q027_lane_semantics import (
+    validate_keyless_windows_gnullvm_final_args as _validate_q027_compatibility_base,
+)
+from run_bazel_q028_startup_contract import (
     validate_keyless_windows_gnullvm_final_args,
 )
 from run_bazel_q028_execution_context import bind_verified_bazelisk
@@ -26,9 +29,11 @@ from run_bazel_q028_execution_context import (
     validate_keyless_windows_gnullvm_execution_context,
 )
 
-# Keep the selected Q0.26 compatibility base import machine-visible while the
-# Q0.27 validator composes and invokes it internally.
+# Keep both selected compatibility layers machine-visible while the exact
+# startup contract composes Q0.27 and the execution-context contract binds the
+# executable immediately before launch.
 assert _validate_q026_compatibility_base is not None
+assert _validate_q027_compatibility_base is not None
 
 
 def bazel_command(*args: str, env: Mapping[str, str] | None = None) -> list[str]:
@@ -81,8 +86,8 @@ def executable_command(
     if not _is_keyless_windows_gnullvm(command[1:], env):
         return command
 
-    # The Q0.27 argument semantics have already passed. Bind all remaining
-    # execution authority immediately before process launch.
+    # The exact Q0.28 startup and Q0.27 lane semantics have already passed.
+    # Bind all remaining execution authority immediately before process launch.
     prepare_bazelisk_environment(env)
     command = bind_verified_bazelisk(command, env)
     validate_keyless_windows_gnullvm_execution_context(command, env)

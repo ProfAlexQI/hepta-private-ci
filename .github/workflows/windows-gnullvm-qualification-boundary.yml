@@ -28,7 +28,12 @@ jobs:
         run: |
           python3 scripts/verify-windows-gnullvm-qualification-boundary.py
           python3 scripts/verify-windows-gnullvm-option-grammar.py
+          python3 scripts/verify-windows-gnullvm-final-command.py
+          python3 scripts/verify-windows-gnullvm-lane-policy.py
+          python3 scripts/verify-windows-gnullvm-lane-semantics.py
+          python3 scripts/verify-windows-gnullvm-startup-contract.py
           python3 scripts/verify-windows-gnullvm-execution-context.py
+          python3 scripts/verify-windows-gnullvm-q0-29-composition.py
 
       - name: Exercise default, diagnostic and authenticated branches
         shell: bash
@@ -54,7 +59,10 @@ jobs:
               "workflow_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
               "workflow_job": os.environ["GITHUB_JOB"],
               "qualification_mode": "qualifying_gnullvm_only",
+              "final_command_source_contract": "PASS_WINDOWS_GNULLVM_FINAL_COMMAND_SOURCE",
+              "startup_vector_source_contract": "PASS_WINDOWS_GNULLVM_STARTUP_CONTRACT_SOURCE",
               "execution_context_source_contract": "PASS_WINDOWS_GNULLVM_Q0_28_EXECUTION_CONTEXT_SOURCE",
+              "q0_29_composition_source_contract": "PASS_WINDOWS_GNULLVM_Q0_29_COMPOSITION_SOURCE",
               "official_bazelisk_version": "1.28.1",
               "official_bazelisk_windows_x86_64_sha256": "b9d65a1f7c2d7af885a96a4fd5aa36b40fb41816d30944390569eef908bdc954",
               "official_bazel_version": "9.0.0",
