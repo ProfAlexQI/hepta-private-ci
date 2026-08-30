@@ -20,6 +20,13 @@ CI_TEST_FILTERS = (
     "suite::code_mode::code_mode_can_call_hidden_dynamic_tools,"
     "tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child"
 )
+CLIPPY_JOB_METADATA = "--build_metadata=TAG_job=clippy"
+RELEASE_JOB_METADATA = "--build_metadata=TAG_job=verify-release-build"
+CANONICAL_RELEASE_TARGETS = [
+    "//codex-rs/...",
+    "-//codex-rs/core/tests/remote_env_windows:smoke-test",
+    "-//codex-rs/v8-poc:all",
+]
 
 
 class FinalCommandQualificationTest(unittest.TestCase):
@@ -43,11 +50,8 @@ class FinalCommandQualificationTest(unittest.TestCase):
         return temp, bazelrc, env
 
     @staticmethod
-    def exact_args(*extra: str) -> list[str]:
+    def common_exact_options() -> list[str]:
         return [
-            "build",
-            "--config=clippy",
-            "--config=ci-windows",
             "--host_platform=//:local_windows_msvc",
             "--platforms=//:windows_x86_64_gnullvm",
             "--repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0",
@@ -65,9 +69,35 @@ class FinalCommandQualificationTest(unittest.TestCase):
             f"--action_env=PATH={CI_WINDOWS_PATH}",
             f"--host_action_env=PATH={CI_WINDOWS_PATH}",
             f"--test_env=PATH={CI_WINDOWS_PATH}",
+        ]
+
+    @classmethod
+    def exact_args(cls, *extra: str) -> list[str]:
+        return [
+            "build",
+            "--config=clippy",
+            "--config=ci-windows",
+            *cls.common_exact_options(),
+            "--skip_incompatible_explicit_targets",
+            CLIPPY_JOB_METADATA,
             *extra,
             "--",
             "//codex-rs/utils/rustls-provider:rustls-provider-provider-test",
+        ]
+
+    @classmethod
+    def release_args(cls) -> list[str]:
+        return [
+            "build",
+            "--config=ci-windows",
+            *cls.common_exact_options(),
+            "--compilation_mode=fastbuild",
+            "--@rules_rust//rust/settings:extra_rustc_flag=-Cdebug-assertions=no",
+            "--@rules_rust//rust/settings:extra_exec_rustc_flag=-Cdebug-assertions=no",
+            RELEASE_JOB_METADATA,
+            "--build_metadata=TAG_rust_debug_assertions=off",
+            "--",
+            *CANONICAL_RELEASE_TARGETS,
         ]
 
     def run_exact(self, args: list[str] | None = None) -> list[str]:
@@ -111,16 +141,16 @@ class FinalCommandQualificationTest(unittest.TestCase):
     def test_workspace_user_bazelrc_fails_closed(self) -> None:
         temp, bazelrc, env = self.fixture()
         self.addCleanup(temp.cleanup)
-        (Path(temp.name) / "user.bazelrc").write_text("common --jobs=999\n", encoding="utf-8")
+        (Path(temp.name) / "user.bazelrc").write_text(
+            "common --jobs=999\n",
+            encoding="utf-8",
+        )
         expected_blob = subject._git_blob_sha1(bazelrc.read_bytes())
         with patch.object(subject, "QUALIFICATION_BAZELRC_GIT_BLOB_SHA1", expected_blob):
             with self.assertRaisesRegex(ValueError, "forbids user.bazelrc"):
                 subject.bazel_command(*self.exact_args(), env=env)
 
     def test_split_form_authority_option_fails_closed(self) -> None:
-        # The shell wrapper appends the canonical equals-form target but does
-        # not remove a caller-supplied split form. The final-command gate must
-        # reject the smuggled pair even though the canonical target is present.
         args = self.exact_args("--platforms", "//:attacker_platform")
         with self.assertRaisesRegex(ValueError, "split-form '--platforms'"):
             self.run_exact(args)
@@ -135,7 +165,9 @@ class FinalCommandQualificationTest(unittest.TestCase):
 
     def test_additional_action_environment_fails_closed(self) -> None:
         with self.assertRaisesRegex(ValueError, "rejects '--action_env=RUSTFLAGS"):
-            self.run_exact(self.exact_args("--action_env=RUSTFLAGS=-Ctarget-feature=+crt-static"))
+            self.run_exact(
+                self.exact_args("--action_env=RUSTFLAGS=-Ctarget-feature=+crt-static")
+            )
 
     def test_duplicate_exact_metadata_fails_closed(self) -> None:
         with self.assertRaisesRegex(ValueError, "requires exactly"):
@@ -147,7 +179,6 @@ class FinalCommandQualificationTest(unittest.TestCase):
         args = ["--bazelrc=attacker.bazelrc", *self.exact_args()]
         with self.assertRaisesRegex(ValueError, "rejects caller rc controls"):
             self.run_exact(args)
-
 
     def test_boolean_equals_rc_reenable_fails_closed(self) -> None:
         args = ["--system_rc=true", *self.exact_args()]
@@ -166,15 +197,17 @@ class FinalCommandQualificationTest(unittest.TestCase):
             self.run_exact(args)
 
     def test_release_target_exclusions_remain_canonical_payload(self) -> None:
-        args = self.exact_args()
-        release_targets = [
-            "//codex-rs/...",
-            "-//codex-rs/core/tests/remote_env_windows:smoke-test",
-            "-//codex-rs/v8-poc:all",
-        ]
-        args[-1:] = release_targets
-        command = self.run_exact(args)
-        self.assertEqual(command[-len(release_targets) :], release_targets)
+        command = self.run_exact(self.release_args())
+        self.assertEqual(
+            command[-len(CANONICAL_RELEASE_TARGETS) :],
+            CANONICAL_RELEASE_TARGETS,
+        )
+
+    def test_arbitrary_negative_target_fails_closed(self) -> None:
+        args = self.release_args()
+        args[-1:] = ["-//..."]
+        with self.assertRaisesRegex(ValueError, "exact canonical target set"):
+            self.run_exact(args)
 
     def test_authenticated_windows_path_remains_remote_passthrough(self) -> None:
         args = ["build", "--config=ci-windows-cross", "--", "//codex-rs/cli:codex"]
