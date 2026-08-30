@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: hepta-a0-v451-operational-drift-publisher
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   REPOSITORY: ProfHepta/hepta-private-ci
@@ -33,11 +33,20 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 45
     steps:
+      - name: Checkout immutable publisher source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: publisher
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Checkout exact current A0 candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: ${{ env.REPOSITORY }}
           ref: ${{ env.OLD_A0_HEAD }}
+          path: target
           fetch-depth: 2
           persist-credentials: true
 
@@ -47,390 +56,17 @@ jobs:
           version: 0.11.3
           activate-environment: false
 
-      - name: Verify exact source identity
+      - name: Build, validate and publish immutable staging candidate
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_REPOSITORY" = "$REPOSITORY"
-          test "$(git rev-parse HEAD)" = "$OLD_A0_HEAD"
-          test "$(git rev-parse HEAD^{tree})" = "$OLD_A0_TREE"
-          test "$(git rev-parse HEAD^)" = "$Q0_HEAD"
-          test "$(git rev-parse HEAD^^{tree})" = "$Q0_TREE"
-          test "$(git rev-list --count "$Q0_HEAD"..HEAD)" = 1
+          python3 publisher/automation/run-hepta-a0-v451-operational-drift-publisher-fixed.py target
 
-      - name: Patch canonical documents and strict validator
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$REPORT_DIR"
-          python3 - "$REPORT_DIR/source-patch-report.json" <<'PY'
-          from __future__ import annotations
-
-          import copy
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-          import sys
-          from typing import Any
-
-          root = Path.cwd()
-          plan = root / "plans/hepta-intelligence"
-          integration_path = plan / "HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json"
-          current_path = plan / "HEPTA_INTELLIGENCE_CURRENT_PLAN.json"
-          registry_path = plan / "HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json"
-          validator_path = root / "scripts/hepta-intelligence-current-truth.py"
-          spec_path = "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md"
-          integration_rel = "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json"
-          current_rel = "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json"
-          registry_rel = "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json"
-
-          def fail(message: str) -> None:
-              raise SystemExit(f"FAIL_HEPTA_A0_OPERATIONAL_DRIFT_PUBLISHER: {message}")
-
-          def pairs(items: list[tuple[str, Any]]) -> dict[str, Any]:
-              out: dict[str, Any] = {}
-              for key, value in items:
-                  if key in out:
-                      fail(f"duplicate JSON key {key}")
-                  out[key] = value
-              return out
-
-          def load(path: Path) -> dict[str, Any]:
-              value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=pairs)
-              if not isinstance(value, dict):
-                  fail(f"{path} is not an object")
-              return value
-
-          def canonical(value: Any) -> bytes:
-              return json.dumps(
-                  value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-              ).encode("utf-8")
-
-          def dump(path: Path, value: Any) -> None:
-              path.write_text(
-                  json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
-                  encoding="utf-8",
-              )
-
-          def sha(path: Path) -> str:
-              return hashlib.sha256(path.read_bytes()).hexdigest()
-
-          old_head = os.environ["OLD_A0_HEAD"]
-          old_tail = os.environ["PREVIOUS_PROVENANCE_TAIL"]
-          spec_version = os.environ["SPEC_VERSION"]
-          spec_sha = os.environ["SPEC_SHA256"]
-          old_spec_version = os.environ["OLD_SPEC_VERSION"]
-          old_spec_sha = os.environ["OLD_SPEC_SHA256"]
-
-          integration = load(integration_path)
-          expected_old_document = {
-              "classification": "SUBORDINATE_EXECUTION_SPEC",
-              "content_sha256": old_spec_sha,
-              "current_plan_authority": False,
-              "path": spec_path,
-              "production_authority": False,
-              "promotion_authority": False,
-              "version": old_spec_version,
-          }
-          if integration.get("operational_documents") != [expected_old_document]:
-              fail("unexpected pre-repair operational_documents bytes")
-          integration["operational_documents"] = [
-              {
-                  **expected_old_document,
-                  "content_sha256": spec_sha,
-                  "version": spec_version,
-              }
-          ]
-          dump(integration_path, integration)
-          integration_sha = sha(integration_path)
-
-          current = load(current_path)
-          provenance = current.get("a0_previous_exact_head_provenance")
-          if not isinstance(provenance, list) or not provenance:
-              fail("A0 provenance list missing")
-          if provenance[-1] != old_tail or old_head in provenance:
-              fail("A0 provenance tail does not match the expected predecessor")
-          provenance.append(old_head)
-          dump(current_path, current)
-          current_sha = sha(current_path)
-
-          validator = validator_path.read_text(encoding="utf-8")
-          if "def validate_operational_documents(" in validator:
-              fail("operational-document validator already exists unexpectedly")
-          helper_marker = "\ndef validate_gap_entries(\n"
-          helper = '''
-          def validate_operational_documents(
-              integration: dict[str, Any], spec_sha256: str
-          ) -> None:
-              expected = [
-                  {
-                      "classification": "SUBORDINATE_EXECUTION_SPEC",
-                      "content_sha256": spec_sha256,
-                      "current_plan_authority": False,
-                      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md",
-                      "production_authority": False,
-                      "promotion_authority": False,
-                      "version": SPEC_VERSION,
-                  }
-              ]
-              require(
-                  integration.get("operational_documents") == expected,
-                  "integration operational document drift",
-              )
-
-          '''
-          helper = "\n" + "\n".join(
-              line[10:] if line.startswith("          ") else line
-              for line in helper.splitlines()
-          )
-          if validator.count(helper_marker) != 1:
-              fail("cannot locate validator helper insertion point")
-          validator = validator.replace(helper_marker, helper + helper_marker, 1)
-
-          call_marker = '    global_ledger = integration.get("gap_closure_ledger", {})\n'
-          call = (
-              '    validate_operational_documents(integration, sha(PATHS["spec"]))\n'
-              + call_marker
-          )
-          if validator.count(call_marker) != 1:
-              fail("cannot locate operational-document call insertion point")
-          validator = validator.replace(call_marker, call, 1)
-
-          provenance_marker = (
-              f'            "{old_tail}",\n'
-              '        ],\n'
-              '        "A0 provenance drift",\n'
-          )
-          provenance_replacement = (
-              f'            "{old_tail}",\n'
-              f'            "{old_head}",\n'
-              '        ],\n'
-              '        "A0 provenance drift",\n'
-          )
-          if validator.count(provenance_marker) != 1:
-              fail("cannot locate exact A0 provenance assertion")
-          validator = validator.replace(provenance_marker, provenance_replacement, 1)
-          validator_path.write_text(validator, encoding="utf-8")
-          validator_sha = sha(validator_path)
-
-          registry = load(registry_path)
-          inputs = registry.get("registered_canonical_inputs")
-          if not isinstance(inputs, list):
-              fail("registered_canonical_inputs missing")
-          by_path = {item.get("path"): item for item in inputs if isinstance(item, dict)}
-          current_entry = by_path.get(current_rel)
-          integration_entry = by_path.get(integration_rel)
-          self_entry = by_path.get(registry_rel)
-          if current_entry is None or integration_entry is None or self_entry is None:
-              fail("required canonical input entry missing")
-          if current_entry.get("content_sha256") != "3d0124669946e1b97a1c0ae6c46a38cfd8d4e64a0bde4a9b85c9529b8ec4454f":
-              fail("unexpected pre-repair current-plan digest")
-          if integration_entry.get("content_sha256") != "95d79fd4786c726e165fbc35e097b9bb511fa0023fd36f482f361b36edeb1b16":
-              fail("unexpected pre-repair integration-candidate digest")
-          if self_entry.get("content_sha256") != "b4a600fb4e376ec68746034bba3528371aeb1db7519c31ef8d2d0638b373751d":
-              fail("unexpected pre-repair registry self digest")
-          current_entry["content_sha256"] = current_sha
-          integration_entry["content_sha256"] = integration_sha
-          self_entry["content_sha256"] = None
-          self_digest = hashlib.sha256(canonical(registry)).hexdigest()
-          self_entry["content_sha256"] = self_digest
-          dump(registry_path, registry)
-
-          registry_check = load(registry_path)
-          check_inputs = registry_check["registered_canonical_inputs"]
-          check_self = next(item for item in check_inputs if item["path"] == registry_rel)
-          observed_self = check_self["content_sha256"]
-          check_self["content_sha256"] = None
-          if hashlib.sha256(canonical(registry_check)).hexdigest() != observed_self:
-              fail("registry self digest did not reproduce")
-
-          report = {
-              "schema": "hepta_a0_operational_document_drift_source_patch_v1",
-              "old_a0_head": old_head,
-              "q0_head": os.environ["Q0_HEAD"],
-              "changed_paths": [
-                  current_rel,
-                  registry_rel,
-                  integration_rel,
-                  "scripts/hepta-intelligence-current-truth.py",
-              ],
-              "current_plan_sha256": current_sha,
-              "document_registry_sha256": sha(registry_path),
-              "document_registry_self_sha256": self_digest,
-              "integration_candidate_sha256": integration_sha,
-              "current_truth_validator_sha256": validator_sha,
-              "spec_version": spec_version,
-              "spec_sha256": spec_sha,
-              "all_authority_false": True,
-              "source_writeback_from_candidate_workflow": False,
-          }
-          Path(sys.argv[1]).write_text(
-              json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-          )
-          PY
-
-      - name: Run exact canonical and negative gates
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m py_compile \
-            scripts/hepta-intelligence-current-truth.py \
-            scripts/verify-hepta-intelligence-a0-authority.py \
-            scripts/verify-hepta-intelligence-document-authority.py \
-            scripts/verify-hepta-intelligence-master-plan.py
-          uv run --project scripts --locked ruff format --check \
-            scripts/hepta-intelligence-current-truth.py \
-            scripts/verify-hepta-intelligence-a0-authority.py \
-            scripts/verify-hepta-intelligence-document-authority.py \
-            scripts/verify-hepta-intelligence-master-plan.py
-          uv run --project scripts --locked ruff check \
-            scripts/hepta-intelligence-current-truth.py \
-            scripts/verify-hepta-intelligence-a0-authority.py \
-            scripts/verify-hepta-intelligence-document-authority.py \
-            scripts/verify-hepta-intelligence-master-plan.py
-          python3 scripts/verify-hepta-intelligence-master-plan.py
-          python3 scripts/verify-hepta-intelligence-document-authority.py
-          python3 scripts/hepta-intelligence-current-truth.py --verify
-          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
-            python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
-          done
-          python3 - <<'PY'
-          import copy
-          import importlib.util
-          from pathlib import Path
-
-          path = Path("scripts/hepta-intelligence-current-truth.py")
-          spec = importlib.util.spec_from_file_location("hepta_current_truth", path)
-          if spec is None or spec.loader is None:
-              raise SystemExit("cannot load current-truth validator")
-          module = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(module)
-          integration = module.load(module.PATHS["integration"])
-          bad = copy.deepcopy(integration)
-          bad["operational_documents"][0]["version"] = "1.2.0"
-          try:
-              module.validate_operational_documents(bad, module.sha(module.PATHS["spec"]))
-          except SystemExit as error:
-              if "integration operational document drift" not in str(error):
-                  raise
-          else:
-              raise SystemExit("negative version-drift fixture was accepted")
-          bad = copy.deepcopy(integration)
-          bad["operational_documents"][0]["production_authority"] = True
-          try:
-              module.validate_operational_documents(bad, module.sha(module.PATHS["spec"]))
-          except SystemExit:
-              pass
-          else:
-              raise SystemExit("negative authority fixture was accepted")
-          print("PASS_HEPTA_A0_OPERATIONAL_DOCUMENT_NEGATIVE_FIXTURES")
-          PY
-          git diff --check "$OLD_A0_HEAD"
-          test -z "$(git status --porcelain --untracked-files=no | grep -v '^ M ' || true)"
-
-      - name: Build immutable Q0-single-parent staging commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          expected_changed="$RUNNER_TEMP/expected-changed.txt"
-          actual_changed="$RUNNER_TEMP/actual-changed.txt"
-          replacement_changed="$RUNNER_TEMP/replacement-changed.txt"
-          cat > "$expected_changed" <<'EOF'
-          plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json
-          plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json
-          plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json
-          scripts/hepta-intelligence-current-truth.py
-          EOF
-          git diff --name-only "$OLD_A0_HEAD" | sort > "$actual_changed"
-          diff -u "$expected_changed" "$actual_changed"
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
-          git add \
-            plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json \
-            plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json \
-            plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json \
-            scripts/hepta-intelligence-current-truth.py
-          tree="$(git write-tree)"
-          commit="$(printf '%s\n' 'fix(intelligence): close V4.5.1 operational-document drift' | git commit-tree "$tree" -p "$Q0_HEAD")"
-          test "$(git rev-parse "$commit^")" = "$Q0_HEAD"
-          test "$(git rev-parse "$commit^{tree}")" = "$tree"
-          test "$(git rev-list --count "$Q0_HEAD".."$commit")" = 1
-          python3 - "$replacement_changed" <<'PY'
-          import json
-          from pathlib import Path
-          import subprocess
-          import sys
-          integration = json.loads(Path("plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json").read_text())
-          actual = sorted(subprocess.check_output(
-              ["git", "diff", "--name-only", __import__("os").environ["Q0_HEAD"], __import__("os").environ.get("CANDIDATE_COMMIT", "HEAD")],
-              text=True,
-          ).splitlines())
-          Path(sys.argv[1]).write_text("\n".join(actual) + "\n")
-          expected = sorted(integration["allowed_changed_paths"])
-          if actual != expected:
-              raise SystemExit(f"replacement path drift: {actual}")
-          PY
-        env:
-          CANDIDATE_COMMIT: ${{ env.Q0_HEAD }}
-
-      - name: Publish verified staging ref and receipt
-        shell: bash
-        run: |
-          set -euo pipefail
-          tree="$(git write-tree)"
-          commit="$(printf '%s\n' 'fix(intelligence): close V4.5.1 operational-document drift' | git commit-tree "$tree" -p "$Q0_HEAD")"
-          test "$(git rev-parse "$commit^")" = "$Q0_HEAD"
-          git diff --name-only "$Q0_HEAD" "$commit" | sort > "$REPORT_DIR/replacement-changed-paths.txt"
-          python3 - "$REPORT_DIR/replacement-receipt.json" "$commit" "$tree" <<'PY'
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-          import subprocess
-          import sys
-          commit, tree = sys.argv[2:]
-          changed = subprocess.check_output(
-              ["git", "diff", "--name-only", os.environ["Q0_HEAD"], commit], text=True
-          ).splitlines()
-          expected = sorted(json.loads(Path(
-              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json"
-          ).read_text())["allowed_changed_paths"])
-          if sorted(changed) != expected:
-              raise SystemExit("Q0 replacement changed-path allowlist mismatch")
-          receipt = {
-              "schema": "hepta_a0_v451_operational_drift_publisher_receipt_v1",
-              "repository": os.environ["REPOSITORY"],
-              "publisher_workflow": ".github/workflows/hepta-a0-v451-operational-drift-publisher.yml",
-              "publisher_run_id": int(os.environ["GITHUB_RUN_ID"]),
-              "old_a0_head": os.environ["OLD_A0_HEAD"],
-              "candidate_commit": commit,
-              "candidate_tree": tree,
-              "sole_parent": os.environ["Q0_HEAD"],
-              "staging_branch": os.environ["STAGING_BRANCH"],
-              "changed_paths": sorted(changed),
-              "changed_paths_sha256": hashlib.sha256(("\n".join(sorted(changed)) + "\n").encode()).hexdigest(),
-              "source_validators_passed": True,
-              "negative_fixtures_passed": True,
-              "candidate_workflow_source_writeback": False,
-              "a0_candidate_qualified": False,
-              "selected": False,
-              "runtime_wired": False,
-              "production_authority": False,
-          }
-          Path(sys.argv[1]).write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
-          PY
-          git push --force origin "$commit:refs/heads/$STAGING_BRANCH"
-          printf '%s\n' "$commit" > "$REPORT_DIR/CANDIDATE-COMMIT"
-          printf '%s\n' "$tree" > "$REPORT_DIR/CANDIDATE-TREE"
-          shasum -a 256 "$REPORT_DIR"/* > "$REPORT_DIR/SHA256SUMS"
-          echo "PASS_HEPTA_A0_V451_OPERATIONAL_DRIFT_STAGING commit=$commit tree=$tree parent=$Q0_HEAD"
-
-      - name: Upload publisher evidence
+      - name: Upload deterministic publisher evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: hepta-a0-v451-operational-drift-publisher-${{ github.sha }}
-          path: artifacts/hepta-a0-v451-operational-drift-publisher/**
+          path: target/artifacts/hepta-a0-v451-operational-drift-publisher/**
           if-no-files-found: error
           retention-days: 30
           compression-level: 6
