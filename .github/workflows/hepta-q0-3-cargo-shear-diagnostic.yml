@@ -1,0 +1,97 @@
+name: Hepta Intelligence Q0.3 cargo-shear JSON diagnostic
+
+on:
+  push:
+    branches:
+      - "automation/hepta-q0-3-cargo-shear-diagnostic-20260830"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-q0-3-cargo-shear-diagnostic-20260830
+  cancel-in-progress: true
+
+env:
+  EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+  EXPECTED_HEAD: be4e5675bd2f7142cca5a141f3c050547f9a8bd6
+  EXPECTED_TREE: c8c0104acfb69346bb6f8b6c639f6bbb3d94cb9a
+
+jobs:
+  diagnose:
+    name: Emit exact Q0.2 cargo-shear findings
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact Q0.2 candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXPECTED_HEAD }}
+          path: candidate
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify immutable candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "$(git -C candidate rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$(git -C candidate rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+
+      - name: Install cargo-shear 1.11.2
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: cargo-shear@1.11.2
+
+      - name: Produce machine-readable findings
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/q0-3-cargo-shear
+          set +e
+          (cd candidate && cargo shear --deny-warnings --format=json) \
+            > artifacts/q0-3-cargo-shear/findings.json \
+            2> artifacts/q0-3-cargo-shear/stderr.txt
+          status=$?
+          set -e
+          printf '%s\n' "$status" > artifacts/q0-3-cargo-shear/exit-code.txt
+          test "$status" -eq 1
+          python3 - <<'PY'
+          import json
+          import pathlib
+
+          path = pathlib.Path("artifacts/q0-3-cargo-shear/findings.json")
+          report = json.loads(path.read_text(encoding="utf-8"))
+          findings = report.get("findings")
+          if not isinstance(findings, list) or not findings:
+              raise SystemExit("cargo-shear JSON report contains no findings")
+          print(json.dumps({
+              "summary": report.get("summary"),
+              "findings": [
+                  {
+                      "code": item.get("code"),
+                      "severity": item.get("severity"),
+                      "file": item.get("file"),
+                      "message": item.get("message"),
+                      "help": item.get("help"),
+                      "fixable": item.get("fixable"),
+                  }
+                  for item in findings
+              ],
+          }, indent=2, sort_keys=True))
+          PY
+          test -z "$(git -C candidate status --porcelain --untracked-files=no)"
+
+      - name: Upload diagnostic artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-q0-3-cargo-shear-findings-${{ env.EXPECTED_HEAD }}
+          path: artifacts/q0-3-cargo-shear/**
+          if-no-files-found: error
+          retention-days: 30
