@@ -34,9 +34,19 @@ jobs:
           git merge-base --is-ancestor "$base" HEAD
           mapfile -t changed < <(git diff --name-only --no-renames "$base" HEAD)
           printf '%s\n' "${changed[@]}"
-          test "${#changed[@]}" -eq 2
-          test "${changed[0]}" = ".github/workflows/hepta-intelligence-q0-49-lock-shear-diagnostic.yml"
-          test "${changed[1]}" = "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_49_LOCK_DIAGNOSTIC_TRIGGER.txt"
+          test "${#changed[@]}" -eq 3
+          for path in "${changed[@]}"; do
+            case "$path" in
+              .github/workflows/hepta-intelligence-q0-49-lock-shear-diagnostic.yml|\
+              .github/workflows/hepta-intelligence-q0-49-lock-shear-arm-diagnostic.yml|\
+              plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_49_LOCK_DIAGNOSTIC_TRIGGER.txt)
+                ;;
+              *)
+                echo "unexpected diagnostic path: $path" >&2
+                exit 1
+                ;;
+            esac
+          done
           git diff --check "$base" HEAD
 
       - name: Install repository CI prerequisites
