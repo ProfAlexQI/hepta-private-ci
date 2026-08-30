@@ -1,0 +1,196 @@
+name: Hepta Intelligence Q0.2 exact format evidence
+
+on:
+  push:
+    branches:
+      - "automation/hepta-q0-2-fmt-evidence-macos-20260830-r2"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-q0-2-fmt-evidence-macos-20260830-r2
+  cancel-in-progress: true
+
+env:
+  REPOSITORY: ProfHepta/hepta-private-ci
+  BASE_SHA: 99b2b44c00bf7b50b588fffddc299bf55fac698a
+  HEAD_SHA: be4e5675bd2f7142cca5a141f3c050547f9a8bd6
+  HEAD_TREE: c8c0104acfb69346bb6f8b6c639f6bbb3d94cb9a
+  MERGE_SHA: cf0526139d1361e31960fefb09b9f844a8687b89
+  MERGE_TREE: c8c0104acfb69346bb6f8b6c639f6bbb3d94cb9a
+  SOURCE_FORMATTER_COMMIT: 705133f90f6fcff7bd3c77b3831f66bd3dc4d071
+  SOURCE_FORMATTER_RUN: "33282599691"
+  SOURCE_FORMATTER_JOB: "99180176886"
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  exact-pair:
+    name: Q0.2 exact-head and synthetic-merge full fmt-check
+    runs-on: macos-15
+    timeout-minutes: 75
+    steps:
+      - name: Checkout exact Q0.2 head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          fetch-depth: 3
+          persist-credentials: false
+
+      - name: Prepare locked repository formatting toolchain
+        uses: ./.github/actions/setup-ci
+
+      - name: Set up locked uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: 0.11.3
+
+      - name: Install Rust 1.95 formatter
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+          rustup default 1.95.0
+          test "$(rustc -V | awk '{print $2}')" = "1.95.0"
+          just --version
+          uv --version
+          dotslash --version
+
+      - name: Verify exact Q0.2 head and formatter-only surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REPOSITORY}" = "${REPOSITORY}"
+          test "$(git rev-parse HEAD)" = "${HEAD_SHA}"
+          test "$(git rev-parse HEAD^{tree})" = "${HEAD_TREE}"
+          test "$(git rev-parse HEAD^)" = "${BASE_SHA}"
+          test "$(git rev-list --count "${BASE_SHA}"..HEAD)" = "1"
+          git diff --check "${BASE_SHA}" "${HEAD_SHA}"
+
+          python3 - <<'PY'
+          import os
+          import subprocess
+
+          base = os.environ['BASE_SHA']
+          head = os.environ['HEAD_SHA']
+          changed = subprocess.check_output(
+              ['git', 'diff', '--name-only', base, head], text=True
+          ).splitlines()
+          assert len(changed) == 42, {'expected': 42, 'actual': len(changed)}
+          assert len(set(changed)) == 42
+          unexpected = [
+              path
+              for path in changed
+              if not (
+                  (path.startswith('codex-rs/') and path.endswith('.rs'))
+                  or (path.startswith('scripts/') and path.endswith('.py'))
+              )
+          ]
+          assert not unexpected, {'unexpected': unexpected}
+          forbidden = {
+              '.github/workflows/hepta-q0-format-once.yml',
+              'scripts/verify-hepta-intelligence-document-authority.py',
+              'scripts/verify-hepta-intelligence-master-plan.py',
+          }
+          overlap = sorted(forbidden.intersection(changed))
+          assert not overlap, {'forbidden_overlap': overlap}
+          print('\n'.join(changed))
+          PY
+
+      - name: Run exact-head complete repository fmt-check
+        shell: bash
+        run: |
+          set -euo pipefail
+          just fmt-check
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Fetch exact Q0.2 synthetic merge candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=3 origin "${MERGE_SHA}"
+          git checkout --detach "${MERGE_SHA}"
+
+      - name: Verify exact merge topology and run complete fmt-check
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${MERGE_SHA}"
+          test "$(git rev-parse HEAD^{tree})" = "${MERGE_TREE}"
+          test "$(git rev-parse HEAD^1)" = "${BASE_SHA}"
+          test "$(git rev-parse HEAD^2)" = "${HEAD_SHA}"
+          test "$(git rev-list --parents -n 1 HEAD | wc -w | tr -d ' ')" = "3"
+          git diff --check "${BASE_SHA}" "${HEAD_SHA}"
+          just fmt-check
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Emit immutable Q0.2 pair receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          receipt_dir=/tmp/hepta-q0-2-fmt-evidence
+          mkdir -p "${receipt_dir}"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          format_script = Path('scripts/format.py')
+          justfile = Path('justfile')
+          receipt = {
+              'schema': 'hepta_intelligence_q0_2_fmt_pair_v1',
+              'status': 'PASS_HEPTA_INTELLIGENCE_Q0_2_FMT_EXACT_PAIR',
+              'repository': os.environ['REPOSITORY'],
+              'base': os.environ['BASE_SHA'],
+              'head': os.environ['HEAD_SHA'],
+              'head_tree': os.environ['HEAD_TREE'],
+              'synthetic_merge': os.environ['MERGE_SHA'],
+              'synthetic_merge_tree': os.environ['MERGE_TREE'],
+              'observed_checkout': subprocess.check_output(
+                  ['git', 'rev-parse', 'HEAD'], text=True
+              ).strip(),
+              'changed_path_count': 42,
+              'gate': ['just', 'fmt-check'],
+              'gate_components': [
+                  'Just', 'Rust', 'Bazel/Starlark', 'Python SDK', 'Python scripts'
+              ],
+              'justfile_blob': subprocess.check_output(
+                  ['git', 'rev-parse', 'HEAD:justfile'], text=True
+              ).strip(),
+              'justfile_sha256': hashlib.sha256(justfile.read_bytes()).hexdigest(),
+              'format_script_blob': subprocess.check_output(
+                  ['git', 'rev-parse', 'HEAD:scripts/format.py'], text=True
+              ).strip(),
+              'format_script_sha256': hashlib.sha256(format_script.read_bytes()).hexdigest(),
+              'source_formatter_commit': os.environ['SOURCE_FORMATTER_COMMIT'],
+              'source_formatter_run': os.environ['SOURCE_FORMATTER_RUN'],
+              'source_formatter_job': os.environ['SOURCE_FORMATTER_JOB'],
+              'workflow_run_id': os.environ['GITHUB_RUN_ID'],
+              'workflow_run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'workflow_job': os.environ['GITHUB_JOB'],
+              'candidate_source_writeback': True,
+              'evidence_workflow_writeback': False,
+              'formatter_only': True,
+              'runtime_behavior_change': False,
+              'runtime_authority': False,
+              'production_authority': False,
+              'selected': False,
+          }
+          canonical = json.dumps(receipt, sort_keys=True, separators=(',', ':')).encode()
+          receipt['receipt_binding_sha256'] = hashlib.sha256(canonical).hexdigest()
+          Path('/tmp/hepta-q0-2-fmt-evidence/receipt.json').write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          PY
+          cat "${receipt_dir}/receipt.json" | tee -a "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload immutable Q0.2 pair receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-q0-2-fmt-pair-${{ env.HEAD_SHA }}
+          path: /tmp/hepta-q0-2-fmt-evidence/receipt.json
+          if-no-files-found: error
+          retention-days: 30
