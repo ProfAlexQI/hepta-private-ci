@@ -15,7 +15,16 @@ concurrency:
 
 jobs:
   diagnose-and-qualify:
-    runs-on: ubuntu-24.04-arm
+    name: qualify (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-22.04
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+          - macos-14
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
       - name: Checkout exact controller generation
@@ -43,68 +52,8 @@ jobs:
           test "$(git hash-object codex-rs/hepta-fleet/src/registry_tests.rs)" = 6943d7ea341237867d683eecca551b050ba847cd
           test "$(git hash-object codex-rs/hepta-supervisor/src/supervisor_tests.rs)" = e8e996e74721f43e31c88b86a81e56494e0e7aa3
           test "$(git hash-object codex-rs/.config/nextest.toml)" = f3f3ca2607190b6c7f4568fbcb365519250c7803
-          python3 - <<'PY'
-          from pathlib import Path
-
-          script_path = Path(
-              ".github/scripts/hepta-p0-7a-supervisor-gap-closure.py"
-          ).resolve()
-          source = script_path.read_text()
-          old = (
-              "    if shell_count != 2:\n"
-              "        raise SystemExit(f\"paired release fixture: expected two /bin/sh anchors, found {shell_count}\")\n"
-          )
-          new = (
-              "    if shell_count != 7:\n"
-              "        raise SystemExit(f\"paired release fixture: expected seven /bin/sh anchors, found {shell_count}\")\n"
-          )
-          count = source.count(old)
-          if count != 1:
-              raise SystemExit(
-                  f"supervisor shell fixture invariant: expected one anchor, found {count}"
-              )
-          source = source.replace(old, new, 1)
-          scope = {"__file__": str(script_path), "__name__": "__main__"}
-          exec(compile(source, str(script_path), "exec"), scope)
-          PY
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path("codex-rs/hepta-supervisor/src/supervisor_tests.rs")
-          text = path.read_text()
-          replacements = [
-              (
-                  '        release(\n'
-                  '            "release-spawn-fails",\n'
-                  '            "/fake/release-spawn-fails/hepta-agentd",\n'
-                  '        )?,',
-                  '        release(\n'
-                  '            &fleet,\n'
-                  '            "release-spawn-fails",\n'
-                  '            "/fake/release-spawn-fails/hepta-agentd",\n'
-                  '        )?,',
-              ),
-              (
-                  '        release(\n'
-                  '            "release-health-fails",\n'
-                  '            "/fake/release-health-fails/hepta-agentd",\n'
-                  '        )?,',
-                  '        release(\n'
-                  '            &fleet,\n'
-                  '            "release-health-fails",\n'
-                  '            "/fake/release-health-fails/hepta-agentd",\n'
-                  '        )?,',
-              ),
-          ]
-          for old, new in replacements:
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(
-                      f"multiline release fixture: expected one anchor, found {count}"
-                  )
-              text = text.replace(old, new, 1)
-          path.write_text(text)
-          PY
+          python3 -m py_compile .github/scripts/hepta-p0-7a-supervisor-gap-closure-v2.py
+          python3 .github/scripts/hepta-p0-7a-supervisor-gap-closure-v2.py
           rustfmt --edition 2024 --config-path codex-rs/rustfmt.toml \
             codex-rs/hepta-fleet/src/registry.rs \
             codex-rs/hepta-fleet/src/registry_tests.rs \
@@ -138,8 +87,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          timeout 300 cargo test --locked -p codex-hepta-supervisor \
-            --test paired_process_product -- --nocapture --test-threads=1
+          python3 - <<'PY'
+          import subprocess
+
+          subprocess.run(
+              [
+                  "cargo",
+                  "test",
+                  "--locked",
+                  "-p",
+                  "codex-hepta-supervisor",
+                  "--test",
+                  "paired_process_product",
+                  "--",
+                  "--nocapture",
+                  "--test-threads=1",
+              ],
+              check=True,
+              timeout=300,
+          )
+          PY
 
       - name: Prove nextest process-level serialization
         working-directory: codex-rs
