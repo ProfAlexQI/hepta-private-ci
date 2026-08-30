@@ -5,6 +5,7 @@ set -euo pipefail
 print_failed_bazel_test_logs=0
 print_failed_bazel_action_summary=0
 remote_download_toplevel=0
+windows_local_gnullvm_platform=0
 windows_msvc_host_platform=0
 windows_msvc_target_platform=0
 windows_cross_compile=0
@@ -89,11 +90,10 @@ print_bazel_test_log_tails() {
   local testlogs_dir
 
   local -a bazel_info_args=(info)
-  if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
+  if [[ -n "${BUILDBUDDY_API_KEY:-}" || ( "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 ) ]]; then
     # `bazel info` needs the same CI config as the failed test invocation so
-    # platform-specific output roots match. On Windows, omitting `ci-windows`
-    # would point at `local_windows-fastbuild` even when the test ran with the
-    # MSVC host platform under `local_windows_msvc-fastbuild`.
+    # platform-specific output roots match. This applies to authenticated RBE,
+    # keyless local gnullvm, and explicit local MSVC diagnostics.
     bazel_info_args+=("--config=${ci_config}")
   fi
 
@@ -257,17 +257,18 @@ if [[ ${#bazel_args[@]} -eq 0 || ${#bazel_targets[@]} -eq 0 ]]; then
 fi
 
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
-  if [[ "${ALLOW_WINDOWS_MSVC_FALLBACK:-}" != "1" ]]; then
-    echo "Windows gnullvm cross-compilation requires authenticated BuildBuddy/RBE; refusing to substitute an MSVC result for a gnullvm check. Set ALLOW_WINDOWS_MSVC_FALLBACK=1 only for an explicitly non-qualifying local diagnostic." >&2
-    exit 1
-  fi
-
-  # A caller that explicitly opts into a non-qualifying diagnostic may execute
-  # a coherent local MSVC build. Both target and host platforms must use the
-  # same ABI/toolchain family; this result is never gnullvm evidence.
   ci_config=ci-windows
-  windows_msvc_host_platform=1
-  windows_msvc_target_platform=1
+  if [[ "${ALLOW_WINDOWS_MSVC_FALLBACK:-}" == "1" ]]; then
+    # The explicit opt-in is a non-qualifying diagnostic only. Both target and
+    # host use MSVC and the result must never count as gnullvm evidence.
+    windows_msvc_host_platform=1
+    windows_msvc_target_platform=1
+  else
+    # Execute the labelled gnullvm surface truthfully on the hosted Windows
+    # runner. The repository already defines a gnullvm host platform and an
+    # exact x86_64-pc-windows-gnullvm target backed by hermetic LLVM/MinGW.
+    windows_local_gnullvm_platform=1
+  fi
 fi
 
 post_config_bazel_args=()
@@ -281,10 +282,7 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; the
   done
 
   if [[ $has_host_platform_override -eq 0 ]]; then
-    # Use the MSVC Windows platform for jobs that need helper binaries like
-    # Rust test wrappers and V8 generators to resolve a compatible toolchain.
-    # Callers that need a different Windows target platform should pass an
-    # explicit `--platforms=...` flag.
+    # Use the MSVC Windows platform for explicitly non-qualifying diagnostics.
     post_config_bazel_args+=("--host_platform=//:local_windows_msvc")
   fi
 fi
@@ -299,9 +297,38 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_target_platform -eq 1 ]]; t
   done
 
   if [[ $has_target_platform_override -eq 0 ]]; then
-    # The no-RBE fallback is a native MSVC build, not a partial gnullvm build.
-    # Keep Rust, C/C++, generated tools and compatibility selects on one ABI.
+    # The opt-in diagnostic is a native MSVC build, not gnullvm evidence.
     post_config_bazel_args+=("--platforms=//:local_windows_msvc")
+  fi
+fi
+
+if [[ "${RUNNER_OS:-}" == "Windows" && $windows_local_gnullvm_platform -eq 1 ]]; then
+  has_host_platform_override=0
+  has_target_platform_override=0
+  for arg in "${bazel_args[@]}"; do
+    case "$arg" in
+      --host_platform=//:local_windows)
+        has_host_platform_override=1
+        ;;
+      --host_platform=*)
+        echo "Keyless Windows gnullvm execution requires --host_platform=//:local_windows; refusing incompatible override: $arg" >&2
+        exit 1
+        ;;
+      --platforms=//:local_windows | --platforms=//:windows_x86_64_gnullvm)
+        has_target_platform_override=1
+        ;;
+      --platforms=*)
+        echo "Keyless Windows gnullvm execution requires //:windows_x86_64_gnullvm; refusing incompatible override: $arg" >&2
+        exit 1
+        ;;
+    esac
+  done
+
+  if [[ $has_host_platform_override -eq 0 ]]; then
+    post_config_bazel_args+=("--host_platform=//:local_windows")
+  fi
+  if [[ $has_target_platform_override -eq 0 ]]; then
+    post_config_bazel_args+=("--platforms=//:windows_x86_64_gnullvm")
   fi
 fi
 
@@ -324,9 +351,7 @@ if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -n "${BUI
 fi
 
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
-  # The Windows cross-compile config depends on authenticated remote
-  # execution. When credentials are unavailable, keep the local build shape
-  # and its lower concurrency cap.
+  # Local Windows execution is bounded to the hosted runner's CPU and I/O.
   post_config_bazel_args+=(--jobs=8)
 fi
 
@@ -348,15 +373,14 @@ if [[ -n "${CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR:-}" ]]; then
 fi
 
 if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
-  pass_windows_build_env=1
-  if [[ $windows_cross_compile -eq 1 && -n "${BUILDBUDDY_API_KEY:-}" ]]; then
-    # Remote build actions execute on Linux RBE workers. Passing the Windows
-    # runner's build environment there makes Bazel genrules try to execute
-    # C:\Program Files\Git\usr\bin\bash.exe on Linux.
-    pass_windows_build_env=0
+  pass_windows_sdk_env=1
+  if [[ $windows_cross_compile -eq 1 && ( -n "${BUILDBUDDY_API_KEY:-}" || $windows_local_gnullvm_platform -eq 1 ) ]]; then
+    # Remote Linux execution and hermetic local gnullvm execution must not
+    # inherit MSVC INCLUDE/LIB state from the hosted Windows runner.
+    pass_windows_sdk_env=0
   fi
 
-  if [[ $pass_windows_build_env -eq 1 ]]; then
+  if [[ $pass_windows_sdk_env -eq 1 ]]; then
     windows_action_env_vars=(
       INCLUDE
       LIB
@@ -384,18 +408,19 @@ if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
     exit 1
   fi
 
-  if [[ $pass_windows_build_env -eq 1 ]]; then
-    post_config_bazel_args+=(
-      "--action_env=PATH=${CODEX_BAZEL_WINDOWS_PATH}"
-      "--host_action_env=PATH=${CODEX_BAZEL_WINDOWS_PATH}"
-    )
-  elif [[ $windows_cross_compile -eq 1 ]]; then
+  if [[ $windows_cross_compile -eq 1 && -n "${BUILDBUDDY_API_KEY:-}" ]]; then
     # Remote build actions run on Linux RBE workers. Give their shell snippets
-    # a Linux PATH while preserving CODEX_BAZEL_WINDOWS_PATH below for local
-    # Windows test execution.
+    # a Linux PATH while preserving CODEX_BAZEL_WINDOWS_PATH for local tests.
     post_config_bazel_args+=(
       "--action_env=PATH=/usr/bin:/bin"
       "--host_action_env=PATH=/usr/bin:/bin"
+    )
+  else
+    # Native MSVC diagnostics and local gnullvm actions both execute on the
+    # Windows runner and need its normalized tool PATH.
+    post_config_bazel_args+=(
+      "--action_env=PATH=${CODEX_BAZEL_WINDOWS_PATH}"
+      "--host_action_env=PATH=${CODEX_BAZEL_WINDOWS_PATH}"
     )
   fi
   post_config_bazel_args+=("--test_env=PATH=${CODEX_BAZEL_WINDOWS_PATH}")
@@ -409,6 +434,9 @@ bazel_run_args=(
 )
 if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
   echo "BuildBuddy API key is available; using remote Bazel configuration."
+  bazel_run_args+=("--config=${ci_config}")
+elif [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 ]]; then
+  echo "BuildBuddy API key is not available; using bounded local Windows configuration."
   bazel_run_args+=("--config=${ci_config}")
 else
   echo "BuildBuddy API key is not available; using local Bazel configuration."
