@@ -1,0 +1,529 @@
+name: Hepta UI v5 final canonical R13 publisher
+
+on:
+  push:
+    branches:
+      - automation/ui-v5-final-canonical-r13-88f776-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-final-canonical-r13-publisher.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-final-canonical-r13-88f776
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      SOURCE_BRANCH: codex/ui-v5-final-repository-blockers-20260830
+      EXPECTED_SOURCE_HEAD: 322200c8c1acb66ff9d010b5ecca9e9b9a9b26fe
+      OUTPUT_BRANCH: staging/ui-v5-final-canonical-r13-88f776-20260830
+      DRIVER_PATH: .github/workflows/hepta-ui-v5-final-canonical-r13-publisher.yml
+      RANGE_START: dde85b435b16994f956bce08e5fb796ed94c27fd
+      RANGE_END: 88f776588f5e73467e7659c268f8358a9a2378b6
+      FROZEN_REF: refs/remotes/upstream/hepta-intake-20260830-r13
+      INTAKE_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R13.json
+      RECORD_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_R13_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+      REGISTRY_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_REGISTRY_V1.json
+      CONTRACT_PATH: .github/hepta-ci-contract-v1.json
+      MATERIALIZER_PATH: scripts/hepta-ci-materialize-upstream-intake
+      BASELINE_CONTRACT_PATH: scripts/hepta-ci-baseline-contract
+      EXTENSION_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_SEMANTIC_ABSORPTION_EXTENSION_R13_V1.json
+      EXTENSION_CONTRACT_PATH: .github/hepta-ci-upstream-intake-r13-extension-v1.json
+
+    steps:
+      - name: Check out exact publisher driver
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify driver ancestry and select exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_SOURCE_HEAD"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$DRIVER_PATH"
+          git fetch --no-tags origin "refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
+          test "$(git rev-parse refs/remotes/origin/$SOURCE_BRANCH)" = "$EXPECTED_SOURCE_HEAD"
+          git checkout --detach "$EXPECTED_SOURCE_HEAD"
+          git config user.name 'hepta-gap-closure[bot]'
+          git config user.email 'hepta-gap-closure[bot]@users.noreply.github.com'
+          test -z "$(git status --short)"
+
+      - name: Install bounded validation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes jq ripgrep
+
+      - name: Fetch and verify exact linear upstream range
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --filter=blob:none https://github.com/openai/codex.git "$RANGE_START" "$RANGE_END"
+          test "$(git cat-file -t "$RANGE_START")" = commit
+          test "$(git cat-file -t "$RANGE_END")" = commit
+          git merge-base --is-ancestor "$RANGE_START" "$RANGE_END"
+          test "$(git rev-list --count "$RANGE_START..$RANGE_END")" = 5
+          test "$(git rev-list --merges --count "$RANGE_START..$RANGE_END")" = 0
+          mapfile -t actual < <(git rev-list --reverse "$RANGE_START..$RANGE_END")
+          expected=(
+            28327355b861ab6cc76b01c7248663eb1be440cf
+            0a12b855a0b21068108a8a3b311d492712737e0f
+            cefa060695594cdeebfb4306170cc27487c8a088
+            da23e131e68b171909407f469da1b2f72d9c4f4a
+            88f776588f5e73467e7659c268f8358a9a2378b6
+          )
+          test "${actual[*]}" = "${expected[*]}"
+          remote_head="$(git ls-remote --exit-code https://github.com/openai/codex.git refs/heads/main | awk 'NR == 1 {print $1}')"
+          test "$remote_head" = "$RANGE_END"
+
+      - name: Commit the exact canonical R13 intake
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          start = os.environ["RANGE_START"]
+          end = os.environ["RANGE_END"]
+          path = Path(os.environ["INTAKE_PATH"])
+
+          def git(*args: str) -> str:
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+          expected = [
+              "28327355b861ab6cc76b01c7248663eb1be440cf",
+              "0a12b855a0b21068108a8a3b311d492712737e0f",
+              "cefa060695594cdeebfb4306170cc27487c8a088",
+              "da23e131e68b171909407f469da1b2f72d9c4f4a",
+              "88f776588f5e73467e7659c268f8358a9a2378b6",
+          ]
+          actual = git("rev-list", "--reverse", f"{start}..{end}").splitlines()
+          if actual != expected:
+              raise SystemExit(f"unexpected R13 commit inventory: {actual!r}")
+
+          priorities = {
+              expected[0]: "P2",
+              expected[1]: "P0",
+              expected[2]: "P0",
+              expected[3]: "P1",
+              expected[4]: "P2",
+          }
+          inventory = [
+              {
+                  "upstream_commit": commit,
+                  "title": git("show", "-s", "--format=%s", commit),
+                  "status": "deferred",
+                  "hepta_v2_priority": priorities[commit],
+              }
+              for commit in expected
+          ]
+          changed_files = git("diff", "--name-only", start, end).splitlines()
+          insertions = 0
+          deletions = 0
+          for line in git("diff", "--numstat", start, end).splitlines():
+              added, removed, _ = line.split("\t", 2)
+              if added.isdigit():
+                  insertions += int(added)
+              if removed.isdigit():
+                  deletions += int(removed)
+
+          payload = {
+              "schema_version": "hepta_upstream_codex_current_intake_v13",
+              "observation": {
+                  "state": "observed_and_classified",
+                  "observed_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                  "upstream_repository": "https://github.com/openai/codex.git",
+                  "target_branch": "main",
+                  "target_ref": "refs/remotes/upstream/main",
+                  "observed_upstream_head": end,
+                  "range_start_exclusive": start,
+                  "range_end_inclusive": end,
+                  "commit_count": len(expected),
+                  "merge_commit_count": 0,
+                  "net_changed_file_count": len(changed_files),
+                  "net_insertions": insertions,
+                  "net_deletions": deletions,
+                  "predecessor_relationship": "linear_ancestor",
+                  "ordinary_merge_allowed": False,
+                  "ordinary_rebase_allowed": False,
+                  "direct_cherry_pick_default": False,
+                  "required_integration_mode": "selective_semantic_transplant_with_behavioral_evidence",
+                  "fetch_command": f"git fetch --no-tags https://github.com/openai/codex.git {end}:{os.environ['FROZEN_REF']}",
+              },
+              "commit_inventory": inventory,
+              "claims": {
+                  "upstream_fully_consumed": False,
+                  "source_imported_at_observation": False,
+                  "merge_performed": False,
+                  "rebase_performed": False,
+                  "cherry_pick_performed": False,
+                  "deployment_performed": False,
+                  "live_enablement_performed": False,
+              },
+          }
+          path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+          PY
+          python3 -m json.tool "$INTAKE_PATH" >/dev/null
+          git add -- "$INTAKE_PATH"
+          git commit -m 'docs(upstream): extend canonical Codex R13 intake'
+          printf 'INTAKE_COMMIT=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Canonicalize R13 registry contract and materializer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          start = os.environ["RANGE_START"]
+          end = os.environ["RANGE_END"]
+          frozen_ref = os.environ["FROZEN_REF"]
+          intake_commit = os.environ["INTAKE_COMMIT"]
+          intake_path = Path(os.environ["INTAKE_PATH"])
+          record_path = Path(os.environ["RECORD_PATH"])
+          registry_path = Path(os.environ["REGISTRY_PATH"])
+          contract_path = Path(os.environ["CONTRACT_PATH"])
+          materializer_path = Path(os.environ["MATERIALIZER_PATH"])
+          baseline_contract_path = Path(os.environ["BASELINE_CONTRACT_PATH"])
+
+          def digest(path: Path) -> str:
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          intake = json.loads(intake_path.read_text(encoding="utf-8"))
+          inventory = intake["commit_inventory"]
+          titles = {item["upstream_commit"]: item["title"] for item in inventory}
+          commits = [item["upstream_commit"] for item in inventory]
+          expected = [
+              "28327355b861ab6cc76b01c7248663eb1be440cf",
+              "0a12b855a0b21068108a8a3b311d492712737e0f",
+              "cefa060695594cdeebfb4306170cc27487c8a088",
+              "da23e131e68b171909407f469da1b2f72d9c4f4a",
+              "88f776588f5e73467e7659c268f8358a9a2378b6",
+          ]
+          if commits != expected:
+              raise SystemExit(f"R13 intake order drifted: {commits!r}")
+
+          deferrals = [
+              {
+                  "upstream_commit": expected[0],
+                  "upstream_title": titles[expected[0]],
+                  "disposition": "deferred_test_fixture_alignment_without_runtime_delta",
+                  "scope": "update_plan_default_enabled_test_fixture_alignment",
+                  "reason": "The upstream commit aligns tests and fixtures with an already default-enabled update_plan tool and contains no production-runtime source delta. Hepta does not claim fixture parity without a repository-specific harness review.",
+                  "missing_prerequisites": [
+                      "commit-specific fixture review",
+                      "Hepta test-harness semantic mapping",
+                      "bounded exact regression evidence if adopted",
+                  ],
+                  "tests_run": False,
+                  "hepta_commit": None,
+                  "non_claims": [
+                      "Deferral does not claim upstream fixture parity, source import, or any change to Hepta tool exposure."
+                  ],
+              },
+              {
+                  "upstream_commit": expected[1],
+                  "upstream_title": titles[expected[1]],
+                  "disposition": "deferred_guardian_authorization_revision_compaction_semantics",
+                  "scope": "guardian_user_authorization_revision_across_compaction_and_internal_context",
+                  "reason": "The upstream security behavior introduces a host-owned user-authorization revision that survives compaction and internal context injection. Hepta has not mapped that exact revision ownership through its Guardian, history, rollback, resume, and extension boundaries.",
+                  "missing_prerequisites": [
+                      "Hepta Guardian authorization-version ownership decision",
+                      "history compaction and reset semantic mapping",
+                      "rollback resume and internal-context invalidation regressions",
+                      "bounded security evidence for any semantic transplant",
+                  ],
+                  "tests_run": False,
+                  "hepta_commit": None,
+                  "non_claims": [
+                      "Current Guardian and history controls are not claimed as equivalent to the upstream user-message revision model."
+                  ],
+              },
+              {
+                  "upstream_commit": expected[2],
+                  "upstream_title": titles[expected[2]],
+                  "disposition": "deferred_first_node_repl_execution_guardian_authority_semantics",
+                  "scope": "first_node_repl_execution_guardian_wait_bypass",
+                  "reason": "The upstream behavior permits the first Node REPL-backed JavaScript execution to proceed before Guardian classification completes. Hepta has not mapped that allowance through its Node REPL, browser, computer-use, replay, rollback, resume, and effect-authority boundaries.",
+                  "missing_prerequisites": [
+                      "first-execution authority owner decision",
+                      "Node REPL browser and computer-use equivalence mapping",
+                      "replay resume and rollback authorization regressions",
+                      "bounded security evidence for any semantic transplant",
+                  ],
+                  "tests_run": False,
+                  "hepta_commit": None,
+                  "non_claims": [
+                      "Deferral does not enable an immediate first-execution bypass, change live Guardian policy, or claim runtime equivalence."
+                  ],
+              },
+              {
+                  "upstream_commit": expected[3],
+                  "upstream_title": titles[expected[3]],
+                  "disposition": "deferred_jediterm_cursor_repair_without_terminal_equivalence_evidence",
+                  "scope": "tui_cursor_style_repair_for_older_jediterm_terminals",
+                  "reason": "The upstream TUI change repairs glyph damage caused by older JediTerm DECSCUSR handling. Hepta has not demonstrated that its native Makepad shell or supported terminal surfaces share this failure mode, and no equivalent terminal-owned glyph repair should be transplanted without bounded terminal evidence.",
+                  "missing_prerequisites": [
+                      "supported terminal applicability matrix",
+                      "Hepta TUI versus native-shell ownership decision",
+                      "JediTerm regression harness or explicit non-applicability proof",
+                  ],
+                  "tests_run": False,
+                  "hepta_commit": None,
+                  "non_claims": [
+                      "Deferral does not claim terminal equivalence, source import, or a cursor-rendering fix in Hepta Native."
+                  ],
+              },
+              {
+                  "upstream_commit": expected[4],
+                  "upstream_title": titles[expected[4]],
+                  "disposition": "deferred_environment_mcp_test_fixture_cwd_alignment_without_runtime_delta",
+                  "scope": "environment_backed_stdio_mcp_test_fixture_explicit_cwd",
+                  "reason": "The upstream commit changes only core integration-test fixtures so environment-backed stdio MCP servers receive an explicit workspace cwd. It contains no production-runtime source delta, and Hepta does not claim fixture equivalence without mapping its environment MCP harness and workspace ownership.",
+                  "missing_prerequisites": [
+                      "Hepta environment MCP fixture inventory",
+                      "workspace cwd ownership mapping",
+                      "bounded integration-test equivalence review if adopted",
+                  ],
+                  "tests_run": False,
+                  "hepta_commit": None,
+                  "non_claims": [
+                      "Deferral does not change Hepta MCP runtime cwd behavior, import upstream test fixtures, or claim integration-harness parity."
+                  ],
+              },
+          ]
+
+          record = {
+              "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+              "source_intake": {
+                  "path": str(intake_path),
+                  "manifest_sha256": digest(intake_path),
+                  "commit": intake_commit,
+                  "range_start_exclusive": start,
+                  "range_end_inclusive": end,
+                  "ordinary_merge_performed": False,
+                  "ordinary_rebase_performed": False,
+                  "cherry_pick_performed": False,
+              },
+              "absorptions": [],
+              "deferrals": deferrals,
+              "claims": {
+                  "absorbed_commit_count": 0,
+                  "existing_semantic_equivalent_count": 0,
+                  "deferred_commit_count": len(deferrals),
+                  "upstream_fully_consumed": False,
+                  "merge_performed": False,
+                  "rebase_performed": False,
+                  "cherry_pick_performed": False,
+                  "live_enablement": False,
+                  "deployment": False,
+                  "publication": False,
+              },
+          }
+          record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+
+          registry = json.loads(registry_path.read_text(encoding="utf-8"))
+          if registry.get("schema_version") != "hepta_upstream_codex_semantic_absorption_registry_v1":
+              raise SystemExit("unexpected upstream registry schema")
+          if registry["upstream"].get("expected_head") != start:
+              raise SystemExit("base registry is not still bound to R12")
+          if any(item.get("id") == "r13" for item in registry["records"]):
+              raise SystemExit("canonical registry already contains R13")
+          registry["upstream"]["frozen_ref"] = frozen_ref
+          registry["upstream"]["expected_head"] = end
+          registry["records"].append(
+              {
+                  "id": "r13",
+                  "source_intake": {
+                      "path": str(intake_path),
+                      "sha256": digest(intake_path),
+                      "range_start_exclusive": start,
+                      "range_end_inclusive": end,
+                      "frozen_ref": frozen_ref,
+                  },
+                  "record": {
+                      "path": str(record_path),
+                      "sha256": digest(record_path),
+                      "schema_version": "hepta_upstream_codex_semantic_absorption_record_v1",
+                  },
+                  "disposition_bindings": [
+                      {
+                          "kind": "deferral",
+                          "upstream_commit": item["upstream_commit"],
+                          "local_commit": None,
+                          "scope": item["scope"],
+                          "non_claims": item["non_claims"],
+                      }
+                      for item in deferrals
+                  ],
+              }
+          )
+          claims = registry.get("claims", {})
+          for key in ("record_count", "semantic_record_count", "effective_record_count"):
+              if isinstance(claims.get(key), int):
+                  claims[key] = len(registry["records"])
+          registry_path.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")
+
+          contract = json.loads(contract_path.read_text(encoding="utf-8"))
+          refs = contract["upstream_intake"]["refs"]
+          if any(item.get("role") == "current_r13" for item in refs):
+              raise SystemExit("CI intake contract already contains R13")
+          refs.append({"role": "current_r13", "ref": frozen_ref, "sha": end})
+          contract["upstream_truth"]["registry_sha256"] = digest(registry_path)
+          contract_path.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+
+          materializer = materializer_path.read_text(encoding="utf-8")
+          anchors = [
+              (
+                  'EXPECTED_R12_SHA="dde85b435b16994f956bce08e5fb796ed94c27fd"\n',
+                  'EXPECTED_R12_SHA="dde85b435b16994f956bce08e5fb796ed94c27fd"\n'
+                  'EXPECTED_R13_REF="refs/remotes/upstream/hepta-intake-20260830-r13"\n'
+                  'EXPECTED_R13_SHA="88f776588f5e73467e7659c268f8358a9a2378b6"\n',
+              ),
+              (
+                  '    --arg r12_sha "$EXPECTED_R12_SHA" \\\n',
+                  '    --arg r12_sha "$EXPECTED_R12_SHA" \\\n'
+                  '    --arg r13_ref "$EXPECTED_R13_REF" \\\n'
+                  '    --arg r13_sha "$EXPECTED_R13_SHA" \\\n',
+              ),
+              (
+                  '          {role:"current_r12",ref:$r12_ref,sha:$r12_sha}\n        ]',
+                  '          {role:"current_r12",ref:$r12_ref,sha:$r12_sha},\n'
+                  '          {role:"current_r13",ref:$r13_ref,sha:$r13_sha}\n'
+                  '        ]',
+              ),
+              (
+                  'current_r12_ref_materialized:true,merge_performed:false',
+                  'current_r12_ref_materialized:true,current_r13_ref_materialized:true,merge_performed:false',
+              ),
+          ]
+          for old, new in anchors:
+              count = materializer.count(old)
+              if count != 1:
+                  raise SystemExit(f"materializer anchor expected once, found {count}: {old!r}")
+              materializer = materializer.replace(old, new, 1)
+          materializer_path.write_text(materializer, encoding="utf-8")
+
+          baseline_contract = baseline_contract_path.read_text(encoding="utf-8")
+          old = (
+              '        {\n'
+              '          role:"current_r12",\n'
+              '          ref:"refs/remotes/upstream/hepta-intake-20260830-r12",\n'
+              '          sha:"dde85b435b16994f956bce08e5fb796ed94c27fd"\n'
+              '        }\n'
+              '      ]'
+          )
+          new = (
+              '        {\n'
+              '          role:"current_r12",\n'
+              '          ref:"refs/remotes/upstream/hepta-intake-20260830-r12",\n'
+              '          sha:"dde85b435b16994f956bce08e5fb796ed94c27fd"\n'
+              '        },\n'
+              '        {\n'
+              '          role:"current_r13",\n'
+              '          ref:"refs/remotes/upstream/hepta-intake-20260830-r13",\n'
+              '          sha:"88f776588f5e73467e7659c268f8358a9a2378b6"\n'
+              '        }\n'
+              '      ]'
+          )
+          count = baseline_contract.count(old)
+          if count != 1:
+              raise SystemExit(f"baseline contract R12 anchor expected once, found {count}")
+          baseline_contract_path.write_text(baseline_contract.replace(old, new, 1), encoding="utf-8")
+          PY
+
+          git rm -f -- "$EXTENSION_PATH" "$EXTENSION_CONTRACT_PATH"
+          python3 -m json.tool "$RECORD_PATH" >/dev/null
+          python3 -m json.tool "$REGISTRY_PATH" >/dev/null
+          python3 -m json.tool "$CONTRACT_PATH" >/dev/null
+          bash -n "$MATERIALIZER_PATH"
+          bash -n "$BASELINE_CONTRACT_PATH"
+          git diff --check
+          git add -- \
+            "$RECORD_PATH" \
+            "$REGISTRY_PATH" \
+            "$CONTRACT_PATH" \
+            "$MATERIALIZER_PATH" \
+            "$BASELINE_CONTRACT_PATH"
+          git commit -m 'ci(upstream): canonicalize append-only Codex R13 truth'
+
+      - name: Execute repository-controlled blocker gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          scripts/hepta-budgeted-test self-test > /tmp/budgeted-self-test.json
+          jq -e '.status == "ready" and .embedded_repository_state_enforced == true' /tmp/budgeted-self-test.json >/dev/null
+
+          scripts/hepta-ci-materialize-upstream-intake materialize > /tmp/r13-materialize.json
+          jq -e '
+            .status == "ready"
+            and .current_r13_ref_materialized == true
+            and ([.refs[] | select(.role == "current_r13" and .sha == "88f776588f5e73467e7659c268f8358a9a2378b6")] | length) == 1
+          ' /tmp/r13-materialize.json >/dev/null
+          scripts/hepta-ci-materialize-upstream-intake verify
+
+          scripts/hepta-upstream-truth-gate verify-semantic > /tmp/r13-semantic.json
+          jq -e '
+            .status == "ready"
+            and .record_count == 13
+            and .upstream_fully_consumed == false
+          ' /tmp/r13-semantic.json >/dev/null
+          scripts/hepta-upstream-truth-gate self-test >/tmp/r13-self-test.json
+          jq -e '.status == "ready"' /tmp/r13-self-test.json >/dev/null
+          scripts/hepta-upstream-truth-gate network-receipt /tmp/r13-network.json >/dev/null
+          scripts/hepta-upstream-truth-gate verify-network-receipt /tmp/r13-network.json >/tmp/r13-network-verified.json
+          jq -e '.status == "ready" and .remote_head == "88f776588f5e73467e7659c268f8358a9a2378b6"' /tmp/r13-network-verified.json >/dev/null
+
+          scripts/hepta-ci-baseline contract >/tmp/ci-contract.json
+          jq -e '.status == "ready"' /tmp/ci-contract.json >/dev/null
+          scripts/hepta-ci-baseline contract-self-test >/tmp/ci-contract-self-test.json
+          jq -e '.status == "ready"' /tmp/ci-contract-self-test.json >/dev/null
+
+          scripts/hepta-native-robrix-upstream-sync-check-v2.sh --json --strict > /tmp/native-sync.json
+          jq -e '
+            .status == "ready"
+            and .provenance_ready == true
+            and .downstream_overlay_accounted == true
+            and (.undeclared_drift | length) == 0
+            and (.ambiguous_drift | length) == 0
+            and (.unused_ledger_rules | length) == 0
+          ' /tmp/native-sync.json >/dev/null
+          scripts/hepta-native-product-shell-gate-v2.sh --output /tmp/native-product-shell.json
+          jq -e '.status == "ready"' /tmp/native-product-shell.json >/dev/null
+
+          git diff --exit-code
+          git diff --cached --exit-code
+          test "$(git rev-parse HEAD^^)" = "$EXPECTED_SOURCE_HEAD"
+          remote_head="$(git ls-remote --exit-code https://github.com/openai/codex.git refs/heads/main | awk 'NR == 1 {print $1}')"
+          test "$remote_head" = "$RANGE_END"
+
+      - name: Publish qualified canonical blocker closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
+          test "$(git rev-parse refs/remotes/origin/$SOURCE_BRANCH)" = "$EXPECTED_SOURCE_HEAD"
+          git push origin "HEAD:refs/heads/$OUTPUT_BRANCH"
+          {
+            printf 'source_head=%s\n' "$EXPECTED_SOURCE_HEAD"
+            printf 'intake_commit=%s\n' "$INTAKE_COMMIT"
+            printf 'qualified_head=%s\n' "$(git rev-parse HEAD)"
+            printf 'upstream_head=%s\n' "$RANGE_END"
+          } >> "$GITHUB_STEP_SUMMARY"
