@@ -1,0 +1,160 @@
+name: Hepta Intelligence Q0.10 focused Windows link diagnostic
+
+on:
+  push:
+    branches:
+      - "diagnostic/hepta-intelligence-a0-q0-10-windows-focused-20260830"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-q0-10-windows-focused-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+  EXPECTED_HEAD_SHA: 3345348133276d33d13e7a30115a754b81cc4734
+  EXPECTED_TREE_SHA: fc6dbb4091009ff24996ba2fab2b7ab3977548de
+  A0_SOURCE_HEAD: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
+  Q0_10_SECOND_PARENT: 8d7960f1805c6b2cda0d6274bf2541a535a4d30c
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  focused-windows-link:
+    name: Q0.10 MSVC fallback focused native-link chain
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Enable Windows long paths before checkout
+        shell: pwsh
+        run: git config --system core.longpaths true
+
+      - name: Checkout exact integration candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify immutable candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE_SHA"
+          test "$(git show -s --format=%P HEAD)" = "$A0_SOURCE_HEAD $Q0_10_SECOND_PARENT"
+          bash -n .github/scripts/run-bazel-ci.sh
+
+      - name: Prepare Windows Bazel environment
+        uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-pc-windows-gnullvm
+          cache-scope: q0-10-windows-focused
+
+      - name: Prove credential-free effective platform arguments
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ""
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/q0-10-argument-fixture"
+          rm -rf "$fixture"
+          mkdir -p "$fixture/.github/scripts"
+          cp .github/scripts/run-bazel-ci.sh "$fixture/.github/scripts/run-bazel-ci.sh"
+          cat > "$fixture/.github/scripts/run_bazel_with_buildbuddy.py" <<'PY'
+          #!/usr/bin/env python3
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          Path(os.environ["ARG_CAPTURE"]).write_text(
+              json.dumps(sys.argv[1:], indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+          chmod +x "$fixture/.github/scripts/run-bazel-ci.sh" \
+            "$fixture/.github/scripts/run_bazel_with_buildbuddy.py"
+          capture="$RUNNER_TEMP/q0-10-effective-args.json"
+          (
+            cd "$fixture"
+            RUNNER_OS=Windows \
+              CODEX_BAZEL_WINDOWS_PATH="$CODEX_BAZEL_WINDOWS_PATH" \
+              ARG_CAPTURE="$capture" \
+              ./.github/scripts/run-bazel-ci.sh --windows-cross-compile -- \
+                build -- //codex-rs/hepta-agent-protocol:hepta-agent-protocol-unit-tests
+          )
+          python3 - "$capture" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          args = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          required = {
+              "--host_platform=//:local_windows_msvc",
+              "--platforms=//:local_windows_msvc",
+              "--jobs=8",
+          }
+          missing = sorted(required.difference(args))
+          if missing:
+              raise SystemExit(f"missing effective Q0.10 arguments: {missing!r}; args={args!r}")
+          if "--config=ci-windows-cross" in args:
+              raise SystemExit("credential-free path selected RBE config")
+          if any("CODEX_BAZEL_TEST_SKIP_FILTERS" in arg for arg in args):
+              raise SystemExit("credential-free path directly injected a test skip filter")
+          print("PASS_Q0_10_WINDOWS_EFFECTIVE_ARGUMENTS")
+          PY
+
+      - name: Build the former mixed-ABI dependency chain
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ""
+        run: |
+          set -euo pipefail
+          ./.github/scripts/run-bazel-ci.sh \
+            --print-failed-action-summary \
+            --windows-cross-compile \
+            --remote-download-toplevel \
+            -- \
+            build \
+            --verbose_failures \
+            --build_metadata=COMMIT_SHA="$EXPECTED_HEAD_SHA" \
+            --build_metadata=TAG_q0_10_focused=true \
+            -- \
+            //codex-rs/hepta-agent-protocol:hepta-agent-protocol-unit-tests \
+            //codex-rs/utils/rustls-provider:rustls-provider-provider-test
+
+      - name: Execute the focused tests after successful linking
+        shell: bash
+        env:
+          BUILDBUDDY_API_KEY: ""
+        run: |
+          set -euo pipefail
+          ./.github/scripts/run-bazel-ci.sh \
+            --print-failed-action-summary \
+            --print-failed-test-logs \
+            --windows-cross-compile \
+            -- \
+            test \
+            --test_output=errors \
+            --test_verbose_timeout_warnings \
+            --build_metadata=COMMIT_SHA="$EXPECTED_HEAD_SHA" \
+            --build_metadata=TAG_q0_10_focused=true \
+            -- \
+            //codex-rs/hepta-agent-protocol:hepta-agent-protocol-unit-tests \
+            //codex-rs/utils/rustls-provider:rustls-provider-provider-test
+
+      - name: Verify clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
+
+      - name: Upload focused Bazel execution logs
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4
+        with:
+          name: hepta-intelligence-q0-10-windows-focused-${{ github.run_id }}
+          path: ${{ runner.temp }}/bazel-execution-logs/**
+          if-no-files-found: ignore
+          retention-days: 30
