@@ -11,6 +11,14 @@ if command -v cygpath >/dev/null 2>&1; then
   env_file="$(cygpath --unix "$env_file")"
 fi
 
+# The bounded backend baseline and dependency-security materializer both require
+# ripgrep. GitHub's Ubuntu image does not guarantee it, so provision it before
+# either consumer runs instead of allowing a late, misleading gate failure.
+if [[ "$(uname -s)" == "Linux" ]] && ! command -v rg >/dev/null 2>&1; then
+  sudo apt-get update
+  sudo apt-get install --yes --no-install-recommends ripgrep
+fi
+
 version="$(sed -n 's/^v8 = "=\([^"]*\)"$/\1/p' "${repo_root}/codex-rs/Cargo.toml")"
 if [[ -z "$version" ]]; then
   echo "Unable to resolve the workspace v8 version" >&2
