@@ -43,7 +43,10 @@ jobs:
       EXPECTED_BASE: ${{ github.event.pull_request.base.sha || inputs.expected_base }}
       EXPECTED_BASE_BRANCH: ${{ github.base_ref || inputs.expected_base_branch }}
       EXPECTED_HEAD_BRANCH: ${{ github.head_ref || inputs.expected_head_branch }}
-      ARTIFACT_DIR: artifacts/hepta-intelligence-integration-admission
+      ARTIFACT_DIR: ${{ runner.temp }}/hepta-intelligence-integration-admission
+      PYTHONPYCACHEPREFIX: ${{ runner.temp }}/hepta-intelligence-python-cache
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONNOUSERSITE: "1"
     steps:
       - name: Checkout exact integration candidate
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -59,7 +62,8 @@ jobs:
             scripts/verify-hepta-intelligence-integration-admission.py \
             scripts/verify-hepta-intelligence-integration-admission-api-v2.py \
             scripts/run-hepta-intelligence-integration-admission.py \
-            scripts/test-hepta-intelligence-integration-admission.py
+            scripts/test-hepta-intelligence-integration-admission.py \
+            scripts/test-hepta-intelligence-integration-admission-boundaries.py
 
       - name: Exercise trusted-Git and fail-closed admission fixtures
         run: |
@@ -72,6 +76,8 @@ jobs:
             | tee "$ARTIFACT_DIR/admission-runner-fixtures.txt"
           python3 scripts/test-hepta-intelligence-integration-admission.py \
             | tee "$ARTIFACT_DIR/admission-negative-fixtures.txt"
+          python3 scripts/test-hepta-intelligence-integration-admission-boundaries.py \
+            | tee "$ARTIFACT_DIR/admission-boundary-fixtures.txt"
 
       - name: Verify bounded signed composition twice through bound Git
         env:
@@ -89,6 +95,9 @@ jobs:
               LANG=C \
               LC_ALL=C \
               PYTHONHASHSEED=0 \
+              PYTHONPYCACHEPREFIX="$PYTHONPYCACHEPREFIX" \
+              PYTHONDONTWRITEBYTECODE=1 \
+              PYTHONNOUSERSITE=1 \
               GITHUB_ACTIONS=true \
               RUNNER_OS=Linux \
               GH_TOKEN="$GH_TOKEN" \
@@ -106,7 +115,7 @@ jobs:
           cp "$ARTIFACT_DIR/identity-a.json" "$ARTIFACT_DIR/identity.json"
           sha256sum "$ARTIFACT_DIR/identity.json" > "$ARTIFACT_DIR/identity.json.sha256"
 
-      - name: Require clean tracked source through bound Git
+      - name: Require clean candidate worktree through bound Git
         run: |
           set -euo pipefail
           clean_home="$RUNNER_TEMP/hepta-intelligence-admission-home"
@@ -116,6 +125,9 @@ jobs:
             LANG=C \
             LC_ALL=C \
             PYTHONHASHSEED=0 \
+            PYTHONPYCACHEPREFIX="$PYTHONPYCACHEPREFIX" \
+            PYTHONDONTWRITEBYTECODE=1 \
+            PYTHONNOUSERSITE=1 \
             GITHUB_ACTIONS=true \
             RUNNER_OS=Linux \
             /usr/bin/python3 \
@@ -127,6 +139,6 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: hepta-intelligence-integration-admission-${{ env.EXPECTED_HEAD }}
-          path: artifacts/hepta-intelligence-integration-admission
+          path: ${{ env.ARTIFACT_DIR }}
           if-no-files-found: error
           retention-days: 30
