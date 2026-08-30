@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "${GITHUB_WORKSPACE:?}"
 
-EXPECTED_PARENT=925509b95758f1330f7425af47d57536e0e475dc
+EXPECTED_PARENT=556c314bf345fb218f3fcf533643bdb48eab2aa2
 BASE_BRANCH=integration/vnext-main-full-ci-authbus-p1-3-20260829
 BASE_SHA=6b7aa91d7702a92a50297b1b1bd8170ffb7cb184
 BASE_TREE=f46fa8c6d541742eaea62d70ea62c0fe316dbaf9
@@ -107,7 +107,7 @@ run_gate() {
     failures+=("${name}")
   fi
 }
-run_gate contracts 'cargo check --manifest-path codex-rs/Cargo.toml --locked -p codex-hepta-contracts --features authbus-local-qualification --all-targets && cargo clippy --manifest-path codex-rs/Cargo.toml --locked -p codex-hepta-contracts --features authbus-local-qualification --all-targets -- -D warnings'
+run_gate contracts 'cargo check --manifest-path codex-rs/Cargo.toml --locked -p codex-hepta-contracts --features authbus-local-qualification --all-targets && cargo clippy --manifest-path codex-rs/Cargo.toml --locked -p codex-hepta-contracts --featurs authbus-local-qualification --all-targets -- -D warnings'
 run_gate p0_2 'cargo check --manifest-path "$P02" --locked --features sqlite-qualification --all-targets && cargo clippy --manifest-path "$P02" --locked --features sqlite-qualification --all-targets -- -D warnings'
 run_gate p0_3 'cargo check --manifest-path "$P03" --locked --features p0-3-qualification --all-targets && cargo clippy --manifest-path "$P03" --locked --features p0-3-qualification --all-targets -- -D warnings'
 run_gate p1_1 'cargo check --manifest-path "$P11" --locked --features p1-qualification --all-targets && cargo clippy --manifest-path "$P11" --locked --features p1-qualification --all-targets -- -D warnings'
@@ -134,107 +134,10 @@ source = path.read_text(encoding='utf-8')
 for before, after, expected, label in (
     ('      - integration/vnext-main-full-ci-authbus-p1-3-20260829',
      '      - codex/authbus-p1-3-clean-replay-20260830', 1, 'target branch'),
-    ('runs-on: ubuntu-slim', 'runs-on: ubuntu-24.04', 4, 'hosted runner'),
+    ('runs-on: ubuntu-slim', 'runs-on: ubuntu-24.04-arm', 4, 'hosted runner'),
     ('f6702be58c499d853d273f3174a2556481a3f5b4284cd9cd0b0a247160d7ac08',
      'dfcab028e1a135a0895b3f9eddec9f5f99cf5f392701b98ad14180058a284bf1',
      3, 'registry digest'),
 ):
     count = source.count(before)
-    if count != expected:
-        raise SystemExit(f'{label}: expected {expected} anchors, found {count}')
-    source = source.replace(before, after)
-path.write_text(source, encoding='utf-8')
-PY
-
-FINAL_PATHS=(
-  codex-rs/hepta-contracts/src/authbus_b1.rs
-  codex-rs/hepta-contracts/src/authbus_b1_tests.rs
-  codex-rs/hepta-contracts/src/authbus_b2.rs
-  codex-rs/hepta-contracts/src/authbus_b3.rs
-  codex-rs/hepta-contracts/src/authbus_b3_adapter.rs
-  codex-rs/hepta-contracts/src/authbus_b4.rs
-  codex-rs/hepta-contracts/src/authbus_tests.rs
-  codex-rs/hepta-contracts/src/lib.rs
-  codex-rs/hepta-contracts/src/quota_registry.rs
-  codex-rs/hepta-contracts/tests/authbus_b3_p0_1.rs
-  codex-rs/hepta-authbus-qualification/src/model.rs
-  codex-rs/hepta-authbus-qualification/src/store.rs
-  codex-rs/hepta-authbus-p0-3-qualification/src/lib.rs
-  codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
-  codex-rs/hepta-authbus-p0-3-qualification/tests/p0_3.rs
-  codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
-  codex-rs/hepta-authbus-p1-3-qualification/Cargo.lock
-  codex-rs/hepta-authbus-p1-3-qualification/README.md
-  codex-rs/hepta-authbus-p1-3-qualification/src/lib.rs
-  codex-rs/hepta-authbus-p1-3-qualification/tests/p1_3.rs
-  docs/hepta-vnext/authbus/AUTHBUS_P1_3_DEVELOPMENT_PLAN_2026-08-29.md
-  docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.json
-  docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.md
-  scripts/verify-authbus-p1-3.py
-)
-DELETIONS=(
-  .github/workflows/authbus-p1-3-gap-diagnostic.yml
-  .github/workflows/authbus-p1-3-materialize.yml
-  scripts/authbus-p1-3-finalize.py
-  scripts/authbus-p1-3-semantic-completion.py
-)
-
-tar -cf /tmp/authbus-p1-3-final-source.tar \
-  .github/workflows/authbus-p1-3-qualification.yml "${FINAL_PATHS[@]}"
-git reset --hard
-git clean -fdx
-git checkout --detach "${BASE_SHA}"
-test "$(git rev-parse HEAD)" = "${BASE_SHA}"
-test "$(git rev-parse HEAD^{tree})" = "${BASE_TREE}"
-tar -xf /tmp/authbus-p1-3-final-source.tar
-git rm -f "${DELETIONS[@]}"
-git add -- .github/workflows/authbus-p1-3-qualification.yml "${FINAL_PATHS[@]}"
-printf '%s\n' "${DELETIONS[@]}" .github/workflows/authbus-p1-3-qualification.yml \
-  "${FINAL_PATHS[@]}" | LC_ALL=C sort -u > /tmp/p13-expected-paths.txt
-git diff --cached --name-only | LC_ALL=C sort > /tmp/p13-actual-paths.txt
-test "$(wc -l < /tmp/p13-expected-paths.txt)" = "29"
-test "$(wc -l < /tmp/p13-actual-paths.txt)" = "29"
-diff -u /tmp/p13-expected-paths.txt /tmp/p13-actual-paths.txt
-for path in \
-  .github/workflows/authbus-p1-3-gap-diagnostic.yml \
-  .github/workflows/authbus-p1-3-materialize.yml \
-  .github/workflows/authbus-p1-3-clean-replay-materialize.yml \
-  .github/workflows/authbus-p1-3-final-closure.yml \
-  scripts/authbus-p1-3-finalize.py \
-  scripts/authbus-p1-3-semantic-completion.py \
-  scripts/authbus-p1-3-gap-closure.py \
-  scripts/authbus-p1-3-clippy-completion.py \
-  scripts/authbus-p1-3-final-closure.sh
-do
-  test ! -e "${path}"
-done
-python3 scripts/verify-authbus-p1-2.py | tee /tmp/p12-clean-source.json
-require_line PASS_AUTHBUS_P1_2_SOURCE_ONLY /tmp/p12-clean-source.json
-python3 scripts/verify-authbus-p1-3.py | tee /tmp/p13-clean-source.json
-require_line PASS_AUTHBUS_P1_3_SOURCE_ONLY /tmp/p13-clean-source.json
-git diff --cached --check
-
-git config user.name 'github-actions[bot]'
-git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-git commit -m 'feat(authbus): close full-stack P1.3 gaps'
-source_sha=$(git rev-parse HEAD)
-source_tree=$(git rev-parse HEAD^{tree})
-test "$(git rev-parse HEAD^)" = "${BASE_SHA}"
-test "${source_tree}" != "${BASE_TREE}"
-! git ls-remote --exit-code --heads origin "refs/heads/${TARGET_BRANCH}" >/dev/null 2>&1
-git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
-{
-  echo "source_sha=${source_sha}"
-  echo "source_tree=${source_tree}"
-  echo "source_parent=${BASE_SHA}"
-  echo 'changed_paths=29'
-  echo "target_branch=${TARGET_BRANCH}"
-  echo 'source_working_tree_qualified=true'
-  echo 'authority=false'
-  echo 'effect_authority=false'
-  echo 'production_caller=false'
-  echo 'production_writer=false'
-  echo 'provider_call_enabled=false'
-  echo 'listener_enabled=false'
-  echo 'openbao_enabled=false'
-} | tee -a "${GITHUB_STEP_SUMMARY}"
+    if count─└Т│∙Аа∙█я∙░Х(───────│и┘╔м■│MЕмя∙╣А╔п║≤²М╠┘┴∙╠ТХ│∙Аа∙█я∙░│М∙Аа∙█я∙▒Т│┘╧█║╫ил╟│≥╫у╧░│М█╫у╧яТ°╓(───│м╫уи█■─Т│м╫уи█■╧и∙а╠┘█■║┴∙≥╫и■╟│┘≥я∙х╓)а┘я═╧щи╔я∙}я∙Ап║м╫уи█■╟│∙╧█╫▒╔╧°Т²уя≤╢Ю°╓)Ad()%91}AQ!LТ═(─│█╫▒∙Ю╣ил╫║∙ая└╣█╫╧яи┘█ял╫ми▄╫┘уя║┴ум}┬д╧ил(─│█╫▒∙Ю╣ил╫║∙ая└╣█╫╧яи┘█ял╫ми▄╫┘уя║┴ум}┬е}я∙мял╧ил(─│█╫▒∙Ю╣ил╫║∙ая└╣█╫╧яи┘█ял╫ми▄╫┘уя║┴ум}┬х╧ил(─│█╫▒∙Ю╣ил╫║∙ая└╣█╫╧яи┘█ял╫ми▄╫┘уя║┴ум}┬л╧ил(─│█╫▒∙Ю╣ил╫║∙ая└╣█╫╧яи┘█ял╫ми▄╫┘уя║┴ум}┬м}┘▒┘ая∙х╧ил(─│█╫▒∙Ю╣ил╫║∙ая└╣█╫╧яи┘█ял╫ми▄╫┘уя║┴ум}┬п╧ил(─│█╫▒∙Ю╣ил╫║∙ая└╣█╫╧яи┘█ял╫ми▄╫┘уя║┴ум}я∙мял╧ил(─│█╫▒∙Ю╣ил╫║∙ая└╣█╫╧яи┘█ял╫ми▄╫╠╔┬╧ил(─│█╫▒∙Ю╣ил╫║∙ая└╣█╫╧яи┘█ял╫ми▄╫еу╫я┘}и∙²╔мяиД╧ил(─│█╫▒∙Ю╣ил╫║∙ая└╣█╫╧яи┘█ял╫я∙мял╫┘уя║┴ум}┬м}юа|д╧ил(─│█╫▒∙Ю╣ил╫║∙ая└╣┘уя║┴ул╣еу┘╠╔≥╔█┘я╔╫╦╫ми▄╫╣╫▒∙╟╧ил(─│█╫▒∙Ю╣ил╫║∙ая└╣┘уя║┴ул╣еу┘╠╔≥╔█┘я╔╫╦╫ми▄╫мя╫и■╧ил(─│█╫▒∙Ю╣ил╫║∙ая└╣┘уя║┴ул╣юю╢л╣еу┘╠╔≥╔█┘я╔╫╦╫ми▄╫╠╔┬╧ил(─│█╫▒∙Ю╣ил╫║∙ая└╣┘уя║┴ул╣юю╢л╣еу┘╠╔≥╔█┘я╔╫╦╫ми▄╫м█║∙▒у╠∙х╧ил(─│█╫▒∙Ю╣ил╫║∙ая└╣┘уя║┴ул╣юю╢л╣еу┘╠╔≥╔█┘я╔╫╦╫я∙мял╫юа|л╧ил(─│█╫▒∙Ю╣ил╫║∙ая└╣┘уя║┴ул╣юд╢л╣еу┘╠╔≥╔█┘я╔╫╦╫┘и²╪╧я╫╣╟(─│█╫▒∙Ю╣ил╫║∙ая└╣┘уя║┴ул╣юд╢л╣еу┘╠╔≥╔█┘я╔╫╦╫┘и²╪╧╠╫█╛(─│█╫▒∙Ю╣ил╫║∙ая└╣┘уя║┴ул╣юд╢л╣еу┘╠╔≥╔█┘я╔╫╦╫I5╧╣░(─│█╫▒∙Ю╣ил╫║∙ая└╣┘уя║┴ул╣юд╢л╣еу┘╠╔≥╔█┘я╔╫╦╫ми▄╫╠╔┬╧ил(─│█╫▒∙Ю╣ил╫║∙ая└╣┘уя║┴ул╣юд╢л╣еу┘╠╔≥╔█┘я╔╫╦╫я∙мял╫юе|л╧ил(─│▒╫█л╫║∙ая└╣ы╧∙Ап╫┘уя║┴ул╫UQ!	UM}@е|м}Y1=A59Q}A19|хюхь╢юЮ╢хД╧╣░(─│▒╫█л╫║∙ая└╣ы╧∙Ап╫┘уя║┴ул╫UQ!	UM}@е|м}%5A159QQ%=9}MQQUM|хюхь╢юЮ╢хД╧╘м╫╦(─│▒╫█л╫║∙ая└╣ы╧∙Ап╫┘уя║┴ул╫UQ!	UM}@е|м}%5A159QQ%=9}MQQUM|хюхь╢юЮ╢хД╧╣░(─│м█и╔аял╫ы∙и╔≥Д╣┘уя║┴ул╣юд╢л╧аД(╓)1Q%=9LТ═(──╧²╔я║у┬╫щ╫и╜≥╠╫щл╫┘уя║┴ул╣юд╢л╣²┘ю╣▒╔┘²╧╫мя╔▄╧Е╣╟(──╧²╔я║у┬╫щ╫и╜≥╠╫щл╫┘уя║┴ул╣юд╢л╣╣┘я∙и╔┘╠╔И■╧Е╣╟(─│м█и╔аял╫┘уя║┴ул╣юд╢л╣≥╔╧┘╠╔И■╧аД(─│м█и╔аял╫┘уя║┴ул╣юд╢л╣м∙╣┘╧я╔▄╣█╫╣а╠∙я╔╫╦╧аД(╓()я┘х─╣█≤─╫я╣ю╫┘уя║┴ул╣юд╢л╣≥╔╧┘╟╣м╫уи█■╧я┘х│p(──╧²╔я║у┬╫щ╫и╜≥╠╫щл╫┘уя║┴ул╣юд╢л╣еу┘╠╔≥╔█┘я╔╫╦╧Е╣╟─┬▒М%91}AQ!MmuТ┬)²╔п│и∙м∙п─╢╣║┘и░)²╔п│█╠∙┘╦─╣≥▒Ю)²╔п│█║∙█╜╫уп─╢╣▒∙я┘█═─┬▒М	M}M!Т┬)я∙мп─┬░║²╔п│и∙ь╣а┘им■│!Х╓┬─Т─┬▒М	M}M!Т┬)я∙мп─┬░║²╔п│и∙ь╣а┘им■│!yМяи∙∙Т╓┬─Т─┬▒М	M}QIТ┬)я┘х─╣А≤─╫я╣ю╫┘уя║┴ул╣юд╢л╣≥╔╧┘╟╣м╫уи█■╧я┘х)²╔п│и╢─╣≤─┬▒М1Q%=9MmuТ┬)²╔п│┘▒░─╢╢─╧²╔я║у┬╫щ╫и╜≥╠╫щл╫┘уя║┴ул╣юд╢л╣еу┘╠╔≥╔█┘я╔╫╦╧Е╣╟─┬▒М%91}AQ!MmuТ┬)аи╔╧я≤─°∙мq╦°─┬▒М1Q%=9MmuТ┬─╧²╔я║у┬╫щ╫и╜≥╠╫щл╫┘уя║┴ул╣юд╢л╣еу┘╠╔≥╔█┘я╔╫╦╧Е╣╟│p(──┬▒М%91}AQ!MmuТ┬│П│1}10У│м╫ип─╣т─Ь─╫я╣ю╫юдл╣∙Аа∙█я∙░╣а┘я║л╧яАп)²╔п│▒╔≥≤─╢╣█┘█║∙░─╢╣╧┘╣■╣╫╧╠Д│П│1}10У│м╫ип─Ь─╫я╣ю╫юдл╣┘█яу┘╟╣а┘я║л╧яАп)я∙мп─┬░║щ▄─╣╟─П─╫я╣ю╫юдл╣∙Аа∙█я∙░╣а┘я║л╧яАп╓┬─Т─┬хД┬)я∙мп─┬░║щ▄─╣╟─П─╫я╣ю╫юдл╣┘█яу┘╟╣а┘я║л╧яАп╓┬─Т─┬хД┬)▒╔≥≤─╣т─╫я╣ю╫юдл╣∙Аа∙█я∙░╣а┘я║л╧яАп─╫я╣ю╫юдл╣┘█яу┘╟╣а┘я║л╧яАп)≥╫х│а┘я═│╔╦│p(──╧²╔я║у┬╫щ╫и╜≥╠╫щл╫┘уя║┴ул╣юд╢л╣²┘ю╣▒╔┘²╧╫мя╔▄╧Е╣╟│p(──╧²╔я║у┬╫щ╫и╜≥╠╫щл╫┘уя║┴ул╣юд╢л╣╣┘я∙и╔┘╠╔И■╧Е╣╟│p(──╧²╔я║у┬╫щ╫и╜≥╠╫щл╫┘уя║┴ул╣юд╢л╣█╠∙┘╦╣и∙а╠┘Д╣╣┘я∙и╔┘╠╔И■╧Е╣╟│p(──╧²╔я║у┬╫щ╫и╜≥╠╫щл╫┘уя║┴ул╣юд╢л╣≥╔╧┘╟╣█╠╫муи■╧Е╣╟│p(─│м█и╔аял╫┘уя║┴ул╣юд╢л╣≥╔╧┘╠╔И■╧аД│p(─│м█и╔аял╫┘уя║┴ул╣юд╢л╣м∙╣┘╧я╔▄╣█╫╣а╠∙я╔╫╦╧аД│p(─│м█и╔аял╫┘уя║┴ул╣юд╢л╣²┘ю╣█╠╫муи■╧аД│p(─│м█и╔аял╫┘уя║┴ул╣юд╢л╣█╠╔ааД╣█╫╣а╠∙я╔╫╦╧аД│p(─│м█и╔аял╫┘уя║┴ул╣юд╢л╣≥╔╧┘╟╣█╠╫муи■╧м═)▒╪(─│я∙мп─└─╣■─┬▒Ма┘я║Т┬)▒╫╧■)аЕя║╫╦л│м█и╔аял╫ы∙и╔≥Д╣┘уя║┴ул╣юд╢х╧аД│П│я∙■─╫я╣ю╫юдх╣█╠∙┘╦╣м╫уи█■╧╘м╫╦)и∙еу╔и∙}╠╔╧■│AMM}UQ!	UM}@е|и}M=UI}=91d─╫я╣ю╫юдх╣█╠∙┘╦╣м╫уи█■╧╘м╫╦)аЕя║╫╦л│м█и╔аял╫ы∙и╔≥Д╣┘уя║┴ул╣юд╢л╧аД│П│я∙■─╫я╣ю╫юдл╣█╠∙┘╦╣м╫уи█■╧╘м╫╦)и∙еу╔и∙}╠╔╧■│AMM}UQ!	UM}@е|м}M=UI}=91d─╫я╣ю╫юдл╣█╠∙┘╦╣м╫уи█■╧╘м╫╦)²╔п│▒╔≥≤─╢╣█┘█║∙░─╢╣█║∙█╛()²╔п│█╫╧≥╔°│ум∙х╧╧┘╣■─²²╔я║у┬╣┘█я╔╫╧мm┴╫яt°)²╔п│█╫╧≥╔°│ум∙х╧∙╣┘╔╟─°пдЮДЮхЮх╜²╔я║у┬╣┘█я╔╫╧мm┴╫яuум∙ил╧╧╫и∙а╠Д╧²╔я║у┬╧█╫╢°)²╔п│█╫╣╣╔п─╣╢─²≥∙┘п║┘уя║┴ул╓Х│█╠╫м■│≥у╠╟╣мя┘█╛│@д╦л│²┘ал°)м╫уи█∙}м║└Т░║²╔п│и∙ь╣а┘им■│!╓)м╫уи█∙}яи∙■Т░║²╔п│и∙ь╣а┘им■│!yМяи∙∙Т╓)я∙мп─┬░║²╔п│и∙ь╣а┘им■│!x╓┬─Т─┬▒М	M}M!Т┬)я∙мп─┬▒Мм╫уи█∙}яи∙∙Т┬─└Т─┬▒М	M}QIТ┬(└│²╔п│╠л╣и∙╣╫я■─╢╣∙А╔п╣█╫▒■─╢╣║∙┘▒л│╫и╔²╔╦─┴и∙≥л╫║∙┘▒л╪▒МQIQ}	I9!Т┬─Ь╫▒∙ь╫╧у╠╟─хЬ≤д)²╔п│аум═│╫и╔²╔╦─┴!Ии∙≥л╫║∙┘▒л╪▒МQIQ}	I9!Т┬)Л(─│∙█║╪─┴м╫уи█∙}м║└Т▒Мм╫уи█∙}м║┘Т┬(─│∙█║╪─┴м╫уи█∙}яи∙■Т▒Мм╫уи█∙}яи∙∙Т┬(─│∙█║╪─┴м╫уи█∙}а┘и∙╧пТ▒М	M}M!Т┬(─│∙█║╪─²█║┘╧²∙▒}а┘я║лТхД°(─│∙█║╪─┴я┘и²∙я}┴и┘╧█═Т▒МQIQ}	I9!Т┬(─│∙█║╪─²м╫уи█∙}щ╫и╜╔╧²}яи∙∙}еу┘╠╔≥╔∙░Уяиу■°(─│∙█║╪─²┘уя║╫и╔яДУ≥┘╠м■°(─│∙█║╪─²∙≥≥∙█я}┘уя║╫и╔яДУ≥┘╠м■°(─│∙█║╪─²аи╫▒у█я╔╫╧}█┘╠╠∙хУ≥┘╠м■°(─│∙█║╪─²аи╫▒у█я╔╫╧}щи╔я∙хУ≥┘╠м■°(─│∙█║╪─²аи╫ы╔▒∙и}█┘╠╠}∙╧┘┴╠∙░У≥┘╠м■°(─│∙█║╪─²╠╔мя∙╧∙и}∙╧┘┴╠∙░У≥┘╠м■°(─│∙█║╪─²╫а∙╧┴┘╫}∙╧┘┴╠∙░У≥┘╠м■°)Т│П│я∙■─╣└─┬▒М%Q!U	}MQA}MU55IeТ┬(
