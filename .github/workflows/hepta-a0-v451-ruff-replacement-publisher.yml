@@ -15,11 +15,12 @@ concurrency:
 env:
   EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
   TARGET_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
-  TARGET_HEAD: 08e6ed017e8cbfb94f86a5fa8397eb00eb396ed2
-  TARGET_TREE: ca05954360479e64f7ed6c375ee841627529fca3
+  TARGET_HEAD: 7a8052aa8949c8b1be361b5231389ee193baec3c
+  TARGET_TREE: ddea81162a5eceb5b8c52dfaf42ee1f9ee40285b
   Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
   Q0_TREE: ca455a9ef797cd95164c880c7b8faba80b305589
-  STAGING_BRANCH: staging/hepta-a0-v451-ruff-replacement-20260830-0030
+  PREDECESSOR_HEADS_JSON: '["08e6ed017e8cbfb94f86a5fa8397eb00eb396ed2","7a8052aa8949c8b1be361b5231389ee193baec3c"]'
+  STAGING_BRANCH: staging/hepta-a0-v451-provenance-ruff-20260830-0035
   REPORT_DIR: artifacts/hepta-a0-v451-ruff-replacement
 
 jobs:
