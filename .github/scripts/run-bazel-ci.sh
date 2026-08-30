@@ -2,416 +2,381 @@
 
 set -euo pipefail
 
-print_failed_bazel_test_logs=0
-print_failed_bazel_action_summary=0
-remote_download_toplevel=0
-windows_msvc_host_platform=0
-windows_cross_compile=0
+impl="$(dirname "${BASH_SOURCE[0]}")/run-bazel-ci-impl.sh"
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --print-failed-test-logs)
-      print_failed_bazel_test_logs=1
-      shift
+is_windows_cross=0
+for arg in "$@"; do
+  if [[ "$arg" == "--windows-cross-compile" ]]; then
+    is_windows_cross=1
+    break
+  fi
+  if [[ "$arg" == "--" ]]; then
+    break
+  fi
+done
+
+# A non-qualifying MSVC fallback is a manual diagnostic only. Never permit an
+# ambient Actions variable to turn a gnullvm-labelled required check into MSVC
+# evidence.
+if [[ "${GITHUB_ACTIONS:-}" == "true" && "${ALLOW_WINDOWS_MSVC_FALLBACK:-}" == "1" ]]; then
+  echo "ALLOW_WINDOWS_MSVC_FALLBACK is forbidden in GitHub Actions qualification jobs. Use the manual Windows MSVC non-qualifying diagnostic workflow." >&2
+  exit 1
+fi
+
+# Authenticated Windows cross jobs retain the existing Linux-RBE path. All
+# non-Windows and non-cross invocations are delegated byte-for-byte.
+if [[ "${RUNNER_OS:-}" != "Windows" || $is_windows_cross -eq 0 || -n "${BUILDBUDDY_API_KEY:-}" ]]; then
+  exec "$impl" "$@"
+fi
+
+wrapper_args=()
+bazel_args=()
+bazel_targets=()
+phase=wrapper
+for arg in "$@"; do
+  case "$phase" in
+    wrapper)
+      if [[ "$arg" == "--" ]]; then
+        phase=bazel
+      elif [[ "$arg" == "--windows-cross-compile" ]]; then
+        # Exec-transition tools run on the hosted Windows/MSVC platform. The
+        # actual target ABI is selected independently below.
+        wrapper_args+=("--windows-msvc-host-platform")
+      else
+        wrapper_args+=("$arg")
+      fi
       ;;
-    --print-failed-action-summary)
-      print_failed_bazel_action_summary=1
-      shift
+    bazel)
+      if [[ "$arg" == "--" ]]; then
+        phase=targets
+      else
+        bazel_args+=("$arg")
+      fi
       ;;
-    --remote-download-toplevel)
-      remote_download_toplevel=1
-      shift
-      ;;
-    --windows-msvc-host-platform)
-      windows_msvc_host_platform=1
-      shift
-      ;;
-    --windows-cross-compile)
-      windows_cross_compile=1
-      shift
-      ;;
-    --)
-      shift
-      break
-      ;;
-    *)
-      echo "Unknown option: $1" >&2
-      exit 1
+    targets)
+      bazel_targets+=("$arg")
       ;;
   esac
 done
 
-if [[ $# -eq 0 ]]; then
-  echo "Usage: $0 [--print-failed-test-logs] [--print-failed-action-summary] [--remote-download-toplevel] [--windows-msvc-host-platform] [--windows-cross-compile] -- <bazel args> -- <targets>" >&2
+if [[ "$phase" != "targets" || ${#bazel_args[@]} -eq 0 || ${#bazel_targets[@]} -eq 0 ]]; then
+  echo "Expected wrapper options, Bazel args, and targets separated by --" >&2
   exit 1
 fi
 
-bazel_startup_args=()
-if [[ -n "${BAZEL_OUTPUT_USER_ROOT:-}" ]]; then
-  bazel_startup_args+=("--output_user_root=${BAZEL_OUTPUT_USER_ROOT}")
-fi
-
-run_bazel() {
-  if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
-    MSYS2_ARG_CONV_EXCL='*' "$(dirname "${BASH_SOURCE[0]}")/run_bazel_with_buildbuddy.py" "$@"
-    return
-  fi
-
-  "$(dirname "${BASH_SOURCE[0]}")/run_bazel_with_buildbuddy.py" "$@"
-}
-
-run_bazel_with_startup_args() {
-  if (( ${#bazel_startup_args[@]} > 0 )); then
-    run_bazel "${bazel_startup_args[@]}" "$@"
-    return
-  fi
-
-  run_bazel "$@"
-}
-
-ci_config=ci-linux
-case "${RUNNER_OS:-}" in
-  macOS)
-    ci_config=ci-macos
-    ;;
-  Windows)
-    if [[ $windows_cross_compile -eq 1 ]]; then
-      ci_config=ci-windows-cross
-    else
-      ci_config=ci-windows
+has_option_prefix() {
+  local prefix="$1"
+  local arg
+  for arg in "${bazel_args[@]}"; do
+    if [[ "$arg" == "$prefix"* ]]; then
+      return 0
     fi
-    ;;
-esac
+  done
+  return 1
+}
 
-print_bazel_test_log_tails() {
-  local console_log="$1"
-  local testlogs_dir
+has_exact_option() {
+  local expected="$1"
+  local arg
+  for arg in "${bazel_args[@]}"; do
+    if [[ "$arg" == "$expected" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
 
-  local -a bazel_info_args=(info)
-  if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
-    # `bazel info` needs the same CI config as the failed test invocation so
-    # platform-specific output roots match. On Windows, omitting `ci-windows`
-    # would point at `local_windows-fastbuild` even when the test ran with the
-    # MSVC host platform under `local_windows_msvc-fastbuild`.
-    bazel_info_args+=("--config=${ci_config}")
+has_list_entry() {
+  local prefix="$1"
+  local required="$2"
+  local arg value entry
+  local -a entries
+  for arg in "${bazel_args[@]}"; do
+    if [[ "$arg" != "$prefix"* ]]; then
+      continue
+    fi
+    value="${arg#${prefix}}"
+    IFS=',' read -r -a entries <<< "$value"
+    for entry in "${entries[@]}"; do
+      if [[ "$entry" == "$required" ]]; then
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+require_or_add_single_option() {
+  local prefix="$1"
+  local expected="$2"
+  local description="$3"
+  local arg
+  local seen=0
+  for arg in "${bazel_args[@]}"; do
+    if [[ "$arg" != "$prefix"* ]]; then
+      continue
+    fi
+    seen=1
+    if [[ "$arg" != "$expected" ]]; then
+      echo "Credential-free Windows ${description} requires ${expected}; refusing conflicting option ${arg}." >&2
+      exit 1
+    fi
+  done
+  if [[ $seen -eq 0 ]]; then
+    bazel_args+=("$expected")
   fi
+}
 
-  # Only pass flags that affect Bazel's output-root selection or repository
-  # lookup. Test/build-only flags such as execution logs or remote download
-  # mode can make `bazel info` fail, which would hide the real test log path.
-  for arg in "${post_config_bazel_args[@]}"; do
-    case "$arg" in
-      --host_platform=* | --repo_contents_cache=* | --repository_cache=*)
-        bazel_info_args+=("$arg")
+require_exact_ci_arg() {
+  local prefix="$1"
+  local expected="$2"
+  local arg
+  for arg in "${bazel_args[@]}"; do
+    if [[ "$arg" == "$prefix"* && "$arg" != "$expected" ]]; then
+      echo "GitHub Actions Windows gnullvm qualification rejects conflicting argument '$arg'; expected '$expected'." >&2
+      exit 1
+    fi
+  done
+}
+
+require_ci_allowed_configs() {
+  local arg config
+  for arg in "${bazel_args[@]}"; do
+    if [[ "$arg" != --config=* ]]; then
+      continue
+    fi
+    config="${arg#--config=}"
+    case "$config" in
+      ci | ci-bazel | ci-windows | clippy | argument-comment-lint | ci-v8 | rusty-v8-upstream-libcxx | v8-release-compat | v8-target-x64 | v8-target-arm64)
+        ;;
+      *)
+        echo "GitHub Actions keyless Windows gnullvm qualification rejects non-allowlisted Bazel config '$config'." >&2
+        exit 1
         ;;
     esac
   done
-
-  testlogs_dir="$(run_bazel_with_startup_args \
-    --noexperimental_remote_repo_contents_cache \
-    "${bazel_info_args[@]}" \
-    bazel-testlogs 2>/dev/null || echo bazel-testlogs)"
-
-  local failed_targets=()
-  while IFS= read -r target; do
-    failed_targets+=("$target")
-  done < <(
-    grep -E '^(FAIL: //|ERROR: .* Testing //)' "$console_log" \
-      | sed -E 's#^FAIL: (//[^ ]+).*#\1#; s#^ERROR: .* Testing (//[^ ]+) failed:.*#\1#' \
-      | sort -u
-  )
-
-  if [[ ${#failed_targets[@]} -eq 0 ]]; then
-    echo "No failed Bazel test targets were found in console output."
-    return
-  fi
-
-  for target in "${failed_targets[@]}"; do
-    local rel_path="${target#//}"
-    rel_path="${rel_path/://}"
-    local test_log="${testlogs_dir}/${rel_path}/test.log"
-    local reported_test_log
-    reported_test_log="$(grep -F "FAIL: ${target} " "$console_log" | sed -nE 's#.* \(see (.*[\\/]test\.log)\).*#\1#p' | head -n 1 || true)"
-    if [[ -n "$reported_test_log" ]]; then
-      reported_test_log="${reported_test_log//\\//}"
-      test_log="$reported_test_log"
-    fi
-
-    echo "::group::Bazel test log tail for ${target}"
-    if [[ -f "$test_log" ]]; then
-      tail -n 200 "$test_log"
-    else
-      echo "Missing test log: $test_log"
-    fi
-    echo "::endgroup::"
-  done
 }
 
-print_bazel_action_failure_summary() {
-  local console_log="$1"
-  local escaped_summary
-  local summary
+require_ci_exact_list() {
+  local prefix="$1"
+  shift
+  local -a allowed=("$@")
+  local -a observed=()
+  local -a entries
+  local arg value entry allowed_entry existing
+  local seen_option=0
+  local valid found
 
-  summary="$(
-    awk '
-      function clean(line) {
-        gsub(sprintf("%c", 27) "\\[[0-9;]*m", "", line)
-        sub(/^.*\t[^\t]*\t[0-9TZ:._-]+ /, "", line)
-        return line
-      }
-
-      function is_diagnostic(line) {
-        return line ~ /^(error(\[[^]]+\])?:|warning:|note:|help:)/ ||
-          line ~ /^[[:space:]]+-->/ ||
-          line ~ /^[[:space:]]*[0-9]+[[:space:]]+\|/ ||
-          line ~ /^[[:space:]]*\|/ ||
-          line ~ /^[[:space:]]+= (note|help):/ ||
-          line ~ /^[[:space:]]*\^[[:space:]^~-]*$/ ||
-          line ~ /^For more information/ ||
-          line ~ /^error: aborting/
-      }
-
-      {
-        line = clean($0)
-      }
-
-      line ~ /^ERROR: .* failed:/ {
-        if (printed) {
-          print ""
-        }
-        print line
-        in_failure = 1
-        seen_diagnostic = 0
-        printed = 1
-        next
-      }
-
-      in_failure && is_diagnostic(line) {
-        print line
-        seen_diagnostic = 1
-        next
-      }
-
-      in_failure && seen_diagnostic && line == "" {
-        print ""
-        next
-      }
-
-      in_failure && seen_diagnostic {
-        in_failure = 0
-        seen_diagnostic = 0
-        next
-      }
-    ' "$console_log"
-  )"
-
-  if [[ -z "$summary" ]]; then
-    summary="$(grep -E '^ERROR: |^FAILED: ' "$console_log" | tail -n 50 || true)"
-  fi
-
-  if [[ -z "$summary" ]]; then
-    echo "No Bazel action failures were found in the captured console output."
-    return
-  fi
-
-  if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
-    escaped_summary="$(
-      printf '%s' "$summary" \
-        | awk 'BEGIN { ORS = "" } {
-            gsub(/%/, "%25")
-            gsub(/\r/, "%0D")
-            print sep $0
-            sep = "%0A"
-          }'
-    )"
-    echo "::error title=Bazel failed action diagnostics::${escaped_summary}"
-  fi
-
-  echo
-  echo "Bazel failed action diagnostics:"
-  echo "--------------------------------"
-  printf '%s\n' "$summary"
-  echo "--------------------------------"
-}
-
-bazel_args=()
-bazel_targets=()
-found_target_separator=0
-for arg in "$@"; do
-  if [[ "$arg" == "--" && $found_target_separator -eq 0 ]]; then
-    found_target_separator=1
-    continue
-  fi
-
-  if [[ $found_target_separator -eq 0 ]]; then
-    bazel_args+=("$arg")
-  else
-    bazel_targets+=("$arg")
-  fi
-done
-
-if [[ ${#bazel_args[@]} -eq 0 || ${#bazel_targets[@]} -eq 0 ]]; then
-  echo "Expected Bazel args and targets separated by --" >&2
-  exit 1
-fi
-
-if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
-  # Windows cross-compilation depends on authenticated RBE. Preserve the local
-  # Windows build shape when credentials are unavailable.
-  ci_config=ci-windows
-  windows_msvc_host_platform=1
-fi
-
-post_config_bazel_args=()
-if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; then
-  has_host_platform_override=0
   for arg in "${bazel_args[@]}"; do
-    if [[ "$arg" == --host_platform=* ]]; then
-      has_host_platform_override=1
-      break
+    if [[ "$arg" != "$prefix"* ]]; then
+      continue
     fi
+    seen_option=1
+    value="${arg#${prefix}}"
+    if [[ -z "$value" ]]; then
+      echo "GitHub Actions Windows gnullvm qualification rejects an empty '${prefix}' list." >&2
+      exit 1
+    fi
+    IFS=',' read -r -a entries <<< "$value"
+    for entry in "${entries[@]}"; do
+      if [[ -z "$entry" ]]; then
+        echo "GitHub Actions Windows gnullvm qualification rejects an empty entry in '$arg'." >&2
+        exit 1
+      fi
+      valid=0
+      for allowed_entry in "${allowed[@]}"; do
+        if [[ "$entry" == "$allowed_entry" ]]; then
+          valid=1
+          break
+        fi
+      done
+      if [[ $valid -ne 1 ]]; then
+        echo "GitHub Actions Windows gnullvm qualification rejects non-canonical entry '$entry' in '$arg'." >&2
+        exit 1
+      fi
+      for existing in "${observed[@]}"; do
+        if [[ "$entry" == "$existing" ]]; then
+          echo "GitHub Actions Windows gnullvm qualification rejects duplicate entry '$entry' in '${prefix}' arguments." >&2
+          exit 1
+        fi
+      done
+      observed+=("$entry")
+    done
   done
 
-  if [[ $has_host_platform_override -eq 0 ]]; then
-    # Use the MSVC Windows platform for jobs that need helper binaries like
-    # Rust test wrappers and V8 generators to resolve a compatible toolchain.
-    # Callers that need a different Windows target platform should pass an
-    # explicit `--platforms=...` flag.
-    post_config_bazel_args+=("--host_platform=//:local_windows_msvc")
-  fi
-fi
-
-if [[ $remote_download_toplevel -eq 1 ]]; then
-  # Override the CI config's remote_download_minimal setting when callers need
-  # the built artifact to exist on disk after the command completes.
-  post_config_bazel_args+=(--remote_download_toplevel)
-fi
-
-if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -n "${BUILDBUDDY_API_KEY:-}" ]]; then
-  # `--enable_platform_specific_config` expands `common:windows` on Windows
-  # hosts after ordinary rc configs, which can override `ci-windows-cross`'s
-  # RBE host platform. Repeat the host platform on the command line so V8 and
-  # other genrules execute on Linux RBE workers instead of Git Bash locally.
-  #
-  # Bazel also derives the default genrule shell from the client host. Without
-  # an explicit shell executable, remote Linux actions can be asked to run
-  # `C:\Program Files\Git\usr\bin\bash.exe`.
-  post_config_bazel_args+=(--host_platform=//:rbe --shell_executable=/bin/bash)
-fi
-
-if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
-  # The Windows cross-compile config depends on authenticated remote
-  # execution. When credentials are unavailable, keep the local build shape
-  # and its lower concurrency cap.
-  post_config_bazel_args+=(--jobs=8)
-fi
-
-if [[ -n "${BAZEL_REPO_CONTENTS_CACHE:-}" ]]; then
-  # Windows self-hosted runners can run multiple Bazel jobs concurrently. Give
-  # each job its own repo contents cache so they do not fight over the shared
-  # path configured in `ci-windows`.
-  post_config_bazel_args+=("--repo_contents_cache=${BAZEL_REPO_CONTENTS_CACHE}")
-fi
-
-if [[ -n "${BAZEL_REPOSITORY_CACHE:-}" ]]; then
-  post_config_bazel_args+=("--repository_cache=${BAZEL_REPOSITORY_CACHE}")
-fi
-
-if [[ -n "${CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR:-}" ]]; then
-  post_config_bazel_args+=(
-    "--execution_log_compact_file=${CODEX_BAZEL_EXECUTION_LOG_COMPACT_DIR}/execution-log-${bazel_args[0]}-${GITHUB_JOB:-local}-$$.zst"
-  )
-fi
-
-if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
-  pass_windows_build_env=1
-  if [[ $windows_cross_compile -eq 1 && -n "${BUILDBUDDY_API_KEY:-}" ]]; then
-    # Remote build actions execute on Linux RBE workers. Passing the Windows
-    # runner's build environment there makes Bazel genrules try to execute
-    # C:\Program Files\Git\usr\bin\bash.exe on Linux.
-    pass_windows_build_env=0
+  if [[ $seen_option -eq 0 ]]; then
+    return
   fi
 
-  if [[ $pass_windows_build_env -eq 1 ]]; then
-    windows_action_env_vars=(
-      INCLUDE
-      LIB
-      LIBPATH
-      UCRTVersion
-      UniversalCRTSdkDir
-      VCINSTALLDIR
-      VCToolsInstallDir
-      WindowsLibPath
-      WindowsSdkBinPath
-      WindowsSdkDir
-      WindowsSDKLibVersion
-      WindowsSDKVersion
-    )
-
-    for env_var in "${windows_action_env_vars[@]}"; do
-      if [[ -n "${!env_var:-}" ]]; then
-        post_config_bazel_args+=("--action_env=${env_var}" "--host_action_env=${env_var}")
+  for allowed_entry in "${allowed[@]}"; do
+    found=0
+    for existing in "${observed[@]}"; do
+      if [[ "$allowed_entry" == "$existing" ]]; then
+        found=1
+        break
       fi
     done
-  fi
+    if [[ $found -ne 1 ]]; then
+      echo "GitHub Actions Windows gnullvm qualification requires exact '${prefix}' set; missing '$allowed_entry'." >&2
+      exit 1
+    fi
+  done
+}
 
-  if [[ -z "${CODEX_BAZEL_WINDOWS_PATH:-}" ]]; then
-    echo "CODEX_BAZEL_WINDOWS_PATH must be set for Windows Bazel CI." >&2
-    exit 1
-  fi
+canonicalize_ci_option() {
+  local prefix="$1"
+  local canonical="$2"
+  local arg
+  local -a filtered=()
+  for arg in "${bazel_args[@]}"; do
+    if [[ "$arg" != "$prefix"* ]]; then
+      filtered+=("$arg")
+    fi
+  done
+  bazel_args=("${filtered[@]}" "$canonical")
+}
 
-  if [[ $pass_windows_build_env -eq 1 ]]; then
-    post_config_bazel_args+=(
-      "--action_env=PATH=${CODEX_BAZEL_WINDOWS_PATH}"
-      "--host_action_env=PATH=${CODEX_BAZEL_WINDOWS_PATH}"
-    )
-  elif [[ $windows_cross_compile -eq 1 ]]; then
-    # Remote build actions run on Linux RBE workers. Give their shell snippets
-    # a Linux PATH while preserving CODEX_BAZEL_WINDOWS_PATH below for local
-    # Windows test execution.
-    post_config_bazel_args+=(
-      "--action_env=PATH=/usr/bin:/bin"
-      "--host_action_env=PATH=/usr/bin:/bin"
-    )
-  fi
-  post_config_bazel_args+=("--test_env=PATH=${CODEX_BAZEL_WINDOWS_PATH}")
+canonicalize_exact_flag() {
+  local canonical="$1"
+  local arg
+  local -a filtered=()
+  for arg in "${bazel_args[@]}"; do
+    if [[ "$arg" != "$canonical" ]]; then
+      filtered+=("$arg")
+    fi
+  done
+  bazel_args=("${filtered[@]}" "$canonical")
+}
+
+ci_host_platform="--host_platform=//:local_windows_msvc"
+ci_target_platform="--platforms=//:windows_x86_64_gnullvm"
+ci_cc_discovery="--repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0"
+ci_execution_platforms="--extra_execution_platforms=//:windows_x86_64_msvc"
+ci_toolchains="--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain,//bazel/toolchains/windows:local_msvc_cc_toolchain"
+ci_test_runner_strategy="--strategy=TestRunner=local"
+ci_v8_strategy="--strategy=V8Mksnapshot=local"
+ci_local_test_jobs="--local_test_jobs=8"
+ci_jobs="--jobs=8"
+ci_test_threads="--test_env=RUST_TEST_THREADS=1"
+ci_test_filters="--test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=command_safety::powershell_parser::tests::,suite::code_mode::code_mode_can_call_hidden_dynamic_tools,tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child"
+
+# GitHub qualification has one exact target/host/toolchain/effect boundary.
+# Local non-Actions callers may retain explicit diagnostic overrides.
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  require_ci_allowed_configs
+  require_exact_ci_arg --host_platform= "$ci_host_platform"
+  require_exact_ci_arg --platforms= "$ci_target_platform"
+  require_exact_ci_arg \
+    --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN= \
+    "$ci_cc_discovery"
+  require_exact_ci_arg --strategy=TestRunner= "$ci_test_runner_strategy"
+  require_exact_ci_arg --strategy=V8Mksnapshot= "$ci_v8_strategy"
+  require_exact_ci_arg --local_test_jobs= "$ci_local_test_jobs"
+  require_exact_ci_arg --jobs= "$ci_jobs"
+  require_exact_ci_arg --test_env=RUST_TEST_THREADS= "$ci_test_threads"
+  require_exact_ci_arg \
+    --test_env=CODEX_BAZEL_TEST_SKIP_FILTERS= \
+    "$ci_test_filters"
+  require_ci_exact_list \
+    --extra_execution_platforms= \
+    //:windows_x86_64_msvc
+  require_ci_exact_list \
+    --extra_toolchains= \
+    //:windows_gnullvm_tests_on_msvc_host_toolchain \
+    //bazel/toolchains/windows:local_msvc_cc_toolchain
+
+  # Put the source-controlled local config before every authority-critical
+  # command-line option. Bazel expands rc configs in place; canonical options
+  # at the tail therefore override single-valued rc defaults, while exact-set
+  # validation prevents additive execution/toolchain injection.
+  canonicalize_exact_flag "--config=ci-windows"
+  canonicalize_ci_option --host_platform= "$ci_host_platform"
+  canonicalize_ci_option --platforms= "$ci_target_platform"
+  canonicalize_ci_option \
+    --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN= \
+    "$ci_cc_discovery"
+  canonicalize_ci_option \
+    --extra_execution_platforms= \
+    "$ci_execution_platforms"
+  canonicalize_ci_option --extra_toolchains= "$ci_toolchains"
+  canonicalize_ci_option --strategy=TestRunner= "$ci_test_runner_strategy"
+  canonicalize_ci_option --strategy=V8Mksnapshot= "$ci_v8_strategy"
+  canonicalize_ci_option --local_test_jobs= "$ci_local_test_jobs"
+  canonicalize_ci_option --jobs= "$ci_jobs"
+  canonicalize_ci_option --test_env=RUST_TEST_THREADS= "$ci_test_threads"
+  canonicalize_ci_option \
+    --test_env=CODEX_BAZEL_TEST_SKIP_FILTERS= \
+    "$ci_test_filters"
 fi
 
-bazel_console_log="$(mktemp)"
-trap 'rm -f "$bazel_console_log"' EXIT
+# Bazel's hermetic LLVM toolchain is gnullvm-only after Q0.12. Local execution
+# therefore uses detected MSVC only for exec tools and hermetic LLVM for the
+# actual gnullvm target.
+require_or_add_single_option \
+  "--host_platform=" \
+  "--host_platform=//:local_windows_msvc" \
+  "gnullvm execution host"
+require_or_add_single_option \
+  "--repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=" \
+  "--repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0" \
+  "local C++ toolchain discovery"
 
-bazel_run_args=(
-  "${bazel_args[@]}"
-)
-if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
-  echo "BuildBuddy API key is available; using remote Bazel configuration."
-  bazel_run_args+=("--config=${ci_config}")
+if [[ "${ALLOW_WINDOWS_MSVC_FALLBACK:-}" == "1" ]]; then
+  # Non-GitHub callers may explicitly request the isolated non-qualifying MSVC
+  # diagnostic. Both host and target are MSVC and the result is never gnullvm
+  # evidence.
+  require_or_add_single_option \
+    "--platforms=" \
+    "--platforms=//:local_windows_msvc" \
+    "MSVC diagnostic target"
 else
-  echo "BuildBuddy API key is not available; using local Bazel configuration."
-fi
-if (( ${#post_config_bazel_args[@]} > 0 )); then
-  bazel_run_args+=("${post_config_bazel_args[@]}")
-fi
-set +e
-# Work around Bazel 9 remote repo contents cache / overlay materialization
-# failures seen in CI (for example "is not a symlink" or permission errors
-# while materializing external repos such as rules_perl). This only disables
-# the startup-level repo contents cache; keyed runs still use BuildBuddy.
-run_bazel_with_startup_args \
-  --noexperimental_remote_repo_contents_cache \
-  "${bazel_run_args[@]}" \
-  -- \
-  "${bazel_targets[@]}" \
-  2>&1 | tee "$bazel_console_log"
-bazel_status=${PIPESTATUS[0]}
-set -e
+  require_or_add_single_option \
+    "--platforms=" \
+    "--platforms=//:windows_x86_64_gnullvm" \
+    "gnullvm target"
 
-if [[ ${bazel_status:-0} -ne 0 ]]; then
-  if [[ $print_failed_bazel_action_summary -eq 1 ]]; then
-    print_bazel_action_failure_summary "$bazel_console_log"
+  if ! has_list_entry \
+    "--extra_execution_platforms=" \
+    "//:windows_x86_64_msvc"; then
+    bazel_args+=("--extra_execution_platforms=//:windows_x86_64_msvc")
   fi
-  if [[ $print_failed_bazel_test_logs -eq 1 ]]; then
-    print_bazel_test_log_tails "$bazel_console_log"
+  if ! has_list_entry \
+    "--extra_toolchains=" \
+    "//:windows_gnullvm_tests_on_msvc_host_toolchain"; then
+    bazel_args+=("--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain")
   fi
-  exit "$bazel_status"
+  if ! has_exact_option "--strategy=TestRunner=local"; then
+    bazel_args+=("--strategy=TestRunner=local")
+  fi
+  if ! has_exact_option "--strategy=V8Mksnapshot=local"; then
+    bazel_args+=("--strategy=V8Mksnapshot=local")
+  fi
+  if ! has_option_prefix "--local_test_jobs="; then
+    bazel_args+=("--local_test_jobs=8")
+  fi
+  if ! has_exact_option "--test_env=RUST_TEST_THREADS=1"; then
+    bazel_args+=("--test_env=RUST_TEST_THREADS=1")
+  fi
+  if ! has_exact_option "--build_metadata=TAG_windows_gnullvm_local=true"; then
+    bazel_args+=("--build_metadata=TAG_windows_gnullvm_local=true")
+  fi
 fi
+
+if ! has_exact_option "--config=ci-windows"; then
+  bazel_args+=("--config=ci-windows")
+fi
+if ! has_list_entry \
+  "--extra_toolchains=" \
+  "//bazel/toolchains/windows:local_msvc_cc_toolchain"; then
+  bazel_args+=("--extra_toolchains=//bazel/toolchains/windows:local_msvc_cc_toolchain")
+fi
+if ! has_option_prefix "--jobs="; then
+  bazel_args+=("--jobs=8")
+fi
+
+exec "$impl" \
+  "${wrapper_args[@]}" \
+  -- \
+  "${bazel_args[@]}" \
+  -- \
+  "${bazel_targets[@]}"
