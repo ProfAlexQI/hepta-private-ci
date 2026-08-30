@@ -1,0 +1,183 @@
+name: Hepta Intelligence Q0.44r exact-source publisher
+
+on:
+  push:
+    branches:
+      - "automation/hepta-intelligence-q043-exact-source-publisher-20260830"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-q043-exact-source-publisher-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TARGET_HEAD: 1fc7e4a9698eff5bbede008a94b59b25f79df724
+  TARGET_TREE: d66820de02efa76c46132ece6af344ab8f53f1c8
+  TARGET_PARENT_A0: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
+  TARGET_PARENT_Q044R: 09c584eb48489b20682f09995605033dfb9951b1
+  ARTIFACT_DIR: artifacts/hepta-intelligence-q044r-source
+
+jobs:
+  exact-source:
+    name: Q0.44r exact-source validation on macOS 15
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact selected integration head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.TARGET_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact identity, tree, ordered parents and A0 overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_HEAD"
+          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+          set -- $(git rev-list --parents -n 1 HEAD)
+          test "$#" = 3
+          test "$1" = "$TARGET_HEAD"
+          test "$2" = "$TARGET_PARENT_A0"
+          test "$3" = "$TARGET_PARENT_Q044R"
+          git diff --name-only "$TARGET_PARENT_Q044R" HEAD | LC_ALL=C sort > /tmp/q044r-overlay.actual
+          cat > /tmp/q044r-overlay.expected <<'EOF'
+          .github/workflows/hepta-intelligence-a0-authority.yml
+          .github/workflows/hepta-intelligence-execution-spec.yml
+          .github/workflows/hepta-intelligence-master-plan.yml
+          plans/hepta-intelligence/AGENTS.md
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json
+          plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json
+          scripts/hepta-intelligence-current-truth.py
+          scripts/verify-hepta-intelligence-a0-authority.py
+          scripts/verify-hepta-intelligence-document-authority.py
+          scripts/verify-hepta-intelligence-master-plan.py
+          EOF
+          diff -u /tmp/q044r-overlay.expected /tmp/q044r-overlay.actual
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Compile selected source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/verify_windows_gnullvm_q040_contract.py \
+            scripts/verify_windows_gnullvm_q041_contract.py \
+            scripts/verify_windows_gnullvm_q043_contract.py \
+            scripts/verify_windows_gnullvm_q044_contract.py \
+            scripts/verify-windows-gnullvm-bazel-query-executable.py \
+            scripts/verify-windows-gnullvm-direct-bazel.py \
+            scripts/verify-windows-gnullvm-job-executable.py \
+            scripts/verify-windows-gnullvm-setup-token-receipt-truth.py \
+            .github/scripts/test_run_bazel_query_executable.py \
+            .github/scripts/test_run_bazel_startup_contract.py
+
+      - name: Execute complete Q0.44r source-contract chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          python3 scripts/verify_windows_gnullvm_q044_contract.py \
+            | tee "$ARTIFACT_DIR/q044r-contract.log"
+          python3 scripts/verify-windows-gnullvm-direct-bazel.py \
+            | tee "$ARTIFACT_DIR/direct-contract.log"
+          python3 scripts/verify-windows-gnullvm-job-executable.py \
+            | tee "$ARTIFACT_DIR/job-contract.log"
+          python3 scripts/verify-windows-gnullvm-setup-token-receipt-truth.py \
+            | tee "$ARTIFACT_DIR/receipt-truth.log"
+          python3 scripts/verify-windows-gnullvm-bazel-query-executable.py \
+            | tee "$ARTIFACT_DIR/query-executable-source.log"
+
+      - name: Execute complete qualification fixture and focused regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/test_run_bazel_startup_contract.py \
+            | tee "$ARTIFACT_DIR/startup-tests.log"
+          python3 .github/scripts/test_run_bazel_query_executable.py \
+            | tee "$ARTIFACT_DIR/query-executable-tests.log"
+          bash .github/scripts/test_run_bazel_qualification_boundary.sh \
+            | tee "$ARTIFACT_DIR/qualification-boundary.log"
+
+      - name: Emit exact-source receipt
+        shell: bash
+        env:
+          RECEIPT_PATH: ${{ env.ARTIFACT_DIR }}/q044r-exact-source-receipt.json
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import subprocess
+
+          root = pathlib.Path.cwd()
+          artifact_dir = root / os.environ["ARTIFACT_DIR"]
+          logs = []
+          for path in sorted(artifact_dir.glob("*.log")):
+              data = path.read_bytes()
+              logs.append({
+                  "path": path.relative_to(root).as_posix(),
+                  "bytes": len(data),
+                  "sha256": hashlib.sha256(data).hexdigest(),
+              })
+          receipt = {
+              "schema": "hepta_intelligence_q044r_exact_source_receipt_v1",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "target_head": subprocess.check_output(
+                  ["git", "rev-parse", "HEAD"], text=True
+              ).strip(),
+              "target_tree": subprocess.check_output(
+                  ["git", "rev-parse", "HEAD^{tree}"], text=True
+              ).strip(),
+              "ordered_parents": subprocess.check_output(
+                  ["git", "show", "-s", "--format=%P", "HEAD"], text=True
+              ).strip().split(),
+              "publisher_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "publisher_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "publisher_workflow_ref": os.environ["GITHUB_WORKFLOW_REF"],
+              "runner_os": os.environ["RUNNER_OS"],
+              "source_contract_chain_passed": True,
+              "qualification_fixture_passed": True,
+              "focused_regressions_passed": True,
+              "direct_bazel_query_executed": False,
+              "a0_candidate_qualified": False,
+              "independent_review": False,
+              "selected": False,
+              "full_repository_merge_green": False,
+              "runtime_authority": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "release_authority": False,
+              "callers_ratchet": False,
+              "logs": logs,
+          }
+          receipt_path = root / os.environ["RECEIPT_PATH"]
+          receipt_path.write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          git diff --check
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Upload exact-source evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-q044r-source-${{ env.TARGET_HEAD }}
+          path: artifacts/hepta-intelligence-q044r-source/**
+          if-no-files-found: error
+          retention-days: 30
