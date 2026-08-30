@@ -203,17 +203,14 @@ def main() -> int:
         and claims.get("production_projection_gate") is False
         and claims.get("production_authority") is False
     )
-    checks["status.not_qualified"] = (
-        status.get("current_tranche", {}).get("status")
-        in {
-            "implemented_on_branch_pending_ci",
-            "source_contract_pass_blocked_runner_not_assigned",
-        }
-        and status.get("current_tranche", {})
-        .get("qualification", {})
-        .get("workflow_ci")
-        in {"pending", "blocked_runner_not_assigned"}
-    )
+    checks["status.not_qualified"] = status.get("current_tranche", {}).get(
+        "status"
+    ) in {
+        "implemented_on_branch_pending_ci",
+        "source_contract_pass_blocked_runner_not_assigned",
+    } and status.get("current_tranche", {}).get("qualification", {}).get(
+        "workflow_ci"
+    ) in {"pending", "blocked_runner_not_assigned"}
 
     return emit("PASS_FACT_GROUNDING_SOURCE_CONTRACT_ONLY", checks)
 
