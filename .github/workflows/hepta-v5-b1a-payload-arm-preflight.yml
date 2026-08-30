@@ -1,0 +1,84 @@
+name: Hepta V5 B1a payload ARM preflight
+
+on:
+  push:
+    branches:
+      - diagnostic/hepta-v5-b1a-current-b0-arm-20260830
+    paths:
+      - .github/workflows/hepta-v5-b1a-payload-arm-preflight.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-v5-b1a-payload-arm-preflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  inspect:
+    name: Authenticate and export exact B1a payload
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact diagnostic head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Authenticate and extract reviewed payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          cat scripts/.hepta-v5-b1a-payload.part?? > "$RUNNER_TEMP/hepta-v5-b1a-payload.b64"
+          base64 --decode "$RUNNER_TEMP/hepta-v5-b1a-payload.b64" > "$RUNNER_TEMP/hepta-v5-b1a-payload.tgz"
+          test "$(sha256sum "$RUNNER_TEMP/hepta-v5-b1a-payload.tgz" | awk '{print $1}')" = "0418684e602f61e871363c912e0dd7a2dcb4f40767444262d5f5d28e82111048"
+          mkdir -p "$RUNNER_TEMP/hepta-v5-b1a-payload"
+          python3 - <<'PY'
+          import pathlib
+          import tarfile
+
+          archive = pathlib.Path("${{ runner.temp }}/hepta-v5-b1a-payload.tgz")
+          output = pathlib.Path("${{ runner.temp }}/hepta-v5-b1a-payload")
+          expected = {
+              ".github/workflows/hepta-architecture-v5-b1a-provider-boundary.yml",
+              "codex-rs/hepta-contracts/src/checked_provider_operation.rs",
+              "codex-rs/hepta-contracts/tests/provider_verified_use_boundary.rs",
+              "docs/architecture/HEPTA_P0_7B_B1A_PROVIDER_BOUNDARY_CONTRACT_V1.md",
+              "docs/architecture/HEPTA_P0_7B_B1A_STATUS.json",
+              "docs/architecture/HEPTA_V5_B1A_PROVIDER_CALLSITE_INVENTORY.json",
+              "scripts/verify-hepta-v5-b1a-format.py",
+              "scripts/verify-hepta-v5-b1a-provider-boundary.py",
+          }
+          with tarfile.open(archive, "r:gz") as bundle:
+              files = set()
+              for member in bundle.getmembers():
+                  name = member.name.removeprefix("./")
+                  path = pathlib.PurePosixPath(name)
+                  if path.is_absolute() or ".." in path.parts:
+                      raise SystemExit(f"unsafe payload path: {member.name}")
+                  if member.isfile():
+                      files.add(name)
+                  elif not member.isdir():
+                      raise SystemExit(f"unsupported payload entry: {member.name}")
+              if files != expected:
+                  raise SystemExit(f"payload file set drifted: {sorted(files ^ expected)}")
+              bundle.extractall(output, filter="data")
+          PY
+          find "$RUNNER_TEMP/hepta-v5-b1a-payload" -type f -print0 | sort -z | xargs -0 sha256sum > "$RUNNER_TEMP/hepta-v5-b1a-payload/SHA256SUMS"
+
+      - name: Upload exact decoded payload
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-v5-b1a-decoded-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-v5-b1a-payload
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Require clean diagnostic worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          git diff --cached --exit-code
