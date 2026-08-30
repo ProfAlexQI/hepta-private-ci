@@ -1,0 +1,123 @@
+name: Windows setup Bazel token boundary
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  setup-token-boundary:
+    name: Setup Bazel token boundary on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-gnullvm
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      # Q0.34's complete source parser includes a Linux-only executable-mode
+      # fixture. Run it once on Linux, then run the cross-platform verifier on
+      # both matrix operating systems before invoking setup-bazel.
+      - name: Verify strict setup-token source boundary
+        if: runner.os == 'Linux'
+        shell: bash
+        run: python3 scripts/verify-windows-gnullvm-setup-token-boundary.py
+
+      - name: Verify cross-platform setup-token boundary
+        shell: bash
+        run: python3 scripts/verify-windows-gnullvm-setup-token-cross-platform.py
+
+      - name: Exercise pinned setup-bazel composite action
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          target: ${{ matrix.target }}
+
+      # This is an executable check of the GITHUB_ENV handoff produced inside
+      # setup-bazel-ci, including Windows' case-insensitive environment model.
+      - name: Assert setup-only Bazelisk token remains scrubbed
+        shell: bash
+        run: .github/scripts/assert-bazelisk-setup-token-scrubbed.sh
+
+      - name: Emit setup-token-boundary receipt
+        shell: bash
+        env:
+          MATRIX_OS: ${{ matrix.os }}
+          MATRIX_TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p artifacts/windows-setup-bazel-token-boundary
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          def git_blob_sha(path: Path) -> str:
+              content = path.read_bytes()
+              framed = f"blob {len(content)}\0".encode("ascii") + content
+              return hashlib.sha1(framed, usedforsecurity=False).hexdigest()
+
+          action = Path(".github/actions/setup-bazel-ci/action.yml")
+          assertion = Path(
+              ".github/scripts/assert-bazelisk-setup-token-scrubbed.sh"
+          )
+          receipt = {
+              "schema": "hepta_windows_setup_bazel_token_boundary_v2",
+              "status": "PASS_WINDOWS_SETUP_BAZEL_TOKEN_BOUNDARY",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "commit": os.environ["GITHUB_SHA"],
+              "workflow": os.environ["GITHUB_WORKFLOW"],
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "workflow_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "workflow_job": os.environ["GITHUB_JOB"],
+              "runner_os": os.environ["RUNNER_OS"],
+              "matrix_os": os.environ["MATRIX_OS"],
+              "matrix_target": os.environ["MATRIX_TARGET"],
+              "setup_bazel_action_git_blob_sha1": git_blob_sha(action),
+              "assertion_script_git_blob_sha1": git_blob_sha(assertion),
+              "strict_step_parser_executed_before_setup_action": True,
+              "cross_platform_verifier_executed_before_setup_action": True,
+              "anonymous_step_between_setup_and_scrub_allowed": False,
+              "duplicate_runs_or_steps_mapping_allowed": False,
+              "pinned_setup_action_executed_on_this_runner": True,
+              "post_setup_casefold_token_assertion_executed": True,
+              "post_setup_nonempty_transport_token_observed": False,
+              "source_writeback": False,
+              "runtime_authority": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "release_authority": False,
+              "callers_ratchet": False,
+          }
+          canonical = json.dumps(
+              receipt,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode()
+          receipt["receipt_binding_sha256"] = hashlib.sha256(canonical).hexdigest()
+          path = Path(
+              "artifacts/windows-setup-bazel-token-boundary/receipt.json"
+          )
+          path.write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(path.read_text(encoding="utf-8"))
+          PY
+
+      - name: Upload setup-token-boundary receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-setup-bazel-token-boundary-${{ matrix.target }}-${{ github.sha }}
+          path: artifacts/windows-setup-bazel-token-boundary/receipt.json
+          if-no-files-found: error
+          retention-days: 30

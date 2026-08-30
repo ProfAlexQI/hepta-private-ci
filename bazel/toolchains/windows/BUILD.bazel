@@ -1,0 +1,20 @@
+package(default_visibility = ["//visibility:public"])
+
+# The repository disables Bazel's host C++ autodetection by default. The
+# credential-free Windows gnullvm lane re-enables it for one invocation and
+# registers this ABI-constrained wrapper so MSVC is used only for exec tools.
+toolchain(
+    name = "local_msvc_cc_toolchain",
+    exec_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:windows",
+        "@llvm//constraints/windows/abi:msvc",
+    ],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:windows",
+        "@llvm//constraints/windows/abi:msvc",
+    ],
+    toolchain = "@local_config_cc//:cc-compiler-x64_windows",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)
