@@ -1,0 +1,68 @@
+name: Hepta UI v5 Windows Bazel root fixes v2
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-windows-bazel-root-fixes-v2-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-windows-bazel-root-fixes-v2.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-windows-bazel-root-fixes-v2
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: macos-15-xlarge
+    timeout-minutes: 35
+    env:
+      TARGET_BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_HEAD: 1e6f7cf3db498153fd52250dee1112f89489e094
+      PATCHER_PATH: .github/scripts/hepta-ui-v5-windows-bazel-root-fixes-v2.py
+    steps:
+      - name: Check out exact publisher commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Materialize the immutable patcher outside the worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          patcher="$RUNNER_TEMP/hepta-ui-v5-windows-bazel-root-fixes-v2.py"
+          cp "$PATCHER_PATH" "$patcher"
+          export PATCHER_COPY="$patcher"
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          path = Path(os.environ["PATCHER_COPY"])
+          text = path.read_text(encoding="utf-8")
+          old = '            "\\\"#;",'
+          new = '            "\\\"#,",'
+          if text.count(old) != 2:
+              raise SystemExit(
+                  f"raw-string fixture terminator repair: expected 2 anchors, found {text.count(old)}"
+              )
+          text = text.replace(old, new)
+          path.write_text(text, encoding="utf-8", newline="\n")
+          compile(text, str(path), "exec")
+          if old in text or text.count(new) != 2:
+              raise SystemExit("raw-string fixture terminator repair did not converge")
+          PY
+          echo "PATCHER_COPY=$patcher" >> "$GITHUB_ENV"
+
+      - name: Execute exact-head source publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$TARGET_BRANCH"
+          test "$(git rev-parse "origin/$TARGET_BRANCH")" = "$EXPECTED_HEAD"
+          git checkout --detach "$EXPECTED_HEAD"
+          test -z "$(git status --porcelain)"
+          python3 "$PATCHER_COPY"
