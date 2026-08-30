@@ -17,7 +17,7 @@ concurrency:
 jobs:
   integrate-qualify-commit:
     if: github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
+    runs-on: macos-15-intel
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -34,7 +34,7 @@ jobs:
           set -euo pipefail
           test "$GITHUB_REF_NAME" = codex/hepta-inference-v4-closure-20260830
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = 192ee83547db7b35ef568258e93575166d820f35
+          test "$(git rev-parse HEAD^)" = 1d527000f25d4663ed620196242c5c73c6f117e4
           test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/hepta-inference-v4-one-shot-private-contracts.yml"
           test -z "$(git status --porcelain)"
 
