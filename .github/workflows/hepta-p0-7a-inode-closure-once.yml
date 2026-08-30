@@ -20,7 +20,7 @@ jobs:
     if: >-
       github.repository == 'ProfHepta/hepta-private-ci' &&
       github.ref == 'refs/heads/codex/hepta-architecture-v4-p0-7a-executable-closure-20260830'
-    runs-on: ubuntu-24.04-arm
+    runs-on: macos-14
     timeout-minutes: 180
     steps:
       - name: Checkout exact repair source
@@ -119,18 +119,29 @@ jobs:
         run: |
           set -euo pipefail
           git diff --check
-          mapfile -t changed < <(git diff --name-only | sort)
-          expected=(
-            ".github/workflows/hepta-p0-7a-inode-closure-once.yml"
-            "codex-rs/hepta-agentd/src/lib.rs"
-            "codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs"
-            "scripts/hepta-p0-7a-source-inode-repair.py"
-          )
-          test "${#changed[@]}" -eq "${#expected[@]}"
-          for index in "${!expected[@]}"; do
-            test "${changed[$index]}" = "${expected[$index]}"
-          done
-          test -z "$(git ls-files --others --exclude-standard)"
+          python3 - <<'PY'
+          import subprocess
+
+          expected = [
+              ".github/workflows/hepta-p0-7a-inode-closure-once.yml",
+              "codex-rs/hepta-agentd/src/lib.rs",
+              "codex-rs/hepta-fleet/src/runtime_bootstrap_registry.rs",
+              "scripts/hepta-p0-7a-source-inode-repair.py",
+          ]
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only"], text=True
+          ).splitlines()
+          if sorted(changed) != sorted(expected):
+              raise SystemExit(
+                  f"unexpected repair set: expected={sorted(expected)!r}, observed={sorted(changed)!r}"
+              )
+          untracked = subprocess.check_output(
+              ["git", "ls-files", "--others", "--exclude-standard"], text=True
+          ).splitlines()
+          if untracked:
+              raise SystemExit(f"unexpected untracked files: {untracked!r}")
+          print("PASS_HEPTA_P0_7A_MINIMAL_REPAIR_SET")
+          PY
 
       - name: Commit qualified repair to staging ref
         shell: bash
