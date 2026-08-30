@@ -18,23 +18,25 @@ from pathlib import Path
 
 LEASE_TARGET = Path("codex-rs/hepta-memory/src/local_lease_outbox.rs")
 LEASE_FUNCTION_START = "pub(crate) async fn load_lease_chain("
-LEASE_FUNCTION_END = "/// Return every fence tuple granted anywhere in the lease history."
+LEASE_FUNCTION_END = (
+    "/// Return every fence tuple granted anywhere in the lease history."
+)
 SUPPLEMENTAL = Path(".github/scripts/hepta-intelligence-q0-supplemental-repair-v1.py")
 
 LEASE_OLD_UNSAFE = (
     "        if index > 0 {\n"
-    "            let prior = latest.as_ref().expect(\"lease prior row\");"
+    '            let prior = latest.as_ref().expect("lease prior row");'
 )
 LEASE_CANONICAL_SAFE = (
     "        if index > 0 {\n"
     "            let Some(prior) = latest.as_ref() else {\n"
-    "                return Err(corrupt(\"lease prior row is missing\"));\n"
+    '                return Err(corrupt("lease prior row is missing"));\n'
     "            };"
 )
 LEASE_ABSORBED_SAFE = (
     "        if index > 0 {\n"
     "            let Some(prior) = latest.as_ref() else {\n"
-    "                return Err(corrupt(\"lease journal is missing its prior row\"));\n"
+    '                return Err(corrupt("lease journal is missing its prior row"));\n'
     "            };"
 )
 
@@ -113,7 +115,9 @@ def normalize_lease_predecessor_guard() -> str:
         {"old_unsafe": 1, "canonical_safe": 0, "absorbed_safe": 0},
         {"old_unsafe": 0, "canonical_safe": 1, "absorbed_safe": 0},
     ):
-        raise SystemExit(f"lease predecessor guard did not normalize exactly: {final_counts}")
+        raise SystemExit(
+            f"lease predecessor guard did not normalize exactly: {final_counts}"
+        )
     return state
 
 
@@ -161,7 +165,9 @@ def normalize_assertion_block(path_text: str, expressions: tuple[str, ...]) -> s
             "absorbed_individual_const_blocks": 0,
         },
     ):
-        raise SystemExit(f"{path_text} authority block did not normalize: {final_counts}")
+        raise SystemExit(
+            f"{path_text} authority block did not normalize: {final_counts}"
+        )
     return state
 
 
@@ -169,7 +175,9 @@ def literal(node: ast.AST, label: str):
     try:
         return ast.literal_eval(node)
     except (ValueError, TypeError) as error:
-        raise SystemExit(f"supplemental {label} is not a literal: {ast.dump(node)}") from error
+        raise SystemExit(
+            f"supplemental {label} is not a literal: {ast.dump(node)}"
+        ) from error
 
 
 def top_level_repair_calls() -> list[ast.Call]:
@@ -177,7 +185,9 @@ def top_level_repair_calls() -> list[ast.Call]:
     tree = ast.parse(source, filename=str(SUPPLEMENTAL))
     calls: list[ast.Call] = []
     for statement in tree.body:
-        if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
+        if not isinstance(statement, ast.Expr) or not isinstance(
+            statement.value, ast.Call
+        ):
             continue
         call = statement.value
         if not isinstance(call.func, ast.Name):
@@ -223,7 +233,9 @@ def rollback_exact_output(path_text: str, old: str, new: str, expected: int) -> 
                 f"expected 0 or {expected}, found {absorbed_count}"
             )
         if absorbed_count == expected:
-            path.write_text(text.replace(absorbed_assertions, old, expected), encoding="utf-8")
+            path.write_text(
+                text.replace(absorbed_assertions, old, expected), encoding="utf-8"
+            )
             return "absorbed_assertions_to_old"
 
     text = path.read_text(encoding="utf-8")
@@ -306,7 +318,9 @@ def precondition_supplemental_replay() -> dict[str, str]:
         name = call.func.id if isinstance(call.func, ast.Name) else "unknown"
         if name == "replace_exact":
             if len(call.args) < 3:
-                raise SystemExit("supplemental replace_exact call has fewer than three args")
+                raise SystemExit(
+                    "supplemental replace_exact call has fewer than three args"
+                )
             path_text = literal(call.args[0], "path")
             old = literal(call.args[1], "old text")
             new = literal(call.args[2], "new text")
@@ -322,9 +336,13 @@ def precondition_supplemental_replay() -> dict[str, str]:
         elif name == "insert_expect_before_function":
             if len(call.args) != 4:
                 raise SystemExit("supplemental insert-expect call must have four args")
-            values = [literal(argument, "insert-expect argument") for argument in call.args]
+            values = [
+                literal(argument, "insert-expect argument") for argument in call.args
+            ]
             if not all(isinstance(value, str) for value in values):
-                raise SystemExit("supplemental insert-expect literals have invalid types")
+                raise SystemExit(
+                    "supplemental insert-expect literals have invalid types"
+                )
             state = rollback_inserted_expect(*values)
             path_text = values[0]
         else:
