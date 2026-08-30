@@ -1,4 +1,4 @@
-name: AuthBus P1.3 semantic source publisher Windows v4
+name: AuthBus P1.3 semantic source publisher Windows v5
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: authbus-p1-3-semantic-source-publisher-windows-v4
+  group: authbus-p1-3-semantic-source-publisher-windows-v5
   cancel-in-progress: false
 
 permissions:
@@ -22,6 +22,12 @@ env:
   STAGING_BRANCH: staging/authbus-p1-3-semantic-closure-v11-20260830
   P03: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
   P13: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
+  # actions/checkout temporarily replaces HOME on Windows, so a normal
+  # --global core.longpaths setting is not reliable. Inject the setting into
+  # every Git invocation, including checkout itself.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.longpaths
+  GIT_CONFIG_VALUE_0: "true"
 
 jobs:
   publish_source:
@@ -29,7 +35,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
-      - name: Checkout exact publisher seed
+      - name: Checkout exact publisher seed with long paths enabled
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
