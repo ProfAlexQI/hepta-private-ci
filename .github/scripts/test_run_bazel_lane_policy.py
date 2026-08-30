@@ -151,7 +151,10 @@ class LaneSelectionQualificationTest(unittest.TestCase):
             )
 
     def test_clippy_without_skip_incompatible_fails_closed(self) -> None:
-        with self.assertRaisesRegex(ValueError, "clippy qualification requires exactly"):
+        with self.assertRaisesRegex(
+            ValueError,
+            "clippy qualification requires exactly",
+        ):
             self.validate(
                 "build",
                 "--config=clippy",

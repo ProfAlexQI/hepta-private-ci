@@ -134,7 +134,11 @@ class FinalCommandQualificationTest(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         expected_blob = subject._git_blob_sha1(bazelrc.read_bytes())
         bazelrc.write_text("common --jobs=999\n", encoding="utf-8")
-        with patch.object(subject, "QUALIFICATION_BAZELRC_GIT_BLOB_SHA1", expected_blob):
+        with patch.object(
+            subject,
+            "QUALIFICATION_BAZELRC_GIT_BLOB_SHA1",
+            expected_blob,
+        ):
             with self.assertRaisesRegex(ValueError, "Git blob drifted"):
                 subject.bazel_command(*self.exact_args(), env=env)
 
@@ -146,7 +150,11 @@ class FinalCommandQualificationTest(unittest.TestCase):
             encoding="utf-8",
         )
         expected_blob = subject._git_blob_sha1(bazelrc.read_bytes())
-        with patch.object(subject, "QUALIFICATION_BAZELRC_GIT_BLOB_SHA1", expected_blob):
+        with patch.object(
+            subject,
+            "QUALIFICATION_BAZELRC_GIT_BLOB_SHA1",
+            expected_blob,
+        ):
             with self.assertRaisesRegex(ValueError, "forbids user.bazelrc"):
                 subject.bazel_command(*self.exact_args(), env=env)
 

@@ -1,4 +1,4 @@
-"""Q0.22/Q0.23 fail-closed Bazel target, lane, and test-selection policy."""
+"""Q0.22-Q0.24 fail-closed Bazel target, identity, lane, and selection policy."""
 
 from collections.abc import Mapping, Sequence
 
@@ -8,6 +8,9 @@ from run_bazel_q017_policy import (
     validate_keyless_windows_gnullvm_final_args as _validate_q021,
 )
 
+BUILD_METADATA_OPTION = "--build_metadata"
+JOB_METADATA_PREFIX = "--build_metadata=TAG_job="
+JOB_METADATA_LIKE_PREFIX = "--build_metadata=TAG_job"
 RELEASE_JOB_METADATA = "--build_metadata=TAG_job=verify-release-build"
 CLIPPY_JOB_METADATA = "--build_metadata=TAG_job=clippy"
 CANONICAL_TEST_TAG_FILTER = "--test_tag_filters=-argument-comment-lint"
@@ -57,10 +60,37 @@ def _reject_present(options: Sequence[str], value: str, *, owner: str) -> None:
         )
 
 
+def _job_metadata(options: Sequence[str]) -> list[str]:
+    if BUILD_METADATA_OPTION in options:
+        raise ValueError(
+            "credential-free Windows gnullvm qualification rejects split-form "
+            "--build_metadata"
+        )
+
+    observed = [
+        option for option in options if option.startswith(JOB_METADATA_LIKE_PREFIX)
+    ]
+    if any(
+        not option.startswith(JOB_METADATA_PREFIX)
+        or len(option) == len(JOB_METADATA_PREFIX)
+        for option in observed
+    ):
+        raise ValueError(
+            "credential-free Windows gnullvm qualification rejects malformed "
+            "TAG_job build metadata"
+        )
+    if len(observed) > 1:
+        raise ValueError(
+            "credential-free Windows gnullvm qualification rejects ambiguous "
+            f"TAG_job build metadata: {observed!r}"
+        )
+    return observed
+
+
 def validate_keyless_windows_gnullvm_final_args(
     args: Sequence[str], env: Mapping[str, str]
 ) -> None:
-    """Extend Q0.21 with exact target, lane, and test-selection contracts."""
+    """Extend Q0.21 with exact identity, target, lane, and selection contracts."""
 
     _validate_q021(args, env)
     command_idx, separator_idx, options = _option_args(args)
@@ -74,16 +104,17 @@ def validate_keyless_windows_gnullvm_final_args(
     test_tag_filters = [
         option for option in options if option.startswith("--test_tag_filters=")
     ]
-    release_job = RELEASE_JOB_METADATA in options
-    clippy_job = CLIPPY_JOB_METADATA in options
+    job_metadata = _job_metadata(options)
+    release_job = job_metadata == [RELEASE_JOB_METADATA]
+    clippy_job = job_metadata == [CLIPPY_JOB_METADATA]
 
     _reject_selection_overrides(options)
 
     if command == "test":
-        if release_job or clippy_job:
+        if job_metadata:
             raise ValueError(
                 "credential-free Windows gnullvm test qualification rejects "
-                "build-lane metadata"
+                f"build-lane metadata: {job_metadata!r}"
             )
         if configs != ("ci-windows",):
             raise ValueError(
@@ -119,7 +150,7 @@ def validate_keyless_windows_gnullvm_final_args(
             "credential-free Windows gnullvm qualification permits only build/test"
         )
 
-    if release_job == clippy_job:
+    if not (release_job or clippy_job):
         raise ValueError(
             "credential-free Windows gnullvm build qualification requires exactly "
             "one recognized lane metadata tag"
