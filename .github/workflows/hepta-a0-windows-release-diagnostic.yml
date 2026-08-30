@@ -1,0 +1,91 @@
+name: Hepta A0 Windows release diagnostic
+
+on:
+  push:
+    branches:
+      - automation/hepta-a0-windows-release-diagnostic-20260830
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-a0-windows-release-diagnostic
+  cancel-in-progress: true
+
+env:
+  QUALIFICATION_SHA: 6170ea18c4205904461c8ae9c5c272091ba2b188
+  QUALIFICATION_TREE: c39831605fc57e6c40df11dc3c26a18b6a21af98
+
+jobs:
+  rustls-provider-release-build:
+    name: Exact-tree Windows rustls-provider release diagnostic
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Enable Windows long paths before checkout
+        shell: pwsh
+        run: git config --system core.longpaths true
+
+      - name: Checkout exact qualification tree
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.QUALIFICATION_SHA }}
+          persist-credentials: false
+
+      - name: Assert exact qualification tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${QUALIFICATION_SHA}"
+          test "$(git rev-parse HEAD^{tree})" = "${QUALIFICATION_TREE}"
+
+      - name: Prepare Bazel CI
+        id: prepare_bazel
+        uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-pc-windows-gnullvm
+          cache-scope: bazel-hepta-a0-windows-release-diagnostic
+
+      - name: Run exact failing release target and capture stderr
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          log_file="${RUNNER_TEMP}/rustls-provider-release-windows.log"
+          set +e
+          ./.github/scripts/run-bazel-ci.sh \
+            --print-failed-action-summary \
+            --windows-cross-compile \
+            -- \
+            build \
+            --compilation_mode=fastbuild \
+            --@rules_rust//rust/settings:extra_rustc_flag=-Cdebug-assertions=no \
+            --@rules_rust//rust/settings:extra_exec_rustc_flag=-Cdebug-assertions=no \
+            --build_metadata=COMMIT_SHA=${QUALIFICATION_SHA} \
+            --build_metadata=TAG_job=hepta-a0-focused-verify-release-build \
+            --build_metadata=TAG_rust_debug_assertions=off \
+            -- \
+            //codex-rs/utils/rustls-provider:rustls-provider-preinstalled-test \
+            2>&1 | tee "${log_file}"
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "${status}" > "${RUNNER_TEMP}/rustls-provider-release-exit-code.txt"
+          exit "${status}"
+
+      - name: Upload exact diagnostic
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-a0-windows-release-diagnostic-6170ea18
+          path: |
+            ${{ runner.temp }}/rustls-provider-release-windows.log
+            ${{ runner.temp }}/rustls-provider-release-exit-code.txt
+            ${{ runner.temp }}/bazel-execution-logs
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Check for a clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
