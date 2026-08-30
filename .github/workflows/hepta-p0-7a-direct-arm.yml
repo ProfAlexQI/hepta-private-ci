@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   diagnose-and-qualify:
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - name: Checkout exact controller generation
@@ -40,6 +40,44 @@ jobs:
           test "$(git hash-object codex-rs/hepta-supervisor/src/supervisor_tests.rs)" = e8e996e74721f43e31c88b86a81e56494e0e7aa3
           test "$(git hash-object codex-rs/.config/nextest.toml)" = f3f3ca2607190b6c7f4568fbcb365519250c7803
           python3 .github/scripts/hepta-p0-7a-supervisor-gap-closure.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-supervisor/src/supervisor_tests.rs")
+          text = path.read_text()
+          replacements = [
+              (
+                  '        release(\n'
+                  '            "release-spawn-fails",\n'
+                  '            "/fake/release-spawn-fails/hepta-agentd",\n'
+                  '        )?,',
+                  '        release(\n'
+                  '            &fleet,\n'
+                  '            "release-spawn-fails",\n'
+                  '            "/fake/release-spawn-fails/hepta-agentd",\n'
+                  '        )?,',
+              ),
+              (
+                  '        release(\n'
+                  '            "release-health-fails",\n'
+                  '            "/fake/release-health-fails/hepta-agentd",\n'
+                  '        )?,',
+                  '        release(\n'
+                  '            &fleet,\n'
+                  '            "release-health-fails",\n'
+                  '            "/fake/release-health-fails/hepta-agentd",\n'
+                  '        )?,',
+              ),
+          ]
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"multiline release fixture: expected one anchor, found {count}"
+                  )
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
           rustfmt --edition 2024 --config-path codex-rs/rustfmt.toml \
             codex-rs/hepta-fleet/src/registry.rs \
             codex-rs/hepta-fleet/src/registry_tests.rs \
