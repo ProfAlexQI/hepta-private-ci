@@ -67,7 +67,6 @@ jobs:
           import re
           from pathlib import Path
 
-          path = Path("/tmp")
           artifact = Path(__import__("os").environ["RUNNER_TEMP"]) / "q049-artifacts" / "shear-before.json"
           data = json.loads(artifact.read_text(encoding="utf-8"))
           expected = {
@@ -394,3 +393,5 @@ jobs:
           path: q049-artifacts
           if-no-files-found: error
           retention-days: 30
+
+# trigger: 2026-08-30T13:02:00Z
