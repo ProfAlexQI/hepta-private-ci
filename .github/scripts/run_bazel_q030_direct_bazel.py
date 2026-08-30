@@ -1,8 +1,7 @@
-"""Q0.30 direct Bazel CAS and pre-launch authority contract."""
+"""Q0.32 direct Bazel CAS, transport-token, and pre-launch authority contract."""
 
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
@@ -14,6 +13,7 @@ from run_bazel_q028_startup_contract import (
 from run_bazel_q029_job_executable import (
     BAZELISK_WINDOWS_X86_64_SHA256,
     BAZEL_WINDOWS_X86_64_SHA256,
+    _require_env,
     _sha256_file,
     _split_command,
     _validate_bazelisk_inputs,
@@ -24,14 +24,49 @@ from run_bazel_q029_job_executable import (
 )
 
 BAZELISK_BARE_OVERRIDE = "BAZELISK"
+SETUP_BAZEL_TRANSPORT_TOKEN = "BAZELISK_GITHUB_TOKEN"
+
+
+def _matching_env_names(env: Mapping[str, str], expected: str) -> list[str]:
+    folded = expected.casefold()
+    return [name for name in env if name.casefold() == folded]
+
+
+def consume_setup_bazel_transport_token(
+    env: MutableMapping[str, str],
+) -> bool:
+    """Remove setup-bazel's transport-only token before repository execution."""
+
+    removed = False
+    for name in _matching_env_names(env, SETUP_BAZEL_TRANSPORT_TOKEN):
+        env.pop(name, None)
+        removed = True
+    return removed
+
+
+def _require_transport_token_absent(
+    env: Mapping[str, str],
+    *,
+    owner: str,
+) -> None:
+    present = _matching_env_names(env, SETUP_BAZEL_TRANSPORT_TOKEN)
+    if present:
+        raise ValueError(
+            f"{owner} retained setup-only Bazelisk transport token: {present!r}"
+        )
 
 
 def prepare_bazelisk_environment(env: MutableMapping[str, str]) -> None:
-    """Compose Q0.29 and reject the remaining bare Bazelisk override."""
+    """Compose Q0.29 after consuming setup-bazel's transport-only token."""
 
     if env.get(BAZELISK_BARE_OVERRIDE):
         raise ValueError("Bazelisk override BAZELISK is forbidden")
+    consume_setup_bazel_transport_token(env)
     _prepare_q029(env)
+    _require_transport_token_absent(
+        env,
+        owner="Q0.32 Bazelisk preparation",
+    )
 
 
 def _verified_regular_file(path: Path, *, owner: str) -> Path:
@@ -50,7 +85,13 @@ def _parse_bazelisk_child_path(stdout: str) -> str:
     path_values: list[str] = []
     for line in stdout.splitlines():
         name, separator, value = line.partition("=")
-        if separator and name.casefold() == "path":
+        if not separator:
+            continue
+        if name.casefold() == SETUP_BAZEL_TRANSPORT_TOKEN.casefold():
+            raise ValueError(
+                "Bazelisk --print_env retained the setup-only transport token"
+            )
+        if name.casefold() == "path":
             path_values.append(value)
     if len(path_values) != 1:
         raise ValueError(
@@ -93,6 +134,10 @@ def resolve_verified_bazel_command(
 
     if not command or command[0].casefold() not in {"bazel", "bazel.exe"}:
         raise ValueError("unverified Bazel argv[0] is forbidden")
+    _require_transport_token_absent(
+        env,
+        owner="Q0.32 Bazelisk resolution",
+    )
 
     workspace = _validate_bazelisk_inputs(env)
     resolved = which("bazel", path=env.get("PATH"))
@@ -119,7 +164,7 @@ def resolve_verified_bazel_command(
     if result.returncode != 0:
         raise ValueError(
             "Bazelisk failed to resolve the pinned Bazel binary: "
-            f"exit={result.returncode}, stderr={result.stderr.strip()!r}"
+            f"exit={result.returncode}"
         )
     if digest_file(bazelisk) != BAZELISK_WINDOWS_X86_64_SHA256:
         raise ValueError("Bazelisk executable changed during child resolution")
@@ -142,7 +187,29 @@ def resolve_verified_bazel_command(
     # Preserve Bazelisk's verified child PATH so nested `bazel` invocations
     # resolve to the same CAS object while this launch bypasses Bazelisk.
     env["PATH"] = child_path
+    env.pop("BAZEL_REAL", None)
+    env.pop("BAZELISK", None)
+    _require_transport_token_absent(
+        env,
+        owner="Q0.32 direct Bazel environment",
+    )
     return [str(real_bazel), *command[1:]]
+
+
+def _validate_child_path(real_bazel: Path, env: Mapping[str, str]) -> None:
+    path_value = _require_env(env, "PATH")
+    leading = path_value.split(";", 1)[0]
+    if not leading:
+        raise ValueError("final PATH has an empty leading entry")
+    try:
+        resolved = Path(leading).resolve(strict=True)
+    except OSError as error:
+        raise ValueError(f"cannot resolve final PATH head: {error}") from error
+    if resolved != real_bazel.parent:
+        raise ValueError(
+            "final PATH head is not the verified cached Bazel directory: "
+            f"expected {real_bazel.parent}, observed {resolved}"
+        )
 
 
 def validate_keyless_windows_gnullvm_command(
@@ -153,9 +220,13 @@ def validate_keyless_windows_gnullvm_command(
 ) -> None:
     """Validate and rehash the direct Bazel command immediately before launch."""
 
+    _require_transport_token_absent(
+        env,
+        owner="Q0.32 final direct Bazel launch",
+    )
     _validate_bazelisk_inputs(env)
     job = _validate_runner_identity(env)
-    startup, command_name, options, targets = _split_command(command)
+    _startup, command_name, options, targets = _split_command(command)
 
     executable = Path(command[0])
     if not executable.is_absolute():
@@ -172,6 +243,7 @@ def validate_keyless_windows_gnullvm_command(
             f"expected {BAZEL_WINDOWS_X86_64_SHA256}, observed {observed_bazel}"
         )
 
+    _validate_child_path(real_bazel, env)
     _validate_q028(command[1:], env)
     _validate_paths(options, env, job)
     _validate_job_binding(command_name, options, targets, env, job)

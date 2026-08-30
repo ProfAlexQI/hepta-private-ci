@@ -83,12 +83,33 @@ class DirectBazelCasQualificationTest(unittest.TestCase):
                 "D:/a/_temp/bazel-execution-logs"
             ),
             "PATH": str(toolcache),
+            "BAZELISK_GITHUB_TOKEN": "setup-only-secret",
         }
         return temporary, env, bazelisk, real_bazel
 
     @staticmethod
     def digest(path: Path) -> str:
         return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    @staticmethod
+    def direct_command(
+        env: dict[str, str],
+        real_bazel: Path,
+    ) -> list[str]:
+        return [
+            str(real_bazel.resolve()),
+            "--output_user_root=D:/b",
+            "--noexperimental_remote_repo_contents_cache",
+            "--output_base=D:/o",
+            "--nomaster_bazelrc",
+            "--nosystem_rc",
+            "--noworkspace_rc",
+            "--nohome_rc",
+            f"--bazelrc={Path(env['GITHUB_WORKSPACE']) / '.bazelrc'}",
+            "build",
+            "--",
+            "//codex-rs/...",
+        ]
 
     def resolve(
         self,
@@ -127,6 +148,19 @@ class DirectBazelCasQualificationTest(unittest.TestCase):
             )
         return env, command, bazelisk, real_bazel
 
+    def test_prepare_consumes_setup_bazel_transport_token(self) -> None:
+        temporary, env, _bazelisk, _real_bazel = self.fixture()
+        self.addCleanup(temporary.cleanup)
+        self.assertIn(subject.SETUP_BAZEL_TRANSPORT_TOKEN, env)
+        subject.prepare_bazelisk_environment(env)
+        self.assertNotIn(subject.SETUP_BAZEL_TRANSPORT_TOKEN, env)
+
+    def test_resolver_rejects_unconsumed_transport_token(self) -> None:
+        temporary, env, _bazelisk, _real_bazel = self.fixture()
+        self.addCleanup(temporary.cleanup)
+        with self.assertRaisesRegex(ValueError, "transport token"):
+            subject.resolve_verified_bazel_command(["bazel", "build"], env)
+
     def test_resolver_verifies_bazelisk_and_cached_bazel(self) -> None:
         env, command, _bazelisk, real_bazel = self.resolve()
         self.assertEqual(command[0], str(real_bazel.resolve()))
@@ -134,6 +168,7 @@ class DirectBazelCasQualificationTest(unittest.TestCase):
             env["PATH"].split(";", 1)[0],
             str(real_bazel.parent),
         )
+        self.assertNotIn(subject.SETUP_BAZEL_TRANSPORT_TOKEN, env)
 
     def test_cached_bazel_is_rehashed_even_when_bazelisk_succeeds(self) -> None:
         temporary, env, bazelisk, _real_bazel = self.fixture()
@@ -208,6 +243,25 @@ class DirectBazelCasQualificationTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "failed to resolve"):
             self.resolve(returncode=9, stderr="offline")
 
+    def test_print_env_failure_does_not_echo_transport_output(self) -> None:
+        secret = "BAZELISK_GITHUB_TOKEN=do-not-log-this"
+        with self.assertRaisesRegex(ValueError, "exit=17") as error:
+            self.resolve(
+                returncode=17,
+                stdout=f"{secret}\n",
+                stderr=f"resolver stderr {secret}",
+            )
+        self.assertNotIn(secret, str(error.exception))
+        self.assertNotIn("resolver stderr", str(error.exception))
+
+    def test_print_env_transport_token_fails_closed(self) -> None:
+        stdout = (
+            "PATH=C:/irrelevant\n"
+            "BAZELISK_GITHUB_TOKEN=must-not-cross-boundary\n"
+        )
+        with self.assertRaisesRegex(ValueError, "retained the setup-only"):
+            self.resolve(stdout=stdout)
+
     def test_missing_or_duplicate_path_binding_fails_closed(self) -> None:
         for stdout in (
             "HOME=C:/Users/runner\n",
@@ -237,10 +291,15 @@ class DirectBazelCasQualificationTest(unittest.TestCase):
             )
 
     def test_direct_bazel_is_rehashed_immediately_before_launch(self) -> None:
-        env, command, _bazelisk, real_bazel = self.resolve()
+        env, _command, _bazelisk, real_bazel = self.resolve()
+        direct = self.direct_command(env, real_bazel)
         with (
             patch.object(subject, "_validate_q028"),
-            patch.object(subject, "_validate_runner_identity", return_value="clippy"),
+            patch.object(
+                subject,
+                "_validate_runner_identity",
+                return_value="clippy",
+            ),
             patch.object(subject, "_validate_paths"),
             patch.object(subject, "_validate_job_binding"),
             patch.object(
@@ -254,24 +313,48 @@ class DirectBazelCasQualificationTest(unittest.TestCase):
                 self.digest(real_bazel),
             ),
         ):
-            direct = [
-                command[0],
-                "--output_user_root=D:/b",
-                "--noexperimental_remote_repo_contents_cache",
-                "--output_base=D:/o",
-                "--nomaster_bazelrc",
-                "--nosystem_rc",
-                "--noworkspace_rc",
-                "--nohome_rc",
-                f"--bazelrc={Path(env['GITHUB_WORKSPACE']) / '.bazelrc'}",
-                "build",
-                "--",
-                "//codex-rs/...",
-            ]
             subject.validate_keyless_windows_gnullvm_command(direct, env)
             real_bazel.write_bytes(b"replaced after resolution")
             with self.assertRaisesRegex(ValueError, "changed before launch"):
                 subject.validate_keyless_windows_gnullvm_command(direct, env)
+
+    def test_final_command_rejects_transport_token(self) -> None:
+        env, _command, _bazelisk, real_bazel = self.resolve()
+        env[subject.SETUP_BAZEL_TRANSPORT_TOKEN] = "reintroduced-secret"
+        with self.assertRaisesRegex(ValueError, "transport token"):
+            subject.validate_keyless_windows_gnullvm_command(
+                self.direct_command(env, real_bazel),
+                env,
+            )
+
+    def test_final_path_head_drift_fails_closed(self) -> None:
+        env, _command, _bazelisk, real_bazel = self.resolve()
+        attacker = real_bazel.parent.parent / "attacker"
+        attacker.mkdir()
+        env["PATH"] = f"{attacker};C:/Windows/System32"
+        direct = self.direct_command(env, real_bazel)
+        with (
+            patch.object(subject, "_validate_q028"),
+            patch.object(
+                subject,
+                "_validate_runner_identity",
+                return_value="clippy",
+            ),
+            patch.object(subject, "_validate_paths"),
+            patch.object(subject, "_validate_job_binding"),
+            patch.object(
+                subject,
+                "_validate_bazelisk_inputs",
+                return_value=Path(env["GITHUB_WORKSPACE"]),
+            ),
+            patch.object(
+                subject,
+                "BAZEL_WINDOWS_X86_64_SHA256",
+                self.digest(real_bazel),
+            ),
+            self.assertRaisesRegex(ValueError, "final PATH head"),
+        ):
+            subject.validate_keyless_windows_gnullvm_command(direct, env)
 
     def test_q026_canonical_clippy_negative_target_passes(self) -> None:
         args = (
