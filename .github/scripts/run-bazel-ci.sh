@@ -257,9 +257,14 @@ if [[ ${#bazel_args[@]} -eq 0 || ${#bazel_targets[@]} -eq 0 ]]; then
 fi
 
 if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
-  # Windows gnullvm cross-compilation depends on authenticated RBE. When those
-  # credentials are unavailable, execute a coherent local MSVC build instead:
-  # both target and host platforms must use the same ABI/toolchain family.
+  if [[ "${ALLOW_WINDOWS_MSVC_FALLBACK:-}" != "1" ]]; then
+    echo "Windows gnullvm cross-compilation requires authenticated BuildBuddy/RBE; refusing to substitute an MSVC result for a gnullvm check. Set ALLOW_WINDOWS_MSVC_FALLBACK=1 only for an explicitly non-qualifying local diagnostic." >&2
+    exit 1
+  fi
+
+  # A caller that explicitly opts into a non-qualifying diagnostic may execute
+  # a coherent local MSVC build. Both target and host platforms must use the
+  # same ABI/toolchain family; this result is never gnullvm evidence.
   ci_config=ci-windows
   windows_msvc_host_platform=1
   windows_msvc_target_platform=1
