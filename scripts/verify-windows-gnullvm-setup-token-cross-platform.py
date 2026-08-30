@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 
 
@@ -26,6 +27,20 @@ BLOCKING = ROOT / ".github" / "workflows" / "blocking-ci.yml"
 EXPECTED_ASSERTION_BLOB = "b8611644aeeb3624d475f8a3bd222be48f753e91"
 EXPECTED_Q034_VERIFIER_BLOB = "e43fd8d37edf4f1cd48f60498d39596420da4be1"
 PASS = "PASS_SETUP_BAZEL_TOKEN_SCRUBBED"
+TRANSPORT_TOKEN = "BAZELISK_GITHUB_TOKEN"
+SUBPROCESS_ENV_ALLOWLIST = frozenset(
+    {
+        "COMSPEC",
+        "HOME",
+        "PATH",
+        "PATHEXT",
+        "SYSTEMROOT",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "WINDIR",
+    }
+)
 WINDOWS_ROW = (
     "          - os: windows-latest\n"
     "            target: x86_64-pc-windows-gnullvm\n"
@@ -42,7 +57,7 @@ def require(condition: bool, message: str) -> None:
 
 
 def read(path: Path) -> str:
-    require(path.is_file(), f"missing Q0.35 path: {path.relative_to(ROOT)}")
+    require(path.is_file(), f"missing Q0.37 path: {path.relative_to(ROOT)}")
     return path.read_text(encoding="utf-8")
 
 
@@ -71,16 +86,78 @@ def require_git_executable(path: Path) -> None:
         result.returncode == 0
         and len(entries) == 1
         and entries[0].split(maxsplit=1)[0] == "100755",
-        f"required Q0.35 executable lost Git mode: {path.relative_to(ROOT)}",
+        f"required Q0.37 executable lost Git mode: {path.relative_to(ROOT)}",
+    )
+
+
+def controlled_subprocess_env(
+    base: Mapping[str, str],
+    extra: Mapping[str, str],
+) -> dict[str, str]:
+    """Build a bounded child environment without inheriting setup credentials."""
+
+    env = {
+        name: value
+        for name, value in base.items()
+        if name.upper() in SUBPROCESS_ENV_ALLOWLIST
+    }
+    env.update(extra)
+    return env
+
+
+def validate_controlled_subprocess_env() -> None:
+    fixture_base = {
+        "Path": r"C:\Program Files\Git\bin",
+        "SystemRoot": r"C:\Windows",
+        "ComSpec": r"C:\Windows\System32\cmd.exe",
+        "TEMP": r"C:\Temp",
+        "NOT_ALLOWLISTED": "must-not-cross",
+        "BaZeLiSk_GiThUb_ToKeN": "must-not-cross",
+    }
+    env = controlled_subprocess_env(fixture_base, {})
+    observed = {name.upper(): value for name, value in env.items()}
+
+    require(
+        observed.get("PATH") == fixture_base["Path"],
+        "controlled subprocess environment lost PATH",
+    )
+    require(
+        observed.get("SYSTEMROOT") == fixture_base["SystemRoot"],
+        "controlled subprocess environment lost SystemRoot",
+    )
+    require(
+        observed.get("COMSPEC") == fixture_base["ComSpec"],
+        "controlled subprocess environment lost ComSpec",
+    )
+    require(
+        "NOT_ALLOWLISTED" not in observed,
+        "controlled subprocess environment retained an unapproved variable",
+    )
+    require(
+        TRANSPORT_TOKEN not in observed,
+        "controlled subprocess environment inherited setup transport token",
+    )
+
+    injected = controlled_subprocess_env(
+        fixture_base,
+        {"BaZeLiSk_GiThUb_ToKeN": "fixture-only"},
+    )
+    require(
+        any(name.upper() == TRANSPORT_TOKEN for name in injected),
+        "controlled subprocess environment cannot exercise token rejection",
     )
 
 
 def run_assertion(extra: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    env = {
-        "PATH": os.environ.get("PATH", ""),
-        "HOME": os.environ.get("HOME", str(ROOT)),
-        **extra,
-    }
+    env = controlled_subprocess_env(os.environ, extra)
+    if os.name == "nt":
+        require(
+            any(
+                name.upper() == "SYSTEMROOT" and bool(value)
+                for name, value in env.items()
+            ),
+            "Windows assertion subprocess requires a valid SystemRoot",
+        )
     return subprocess.run(
         ["bash", str(ASSERTION)],
         cwd=ROOT,
@@ -92,7 +169,9 @@ def run_assertion(extra: dict[str, str]) -> subprocess.CompletedProcess[str]:
 
 
 def validate_runtime() -> None:
-    for env in ({}, {"BAZELISK_GITHUB_TOKEN": ""}):
+    validate_controlled_subprocess_env()
+
+    for env in ({}, {TRANSPORT_TOKEN: ""}):
         result = run_assertion(env)
         require(
             result.returncode == 0 and result.stdout.strip() == PASS,
@@ -100,11 +179,11 @@ def validate_runtime() -> None:
         )
 
     for name in (
-        "BAZELISK_GITHUB_TOKEN",
+        TRANSPORT_TOKEN,
         "bazelisk_github_token",
         "BaZeLiSk_GiThUb_ToKeN",
     ):
-        secret = f"q035-secret-{name}"
+        secret = f"q037-secret-{name}"
         result = run_assertion({name: secret})
         output = result.stdout + result.stderr
         require(result.returncode != 0, f"assertion accepted {name!r}")
@@ -152,7 +231,7 @@ def validate_workflow(text: str) -> None:
         "windows-setup-bazel-token-boundary-${{ matrix.target }}-${{ github.sha }}",
     )
     for token in required:
-        require(token in text, f"Q0.35 workflow lacks token: {token}")
+        require(token in text, f"Q0.37 workflow lacks token: {token}")
 
     for forbidden in (
         "  pull_request:",
@@ -162,12 +241,12 @@ def validate_workflow(text: str) -> None:
     ):
         require(
             forbidden not in text,
-            f"Q0.35 workflow has forbidden trigger: {forbidden.strip()}",
+            f"Q0.37 workflow has forbidden trigger: {forbidden.strip()}",
         )
 
     require(
         text.count("          - os: ") == 2,
-        "Q0.35 matrix must contain exactly two rows",
+        "Q0.37 matrix must contain exactly two rows",
     )
     require(
         text.count("uses: ./.github/actions/setup-bazel-ci") == 1,
@@ -195,21 +274,21 @@ def validate_workflow(text: str) -> None:
 
 
 def prove_windows_required(text: str) -> None:
-    require(WINDOWS_ROW in text, "Q0.35 workflow lacks exact Windows row")
+    require(WINDOWS_ROW in text, "Q0.37 workflow lacks exact Windows row")
     try:
         validate_workflow(text.replace(WINDOWS_ROW, "", 1))
     except SystemExit:
         return
-    fail("Q0.35 validator accepted removal of the Windows runner")
+    fail("Q0.37 validator accepted removal of the Windows runner")
 
 
 def validate_blocking(text: str) -> None:
     job = "windows-setup-bazel-token-boundary:"
     uses = "uses: ./.github/workflows/windows-setup-bazel-token-boundary.yml"
     need = "      - windows-setup-bazel-token-boundary\n"
-    require(text.count(job) == 1, "blocking-ci Q0.35 job count drifted")
-    require(text.count(uses) == 1, "blocking-ci Q0.35 workflow call count drifted")
-    require(text.count(need) == 1, "CI required Q0.35 dependency count drifted")
+    require(text.count(job) == 1, "blocking-ci Q0.37 job count drifted")
+    require(text.count(uses) == 1, "blocking-ci Q0.37 workflow call count drifted")
+    require(text.count(need) == 1, "CI required Q0.37 dependency count drifted")
 
 
 def main() -> None:
@@ -235,7 +314,9 @@ def main() -> None:
     prove_windows_required(workflow)
     validate_blocking(blocking)
 
-    print("PASS_WINDOWS_GNULLVM_Q0_35_CROSS_PLATFORM_SETUP_TOKEN_BOUNDARY_SOURCE")
+    print(
+        "PASS_WINDOWS_GNULLVM_Q0_37_WINDOWS_SUBPROCESS_ENV_SETUP_TOKEN_SOURCE"
+    )
 
 
 if __name__ == "__main__":
