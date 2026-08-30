@@ -1,0 +1,107 @@
+name: Hepta A0+Q0 current macOS admission
+
+on:
+  push:
+    branches:
+      - "diagnostic/hepta-a0-q0-macos-f950ea-20260830"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_SHA: f950ea4e81d9a33a37ae728edd31492afe192c77
+  TARGET_TREE: 48d7291dbe67af7c4585dff63aa77345b72406ba
+
+jobs:
+  deny:
+    name: Exact combined-tree cargo-deny on macOS
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact combined candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify exact candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: cargo-deny@0.19.0
+      - name: Run checked repository policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo deny --manifest-path ./codex-rs/Cargo.toml --all-features check --config ./codex-rs/deny.toml
+      - name: Prove clean tracked source
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+  source:
+    name: Exact format, cargo-shear and UDS on macOS
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact combined candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify exact candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: cargo-shear@1.11.2
+      - name: Run canonical repository format gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          just fmt-check
+      - name: Run cargo-shear fail closed
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo shear --deny-warnings
+      - name: Verify Matrixd remains a workspace member
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(p["name"]=="codex-hepta-matrixd" for p in d["packages"])'
+      - name: Test UDS crate
+        working-directory: codex-rs
+        shell: bash
+        run: cargo test -p codex-uds --locked
+      - name: Strict Clippy for UDS crate
+        working-directory: codex-rs
+        shell: bash
+        run: cargo clippy -p codex-uds --all-targets --locked -- -D warnings
+      - name: Prove clean tracked source
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=no)"
