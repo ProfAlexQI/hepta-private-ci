@@ -188,15 +188,9 @@ def main() -> int:
         ],
     )
     schema_pool_binding = (
-        (
-            "use codex_state::SqliteConfig;" in schema
-            and "SqliteConfig::open_in_memory_pool()" in schema
-        )
-        or (
-            "SqlitePoolOptions" in schema
-            and "sqlite::memory:" in schema
-        )
-    )
+        "use codex_state::SqliteConfig;" in schema
+        and "SqliteConfig::open_in_memory_pool()" in schema
+    ) or ("SqlitePoolOptions" in schema and "sqlite::memory:" in schema)
     checks["journal.schema_oracle"] = schema_pool_binding and contains_all(
         schema,
         [
@@ -231,14 +225,17 @@ def main() -> int:
             "schema_drift_is_rejected_by_reopen_verifier",
         ],
     )
-    checks["framing.only_canonical_entry_registered"] = contains_all(
-        framing,
-        [
-            '#[path = "intelligence_mutation_state.rs"]',
-            '#[path = "intelligence_mutation_journal_v3.rs"]',
-            "mod intelligence_mutation_journal;",
-        ],
-    ) and "intelligence_mutation_journal_v2.rs" not in framing
+    checks["framing.only_canonical_entry_registered"] = (
+        contains_all(
+            framing,
+            [
+                '#[path = "intelligence_mutation_state.rs"]',
+                '#[path = "intelligence_mutation_journal_v3.rs"]',
+                "mod intelligence_mutation_journal;",
+            ],
+        )
+        and "intelligence_mutation_journal_v2.rs" not in framing
+    )
     checks["build.component_data"] = "mutation-migrations/**" in build
 
     checks["workflow.canonical_paired"] = (
@@ -281,25 +278,22 @@ def main() -> int:
             ],
         )
     )
-    checks["workflow.source_and_sqlite_artifacts"] = (
-        contains_all(
-            source_gates,
-            [
-                "verify-hepta-intelligence-mutation-journal.py",
-                "hepta-intelligence-mutation-journal-sqlite-selftest.py",
-                "mutation-journal-sqlite",
-                "mutation-journal",
-            ],
-        )
-        and contains_all(
-            workflow,
-            [
-                "scripts/verify-hepta-intelligence-q0-evidence-pair.py",
-                "e1-qualification-receipt.json",
-                "e2-qualification-receipt.json",
-                "q0-evidence-pair-receipt.json",
-            ],
-        )
+    checks["workflow.source_and_sqlite_artifacts"] = contains_all(
+        source_gates,
+        [
+            "verify-hepta-intelligence-mutation-journal.py",
+            "hepta-intelligence-mutation-journal-sqlite-selftest.py",
+            "mutation-journal-sqlite",
+            "mutation-journal",
+        ],
+    ) and contains_all(
+        workflow,
+        [
+            "scripts/verify-hepta-intelligence-q0-evidence-pair.py",
+            "e1-qualification-receipt.json",
+            "e2-qualification-receipt.json",
+            "q0-evidence-pair-receipt.json",
+        ],
     )
 
     current = status.get("current_tranche", {})
@@ -313,8 +307,7 @@ def main() -> int:
         and claims.get("production_authority") is False
     )
     checks["status.p0_4a_unqualified_dependency"] = (
-        dependency.get("id") == "P0.4a"
-        and dependency.get("qualified") is False
+        dependency.get("id") == "P0.4a" and dependency.get("qualified") is False
     )
     checks["plan.boundary"] = contains_all(
         plan,
@@ -342,8 +335,7 @@ def main() -> int:
         checks["sqlite_selftest.exit_zero"] = completed.returncode == 0
         checks["sqlite_selftest.pass"] = bool(
             sqlite_receipt
-            and sqlite_receipt.get("status")
-            == "PASS_P0_4B_MUTATION_JOURNAL_SQLITE"
+            and sqlite_receipt.get("status") == "PASS_P0_4B_MUTATION_JOURNAL_SQLITE"
             and sqlite_receipt.get("schema_object_count") == 14
             and sqlite_receipt.get("ack_loss_adopted") is True
         )
