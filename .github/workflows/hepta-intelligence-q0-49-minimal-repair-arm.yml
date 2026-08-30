@@ -20,10 +20,6 @@ jobs:
       SOURCE_SHA: f2f200969fa0076178276bceab2eb21d23f0519e
       SOURCE_TREE: e6d9a631345927a8c0817080a2f8cab150c516f3
       TARGET_BRANCH: codex/hepta-intelligence-q0-49-dependency-policy-20260830
-      BYTES_OLD_VERSION: 1.11.1
-      BYTES_VERSION: 1.12.1
-      BYTES_OLD_CHECKSUM: 1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33
-      BYTES_CHECKSUM: fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04
       ARTIFACT_DIR: artifacts/q049-minimal-arm
 
     steps:
@@ -93,11 +89,6 @@ jobs:
               replace_once(path, token, "")
 
           replace_once(
-              "codex-rs/Cargo.toml",
-              'bytes = "1.10.1"',
-              'bytes = "1.12.1"',
-          )
-          replace_once(
               ".github/workflows/rust-ci.yml",
               "        run: cargo shear --deny-warnings\n",
               "        run: cargo shear --locked --deny-warnings\n",
@@ -138,13 +129,15 @@ jobs:
           )
           PY
 
-          cargo +1.95.0 update \
+      - name: Refresh only local Cargo lock entries
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +1.95.0 metadata \
             --manifest-path codex-rs/Cargo.toml \
-            -p "bytes@$BYTES_OLD_VERSION" \
-            --precise "$BYTES_VERSION" \
-            >"$ARTIFACT_DIR/cargo-update.stdout" \
-            2>"$ARTIFACT_DIR/cargo-update.stderr"
-
+            --format-version=1 \
+            >"$ARTIFACT_DIR/cargo-metadata-refresh.json" \
+            2>"$ARTIFACT_DIR/cargo-metadata-refresh.stderr"
           cp codex-rs/Cargo.lock "$ARTIFACT_DIR/Cargo.lock.minimal"
           git diff -- codex-rs/Cargo.lock \
             >"$ARTIFACT_DIR/Cargo.lock.diff"
@@ -175,30 +168,8 @@ jobs:
                   if p.get("source") is not None
               }
 
-          registry = "registry+https://github.com/rust-lang/crates.io-index"
-          removed = external(before) - external(after)
-          added = external(after) - external(before)
-          expected_removed = {
-              (
-                  "bytes",
-                  os.environ["BYTES_OLD_VERSION"],
-                  registry,
-                  os.environ["BYTES_OLD_CHECKSUM"],
-              )
-          }
-          expected_added = {
-              (
-                  "bytes",
-                  os.environ["BYTES_VERSION"],
-                  registry,
-                  os.environ["BYTES_CHECKSUM"],
-              )
-          }
-          if removed != expected_removed or added != expected_added:
-              raise SystemExit(
-                  f"non-minimal external lock delta: removed={removed!r}; "
-                  f"added={added!r}"
-              )
+          if external(before) != external(after):
+              raise SystemExit("external Cargo dependency graph changed")
 
           before_local = {
               p["name"]: p for p in before if p.get("source") is None
@@ -240,6 +211,10 @@ jobs:
                   )
           PY
 
+          cmp -s \
+            "$ARTIFACT_DIR/MODULE.bazel.lock.before" \
+            MODULE.bazel.lock
+
       - name: Run locked Cargo policy and focused build gates
         shell: bash
         run: |
@@ -249,7 +224,7 @@ jobs:
             --locked \
             --no-deps \
             --format-version=1 \
-            >"$ARTIFACT_DIR/cargo-metadata.json"
+            >"$ARTIFACT_DIR/cargo-metadata-locked.json"
 
           (
             cd codex-rs
@@ -292,71 +267,6 @@ jobs:
             "${package_args[@]}" \
             >"$ARTIFACT_DIR/focused-test-no-run.log" 2>&1
 
-      - name: Set up Bazel for deterministic lock update
-        uses: ./.github/actions/setup-bazel-ci
-        with:
-          target: aarch64-unknown-linux-gnu
-
-      - name: Regenerate and validate minimal Bazel lock
-        shell: bash
-        run: |
-          set -euo pipefail
-          just bazel-lock-update \
-            >"$ARTIFACT_DIR/bazel-lock-update.log" 2>&1
-          cp MODULE.bazel.lock "$ARTIFACT_DIR/MODULE.bazel.lock.minimal"
-          git diff -- MODULE.bazel.lock \
-            >"$ARTIFACT_DIR/MODULE.bazel.lock.diff"
-
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          before = json.loads(
-              Path(
-                  os.environ["ARTIFACT_DIR"] + "/MODULE.bazel.lock.before"
-              ).read_text(encoding="utf-8")
-          )
-          after = json.loads(
-              Path("MODULE.bazel.lock").read_text(encoding="utf-8")
-          )
-          for key in (
-              "lockFileVersion",
-              "registryFileHashes",
-              "selectedYankedVersions",
-              "moduleExtensions",
-          ):
-              if before[key] != after[key]:
-                  raise SystemExit(f"unexpected Bazel lock delta in {key}")
-
-          crate_key = "@@rules_rs+//rs:extensions.bzl%crate"
-          before_facts = before["facts"]
-          after_facts = after["facts"]
-          if set(before_facts) != set(after_facts):
-              raise SystemExit("Bazel fact namespaces changed")
-          for namespace in set(before_facts) - {crate_key}:
-              if before_facts[namespace] != after_facts[namespace]:
-                  raise SystemExit(
-                      f"unexpected Bazel fact delta in {namespace}"
-                  )
-
-          old = before_facts[crate_key]
-          new = after_facts[crate_key]
-          removed = set(old) - set(new)
-          added = set(new) - set(old)
-          changed = {
-              key for key in set(old) & set(new) if old[key] != new[key]
-          }
-          if removed or changed or added != {"bytes_1.12.1"}:
-              raise SystemExit(
-                  "non-minimal rules_rs facts delta: "
-                  f"removed={sorted(removed)!r}; "
-                  f"changed={sorted(changed)!r}; added={sorted(added)!r}"
-              )
-          if new["bytes_1.12.1"] != old["bytes_1.11.1"]:
-              raise SystemExit("bytes registry metadata shape changed")
-          PY
-
       - name: Seal exact one-parent Q0.49 candidate
         id: candidate
         shell: bash
@@ -365,9 +275,7 @@ jobs:
           expected=(
             .github/workflows/cargo-deny.yml
             .github/workflows/rust-ci.yml
-            MODULE.bazel.lock
             codex-rs/Cargo.lock
-            codex-rs/Cargo.toml
             codex-rs/ext/hepta-governance/Cargo.toml
             codex-rs/hepta-evidence/Cargo.toml
             codex-rs/hepta-matrix-protocol/Cargo.toml
@@ -384,8 +292,6 @@ jobs:
             "$ARTIFACT_DIR/files/.github/workflows/cargo-deny.yml"
           cp .github/workflows/rust-ci.yml \
             "$ARTIFACT_DIR/files/.github/workflows/rust-ci.yml"
-          cp MODULE.bazel.lock "$ARTIFACT_DIR/files/MODULE.bazel.lock"
-          cp codex-rs/Cargo.toml "$ARTIFACT_DIR/files/codex-rs/Cargo.toml"
           cp codex-rs/Cargo.lock "$ARTIFACT_DIR/files/codex-rs/Cargo.lock"
           cp codex-rs/hepta-evidence/Cargo.toml \
             "$ARTIFACT_DIR/files/codex-rs/hepta-evidence/Cargo.toml"
@@ -400,8 +306,8 @@ jobs:
             printf '%s\n' \
               "fix(ci): close Q0.49 dependency-policy blockers" \
               "" \
-              "Use minimal Rust 1.95-compatible locks, exact cargo-shear cleanup," \
-              "and a pinned native cargo-deny invocation." |
+              "Refresh only stale local lock entries, remove exact unused" \
+              "dependencies, pin cargo-deny, and make cargo-shear fail closed." |
               git -c user.name="Hepta Q0.49 candidate builder" \
                 -c user.email="q049-candidate-builder@invalid" \
                 commit-tree "$tree" -p "$SOURCE_SHA"
