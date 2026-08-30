@@ -1,0 +1,157 @@
+name: Hepta A0+Q0 targeted admission diagnostic
+
+on:
+  push:
+    branches:
+      - "diagnostic/hepta-a0-q0-targeted-6170ea-20260830"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TARGET_SHA: 6170ea18c4205904461c8ae9c5c272091ba2b188
+  TARGET_TREE: c39831605fc57e6c40df11dc3c26a18b6a21af98
+
+jobs:
+  format:
+    name: Exact combined-tree format gate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact combined candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify exact candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+
+      - name: Configure repository CI tooling
+        uses: ./.github/actions/setup-ci
+
+      - name: Run canonical repository format gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          just fmt-check
+
+      - name: Prove clean tracked source
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+  cargo-deny:
+    name: Exact combined-tree cargo-deny gate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact combined candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify exact candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$TARGET_TREE"
+
+      - name: Run repository cargo-deny policy
+        uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246
+        with:
+          rust-version: 1.95.0
+          manifest-path: ./codex-rs/Cargo.toml
+          arguments: --all-features
+          command-arguments: --config ./codex-rs/deny.toml
+
+      - name: Prove clean tracked source
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+  receipt:
+    name: Targeted admission receipt
+    needs:
+      - format
+      - cargo-deny
+    if: always()
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Write authority-negative diagnostic receipt
+        shell: bash
+        env:
+          FORMAT_RESULT: ${{ needs.format.result }}
+          CARGO_DENY_RESULT: ${{ needs.cargo-deny.result }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          receipt = {
+              "schema": "hepta_a0_q0_targeted_admission_diagnostic_v1",
+              "target": {
+                  "head": os.environ["TARGET_SHA"],
+                  "tree": os.environ["TARGET_TREE"],
+              },
+              "checks": {
+                  "format": os.environ["FORMAT_RESULT"],
+                  "cargo_deny": os.environ["CARGO_DENY_RESULT"],
+              },
+              "authority": {
+                  "a0_candidate_qualified": False,
+                  "selected": False,
+                  "full_repository_merge_green": False,
+                  "runtime_wired": False,
+                  "production_authority": False,
+                  "operator_acceptance": False,
+                  "promotion": False,
+                  "release_authority": False,
+                  "callers_ratchet": False,
+              },
+          }
+          canonical = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+          receipt["receipt_binding_sha256"] = hashlib.sha256(
+              b"hepta.a0-q0.targeted-admission.v1\0" + canonical
+          ).hexdigest()
+          Path("artifacts/receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload diagnostic receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-a0-q0-targeted-admission-${{ env.TARGET_SHA }}
+          path: artifacts/receipt.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce targeted gates
+        shell: bash
+        env:
+          FORMAT_RESULT: ${{ needs.format.result }}
+          CARGO_DENY_RESULT: ${{ needs.cargo-deny.result }}
+        run: |
+          set -euo pipefail
+          test "$FORMAT_RESULT" = success
+          test "$CARGO_DENY_RESULT" = success
