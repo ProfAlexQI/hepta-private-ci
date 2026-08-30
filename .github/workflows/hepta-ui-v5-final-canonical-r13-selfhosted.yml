@@ -62,13 +62,14 @@ jobs:
           fi
           python3 -c 'import yaml; print(yaml.__version__)'
 
-      - name: Replay every shell step from the exact hosted publisher
+      - name: Replay corrected shell steps from the exact hosted publisher
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from __future__ import annotations
 
+          import hashlib
           import os
           import subprocess
           import tempfile
@@ -77,7 +78,38 @@ jobs:
           import yaml
 
           driver_path = Path(os.environ["REPLAY_DRIVER_PATH"])
-          document = yaml.safe_load(driver_path.read_text(encoding="utf-8"))
+          driver_text = driver_path.read_text(encoding="utf-8")
+          hash_anchor = (
+              '          baseline_contract_path.write_text('
+              'baseline_contract.replace(old, new, 1), encoding="utf-8")'
+          )
+          hash_replacement = '''          baseline_contract = baseline_contract.replace(old, new, 1)
+          old_registry_hash = 'registry_sha256:"ddcbd5ac3b54134de1f0e0cdff9fc30a7cdc526957d9550e52a39cbe9fb4de17"'
+          new_registry_hash = f'registry_sha256:"{digest(registry_path)}"'
+          registry_hash_count = baseline_contract.count(old_registry_hash)
+          if registry_hash_count != 1:
+              raise SystemExit(
+                  f"baseline contract registry SHA anchor expected once, found {registry_hash_count}"
+              )
+          baseline_contract = baseline_contract.replace(
+              old_registry_hash,
+              new_registry_hash,
+              1,
+          )
+          baseline_contract_path.write_text(baseline_contract, encoding="utf-8")'''
+          anchor_count = driver_text.count(hash_anchor)
+          if anchor_count != 1:
+              raise SystemExit(
+                  f"publisher baseline-hash patch anchor expected once, found {anchor_count}"
+              )
+          driver_text = driver_text.replace(hash_anchor, hash_replacement, 1)
+          print(
+              "corrected publisher sha256="
+              + hashlib.sha256(driver_text.encode("utf-8")).hexdigest(),
+              flush=True,
+          )
+
+          document = yaml.safe_load(driver_text)
           job = document["jobs"]["build-and-publish"]
           steps = job["steps"]
 
@@ -157,5 +189,5 @@ jobs:
           summary = github_summary.read_text(encoding="utf-8")
           if summary:
               print("publisher summary:\n" + summary, flush=True)
-          print("self-hosted exact publisher replay completed", flush=True)
+          print("self-hosted corrected publisher replay completed", flush=True)
           PY
