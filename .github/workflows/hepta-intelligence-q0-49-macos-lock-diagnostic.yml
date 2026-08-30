@@ -1,27 +1,44 @@
-name: Hepta Intelligence Q0.49 macOS lock reconstruction
+name: Hepta Intelligence Q0.49 lock reconstruction
 
 on:
-  pull_request:
+  push:
     branches:
-      - codex/hepta-intelligence-q0-48-release-target-executable-mode-20260830
+      - diagnostic/hepta-intelligence-q0-49-macos-lock-20260830
 
 permissions:
   contents: read
 
+concurrency:
+  group: hepta-intelligence-q0-49-lock-reconstruction
+  cancel-in-progress: true
+
 jobs:
   reconstruct-q049:
-    runs-on: macos-15
+    name: reconstruct Q0.49 on ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            runner: ubuntu-latest
+            bazel_target: x86_64-unknown-linux-gnu
+          - name: macos-aarch64
+            runner: macos-15
+            bazel_target: aarch64-apple-darwin
     env:
       SOURCE_SHA: f2f200969fa0076178276bceab2eb21d23f0519e
       SOURCE_TREE: e6d9a631345927a8c0817080a2f8cab150c516f3
       BYTES_VERSION: 1.12.1
       BYTES_CHECKSUM: fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04
+      ARTIFACT_DIR: artifacts/q049-${{ matrix.name }}
+
     steps:
       - name: Checkout exact diagnostic head
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -29,13 +46,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           changed=()
           while IFS= read -r path; do
             changed+=("$path")
           done < <(git diff --name-only --no-renames "$SOURCE_SHA" HEAD)
           test "${#changed[@]}" -eq 1
-          test "${changed[0]}" = ".github/workflows/hepta-intelligence-q0-49-macos-lock-diagnostic.yml"
+          test "${changed[0]}" = \
+            ".github/workflows/hepta-intelligence-q0-49-macos-lock-diagnostic.yml"
           git diff --check "$SOURCE_SHA" HEAD
           git switch --detach "$SOURCE_SHA"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
@@ -50,18 +68,18 @@ jobs:
         with:
           components: rustfmt,clippy
 
-      - name: Install pinned cargo-shear
+      - name: Install pinned cargo-shear and cargo-deny
         uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
         with:
-          tool: cargo-shear@1.11.2
+          tool: cargo-shear@1.11.2,cargo-deny@0.19.0
 
       - name: Apply exact dependency-policy repair
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p artifacts/q049-macos
-          cp codex-rs/Cargo.lock artifacts/q049-macos/Cargo.lock.before
-          cp MODULE.bazel.lock artifacts/q049-macos/MODULE.bazel.lock.before
+          mkdir -p "$ARTIFACT_DIR"
+          cp codex-rs/Cargo.lock "$ARTIFACT_DIR/Cargo.lock.before"
+          cp MODULE.bazel.lock "$ARTIFACT_DIR/MODULE.bazel.lock.before"
 
           set +e
           cargo +1.95.0 shear \
@@ -69,10 +87,11 @@ jobs:
             --locked \
             --deny-warnings \
             --format=json \
-            >artifacts/q049-macos/shear-before.json
+            >"$ARTIFACT_DIR/shear-before.json" \
+            2>"$ARTIFACT_DIR/shear-before.stderr"
           shear_before_rc=$?
           set -e
-          echo "$shear_before_rc" >artifacts/q049-macos/shear-before.rc
+          echo "$shear_before_rc" >"$ARTIFACT_DIR/shear-before.rc"
 
           python3 - <<'PY'
           from pathlib import Path
@@ -82,7 +101,8 @@ jobs:
               text = file.read_text(encoding="utf-8")
               if text.count(old) != 1:
                   raise SystemExit(
-                      f"expected one token in {path}: {old!r}; count={text.count(old)}"
+                      f"expected one token in {path}: {old!r}; "
+                      f"count={text.count(old)}"
                   )
               file.write_text(text.replace(old, new, 1), encoding="utf-8")
 
@@ -100,23 +120,47 @@ jobs:
               "codex-rs/hepta-automation/Cargo.toml",
               "publish = false\n\n[lib]\n",
               "publish = false\n\n[package.metadata.cargo-shear]\n"
-              "# sha2 is used by the unconditionally linked path module src/taskflow.rs.\n"
+              "# sha2 is used by the unconditionally linked path module "
+              "src/taskflow.rs.\n"
               'ignored = ["sha2"]\n\n[lib]\n',
           )
           replace_once(
               "codex-rs/hepta-contracts/Cargo.toml",
               "version.workspace = true\n\n[lib]\n",
               "version.workspace = true\n\n[package.metadata.cargo-shear]\n"
-              "# The path-mounted agent_id_tests module imports pretty_assertions.\n"
+              "# The path-mounted agent_id_tests module imports "
+              "pretty_assertions.\n"
               'ignored = ["pretty_assertions"]\n\n[lib]\n',
           )
           replace_once(
               "codex-rs/hepta-fleet/Cargo.toml",
               "publish = false\n\n[lib]\n",
               "publish = false\n\n[package.metadata.cargo-shear]\n"
-              "# The path-mounted registry_tests module imports pretty_assertions.\n"
+              "# The path-mounted registry_tests module imports "
+              "pretty_assertions.\n"
               'ignored = ["pretty_assertions"]\n\n[lib]\n',
           )
+
+          old = """      - name: Run cargo-deny
+                  uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
+                  with:
+                    rust-version: 1.95.0
+                    manifest-path: ./codex-rs/Cargo.toml
+                    # Docker actions do not inherit defaults.run.working-directory. Keep
+                    # global flags before `check`, but pass `--config` as a command flag;
+                    # cargo-deny 0.19 rejects `--config` in the global argument position.
+                    arguments: --all-features
+                    command-arguments: --config ./codex-rs/deny.toml
+          """
+          new = """      - name: Install pinned cargo-deny
+                  uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+                  with:
+                    tool: cargo-deny@0.19.0
+
+                - name: Run cargo-deny
+                  run: cargo +1.95.0 deny --all-features check --config deny.toml
+          """
+          replace_once(".github/workflows/cargo-deny.yml", old, new)
           PY
 
           cargo +1.95.0 update \
@@ -138,21 +182,23 @@ jobs:
           )
           expected = [(os.environ["BYTES_VERSION"], os.environ["BYTES_CHECKSUM"])]
           if blocks != expected:
-              raise SystemExit(f"unexpected bytes lock block: {blocks!r} != {expected!r}")
+              raise SystemExit(
+                  f"unexpected bytes lock block: {blocks!r} != {expected!r}"
+              )
           PY
 
           cargo +1.95.0 metadata \
             --manifest-path codex-rs/Cargo.toml \
             --locked \
             --no-deps \
-            >artifacts/q049-macos/cargo-metadata.json
+            >"$ARTIFACT_DIR/cargo-metadata.json"
 
           cargo +1.95.0 shear \
             --manifest-path codex-rs/Cargo.toml \
             --locked \
             --deny-warnings \
             --format=json \
-            >artifacts/q049-macos/shear-after.json
+            >"$ARTIFACT_DIR/shear-after.json"
 
           cargo +1.95.0 check \
             --manifest-path codex-rs/Cargo.toml \
@@ -161,7 +207,7 @@ jobs:
             -p codex-hepta-automation \
             -p codex-hepta-contracts \
             -p codex-hepta-fleet \
-            >artifacts/q049-macos/focused-check.log 2>&1
+            >"$ARTIFACT_DIR/focused-check.log" 2>&1
 
           cargo +1.95.0 test \
             --manifest-path codex-rs/Cargo.toml \
@@ -170,34 +216,40 @@ jobs:
             -p codex-hepta-automation \
             -p codex-hepta-contracts \
             -p codex-hepta-fleet \
-            >artifacts/q049-macos/focused-test-no-run.log 2>&1
+            >"$ARTIFACT_DIR/focused-test-no-run.log" 2>&1
+
+          (
+            cd codex-rs
+            cargo +1.95.0 deny --all-features check --config deny.toml
+          ) >"$ARTIFACT_DIR/cargo-deny.log" 2>&1
 
       - name: Set up Bazel for module-lock regeneration
         uses: ./.github/actions/setup-bazel-ci
         with:
-          target: aarch64-apple-darwin
+          target: ${{ matrix.bazel_target }}
 
       - name: Regenerate and classify Bazel module lock
         shell: bash
         run: |
           set -euo pipefail
           just bazel-lock-update \
-            >artifacts/q049-macos/bazel-lock-update.log 2>&1
-          cp codex-rs/Cargo.lock artifacts/q049-macos/Cargo.lock.generated
-          cp MODULE.bazel.lock artifacts/q049-macos/MODULE.bazel.lock.generated
+            >"$ARTIFACT_DIR/bazel-lock-update.log" 2>&1
+          cp codex-rs/Cargo.lock "$ARTIFACT_DIR/Cargo.lock.generated"
+          cp MODULE.bazel.lock "$ARTIFACT_DIR/MODULE.bazel.lock.generated"
           git diff --binary "$SOURCE_SHA" -- \
-            >artifacts/q049-macos/q049.patch
+            >"$ARTIFACT_DIR/q049.patch"
           git diff --stat "$SOURCE_SHA" -- \
-            >artifacts/q049-macos/q049.diff-stat
+            >"$ARTIFACT_DIR/q049.diff-stat"
           git diff --name-only --no-renames "$SOURCE_SHA" -- \
-            >artifacts/q049-macos/q049.changed-paths
+            >"$ARTIFACT_DIR/q049.changed-paths"
           git diff --check "$SOURCE_SHA" --
 
           paths=()
           while IFS= read -r path; do
             paths+=("$path")
-          done <artifacts/q049-macos/q049.changed-paths
+          done <"$ARTIFACT_DIR/q049.changed-paths"
           required=(
+            .github/workflows/cargo-deny.yml
             .github/workflows/rust-ci.yml
             codex-rs/Cargo.lock
             codex-rs/Cargo.toml
@@ -210,7 +262,14 @@ jobs:
           done
           for path in "${paths[@]}"; do
             case "$path" in
-              .github/workflows/rust-ci.yml|codex-rs/Cargo.lock|codex-rs/Cargo.toml|codex-rs/hepta-automation/Cargo.toml|codex-rs/hepta-contracts/Cargo.toml|codex-rs/hepta-fleet/Cargo.toml|MODULE.bazel.lock)
+              .github/workflows/cargo-deny.yml|\
+              .github/workflows/rust-ci.yml|\
+              codex-rs/Cargo.lock|\
+              codex-rs/Cargo.toml|\
+              codex-rs/hepta-automation/Cargo.toml|\
+              codex-rs/hepta-contracts/Cargo.toml|\
+              codex-rs/hepta-fleet/Cargo.toml|\
+              MODULE.bazel.lock)
                 ;;
               *)
                 echo "unexpected generated path: $path" >&2
@@ -228,33 +287,48 @@ jobs:
           git config user.email "q049-diagnostic@invalid"
           git add -- "${paths[@]}"
           tree=$(git write-tree)
-          commit=$(printf '%s\n' \
-            "fix(ci): close Q0.49 locked dependency policy blockers" \
-            "" \
-            "Diagnostic-created immutable object only; no ref moved." |
-            git commit-tree "$tree" -p "$SOURCE_SHA")
+          commit=$(
+            printf '%s\n' \
+              "fix(ci): close Q0.49 locked dependency policy blockers" \
+              "" \
+              "Diagnostic-created immutable object only; no ref moved." |
+              git commit-tree "$tree" -p "$SOURCE_SHA"
+          )
 
+          python3 - "$ARTIFACT_DIR/summary.env" <<'PY'
+          import hashlib
+          import os
+          import sys
+          from pathlib import Path
+
+          output = Path(sys.argv[1])
+          cargo = Path("codex-rs/Cargo.lock").read_bytes()
+          module = Path("MODULE.bazel.lock").read_bytes()
+          lines = [
+              f"source_sha={os.environ['SOURCE_SHA']}",
+              f"source_tree={os.environ['SOURCE_TREE']}",
+              f"diagnostic_head={os.environ['GITHUB_SHA']}",
+              f"runner_os={os.environ['RUNNER_OS']}",
+              f"runner_arch={os.environ['RUNNER_ARCH']}",
+              f"bytes_version={os.environ['BYTES_VERSION']}",
+              f"bytes_checksum={os.environ['BYTES_CHECKSUM']}",
+              f"cargo_lock_sha256={hashlib.sha256(cargo).hexdigest()}",
+              f"module_lock_sha256={hashlib.sha256(module).hexdigest()}",
+          ]
+          output.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
           {
-            echo "source_sha=$SOURCE_SHA"
-            echo "source_tree=$SOURCE_TREE"
-            echo "diagnostic_head=${{ github.event.pull_request.head.sha }}"
-            echo "runner_os=$RUNNER_OS"
-            echo "runner_arch=$RUNNER_ARCH"
-            echo "bytes_version=$BYTES_VERSION"
-            echo "bytes_checksum=$BYTES_CHECKSUM"
             echo "module_lock_changed=$module_lock_changed"
             echo "candidate_tree=$tree"
             echo "candidate_commit=$commit"
-            echo "cargo_lock_sha256=$(shasum -a 256 codex-rs/Cargo.lock | awk '{print $1}')"
-            echo "module_lock_sha256=$(shasum -a 256 MODULE.bazel.lock | awk '{print $1}')"
-          } >artifacts/q049-macos/summary.env
-          cat artifacts/q049-macos/summary.env
+          } >>"$ARTIFACT_DIR/summary.env"
+          cat "$ARTIFACT_DIR/summary.env"
 
-      - name: Upload macOS Q0.49 reconstruction
+      - name: Upload Q0.49 reconstruction
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: hepta-intelligence-q0-49-macos-${{ github.event.pull_request.head.sha }}
-          path: artifacts/q049-macos
+          name: hepta-intelligence-q0-49-${{ matrix.name }}-${{ github.sha }}
+          path: ${{ env.ARTIFACT_DIR }}
           if-no-files-found: error
           retention-days: 30
