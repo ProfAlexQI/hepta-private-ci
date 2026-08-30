@@ -133,3 +133,49 @@ jobs:
           expected=$'codex-rs/.config/nextest.toml\ncodex-rs/hepta-fleet/src/registry.rs\ncodex-rs/hepta-fleet/src/registry_tests.rs\ncodex-rs/hepta-supervisor/src/supervisor_tests.rs'
           test "$(git diff --name-only)" = "$expected"
           test -z "$(git ls-files --others --exclude-standard)"
+
+      - name: Write exact qualification manifest
+        shell: bash
+        env:
+          QUALIFIED_RUNNER: ${{ matrix.runner }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          files = [
+              "codex-rs/.config/nextest.toml",
+              "codex-rs/hepta-fleet/src/registry.rs",
+              "codex-rs/hepta-fleet/src/registry_tests.rs",
+              "codex-rs/hepta-supervisor/src/supervisor_tests.rs",
+          ]
+          manifest = {
+              "schema_version": 1,
+              "controller_sha": os.environ["GITHUB_SHA"],
+              "qualified_runner": os.environ["QUALIFIED_RUNNER"],
+              "source_base_sha": "7b7c5795965f59b4294f507f8414b10dd682f49c",
+              "files": {
+                  path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
+                  for path in files
+              },
+          }
+          Path("hepta-p0-7a-qualified-manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+          )
+          PY
+
+      - name: Upload exact qualified source
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-p0-7a-qualified-${{ matrix.runner }}-${{ github.sha }}
+          path: |
+            codex-rs/.config/nextest.toml
+            codex-rs/hepta-fleet/src/registry.rs
+            codex-rs/hepta-fleet/src/registry_tests.rs
+            codex-rs/hepta-supervisor/src/supervisor_tests.rs
+            hepta-p0-7a-qualified-manifest.json
+          if-no-files-found: error
+          retention-days: 3
