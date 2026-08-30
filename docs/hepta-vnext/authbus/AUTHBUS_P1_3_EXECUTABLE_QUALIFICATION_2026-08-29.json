@@ -1,0 +1,84 @@
+{
+  "schema": "hepta.authbus.p1.3.executable-qualification.v1",
+  "date": "2026-08-30",
+  "stage": "P1.3",
+  "repository": "ProfHepta/hepta-private-ci",
+  "repository_id": 1320694176,
+  "base_branch": "integration/vnext-main-full-ci-authbus-p1-3-20260829",
+  "base_commit": "6b7aa91d7702a92a50297b1b1bd8170ffb7cb184",
+  "branch": "codex/authbus-p1-3-clean-replay-v9-split-slim-20260830",
+  "source_head": "8572f3d2182541b14e0719b229ccd8754494f134",
+  "source_tree": "aac769f278dad18b97b3c63c97f9b43dd325aa24",
+  "registry_sha256": "dfcab028e1a135a0895b3f9eddec9f5f99cf5f392701b98ad14180058a284bf1",
+  "qualified": true,
+  "qualification_only": true,
+  "qualification_run_id": 33306644612,
+  "qualification_run_attempt": 1,
+  "qualification_job_ids": [
+    99244273750,
+    99244494589,
+    99244494605,
+    99246066718
+  ],
+  "qualification_runner_ids": [
+    1000043126,
+    1000043137,
+    1000043136,
+    1000043467
+  ],
+  "workflow_name": "AuthBus P1.3 exact canonical quota registry qualification",
+  "workflow_path": ".github/workflows/authbus-p1-3-qualification.yml",
+  "rustc": "1.95.0",
+  "cargo": "1.95.0",
+  "source_contracts": true,
+  "exact_delta_format": true,
+  "lock_graph": true,
+  "p0_2_through_p1_3_test_matrices": true,
+  "all_targets_check": true,
+  "strict_clippy_deny_warnings": true,
+  "canonical_quota_dimensions": 6,
+  "canonical_projection_surfaces": 6,
+  "legacy_adapter_count": 2,
+  "missing_request_count_policy_explicit": true,
+  "lossy_downgrade_rejected": true,
+  "explicit_unknown_preserved": true,
+  "not_declared_preserved": true,
+  "receipt_head_self_verification_required": true,
+  "artifacts": [
+    {
+      "id": 9730699520,
+      "name": "authbus-p1-3-source-contracts-33306644612",
+      "sha256": "5c5dd065605a0ad3597cc14da3b1d1ef2b655774e60d64016c8a2ebacd5f0c43"
+    },
+    {
+      "id": 9730874523,
+      "name": "authbus-p1-3-test-matrices-33306644612",
+      "sha256": "cf258148c26efe15dea5e7c94051d8ba2239c071f6d1b8d98153036a717156ab"
+    },
+    {
+      "id": 9730879950,
+      "name": "authbus-p1-3-all-target-checks-33306644612",
+      "sha256": "efb54d186356f215092c1a3e99b18abe9393fbea31eeac1631067a3892c29a66"
+    },
+    {
+      "id": 9730998239,
+      "name": "authbus-p1-3-aggregate-33306644612",
+      "sha256": "4870bbbc2b16f30823410ea23046d6128a7598e97225e6c8b0a9ba5f5195f75e"
+    }
+  ],
+  "authority": false,
+  "effect_authority": false,
+  "production_caller": false,
+  "production_writer": false,
+  "operator_acceptance": false,
+  "promotion": false,
+  "g5_allowed": false,
+  "execute_allowed": false,
+  "listener_enabled": false,
+  "provider_call_enabled": false,
+  "openbao_enabled": false,
+  "parent_workspace_wired": false,
+  "private_key_storage": false,
+  "raw_signature_storage": false,
+  "secret_storage": false
+}
