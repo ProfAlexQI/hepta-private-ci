@@ -1,0 +1,49 @@
+name: Hepta inference V5 payload forensic export macOS
+
+on:
+  push:
+    branches:
+      - ops/hepta-inference-v5-source-publisher-gpt56-20260830
+    paths:
+      - .github/workflows/hepta-inference-v5-payload-export-gpt56-macos.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-v5-payload-export-gpt56-macos
+  cancel-in-progress: true
+
+jobs:
+  export-payload:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Record immutable payload identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=.github/qualification/hepta-inference-v5-gpt56
+          test "$(git hash-object -- "$root/source.patch.xz")" = 759de5be755e1fbe2d8081286ef440a83d67bdb4
+          shasum -a 256 "$root/source.patch.xz" > "$root/source.patch.xz.sha256"
+          git rev-parse HEAD > "$root/export-head.txt"
+          git rev-parse 'HEAD^{tree}' > "$root/export-tree.txt"
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-v5-gpt56-payload-macos-${{ github.sha }}
+          path: |
+            .github/qualification/hepta-inference-v5-gpt56/source.patch.xz
+            .github/qualification/hepta-inference-v5-gpt56/source.patch.xz.sha256
+            .github/qualification/hepta-inference-v5-gpt56/PATCH_INFO.md
+            .github/qualification/hepta-inference-v5-gpt56/BLOB_MANIFEST.sha1
+            .github/qualification/hepta-inference-v5-gpt56/EXPECTED_PATHS.txt
+            .github/qualification/hepta-inference-v5-gpt56/DELETE_PATHS.txt
+            .github/qualification/hepta-inference-v5-gpt56/export-head.txt
+            .github/qualification/hepta-inference-v5-gpt56/export-tree.txt
+          if-no-files-found: error
+          retention-days: 14
