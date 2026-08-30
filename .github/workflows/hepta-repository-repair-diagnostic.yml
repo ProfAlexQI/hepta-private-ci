@@ -1,0 +1,120 @@
+name: Hepta repository repair diagnostics
+
+on:
+  pull_request:
+    branches:
+      - "codex/hepta-intelligence-a0-authority-gap-closure-20260829"
+    paths:
+      - ".github/workflows/hepta-repository-repair-diagnostic.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-repository-repair-diagnostic-${{ github.event.pull_request.number }}-${{ github.event.pull_request.base.sha }}
+  cancel-in-progress: true
+
+jobs:
+  format-patch:
+    name: Produce deterministic repository format patch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ARTIFACT_DIR: artifacts/hepta-repository-repair
+      EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Checkout exact A0 base candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.EXPECTED_BASE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify diagnostic identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "ProfHepta/hepta-private-ci"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_BASE_SHA"
+          test "$EXPECTED_BASE_SHA" = "08e6ed017e8cbfb94f86a5fa8397eb00eb396ed2"
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Set up repository CI tools
+        uses: ./.github/actions/setup-ci
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: 0.11.3
+
+      - name: Apply canonical repository formatters
+        id: format
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          set +e
+          just fmt >"$ARTIFACT_DIR/formatter.log" 2>&1
+          rc=$?
+          set -e
+          printf '%s\n' "$rc" >"$ARTIFACT_DIR/formatter.exit"
+          git diff --binary >"$ARTIFACT_DIR/repository-format.patch"
+          git diff --name-only | sort >"$ARTIFACT_DIR/changed-paths.txt"
+          test -s "$ARTIFACT_DIR/repository-format.patch"
+          test -s "$ARTIFACT_DIR/changed-paths.txt"
+          while IFS= read -r path; do
+            test -f "$path"
+          done <"$ARTIFACT_DIR/changed-paths.txt"
+          tar -czf "$ARTIFACT_DIR/changed-files.tar.gz" -T "$ARTIFACT_DIR/changed-paths.txt"
+          git diff --check
+
+      - name: Build content-addressed diagnostic manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$ARTIFACT_DIR" <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import subprocess
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          paths = root.joinpath("changed-paths.txt").read_text(encoding="utf-8").splitlines()
+          manifest = {
+              "schema": "hepta_repository_format_repair_diagnostic_v1",
+              "classification": "DIAGNOSTIC_PROPOSED_PATCH_NO_MERGE_OR_AUTHORITY_EFFECT",
+              "repository": "ProfHepta/hepta-private-ci",
+              "base_head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "base_tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(),
+              "formatter_exit": int(root.joinpath("formatter.exit").read_text().strip()),
+              "changed_path_count": len(paths),
+              "changed_paths": paths,
+              "patch_sha256": hashlib.sha256(root.joinpath("repository-format.patch").read_bytes()).hexdigest(),
+              "changed_files_archive_sha256": hashlib.sha256(root.joinpath("changed-files.tar.gz").read_bytes()).hexdigest(),
+              "source_writeback": False,
+              "a0_candidate_qualified": False,
+              "canonical_selected": False,
+              "merge_authority": False,
+              "runtime_authority": False,
+          }
+          root.joinpath("manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          sha256sum \
+            "$ARTIFACT_DIR/repository-format.patch" \
+            "$ARTIFACT_DIR/changed-files.tar.gz" \
+            "$ARTIFACT_DIR/changed-paths.txt" \
+            "$ARTIFACT_DIR/formatter.log" \
+            "$ARTIFACT_DIR/manifest.json" \
+            >"$ARTIFACT_DIR/SHA256SUMS"
+
+      - name: Upload proposed repair patch
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-repository-format-repair-${{ env.EXPECTED_BASE_SHA }}
+          path: artifacts/hepta-repository-repair/**
+          if-no-files-found: error
+          retention-days: 30
