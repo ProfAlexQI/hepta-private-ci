@@ -1,0 +1,35 @@
+name: Cancel superseded Hepta Intelligence V8 PR 209
+
+on:
+  push:
+    branches:
+      - ops/cancel-superseded-v8-pr-209-20260831
+
+permissions:
+  contents: read
+
+# GitHub concurrency groups are repository-wide.  This exact key matches the
+# superseded pull-request run from PR #209 and asks GitHub to cancel it before
+# this bounded administrative receipt executes.
+concurrency:
+  group: v8-canary::pr-209
+  cancel-in-progress: true
+
+jobs:
+  cancellation-receipt:
+    name: Superseded V8 cancellation receipt
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    steps:
+      - name: Record bounded administrative action
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            'superseded_run=33312244122' \
+            'superseded_pr=209' \
+            'source_mutation=false' \
+            'runtime_authority=false' \
+            'production_authority=false' \
+            'promotion=false' \
+            'release_authority=false'
