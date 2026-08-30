@@ -1,0 +1,158 @@
+name: Hepta Intelligence A0 + Q0.5 exact integration diagnostic
+
+on:
+  push:
+    branches:
+      - "diagnostic/hepta-intelligence-a0-q0-5-exact-f950-20260830"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-a0-q0-5-exact-f950-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+  EXPECTED_HEAD_SHA: f950ea4e81d9a33a37ae728edd31492afe192c77
+  EXPECTED_TREE_SHA: 48d7291944c75a29c30ceeba62bc8216428245fa
+
+jobs:
+  exact-integration-diagnostic:
+    name: Exact f950 integration high-risk gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact integration candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.EXPECTED_HEAD_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify exact immutable identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE_SHA"
+          test "$(git rev-list --parents -n 1 HEAD | awk '{print NF-1}')" -ge 2
+          mkdir -p "$RUNNER_TEMP/hepta-intelligence-a0-q0-5-diagnostic"
+          {
+            echo "repository=$GITHUB_REPOSITORY"
+            echo "workflow_run_id=$GITHUB_RUN_ID"
+            echo "workflow_run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "candidate_head=$(git rev-parse HEAD)"
+            echo "candidate_tree=$(git rev-parse HEAD^{tree})"
+            echo "candidate_parents=$(git show -s --format=%P HEAD)"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+          } > "$RUNNER_TEMP/hepta-intelligence-a0-q0-5-diagnostic/identity.txt"
+
+      - name: Set up repository CI tools
+        uses: ./.github/actions/setup-ci
+
+      - name: Install Rust 1.95 with fmt and Clippy
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Install cargo-shear 1.11.2
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: cargo-shear@1.11.2
+
+      - name: Compile strict Hepta Intelligence validators
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/hepta-intelligence-status-compat.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+
+      - name: Verify A0 plan, document authority, truth, and compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-document-authority.py
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
+            python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
+          done
+          GITHUB_SHA="$EXPECTED_HEAD_SHA" python3 scripts/verify-hepta-intelligence-a0-authority.py \
+            > "$RUNNER_TEMP/hepta-intelligence-a0-q0-5-diagnostic/a0-authority-receipt.json"
+
+      - name: Repository format gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          just fmt-check
+
+      - name: Canonical Rust format gate
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt -- --config imports_granularity=Item --check
+
+      - name: Cargo shear strict gate
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo shear --deny-warnings
+
+      - name: Cargo deny checked policy gate
+        uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
+        with:
+          rust-version: 1.95.0
+          manifest-path: ./codex-rs/Cargo.toml
+          arguments: --all-features
+          command-arguments: --config ./codex-rs/deny.toml
+
+      - name: UDS package tests
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test -p codex-uds --all-targets --locked
+
+      - name: UDS strict Clippy
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy -p codex-uds --all-targets --all-features --locked -- -D warnings
+
+      - name: Verify no source mutation
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test -z "$(git status --porcelain=v1 --untracked-files=normal --ignore-submodules=none)"
+          {
+            echo "completed_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "job_status=${{ job.status }}"
+            echo "source_writeback=false"
+            echo "a0_candidate_qualified=false"
+            echo "selected=false"
+            echo "runtime_authority=false"
+            echo "production_authority=false"
+          } > "$RUNNER_TEMP/hepta-intelligence-a0-q0-5-diagnostic/outcome.txt"
+
+      - name: Upload diagnostic evidence
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v4
+        with:
+          name: hepta-intelligence-a0-q0-5-exact-f950-diagnostic-${{ github.run_id }}
+          path: ${{ runner.temp }}/hepta-intelligence-a0-q0-5-diagnostic/**
+          if-no-files-found: error
+          retention-days: 30
