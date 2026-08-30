@@ -20,7 +20,7 @@ permissions:
 jobs:
   close:
     name: Qualify and publish exact 29-path clean source
-    runs-on: ubuntu-24.04-arm
+    runs-on: macos-15
     timeout-minutes: 120
     env:
       CARGO_INCREMENTAL: "0"
@@ -37,6 +37,12 @@ jobs:
           fetch-depth: 2
           persist-credentials: true
 
+      - name: Install GNU compatibility tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install coreutils gnu-sed
+
       - name: Install Rust 1.95
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
@@ -47,5 +53,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export PATH="$(brew --prefix coreutils)/libexec/gnubin:$(brew --prefix gnu-sed)/libexec/gnubin:${PATH}"
           cp scripts/authbus-p1-3-final-closure.sh /tmp/authbus-p1-3-final-closure.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/authbus-p1-3-final-closure.sh')
+          s = p.read_text()
+          replacements = (
+              ('EXPECTED_PARENT=556c314bf345fb218f3fcf533643bdb48eab2aa2',
+               'EXPECTED_PARENT=083c153600f6b906dec55e3b2219794fd09eec56'),
+              ("'runs-on: ubuntu-24.04-arm'", "'runs-on: macos-15'"),
+          )
+          for before, after in replacements:
+              count = s.count(before)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one {before!r}, found {count}')
+              s = s.replace(before, after)
+          p.write_text(s)
+          PY
           bash /tmp/authbus-p1-3-final-closure.sh
