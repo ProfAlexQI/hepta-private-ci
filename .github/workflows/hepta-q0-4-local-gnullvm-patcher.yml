@@ -1,0 +1,153 @@
+name: Hepta Q0.4 bounded local gnullvm patcher
+
+on:
+  push:
+    branches:
+      - automation/hepta-a0-windows-release-diagnostic-20260830
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-q0-4-local-gnullvm-patcher
+  cancel-in-progress: false
+
+env:
+  TARGET_BRANCH: codex/hepta-intelligence-q0-4-local-gnullvm-fallback-20260830
+  EXPECTED_HEAD: 0f02a264316ba2101e9f48bbb37a88c435163a3a
+  EXPECTED_BLOB: 89f937a998b865eea250f4c900f5dc3b821414f6
+  TARGET_PATH: .github/scripts/run-bazel-ci.sh
+
+jobs:
+  patch-and-publish:
+    name: Apply exact credentialless local gnullvm repair
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact Q0.3 target branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Assert immutable input identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${EXPECTED_HEAD}"
+          test "$(git rev-parse HEAD:${TARGET_PATH})" = "${EXPECTED_BLOB}"
+          test -z "$(git status --porcelain)"
+
+      - name: Apply three exact fail-closed replacements
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path(".github/scripts/run-bazel-ci.sh")
+          source = path.read_text(encoding="utf-8")
+
+          replacements = [
+              (
+                  "windows_msvc_host_platform=0\nwindows_cross_compile=0\n",
+                  "windows_msvc_host_platform=0\nwindows_cross_compile=0\ncredentialless_windows_cross_compile=0\n",
+              ),
+              (
+                  '''if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
+            # Windows cross-compilation depends on authenticated RBE. Preserve the local
+            # Windows build shape when credentials are unavailable.
+            ci_config=ci-windows
+            windows_msvc_host_platform=1
+          fi
+          ''',
+                  '''if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
+            # Preserve the requested gnullvm target even when tenant RBE credentials
+            # are unavailable. Build actions run locally on an MSVC host platform,
+            # while target selection and generated Windows test binaries remain
+            # gnullvm. This prevents a credentialless fork from silently testing a
+            # different ABI under a gnullvm-labelled job.
+            ci_config=ci-windows
+            windows_msvc_host_platform=1
+            credentialless_windows_cross_compile=1
+          fi
+          ''',
+              ),
+              (
+                  '''post_config_bazel_args=()
+          if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; then
+          ''',
+                  '''post_config_bazel_args=()
+          if [[ $credentialless_windows_cross_compile -eq 1 ]]; then
+            post_config_bazel_args+=(
+              --platforms=//:windows_x86_64_gnullvm
+              --extra_execution_platforms=//:windows_x86_64_msvc
+              --extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain
+              --strategy=TestRunner=local
+              --strategy=V8Mksnapshot=local
+              --local_test_jobs=8
+              --test_env=RUST_TEST_THREADS=1
+              --test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=command_safety::powershell_parser::tests::,suite::code_mode::code_mode_can_call_hidden_dynamic_tools,tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child
+            )
+          fi
+
+          if [[ "${RUNNER_OS:-}" == "Windows" && $windows_msvc_host_platform -eq 1 ]]; then
+          ''',
+              ),
+              (
+                  '''else
+            echo "BuildBuddy API key is not available; using local Bazel configuration."
+          fi
+          ''',
+                  '''else
+            echo "BuildBuddy API key is not available; using local Bazel configuration."
+            if [[ $credentialless_windows_cross_compile -eq 1 ]]; then
+              # Load the ordinary Windows CI policy without activating a remote
+              # endpoint. The explicit post-config flags above retain the gnullvm
+              # target and MSVC execution host.
+              bazel_run_args+=(--config=ci-windows)
+            fi
+          fi
+          ''',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one exact replacement boundary, found {count}: {old.splitlines()[0]!r}")
+              source = source.replace(old, new)
+
+          path.write_text(source, encoding="utf-8", newline="\n")
+          PY
+
+          bash -n "${TARGET_PATH}"
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "${TARGET_PATH}"
+          git diff --check
+
+      - name: Verify fallback contract is complete and non-skipping
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'credentialless_windows_cross_compile=1' "${TARGET_PATH}"
+          grep -F -- '--platforms=//:windows_x86_64_gnullvm' "${TARGET_PATH}"
+          grep -F -- '--host_platform=//:local_windows_msvc' "${TARGET_PATH}"
+          grep -F -- '--extra_execution_platforms=//:windows_x86_64_msvc' "${TARGET_PATH}"
+          grep -F -- '--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain' "${TARGET_PATH}"
+          grep -F 'bazel_run_args+=(--config=ci-windows)' "${TARGET_PATH}"
+          ! grep -E '(^|[[:space:]])(exit 0|continue-on-error|skip.*gnullvm)' "${TARGET_PATH}"
+
+      - name: Publish one-path Q0.4 source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "hepta-ci-bot"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git add -- "${TARGET_PATH}"
+          test "$(git diff --cached --name-only)" = "${TARGET_PATH}"
+          git commit -m "fix(ci): preserve local gnullvm target without RBE credentials"
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
