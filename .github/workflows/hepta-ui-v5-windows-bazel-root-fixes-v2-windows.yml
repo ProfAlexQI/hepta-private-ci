@@ -35,7 +35,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Materialize and compile the immutable patcher
+      - name: Materialize, complete, and compile the immutable patcher
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -55,17 +55,55 @@ jobs:
 
           path = Path(os.environ["PATCHER_COPY"])
           text = path.read_text(encoding="utf-8-sig")
-          old = '            "\\\"#;",'
-          new = '            "\\\"#,",'
-          if text.count(old) != 2:
+
+          raw_old = '            "\\\"#;",'
+          raw_new = '            "\\\"#,",'
+          if text.count(raw_old) != 2:
               raise SystemExit(
-                  f"raw-string fixture terminator repair: expected 2 anchors, found {text.count(old)}"
+                  f"raw-string fixture terminator repair: expected 2 anchors, found {text.count(raw_old)}"
               )
-          text = text.replace(old, new)
+          text = text.replace(raw_old, raw_new)
+
+          spec_anchor = (
+              '    "ext/executor-skills": '
+              '("executor-skills", "codex_executor_skills_extension"),\n'
+          )
+          spec_prefix = (
+              '    "debug-client": ("debug-client", "codex_debug_client"),\n'
+              '    "exec-server-protocol": '
+              '("exec-server-protocol", "codex_exec_server_protocol"),\n'
+          )
+          if text.count(spec_anchor) != 1:
+              raise SystemExit(
+                  f"complete workspace spec anchor: expected 1 match, found {text.count(spec_anchor)}"
+              )
+          text = text.replace(spec_anchor, spec_prefix + spec_anchor, 1)
+
+          path_anchor = '        "codex-rs/cli/BUILD.bazel",\n'
+          path_prefix = (
+              '        "codex-rs/debug-client/BUILD.bazel",\n'
+              '        "codex-rs/exec-server-protocol/BUILD.bazel",\n'
+          )
+          if text.count(path_anchor) != 1:
+              raise SystemExit(
+                  f"complete workspace path anchor: expected 1 match, found {text.count(path_anchor)}"
+              )
+          text = text.replace(path_anchor, path_anchor + path_prefix, 1)
+
           path.write_text(text, encoding="utf-8", newline="\n")
           compile(text, str(path), "exec")
-          if old in text or text.count(new) != 2:
+          if raw_old in text or text.count(raw_new) != 2:
               raise SystemExit("raw-string fixture terminator repair did not converge")
+          if text.count('"debug-client": ("debug-client", "codex_debug_client")') != 1:
+              raise SystemExit("debug-client package binding is not unique")
+          if text.count(
+              '"exec-server-protocol": ("exec-server-protocol", "codex_exec_server_protocol")'
+          ) != 1:
+              raise SystemExit("exec-server-protocol package binding is not unique")
+          if text.count('"codex-rs/debug-client/BUILD.bazel"') != 1:
+              raise SystemExit("debug-client expected path is not unique")
+          if text.count('"codex-rs/exec-server-protocol/BUILD.bazel"') != 1:
+              raise SystemExit("exec-server-protocol expected path is not unique")
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "PATCHER_COPY=$patcher" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8NoBOM -Append
