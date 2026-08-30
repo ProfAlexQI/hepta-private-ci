@@ -100,7 +100,7 @@ jobs:
         with:
           tool: cargo-shear@1.11.2
       - name: cargo shear
-        run: cargo shear --deny-warnings
+        run: cargo shear --locked --deny-warnings
 
       - name: Check for a clean worktree
         if: always() && !cancelled()
