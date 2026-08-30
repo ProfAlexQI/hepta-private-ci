@@ -11,12 +11,18 @@ ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = ROOT / ".github" / "scripts" / "run_bazel_with_buildbuddy.py"
 Q027_POLICY = ROOT / ".github" / "scripts" / "run_bazel_q027_lane_semantics.py"
 Q028_POLICY = ROOT / ".github" / "scripts" / "run_bazel_q028_startup_contract.py"
+Q039_POLICY = ROOT / ".github" / "scripts" / "run_bazel_q039_startup_order.py"
 Q028_TEST = ROOT / ".github" / "scripts" / "test_run_bazel_startup_contract.py"
+BASE_WRAPPER = ROOT / ".github" / "scripts" / "run_bazel_with_buildbuddy_base.py"
+CI_IMPLEMENTATION = ROOT / ".github" / "scripts" / "run-bazel-ci-impl.sh"
 FINAL_VERIFIER = ROOT / "scripts" / "verify-windows-gnullvm-final-command.py"
 BOUNDARY = ROOT / ".github" / "scripts" / "test_run_bazel_qualification_boundary.sh"
 REPO_CHECKS = ROOT / ".github" / "workflows" / "repo-checks.yml"
 
 EXPECTED_Q027_POLICY_BLOB = "a507da0da4ac370a73d79eb305b227f0a080170a"
+EXPECTED_Q039_POLICY_BLOB = "e0923474a529b37ef416ab9af90cc0745079afe5"
+EXPECTED_WRAPPER_BLOB = "cf5e7d990e1c649dac505ff98199cffa60def08d"
+EXPECTED_STARTUP_TEST_BLOB = "20a37801e00df21fda03011102fde499963892bc"
 
 
 def fail(message: str) -> None:
@@ -55,7 +61,10 @@ def main() -> None:
     wrapper = read(WRAPPER)
     q027_policy = read(Q027_POLICY)
     q028_policy = read(Q028_POLICY)
+    q039_policy = read(Q039_POLICY)
     q028_test = read(Q028_TEST)
+    base_wrapper = read(BASE_WRAPPER)
+    ci_implementation = read(CI_IMPLEMENTATION)
     final_verifier = read(FINAL_VERIFIER)
     boundary = read(BOUNDARY)
     repo_checks = read(REPO_CHECKS)
@@ -68,15 +77,59 @@ def main() -> None:
         "selected Q0.27 lane-semantic policy drifted",
     )
 
+    for path, expected, owner in (
+        (Q039_POLICY, EXPECTED_Q039_POLICY_BLOB, "Q0.39 startup-order policy"),
+        (WRAPPER, EXPECTED_WRAPPER_BLOB, "Q0.39 composed wrapper"),
+        (Q028_TEST, EXPECTED_STARTUP_TEST_BLOB, "Q0.39 startup regression"),
+    ):
+        require(
+            git_blob_sha(path) == expected,
+            f"{owner} drifted from the reviewed source blob",
+        )
+
     for token in (
         "from run_bazel_q022_negative_targets import (",
         "_validate_q026_compatibility_base",
         "from run_bazel_q027_lane_semantics import (",
         "_validate_q027_compatibility_base",
         "from run_bazel_q028_startup_contract import (",
+        "from run_bazel_q039_startup_order import (",
+        "canonicalize_keyless_windows_gnullvm_base_startup",
+        "startup = canonicalize_keyless_windows_gnullvm_base_startup(startup, env)",
         "validate_keyless_windows_gnullvm_final_args(command[1:], env)",
     ):
         require_token(wrapper, token, "run_bazel_with_buildbuddy.py")
+
+    for token in (
+        "from run_bazel_q028_startup_contract import DISABLED_REPO_CONTENTS_CACHE",
+        "from run_bazel_q028_startup_contract import OUTPUT_USER_ROOT_PREFIX",
+        "def canonicalize_keyless_windows_gnullvm_base_startup",
+        "exact startup vector requires exactly",
+        "exact startup vector rejects unreviewed",
+        "return [expected_output_root, DISABLED_REPO_CONTENTS_CACHE]",
+    ):
+        require_token(
+            token=token,
+            text=q039_policy,
+            owner="run_bazel_q039_startup_order.py",
+        )
+
+    require(
+        wrapper.index("startup = canonicalize_keyless_windows_gnullvm_base_startup")
+        < wrapper.index("strict_rc = ["),
+        "Q0.39 canonicalization must precede strict rc construction",
+    )
+
+    for token in (
+        'bazel_startup_args+=("--output_user_root=${BAZEL_OUTPUT_USER_ROOT}")',
+        "run_bazel_with_startup_args",
+    ):
+        require_token(ci_implementation, token, "run-bazel-ci-impl.sh")
+    for token in (
+        'injected_args.append("--noexperimental_remote_repo_contents_cache")',
+        "*startup_args(args, env)",
+    ):
+        require_token(base_wrapper, token, "run_bazel_with_buildbuddy_base.py")
 
     for token in (
         "validate_keyless_windows_gnullvm_final_args as _validate_q027",
@@ -99,6 +152,11 @@ def main() -> None:
         "test_positive_repository_contents_cache_fails_closed",
         "test_duplicate_negative_repository_contents_cache_fails_closed",
         "test_output_root_drift_fails_closed",
+        "test_real_ci_explicit_output_user_root_is_canonicalized",
+        "test_reversed_exact_base_startup_is_canonicalized",
+        "test_duplicate_output_user_root_fails_closed",
+        "test_startup_order_helper_rejects_unreviewed_options",
+        "from run_bazel_q017_policy import _git_blob_sha1",
     ):
         require_token(q028_test, token, "test_run_bazel_startup_contract.py")
 

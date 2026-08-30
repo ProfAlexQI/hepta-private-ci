@@ -10,7 +10,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 import run_bazel_q028_startup_contract as startup_contract
+import run_bazel_q039_startup_order as startup_order
 import run_bazel_with_buildbuddy as subject
+from run_bazel_q017_policy import _git_blob_sha1
 
 
 class ExactStartupVectorQualificationTest(unittest.TestCase):
@@ -43,7 +45,7 @@ class ExactStartupVectorQualificationTest(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         if env_updates:
             env.update(env_updates)
-        expected_blob = subject._git_blob_sha1(bazelrc.read_bytes())
+        expected_blob = _git_blob_sha1(bazelrc.read_bytes())
         with (
             patch.object(
                 subject,
@@ -76,6 +78,51 @@ class ExactStartupVectorQualificationTest(unittest.TestCase):
         )
         self.assertTrue(startup[-1].startswith("--bazelrc="))
         self.assertTrue(startup[-1].endswith("/.bazelrc"))
+
+    def test_real_ci_explicit_output_user_root_is_canonicalized(self) -> None:
+        command = self.command("--output_user_root=D:/b")
+        command_idx = command.index("build")
+        self.assertEqual(
+            command[1:command_idx][:3],
+            [
+                "--output_user_root=D:/b",
+                startup_contract.DISABLED_REPO_CONTENTS_CACHE,
+                "--output_base=D:/o",
+            ],
+        )
+
+    def test_reversed_exact_base_startup_is_canonicalized(self) -> None:
+        command = self.command(
+            startup_contract.DISABLED_REPO_CONTENTS_CACHE,
+            "--output_user_root=D:/b",
+        )
+        command_idx = command.index("build")
+        self.assertEqual(
+            command[1:command_idx][:2],
+            [
+                "--output_user_root=D:/b",
+                startup_contract.DISABLED_REPO_CONTENTS_CACHE,
+            ],
+        )
+
+    def test_duplicate_output_user_root_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "requires exactly"):
+            self.command(
+                "--output_user_root=D:/b",
+                "--output_user_root=D:/b",
+            )
+
+    def test_startup_order_helper_rejects_unreviewed_options(self) -> None:
+        env = {"BAZEL_OUTPUT_USER_ROOT": "D:/b"}
+        with self.assertRaisesRegex(ValueError, "unreviewed base startup"):
+            startup_order.canonicalize_keyless_windows_gnullvm_base_startup(
+                [
+                    "--output_user_root=D:/b",
+                    startup_contract.DISABLED_REPO_CONTENTS_CACHE,
+                    "--host_jvm_args=-Xmx4g",
+                ],
+                env,
+            )
 
     def test_exact_output_root_from_environment_passes(self) -> None:
         output_user_root = str(Path.cwd() / "bazel-user-root")
