@@ -10,10 +10,10 @@ on:
 permissions:
   contents: read
 
-# PR #107 v8-canary already contains failed matrix jobs and cannot become
-# green. Reuse only its repository-scoped concurrency key.
+# PR #73 blocking-ci already contains failed required child jobs and cannot
+# become green. Reuse only its repository-scoped concurrency key.
 concurrency:
-  group: v8-canary::pr-107
+  group: blocking-ci-73
   cancel-in-progress: true
 
 jobs:
