@@ -29,7 +29,7 @@ jobs:
           persist-credentials: true
           fetch-depth: 0
 
-      - name: Verify immutable v2 source inputs
+      - name: Verify immutable v2 inputs
         shell: bash
         run: |
           set -euo pipefail
@@ -38,289 +38,17 @@ jobs:
             "001a40f931dc439c50eb09f81d89a666c943db81"
           test "$(git hash-object codex-rs/hepta-contracts/src/verified_use_tests.rs)" = \
             "61117f806ef436b346e905395587bb0b95389b76"
+          test -f scripts/apply-hepta-v5-b0-trusted-hardening.py
           git diff --exit-code
           git diff --cached --exit-code
 
-      - name: Align public API, source verifier, plan and ledgers
+      - name: Apply bounded source-contract update
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from __future__ import annotations
-
-          import json
-          from pathlib import Path
-
-          def replace_once(text: str, old: str, new: str, label: str) -> str:
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{label}: expected one anchor, found {count}")
-              return text.replace(old, new, 1)
-
-          lib_path = Path("codex-rs/hepta-contracts/src/lib.rs")
-          lib = lib_path.read_text()
-          old_exports = """pub use verified_use::PhysicalCapabilityKind;
-pub use verified_use::PhysicalUseFinalCheck;
-pub use verified_use::PhysicalUseVerification;
-pub use verified_use::PhysicalUseVerificationRequest;
-pub use verified_use::PhysicalUseVerifier;
-pub use verified_use::PhysicalUseWindow;
-pub use verified_use::RevocationRevision;
-pub use verified_use::VERIFIED_USE_SCHEMA_VERSION;
-pub use verified_use::VerifiedUseError;
-pub use verified_use::VerifiedUseToken;
-pub use verified_use::VerifiedUseWitness;
-pub use verified_use::verify_physical_capability_use;"""
-          new_exports = """pub use verified_use::PhysicalCapabilityKind;
-pub use verified_use::PhysicalUseClaimKey;
-pub use verified_use::PhysicalUseClaimReceipt;
-pub use verified_use::PhysicalUseClaimRequest;
-pub use verified_use::PhysicalUseClaimStore;
-pub use verified_use::PhysicalUseClaimStoreError;
-pub use verified_use::PhysicalUseFinalCheck;
-pub use verified_use::PhysicalUseVerification;
-pub use verified_use::PhysicalUseVerificationRequest;
-pub use verified_use::PhysicalUseVerifier;
-pub use verified_use::PhysicalUseWindow;
-pub use verified_use::RevocationRevision;
-pub use verified_use::TrustedPhysicalClock;
-pub use verified_use::VERIFIED_USE_SCHEMA_VERSION;
-pub use verified_use::VerifiedUseBoundaryPermit;
-pub use verified_use::VerifiedUseError;
-pub use verified_use::VerifiedUseToken;
-pub use verified_use::VerifiedUseWitness;
-pub use verified_use::verify_physical_capability_use;"""
-          lib_path.write_text(replace_once(lib, old_exports, new_exports, "lib exports"))
-
-          verifier_path = Path("scripts/verify-hepta-architecture-plan-v5.py")
-          verifier = verifier_path.read_text()
-          verifier = replace_once(
-              verifier,
-              '"pub const VERIFIED_USE_SCHEMA_VERSION: u32 = 1",',
-              '"pub const VERIFIED_USE_SCHEMA_VERSION: u32 = 2",',
-              "schema marker",
-          )
-          verifier = replace_once(
-              verifier,
-              '                "pub trait PhysicalUseVerifier: CapabilityUseVerifier",\n',
-              '                "pub trait TrustedPhysicalClock",\n'
-              '                "pub trait PhysicalUseVerifier: CapabilityUseVerifier",\n'
-              '                "pub struct PhysicalUseClaimKey",\n'
-              '                "pub struct PhysicalUseClaimRequest",\n'
-              '                "pub struct PhysicalUseClaimReceipt",\n'
-              '                "pub trait PhysicalUseClaimStore",\n'
-              '                "pub struct VerifiedUseBoundaryPermit<C>",\n'
-              '                "pub fn consume_at_boundary",\n'
-              '                "claim_once(",\n',
-              "v2 source markers",
-          )
-          verifier = replace_once(
-              verifier,
-              '    if not re.search(r"pub fn consume\\(\\s*self,", source):\n'
-              '        fail("VerifiedUseToken consumption must take self by value")\n',
-              '    if not re.search(\n'
-              '        r"pub fn consume_at_boundary<[^>]+>\\(\\s*self,",\n'
-              '        source,\n'
-              '        flags=re.DOTALL,\n'
-              '    ):\n'
-              '        fail("VerifiedUseToken boundary consumption must take self by value")\n'
-              '    final_check = re.search(\n'
-              '        r"pub struct PhysicalUseFinalCheck<[^>]+> \\{(.*?)\\n\\}",\n'
-              '        source,\n'
-              '        flags=re.DOTALL,\n'
-              '    )\n'
-              '    if not final_check:\n'
-              '        fail("cannot locate PhysicalUseFinalCheck")\n'
-              '    for forbidden in ("current_revocation_revision", "crossed_at_unix_seconds"):\n'
-              '        if forbidden in final_check.group(1):\n'
-              '            fail(f"PhysicalUseFinalCheck trusts caller-supplied {forbidden}")\n'
-              '    token_impl = source[source.find("impl<C> VerifiedUseToken<C>") :]\n'
-              '    for required in (\n'
-              '        "trusted_now(clock)",\n'
-              '        "verifier.verify_physical_use",\n'
-              '        "claim_store.claim_once",\n'
-              '        "VerifiedUseBoundaryPermit",\n'
-              '    ):\n'
-              '        if required not in token_impl:\n'
-              '            fail(f"verified-use boundary is missing {required}")\n',
-              "consume verifier",
-          )
-          old_tests = """            "exact_final_payload_issues_and_consumes_one_stable_token",
-            "kind_action_mismatch_is_rejected_before_any_verifier_call",
-            "local_broad_capability_cannot_cross_a_physical_write_boundary",
-            "broad_authority_context_drift_and_expiry_fail_before_physical_verification",
-            "requested_window_and_current_revocation_revision_are_fail_closed",
-            "verifier_denial_and_expired_verifier_window_are_distinct",
-            "final_operation_payload_context_kind_and_revision_drift_are_rejected",
-            "final_crossing_time_must_be_inside_the_verified_window",
-            "revocation_revision_and_window_reject_zero_or_empty_values","""
-          new_tests = """            "trusted_final_verification_and_durable_claim_issue_one_permit",
-            "durable_store_rejects_replay_and_same_operation_payload_conflict",
-            "final_revision_and_clock_are_rechecked_before_claim",
-            "caller_drift_local_authority_and_claim_failures_are_closed",
-            "invalid_windows_revisions_and_trusted_clock_fail_closed","""
-          verifier = replace_once(verifier, old_tests, new_tests, "test markers")
-          verifier = replace_once(
-              verifier,
-              '        "pub use verified_use::PhysicalUseFinalCheck;",\n',
-              '        "pub use verified_use::PhysicalUseClaimKey;",\n'
-              '        "pub use verified_use::PhysicalUseClaimReceipt;",\n'
-              '        "pub use verified_use::PhysicalUseClaimRequest;",\n'
-              '        "pub use verified_use::PhysicalUseClaimStore;",\n'
-              '        "pub use verified_use::PhysicalUseClaimStoreError;",\n'
-              '        "pub use verified_use::PhysicalUseFinalCheck;",\n',
-              "claim exports",
-          )
-          verifier = replace_once(
-              verifier,
-              '        "pub use verified_use::RevocationRevision;",\n',
-              '        "pub use verified_use::RevocationRevision;",\n'
-              '        "pub use verified_use::TrustedPhysicalClock;",\n'
-              '        "pub use verified_use::VerifiedUseBoundaryPermit;",\n',
-              "clock permit exports",
-          )
-          verifier = replace_once(
-              verifier,
-              '            "consumed by value",\n',
-              '            "consumed by value",\n'
-              '            "trusted clock",\n'
-              '            "final boundary re-verification",\n'
-              '            "durable single-use claim",\n'
-              '            "PhysicalUseClaimStore",\n'
-              '            "VerifiedUseBoundaryPermit<C>",\n'
-              '            "effect completion",\n',
-              "delivery markers",
-          )
-          verifier = replace_once(
-              verifier,
-              '        "current_revision_verifier",\n'
-              '        "nonclone_nonserializable_private_token",\n',
-              '        "current_revision_verifier",\n'
-              '        "trusted_boundary_clock",\n'
-              '        "final_boundary_reverification",\n'
-              '        "durable_single_use_claim",\n'
-              '        "boundary_permit_after_claim",\n'
-              '        "witness_not_effect_completion",\n'
-              '        "nonclone_nonserializable_private_token",\n',
-              "ledger facts",
-          )
-          verifier_path.write_text(verifier)
-
-          ledger_path = Path("docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json")
-          ledger = json.loads(ledger_path.read_text())
-          b0 = next(row for row in ledger["packages"] if row["id"] == "P0.7b/B0_verified_use_kernel")
-          for fact in (
-              "trusted_boundary_clock",
-              "final_boundary_reverification",
-              "durable_single_use_claim",
-              "boundary_permit_after_claim",
-              "witness_not_effect_completion",
-          ):
-              if fact not in b0["requiredFacts"]:
-                  b0["requiredFacts"].append(fact)
-          ledger_path.write_text(json.dumps(ledger, indent=2) + "\n")
-
-          plan_path = Path("docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md")
-          plan = plan_path.read_text()
-          anchor = """- verifier response carrying current revision, verifier receipt digest and validity bound;
-- `verify_physical_capability_use` composes the existing per-use verifier and returns a private-constructor token;
-- `VerifiedUseToken<C>` has no `Clone`, `Copy`, `Serialize` or `Deserialize` implementation;
-- boundary entry consumes the token by value and emits a digest-bound witness;
-- final operation, payload, context, revision, kind and time are rechecked during consumption."""
-          replacement = """- verifier response carrying current revision, verifier receipt digest and validity bound;
-- issuance and crossing time are read from a trusted boundary clock rather than caller-supplied values;
-- `verify_physical_capability_use` composes the existing per-use verifier and returns a private-constructor token;
-- `VerifiedUseToken<C>` has no `Clone`, `Copy`, `Serialize` or `Deserialize` implementation;
-- the final boundary re-verifies the current revision and exact final request;
-- an atomic durable `PhysicalUseClaimStore::claim_once` prevents replay and same-operation/different-payload reuse across processes and crashes;
-- only a successful durable claim yields a non-serializable `VerifiedUseBoundaryPermit<C>`;
-- the permit is consumed by the adapter and emits a digest-bound witness that explicitly does not prove effect completion;
-- final operation, payload, context, revision, kind and trusted time are rechecked during consumption."""
-          plan_path.write_text(replace_once(plan, anchor, replacement, "plan B0 facts"))
-
-          contract = r'''# Hepta P0.7b Verified-Use Delivery Contract V1
-
-**Package:** `P0.7b_verified_physical_capability_closure`  
-**Current slice:** `B0_verified_use_kernel`  
-**Contract revision:** `1.1.0` / kernel schema `v2`  
-**Plan:** `HEPTA-ARCHITECTURE-CONVERGENCE-V5`  
-**Status:** normative source contract; runtime/effect/production authority remains false.  
-**Date:** 2026-08-30
-
-## 1. Purpose and claim boundary
-
-A broad `Authorized<C>` capability is necessary but insufficient at an irreversible boundary. B0 binds one exact operation and final payload to current authority, trusted time and an atomic durable single-use claim. It does not register a caller, invoke a model, dispatch a provider, execute a tool, connect a network destination, mutate an external filesystem, operate on a secret, send Matrix traffic, mutate fleet state, accept an operator, promote or release.
-
-## 2. Closed capability kinds
-
-`CognitiveStateWrite`, `ModelInvocation`, `ProviderDispatch`, `ExternalEffect`, `ToolProcessSpawn`, `OutboundNetworkConnect`, `ExternalFilesystemMutation`, `SecretOperation`, `MatrixSend`, `FleetMutation`, `OperatorAcceptance` and `ReleasePromotion` form the closed enum. No unknown/stringly typed kind is accepted.
-
-## 3. Trust separation
-
-The final payload builder, authority verifier, trusted clock, durable claim store and physical adapter are separate roles:
-
-```text
-final payload -> broad per-use verification -> current physical verifier
-             -> VerifiedUseToken<C>
-             -> trusted clock + final boundary re-verification
-             -> PhysicalUseClaimStore::claim_once
-             -> VerifiedUseBoundaryPermit<C>
-             -> physical adapter -> boundary witness / later effect receipt
-```
-
-No adapter may mint the capability or token it consumes. A local allow-all verifier or in-memory claim store is qualification-only and cannot be production authority.
-
-## 4. Request and trusted clock
-
-The caller supplies `kind`, `operation_id`, `final_payload_sha256`, `runtime_authority_context`, `expected_revocation_revision` and an expiry upper bound. The caller does **not** supply verification time, boundary time or a claimed current revision. `TrustedPhysicalClock` supplies both observed instants. A zero, rejected or rolled-back trusted clock read fails closed.
-
-Issuance validates kind/action equality, external lease presence, the existing `verify_capability_use` subject/generation/grant/epoch/fence/expiry checks, the requested expiry bound, current physical verification, exact revocation revision and verifier validity. Effective expiry is the minimum of caller upper bound, external lease expiry and verifier validity.
-
-## 5. Token and final boundary
-
-`VerifiedUseToken<C>` has a private constructor, is non-cloneable, non-serializable and consumed by value. `PhysicalUseFinalCheck` contains only the exact kind, operation ID, final payload digest and runtime context. It contains no caller-supplied time or current revision.
-
-`consume_at_boundary` performs final boundary re-verification using the same exact request and a fresh trusted clock read. Capability kind drift, operation ID drift, final payload drift, runtime-context drift, revocation revision drift, clock rollback, expiry or verifier denial fails before any durable claim.
-
-## 6. Durable single-use claim
-
-`PhysicalUseClaimStore::claim_once` is an atomic durable uniqueness boundary. Its operation scope digest binds capability kind plus operation ID; its claim digest additionally binds final payload SHA-256. The store must distinguish:
-
-- exact replay: `AlreadyClaimed`;
-- same operation with changed payload: `OperationPayloadConflict`;
-- durability/availability failure: no permit;
-- malformed store receipt: no permit.
-
-A crash after claim success is indeterminate and lookup/reconciliation-only; it must not issue another permit. Rust move semantics alone are not accepted as global single-use evidence.
-
-## 7. Boundary permit and witness
-
-Only a successful current-authority check, trusted time read and durable claim yields `VerifiedUseBoundaryPermit<C>`. The permit is non-cloneable and non-serializable. It exposes the exact operation/payload identity needed by the adapter and is consumed at the physical seam.
-
-`VerifiedUseWitness` binds schema, kind, action, operation, final payload, runtime context digest, revocation revision, issuance/final verifier receipts, verification/expiry/crossing times, token digest, claim key, claim revision and claim-store receipt. It carries `effect_completed=false`: a committed pre-crossing claim is not proof of external effect completion. Completion requires a separate provider/device/destination acknowledgement and reconciliation contract.
-
-## 8. Error and retry rules
-
-Invalid revision/window, kind/action mismatch, local-only authority, broad authority denial, trusted clock failure, issuance or final verifier denial, final fact drift, expiry, claim replay/conflict/unavailability and receipt integrity drift are distinct fail-closed outcomes. They may not be collapsed into success or blind retry.
-
-## 9. Required tests
-
-Positive tests prove issuance plus final verifier call, two trusted clock reads, one durable claim and one valid witness. Negative tests prove exact replay rejection, same-operation/different-payload conflict, final revision drift, clock rollback/expiry, operation/payload/context/kind drift, local authority rejection, claim-store unavailability and corrupt claim receipt rejection.
-
-Static checks prove the token and permit have no `Clone`, `Copy`, `Serialize` or `Deserialize`; constructors remain private; successful boundary entry consumes `self`; `PhysicalUseFinalCheck` contains no caller current revision/time; and B0 introduces no product caller.
-
-## 10. Executable qualification
-
-Exact-head and merge-candidate jobs must execute non-empty identity, source verifier, Rust 1.95 format, focused/full tests, locked all-target check, strict Clippy, Bazel-lock and clean-worktree steps. Evidence must bind event, source head, merge candidate, workflow identity, run/job/runner identity, step conclusions, toolchain and artifact digest. A queued job, `runner_id=0`, empty steps, source-only verifier or checked-in positive run fact is not qualification.
-
-## 11. Exit condition
-
-B0 becomes a package-closed candidate only after exact-head and merge-candidate gates pass and an independent reviewer accepts the final candidate. P0.7a must be qualified before activation. Runtime, effect, production, operator, promotion and release authority remain false.
-'''
-          Path("docs/architecture/HEPTA_P0_7B_VERIFIED_USE_DELIVERY_CONTRACT_V1.md").write_text(contract)
-
-          Path(".github/workflows/hepta-v5-b0-trusted-boundary-hardening-once.yml").unlink()
-          PY
+          python3 scripts/apply-hepta-v5-b0-trusted-hardening.py
+          rm scripts/apply-hepta-v5-b0-trusted-hardening.py
+          rm .github/workflows/hepta-v5-b0-trusted-boundary-hardening-once.yml
 
       - name: Configure repository CI environment
         uses: ./.github/actions/setup-ci
@@ -383,7 +111,7 @@ codex-rs/hepta-contracts/src/verified_use.rs
 codex-rs/hepta-contracts/src/verified_use_tests.rs
 docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md
 docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json
-docs/architecture/HEPTA_P0_7B_VERIFIED_USE_DELIVERY_CONTRACT_V1.md
+scripts/apply-hepta-v5-b0-trusted-hardening.py
 scripts/verify-hepta-architecture-plan-v5.py
 EOF
           git diff --name-only | sort > "$actual"
