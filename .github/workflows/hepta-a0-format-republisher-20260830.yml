@@ -1,0 +1,196 @@
+name: Hepta A0 exact-parent format republisher
+
+on:
+  push:
+    branches:
+      - automation/hepta-a0-source-publisher-20260830
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-a0-exact-parent-format-republisher
+  cancel-in-progress: false
+
+env:
+  EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+  TARGET_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  EXPECTED_TARGET_HEAD: 08e6ed017e8cbfb94f86a5fa8397eb00eb396ed2
+  Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
+  ARTIFACT_DIR: artifacts/hepta-a0-format-republisher
+
+jobs:
+  republish:
+    name: Rebuild A0 as one formatted child of Q0
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact current A0 candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.EXPECTED_TARGET_HEAD }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: "0.11.3"
+
+      - name: Revalidate target ref and exact-parent topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          git fetch --no-tags origin \
+            "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}" \
+            "+${Q0_HEAD}:refs/remotes/origin/hepta-q0-exact"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_TARGET_HEAD"
+          test "$(git rev-parse HEAD^)" = "$Q0_HEAD"
+          test "$(git rev-parse refs/remotes/origin/${TARGET_BRANCH})" = "$EXPECTED_TARGET_HEAD"
+
+      - name: Format only A0-owned Python sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --frozen --project scripts ruff format \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+          uv run --frozen --project scripts ruff format --check \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+          git diff --check
+
+      - name: Build one replacement commit with Q0 as sole parent
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            scripts/hepta-intelligence-current-truth.py
+            scripts/verify-hepta-intelligence-a0-authority.py
+            scripts/verify-hepta-intelligence-document-authority.py
+            scripts/verify-hepta-intelligence-master-plan.py
+          )
+          test -n "$(git diff --name-only -- "${files[@]}")"
+          test -z "$(git diff --name-only -- . ':!scripts/hepta-intelligence-current-truth.py' ':!scripts/verify-hepta-intelligence-a0-authority.py' ':!scripts/verify-hepta-intelligence-document-authority.py' ':!scripts/verify-hepta-intelligence-master-plan.py')"
+          git config user.name "Hepta governed source publisher"
+          git config user.email "hepta-source-publisher@users.noreply.github.com"
+          git add -- "${files[@]}"
+          tree="$(git write-tree)"
+          commit="$(printf '%s\n\n%s\n' \
+            'fix(intelligence): format V4.5.1 A0 verifier sources' \
+            'Rebuild the existing 17-path A0 tree as one direct child of qualified Q0. Apply the repository Ruff formatter only to the four A0-owned Python verifier/current-truth files. Preserve runtime, SQL, product, model/provider, CALLERS, promotion, release and all authority as disabled.' \
+            | git commit-tree "$tree" -p "$Q0_HEAD")"
+          test "$(git rev-list --parents -n1 "$commit" | awk '{print NF}')" -eq 2
+          test "$(git rev-parse "${commit}^")" = "$Q0_HEAD"
+          old_paths="$(mktemp)"
+          new_paths="$(mktemp)"
+          trap 'rm -f "$old_paths" "$new_paths"' EXIT
+          git diff --name-only "$Q0_HEAD" "$EXPECTED_TARGET_HEAD" | sort >"$old_paths"
+          git diff --name-only "$Q0_HEAD" "$commit" | sort >"$new_paths"
+          cmp "$old_paths" "$new_paths"
+          test "$(wc -l <"$new_paths" | tr -d ' ')" = 17
+          printf 'commit=%s\n' "$commit" >>"$GITHUB_OUTPUT"
+          printf 'tree=%s\n' "$tree" >>"$GITHUB_OUTPUT"
+          git reset --hard "$commit"
+
+      - name: Execute exact source and compatibility gates
+        shell: bash
+        env:
+          NEW_HEAD: ${{ steps.build.outputs.commit }}
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-intelligence-current-truth.py \
+            scripts/verify-hepta-intelligence-a0-authority.py \
+            scripts/verify-hepta-intelligence-document-authority.py \
+            scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-master-plan.py
+          python3 scripts/verify-hepta-intelligence-document-authority.py
+          python3 scripts/hepta-intelligence-current-truth.py --verify
+          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
+            python3 scripts/hepta-intelligence-status-compat.py "$tranche" --check-only
+          done
+          GITHUB_REPOSITORY="$EXPECTED_REPOSITORY" \
+          GITHUB_HEAD_REF="$TARGET_BRANCH" \
+          GITHUB_SHA="$NEW_HEAD" \
+            python3 scripts/verify-hepta-intelligence-a0-authority.py >/dev/null
+          git diff --check "$Q0_HEAD" "$NEW_HEAD"
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Publish replacement atomically
+        shell: bash
+        env:
+          NEW_HEAD: ${{ steps.build.outputs.commit }}
+        run: |
+          set -euo pipefail
+          git push \
+            --force-with-lease="refs/heads/${TARGET_BRANCH}:${EXPECTED_TARGET_HEAD}" \
+            origin "${NEW_HEAD}:refs/heads/${TARGET_BRANCH}"
+
+      - name: Emit source-publisher receipt
+        if: always()
+        shell: bash
+        env:
+          NEW_HEAD: ${{ steps.build.outputs.commit }}
+          NEW_TREE: ${{ steps.build.outputs.tree }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          python3 - "$ARTIFACT_DIR/receipt.json" <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          out = Path(sys.argv[1])
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only", os.environ["Q0_HEAD"], os.environ["NEW_HEAD"]],
+              text=True,
+          ).splitlines()
+          receipt = {
+              "schema": "hepta_a0_format_republisher_receipt_v1",
+              "repository": os.environ["EXPECTED_REPOSITORY"],
+              "old_head": os.environ["EXPECTED_TARGET_HEAD"],
+              "new_head": os.environ["NEW_HEAD"],
+              "new_tree": os.environ["NEW_TREE"],
+              "sole_parent": os.environ["Q0_HEAD"],
+              "changed_paths": sorted(changed),
+              "changed_path_count": len(changed),
+              "formatted_paths": [
+                  "scripts/hepta-intelligence-current-truth.py",
+                  "scripts/verify-hepta-intelligence-a0-authority.py",
+                  "scripts/verify-hepta-intelligence-document-authority.py",
+                  "scripts/verify-hepta-intelligence-master-plan.py",
+              ],
+              "source_writeback": True,
+              "evidence_workflow": False,
+              "authority": {
+                  "runtime": False,
+                  "product": False,
+                  "production": False,
+                  "promotion": False,
+                  "release": False,
+                  "callers": False,
+              },
+          }
+          encoded = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+          receipt["receipt_binding_sha256"] = hashlib.sha256(encoded).hexdigest()
+          out.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload publisher receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-a0-format-republisher-${{ steps.build.outputs.commit || github.sha }}
+          path: artifacts/hepta-a0-format-republisher/**
+          if-no-files-found: warn
+          retention-days: 30
