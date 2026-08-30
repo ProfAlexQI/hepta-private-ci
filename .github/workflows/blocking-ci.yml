@@ -51,6 +51,11 @@ jobs:
     uses: ./.github/workflows/sdk.yml
     secrets: inherit
 
+  windows-gnullvm-boundary:
+    name: Windows gnullvm qualification boundary
+    uses: ./.github/workflows/windows-gnullvm-qualification-boundary.yml
+    secrets: inherit
+
   required:
     name: CI required
     # Without `always()`, GitHub skips this job after a failed dependency and a
@@ -64,6 +69,7 @@ jobs:
       - repo-checks
       - rust-ci
       - sdk
+      - windows-gnullvm-boundary
     runs-on: ubuntu-24.04
     steps:
       # Keep the helper on the same combined revision as the child workflows so
