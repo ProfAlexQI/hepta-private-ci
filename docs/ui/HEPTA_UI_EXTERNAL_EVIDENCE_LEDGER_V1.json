@@ -1,8 +1,8 @@
 {
   "schema": "hepta.ui.external-evidence-ledger.v1",
   "candidate": {
-    "commit": "4171b464e49708a44418241fe857986dce0edb53",
-    "tree": "f52543dc64b1c831e261bb9b8ac07b6e363d231d",
+    "commit": "4cf75580508f0057237d1e070b9d9415b51b9f92",
+    "tree": "b0150abc935ad339bcd4747cd04819d70c9574b1",
     "branch": "codex/ui-v5-plan-and-repo-gap-closure-20260829"
   },
   "status": "BLOCKED_EXTERNAL_EVIDENCE_REQUIRED",
