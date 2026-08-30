@@ -59,16 +59,34 @@ def main() -> None:
         "--platforms=//:windows_x86_64_gnullvm",
         "--repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0",
         "--extra_execution_platforms=//:windows_x86_64_msvc",
-        "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain",
-        "--extra_toolchains=//bazel/toolchains/windows:local_msvc_cc_toolchain",
+        "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain,//bazel/toolchains/windows:local_msvc_cc_toolchain",
         "--strategy=TestRunner=local",
         "--strategy=V8Mksnapshot=local",
+        "--local_test_jobs=8",
+        "--jobs=8",
         "--test_env=RUST_TEST_THREADS=1",
+        "--test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=command_safety::powershell_parser::tests::,suite::code_mode::code_mode_can_call_hidden_dynamic_tools,tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child",
         "--build_metadata=TAG_windows_gnullvm_local=true",
         "require_exact_ci_arg",
-        "require_ci_list_contains",
+        "require_ci_exact_list",
+        "require_ci_allowed_configs",
+        "canonicalize_ci_option",
+        "canonicalize_exact_flag",
+        "has_list_entry",
     ):
         require(expected in wrapper, f"wrapper lacks exact local gnullvm control: {expected}")
+    require(
+        "require_ci_list_contains" not in wrapper,
+        "wrapper retains permissive list-membership validation",
+    )
+    require(
+        "rejects non-allowlisted Bazel config" in wrapper,
+        "wrapper lacks keyless qualification config allowlist",
+    )
+    require(
+        'canonicalize_exact_flag "--config=ci-windows"' in wrapper,
+        "wrapper does not place ci-windows before canonical authority options",
+    )
     require('exec "$impl"' in wrapper, "wrapper must delegate only after exact boundary construction")
     require(
         "ALLOW_WINDOWS_MSVC_FALLBACK" in implementation,
@@ -86,6 +104,14 @@ def main() -> None:
         "test_github_actions_rejects_ambient_msvc_fallback",
         "test_github_actions_rejects_conflicting_target",
         "test_github_actions_rejects_missing_required_toolchain",
+        "test_github_actions_rejects_additional_execution_platform",
+        "test_github_actions_rejects_additional_toolchain",
+        "test_github_actions_rejects_duplicate_execution_platform",
+        "test_github_actions_rejects_duplicate_toolchain",
+        "test_github_actions_canonicalizes_exact_execution_lists",
+        "test_github_actions_places_canonical_contract_after_configs",
+        "test_github_actions_rejects_remote_config",
+        "CI_TEST_FILTERS",
     ):
         require(expected in ci_wrapper_test, f"CI wrapper test lacks {expected}")
     for expected in (

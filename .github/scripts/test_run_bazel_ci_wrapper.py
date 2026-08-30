@@ -11,6 +11,26 @@ from tempfile import TemporaryDirectory
 
 SCRIPT = Path(__file__).with_name("run-bazel-ci.sh")
 
+CI_HOST = "--host_platform=//:local_windows_msvc"
+CI_TARGET = "--platforms=//:windows_x86_64_gnullvm"
+CI_CC_DISCOVERY = "--repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0"
+CI_EXECUTION_PLATFORMS = "--extra_execution_platforms=//:windows_x86_64_msvc"
+CI_TOOLCHAINS = (
+    "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain,"
+    "//bazel/toolchains/windows:local_msvc_cc_toolchain"
+)
+CI_TEST_RUNNER = "--strategy=TestRunner=local"
+CI_V8_RUNNER = "--strategy=V8Mksnapshot=local"
+CI_LOCAL_TEST_JOBS = "--local_test_jobs=8"
+CI_JOBS = "--jobs=8"
+CI_TEST_THREADS = "--test_env=RUST_TEST_THREADS=1"
+CI_TEST_FILTERS = (
+    "--test_env=CODEX_BAZEL_TEST_SKIP_FILTERS="
+    "command_safety::powershell_parser::tests::,"
+    "suite::code_mode::code_mode_can_call_hidden_dynamic_tools,"
+    "tests::windows_tests::conpty_ctrl_c_interrupts_powershell_foreground_child"
+)
+
 
 class RunBazelCiQualificationWrapperTest(unittest.TestCase):
     def run_wrapper(
@@ -85,6 +105,10 @@ class RunBazelCiQualificationWrapperTest(unittest.TestCase):
             "//codex-rs/utils/rustls-provider:rustls-provider-provider-test",
         ]
 
+    @staticmethod
+    def prefix_values(captured: list[str], prefix: str) -> list[str]:
+        return [arg for arg in captured if arg.startswith(prefix)]
+
     def test_keyless_github_cross_uses_exact_split_toolchain_contract(self) -> None:
         result, captured = self.run_wrapper(
             self.cross_args(), github_actions=True
@@ -95,22 +119,40 @@ class RunBazelCiQualificationWrapperTest(unittest.TestCase):
         for expected in (
             "--windows-msvc-host-platform",
             "--config=ci-windows",
-            "--host_platform=//:local_windows_msvc",
-            "--platforms=//:windows_x86_64_gnullvm",
-            "--repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0",
-            "--extra_execution_platforms=//:windows_x86_64_msvc",
-            "--extra_toolchains=//bazel/toolchains/windows:local_msvc_cc_toolchain",
-            "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain",
-            "--strategy=TestRunner=local",
-            "--strategy=V8Mksnapshot=local",
-            "--local_test_jobs=8",
-            "--test_env=RUST_TEST_THREADS=1",
+            CI_HOST,
+            CI_TARGET,
+            CI_CC_DISCOVERY,
+            CI_EXECUTION_PLATFORMS,
+            CI_TOOLCHAINS,
+            CI_TEST_RUNNER,
+            CI_V8_RUNNER,
+            CI_LOCAL_TEST_JOBS,
+            CI_TEST_THREADS,
+            CI_TEST_FILTERS,
             "--build_metadata=TAG_windows_gnullvm_local=true",
-            "--jobs=8",
+            CI_JOBS,
         ):
             self.assertIn(expected, captured)
         self.assertNotIn("--platforms=//:local_windows_msvc", captured)
         self.assertEqual(captured[-1], self.cross_args()[-1])
+        for prefix in (
+            "--host_platform=",
+            "--platforms=",
+            "--repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=",
+            "--extra_execution_platforms=",
+            "--extra_toolchains=",
+            "--strategy=TestRunner=",
+            "--strategy=V8Mksnapshot=",
+            "--local_test_jobs=",
+            "--jobs=",
+            "--test_env=RUST_TEST_THREADS=",
+            "--test_env=CODEX_BAZEL_TEST_SKIP_FILTERS=",
+        ):
+            self.assertEqual(
+                len(self.prefix_values(captured, prefix)),
+                1,
+                (prefix, captured),
+            )
 
     def test_authenticated_windows_cross_delegates_unchanged(self) -> None:
         args = self.cross_args()
@@ -181,33 +223,125 @@ class RunBazelCiQualificationWrapperTest(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(captured, [])
-        self.assertIn("requires '//:windows_x86_64_msvc'", result.stderr)
+        self.assertIn("rejects non-canonical entry", result.stderr)
 
     def test_github_actions_rejects_missing_required_toolchain(self) -> None:
         result, captured = self.run_wrapper(
-            self.cross_args("--extra_toolchains=//:custom"),
+            self.cross_args(
+                "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain"
+            ),
             github_actions=True,
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(captured, [])
         self.assertIn(
-            "requires '//:windows_gnullvm_tests_on_msvc_host_toolchain'",
+            "missing '//bazel/toolchains/windows:local_msvc_cc_toolchain'",
             result.stderr,
         )
 
-    def test_github_actions_accepts_exact_execution_lists(self) -> None:
+    def test_github_actions_rejects_additional_execution_platform(self) -> None:
         result, captured = self.run_wrapper(
             self.cross_args(
-                "--extra_execution_platforms=//:custom,//:windows_x86_64_msvc",
+                "--extra_execution_platforms=//:custom,//:windows_x86_64_msvc"
+            ),
+            github_actions=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(captured, [])
+        self.assertIn("rejects non-canonical entry '//:custom'", result.stderr)
+
+    def test_github_actions_rejects_additional_toolchain(self) -> None:
+        result, captured = self.run_wrapper(
+            self.cross_args(
+                "--extra_toolchains=//:custom,//:windows_gnullvm_tests_on_msvc_host_toolchain,//bazel/toolchains/windows:local_msvc_cc_toolchain"
+            ),
+            github_actions=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(captured, [])
+        self.assertIn("rejects non-canonical entry '//:custom'", result.stderr)
+
+    def test_github_actions_rejects_duplicate_execution_platform(self) -> None:
+        result, captured = self.run_wrapper(
+            self.cross_args(
+                "--extra_execution_platforms=//:windows_x86_64_msvc",
+                "--extra_execution_platforms=//:windows_x86_64_msvc",
+            ),
+            github_actions=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(captured, [])
+        self.assertIn("rejects duplicate entry", result.stderr)
+
+    def test_github_actions_rejects_duplicate_toolchain(self) -> None:
+        result, captured = self.run_wrapper(
+            self.cross_args(
                 "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain,//bazel/toolchains/windows:local_msvc_cc_toolchain",
+                "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain",
+            ),
+            github_actions=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(captured, [])
+        self.assertIn("rejects duplicate entry", result.stderr)
+
+    def test_github_actions_canonicalizes_exact_execution_lists(self) -> None:
+        result, captured = self.run_wrapper(
+            self.cross_args(
+                "--extra_execution_platforms=//:windows_x86_64_msvc",
+                "--extra_toolchains=//bazel/toolchains/windows:local_msvc_cc_toolchain,//:windows_gnullvm_tests_on_msvc_host_toolchain",
             ),
             github_actions=True,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(
-            "--extra_execution_platforms=//:custom,//:windows_x86_64_msvc",
-            captured,
+        self.assertEqual(
+            self.prefix_values(captured, "--extra_execution_platforms="),
+            [CI_EXECUTION_PLATFORMS],
         )
+        self.assertEqual(
+            self.prefix_values(captured, "--extra_toolchains="),
+            [CI_TOOLCHAINS],
+        )
+
+    def test_github_actions_places_canonical_contract_after_configs(self) -> None:
+        result, captured = self.run_wrapper(
+            self.cross_args(
+                CI_HOST,
+                CI_TARGET,
+                CI_CC_DISCOVERY,
+                CI_TEST_FILTERS,
+            ),
+            github_actions=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        last_config = max(
+            index
+            for index, arg in enumerate(captured)
+            if arg.startswith("--config=")
+        )
+        for expected in (
+            CI_HOST,
+            CI_TARGET,
+            CI_CC_DISCOVERY,
+            CI_EXECUTION_PLATFORMS,
+            CI_TOOLCHAINS,
+            CI_TEST_RUNNER,
+            CI_V8_RUNNER,
+            CI_LOCAL_TEST_JOBS,
+            CI_JOBS,
+            CI_TEST_THREADS,
+            CI_TEST_FILTERS,
+        ):
+            self.assertGreater(captured.index(expected), last_config, captured)
+
+    def test_github_actions_rejects_remote_config(self) -> None:
+        result, captured = self.run_wrapper(
+            self.cross_args("--config=ci-windows-cross"),
+            github_actions=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(captured, [])
+        self.assertIn("rejects non-allowlisted Bazel config", result.stderr)
 
     def test_local_non_actions_conflicting_platform_is_rejected(self) -> None:
         result, captured = self.run_wrapper(
@@ -215,6 +349,17 @@ class RunBazelCiQualificationWrapperTest(unittest.TestCase):
                 "--host_platform=//:custom_host",
                 "--platforms=//:custom_target",
                 "--jobs=3",
+            )
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(captured, [])
+        self.assertIn("requires --host_platform=//:local_windows_msvc", result.stderr)
+
+    def test_local_non_actions_late_conflicting_platform_is_rejected(self) -> None:
+        result, captured = self.run_wrapper(
+            self.cross_args(
+                CI_HOST,
+                "--host_platform=//:custom_host",
             )
         )
         self.assertNotEqual(result.returncode, 0)
