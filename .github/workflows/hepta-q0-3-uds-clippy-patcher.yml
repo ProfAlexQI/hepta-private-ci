@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: hepta-q0-3-uds-clippy-patcher
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   TARGET_BRANCH: codex/hepta-intelligence-q0-3-uds-clippy-20260830
@@ -51,39 +51,37 @@ jobs:
 
           path = Path("codex-rs/uds/src/lib.rs")
           source = path.read_text(encoding="utf-8")
-          old = '''            let owner = unsafe { libc::getuid() };
-                      ensure_peer_uid(owner).expect("the process owner must pass the UDS peer gate");
-
-                      let non_owner = if owner == libc::uid_t::MAX {
-                          owner - 1
-                      } else {
-                          owner + 1
-                      };
-                      let error = ensure_peer_uid(non_owner)
-                          .expect_err("a different UID must fail closed before reading the request");
-                      assert_eq!(error.kind(), ErrorKind::PermissionDenied);
-          '''
-          # Keep the literal readable above while requiring the repository's
-          # exact 12-space indentation at the replacement boundary.
-          old = "\n".join(line[10:] if line.startswith("          ") else line for line in old.splitlines()) + "\n"
-          new = '''            let owner = unsafe { libc::getuid() };
-                      assert!(
-                          ensure_peer_uid(owner).is_ok(),
-                          "the process owner must pass the UDS peer gate"
-                      );
-
-                      let non_owner = if owner == libc::uid_t::MAX {
-                          owner - 1
-                      } else {
-                          owner + 1
-                      };
-                      let error = match ensure_peer_uid(non_owner) {
-                          Ok(()) => panic!("a different UID must fail closed before reading the request"),
-                          Err(error) => error,
-                      };
-                      assert_eq!(error.kind(), ErrorKind::PermissionDenied);
-          '''
-          new = "\n".join(line[10:] if line.startswith("          ") else line for line in new.splitlines()) + "\n"
+          old = (
+              "            let owner = unsafe { libc::getuid() };\n"
+              "            ensure_peer_uid(owner).expect(\"the process owner must pass the UDS peer gate\");\n"
+              "\n"
+              "            let non_owner = if owner == libc::uid_t::MAX {\n"
+              "                owner - 1\n"
+              "            } else {\n"
+              "                owner + 1\n"
+              "            };\n"
+              "            let error = ensure_peer_uid(non_owner)\n"
+              "                .expect_err(\"a different UID must fail closed before reading the request\");\n"
+              "            assert_eq!(error.kind(), ErrorKind::PermissionDenied);\n"
+          )
+          new = (
+              "            let owner = unsafe { libc::getuid() };\n"
+              "            assert!(\n"
+              "                ensure_peer_uid(owner).is_ok(),\n"
+              "                \"the process owner must pass the UDS peer gate\"\n"
+              "            );\n"
+              "\n"
+              "            let non_owner = if owner == libc::uid_t::MAX {\n"
+              "                owner - 1\n"
+              "            } else {\n"
+              "                owner + 1\n"
+              "            };\n"
+              "            let error = match ensure_peer_uid(non_owner) {\n"
+              "                Ok(()) => panic!(\"a different UID must fail closed before reading the request\"),\n"
+              "                Err(error) => error,\n"
+              "            };\n"
+              "            assert_eq!(error.kind(), ErrorKind::PermissionDenied);\n"
+          )
           count = source.count(old)
           if count != 1:
               raise SystemExit(f"expected one exact source block, found {count}")
