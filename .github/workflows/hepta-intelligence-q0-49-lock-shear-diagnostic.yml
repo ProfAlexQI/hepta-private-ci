@@ -1,6 +1,9 @@
 name: Hepta Intelligence Q0.49 lock and shear diagnostic
 
 on:
+  pull_request:
+    branches:
+      - codex/hepta-intelligence-q0-48-release-target-executable-mode-20260830
   push:
     branches:
       - diagnostic/hepta-intelligence-q0-49-lock-shear-20260830
@@ -12,20 +15,29 @@ jobs:
   lock-shear-diagnostic:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Checkout exact diagnostic head
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify exact checkout identity
+      - name: Verify exact checkout identity and diagnostic-only delta
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "f2f200969fa0076178276bceab2eb21d23f0519e"
-          git diff --check
+          base=f2f200969fa0076178276bceab2eb21d23f0519e
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git merge-base --is-ancestor "$base" HEAD
+          mapfile -t changed < <(git diff --name-only --no-renames "$base" HEAD)
+          printf '%s\n' "${changed[@]}"
+          test "${#changed[@]}" -eq 2
+          test "${changed[0]}" = ".github/workflows/hepta-intelligence-q0-49-lock-shear-diagnostic.yml"
+          test "${changed[1]}" = "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_49_LOCK_DIAGNOSTIC_TRIGGER.txt"
+          git diff --check "$base" HEAD
 
       - name: Install repository CI prerequisites
         uses: ./.github/actions/setup-ci
@@ -144,14 +156,14 @@ jobs:
           printf '%s\n' "$focused_test_rc" \
             >artifacts/q049/focused-test-no-run.rc
 
-          git restore --source="$GITHUB_SHA" -- \
+          git restore --source="$SOURCE_SHA" -- \
             codex-rs/hepta-automation/Cargo.toml \
             codex-rs/hepta-contracts/Cargo.toml \
             codex-rs/hepta-fleet/Cargo.toml
 
           {
-            echo "head=$GITHUB_SHA"
-            echo "parent=$(git rev-parse HEAD^)"
+            echo "head=$SOURCE_SHA"
+            echo "source_base=f2f200969fa0076178276bceab2eb21d23f0519e"
             echo "metadata_locked_before_rc=$metadata_before_rc"
             echo "shear_baseline_rc=$shear_baseline_rc"
             echo "shear_dispositions_rc=$shear_dispositions_rc"
@@ -211,7 +223,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: hepta-intelligence-q0-49-lock-shear-${{ github.sha }}
+          name: hepta-intelligence-q0-49-lock-shear-${{ github.event.pull_request.head.sha || github.sha }}
           path: artifacts/q049
           if-no-files-found: error
           retention-days: 30
