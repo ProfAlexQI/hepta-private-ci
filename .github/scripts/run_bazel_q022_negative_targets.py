@@ -1,4 +1,4 @@
-"""Q0.22-Q0.25 fail-closed Bazel identity, lane, and selection policy."""
+"""Q0.22-Q0.26 fail-closed Bazel identity, lane, and selection policy."""
 
 from collections.abc import Mapping, Sequence
 
@@ -41,6 +41,15 @@ FORBIDDEN_SELECTION_PREFIXES = (
     "--test_timeout_filters=",
     "--build_tag_filters=",
     "--build_tests_only=",
+    "--nobuild_tests_only=",
+)
+SKIP_INCOMPATIBLE_FLAG_FAMILY = (
+    CANONICAL_SKIP_INCOMPATIBLE,
+    "--noskip_incompatible_explicit_targets",
+)
+TEST_VERBOSE_TIMEOUT_FLAG_FAMILY = (
+    CANONICAL_TEST_VERBOSE_TIMEOUTS,
+    "--notest_verbose_timeout_warnings",
 )
 
 
@@ -55,10 +64,22 @@ def _reject_selection_overrides(options: Sequence[str]) -> None:
             )
 
 
-def _require_exact_presence(
-    options: Sequence[str], expected: str, *, owner: str
+def _matches_flag_family(option: str, family: Sequence[str]) -> bool:
+    return any(option == name or option.startswith(f"{name}=") for name in family)
+
+
+def _flag_family(options: Sequence[str], family: Sequence[str]) -> list[str]:
+    return [option for option in options if _matches_flag_family(option, family)]
+
+
+def _require_exact_flag_family(
+    options: Sequence[str],
+    expected: str,
+    family: Sequence[str],
+    *,
+    owner: str,
 ) -> None:
-    observed = [option for option in options if option == expected]
+    observed = _flag_family(options, family)
     if observed != [expected]:
         raise ValueError(
             f"credential-free Windows gnullvm {owner} requires exactly "
@@ -66,10 +87,14 @@ def _require_exact_presence(
         )
 
 
-def _reject_present(options: Sequence[str], value: str, *, owner: str) -> None:
-    if value in options:
+def _reject_flag_family(
+    options: Sequence[str], family: Sequence[str], *, owner: str
+) -> None:
+    observed = _flag_family(options, family)
+    if observed:
         raise ValueError(
-            f"credential-free Windows gnullvm {owner} rejects {value!r}"
+            f"credential-free Windows gnullvm {owner} rejects flag family "
+            f"{observed!r}"
         )
 
 
@@ -140,14 +165,16 @@ def validate_keyless_windows_gnullvm_final_args(
                 f"exactly {CANONICAL_TEST_TAG_FILTER!r}; "
                 f"observed {test_tag_filters!r}"
             )
-        _require_exact_presence(
+        _require_exact_flag_family(
             options,
             CANONICAL_SKIP_INCOMPATIBLE,
+            SKIP_INCOMPATIBLE_FLAG_FAMILY,
             owner="test qualification",
         )
-        _require_exact_presence(
+        _require_exact_flag_family(
             options,
             CANONICAL_TEST_VERBOSE_TIMEOUTS,
+            TEST_VERBOSE_TIMEOUT_FLAG_FAMILY,
             owner="test qualification",
         )
         negative_targets = [target for target in targets if target.startswith("-")]
@@ -173,9 +200,9 @@ def validate_keyless_windows_gnullvm_final_args(
             "credential-free Windows gnullvm build qualification rejects "
             f"test-tag filters: {test_tag_filters!r}"
         )
-    _reject_present(
+    _reject_flag_family(
         options,
-        CANONICAL_TEST_VERBOSE_TIMEOUTS,
+        TEST_VERBOSE_TIMEOUT_FLAG_FAMILY,
         owner="build qualification",
     )
 
@@ -185,9 +212,9 @@ def validate_keyless_windows_gnullvm_final_args(
                 "credential-free Windows gnullvm release qualification has "
                 f"non-canonical configs: {configs!r}"
             )
-        _reject_present(
+        _reject_flag_family(
             options,
-            CANONICAL_SKIP_INCOMPATIBLE,
+            SKIP_INCOMPATIBLE_FLAG_FAMILY,
             owner="release qualification",
         )
         if targets != CANONICAL_RELEASE_TARGETS:
@@ -203,9 +230,10 @@ def validate_keyless_windows_gnullvm_final_args(
             "exact configs ('clippy', 'ci-windows'); "
             f"observed {configs!r}"
         )
-    _require_exact_presence(
+    _require_exact_flag_family(
         options,
         CANONICAL_SKIP_INCOMPATIBLE,
+        SKIP_INCOMPATIBLE_FLAG_FAMILY,
         owner="clippy qualification",
     )
     negative_targets = [target for target in targets if target.startswith("-")]
