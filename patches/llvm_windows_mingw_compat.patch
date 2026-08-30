@@ -1,6 +1,8 @@
-# What: provide MinGW compatibility archives required by Windows gnullvm links.
+# What: provide MinGW compatibility archives required by Windows gnullvm links
+# and bind the hermetic Windows C/C++ toolchain to the gnullvm ABI.
 # Why: clang and prebuilt MSVC archives can request these names even though the
-# hermetic MinGW runtime does not publish them by default.
+# hermetic MinGW runtime does not publish them by default.  The ABI constraint
+# prevents this MinGW toolchain from matching an explicit MSVC target platform.
 
 diff --git a/runtimes/mingw/BUILD.bazel b/runtimes/mingw/BUILD.bazel
 --- a/runtimes/mingw/BUILD.bazel
@@ -48,3 +50,33 @@ diff --git a/runtimes/mingw/BUILD.bazel b/runtimes/mingw/BUILD.bazel
          ":stdc++",
          ":uuid",
          ":winpthread",
+
+diff --git a/toolchain/declare_toolchains.bzl b/toolchain/declare_toolchains.bzl
+--- a/toolchain/declare_toolchains.bzl
++++ b/toolchain/declare_toolchains.bzl
+@@ -24,6 +24,14 @@ def declare_toolchains(*, execs = SUPPORTED_EXECS, targets = SUPPORTED_TARGETS):
+         )
+ 
+         for (target_os, target_cpu) in targets:
++            target_compatible_with = [
++                "@platforms//cpu:{}".format(target_cpu),
++                "@platforms//os:{}".format(target_os),
++            ]
++            if target_os == "windows":
++                # This toolchain injects MinGW headers and runtime archives.
++                target_compatible_with.append("//constraints/windows/abi:gnullvm")
++
+             native.toolchain(
+                 name = "{}_{}_to_{}_{}".format(exec_os, exec_cpu, target_os, target_cpu),
+                 exec_compatible_with = [
+@@ -31,10 +39,7 @@ def declare_toolchains(*, execs = SUPPORTED_EXECS, targets = SUPPORTED_TARGETS):
+                     "@platforms//os:{}".format(exec_os),
+                 ],
+-                target_compatible_with = [
+-                    "@platforms//cpu:{}".format(target_cpu),
+-                    "@platforms//os:{}".format(target_os),
+-                ],
++                target_compatible_with = target_compatible_with,
+                 target_settings = [
+                     "@llvm//toolchain:bootstrap_stage0_prebuilt_seed",
+                 ],
