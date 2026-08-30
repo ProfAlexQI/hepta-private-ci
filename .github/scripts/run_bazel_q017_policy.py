@@ -345,9 +345,13 @@ def validate_keyless_windows_gnullvm_final_args(
     elif execution_logs:
         raise ValueError("unexpected compact execution log path")
 
-    # Do not allow options to be smuggled into the target payload.
+    # Do not allow options to be smuggled into the target payload. Bazel uses
+    # a single leading dash for canonical negative target patterns, which the
+    # release-build lane needs to exclude bounded first-party targets. Keep
+    # those local-workspace exclusions while rejecting every other dash-led
+    # payload, including option-shaped values.
     for target in args[separator_idx + 1 :]:
-        if target.startswith("-"):
+        if target.startswith("-") and not target.startswith("-//"):
             raise ValueError(f"invalid Bazel target payload {target!r}")
 
 def _insert_before_separator(args: Sequence[str], value: str) -> list[str]:

@@ -165,6 +165,17 @@ class FinalCommandQualificationTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid Bazel target payload"):
             self.run_exact(args)
 
+    def test_release_target_exclusions_remain_canonical_payload(self) -> None:
+        args = self.exact_args()
+        release_targets = [
+            "//codex-rs/...",
+            "-//codex-rs/core/tests/remote_env_windows:smoke-test",
+            "-//codex-rs/v8-poc:all",
+        ]
+        args[-1:] = release_targets
+        command = self.run_exact(args)
+        self.assertEqual(command[-len(release_targets) :], release_targets)
+
     def test_authenticated_windows_path_remains_remote_passthrough(self) -> None:
         args = ["build", "--config=ci-windows-cross", "--", "//codex-rs/cli:codex"]
         env = {
