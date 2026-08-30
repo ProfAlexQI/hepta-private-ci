@@ -1,4 +1,4 @@
-name: Hepta P0.7a inode identity refresh (x64 one shot)
+name: Hepta P0.7a inode identity refresh (ARM one shot)
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-p0-7a-inode-refresh-x64-once
+  group: hepta-p0-7a-inode-refresh-arm-once
   cancel-in-progress: false
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
     if: >-
       github.repository == 'ProfHepta/hepta-private-ci' &&
       github.ref == 'refs/heads/codex/hepta-architecture-v4-p0-7a-executable-closure-20260830'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 120
     steps:
       - name: Checkout exact branch head
