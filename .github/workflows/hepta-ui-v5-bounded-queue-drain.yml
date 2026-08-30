@@ -10,10 +10,10 @@ on:
 permissions:
   contents: read
 
-# PR #87 v8-canary already contains failed matrix jobs and cannot become green.
+# PR #98 v8-canary already contains failed matrix jobs and cannot become green.
 # Reuse its repository-scoped concurrency key to terminate only that doomed run.
 concurrency:
-  group: v8-canary::pr-87
+  group: v8-canary::pr-98
   cancel-in-progress: true
 
 jobs:
