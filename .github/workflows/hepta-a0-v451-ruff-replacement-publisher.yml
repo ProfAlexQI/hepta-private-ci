@@ -1,15 +1,15 @@
-name: Hepta A0 V4.5.1 Ruff-clean replacement publisher
+name: Hepta A0 V4.5.1 provenance replacement publisher Windows
 
 on:
   push:
     branches:
-      - "automation/hepta-a0-v451-ruff-replacement-publisher-20260830-0030"
+      - "automation/hepta-a0-v451-provenance-publisher-windows-v3-20260830-0110"
 
 permissions:
   contents: write
 
 concurrency:
-  group: hepta-a0-v451-ruff-replacement-publisher-20260830-0030
+  group: hepta-a0-v451-provenance-publisher-windows-v3-20260830-0110
   cancel-in-progress: true
 
 env:
@@ -20,13 +20,13 @@ env:
   Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
   Q0_TREE: ca455a9ef797cd95164c880c7b8faba80b305589
   PREDECESSOR_HEADS_JSON: '["08e6ed017e8cbfb94f86a5fa8397eb00eb396ed2","7a8052aa8949c8b1be361b5231389ee193baec3c"]'
-  STAGING_BRANCH: staging/hepta-a0-v451-provenance-ruff-20260830-0035
+  STAGING_BRANCH: staging/hepta-a0-v451-provenance-ruff-windows-v3-20260830-0110
   REPORT_DIR: artifacts/hepta-a0-v451-ruff-replacement
 
 jobs:
   publish:
-    name: Build and validate one Ruff-clean Q0-single-parent replacement
-    runs-on: ubuntu-latest
+    name: Build and validate one Ruff-clean Q0-single-parent replacement on Windows
+    runs-on: windows-latest
     timeout-minutes: 30
     steps:
       - name: Checkout publisher source
@@ -58,7 +58,7 @@ jobs:
       - name: Upload deterministic publisher evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: hepta-a0-v451-provenance-replacement-${{ github.sha }}
+          name: hepta-a0-v451-provenance-windows-v3-${{ github.sha }}
           path: target/artifacts/hepta-a0-v451-ruff-replacement/**
           if-no-files-found: error
           retention-days: 30
