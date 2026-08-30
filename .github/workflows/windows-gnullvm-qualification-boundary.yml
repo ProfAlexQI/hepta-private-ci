@@ -66,7 +66,12 @@ jobs:
               "setup_bazel_transport_token_reaches_direct_bazel": False,
               "bazelisk_failure_output_echoed": False,
               "final_child_path_head_source_bound": True,
+              "final_bazel_cwd_bound_to_canonical_workspace": True,
+              "test_target_vector_recomputed_and_exact": True,
+              "clippy_target_vector_recomputed_and_exact": True,
+              "release_target_vector_exact": True,
               "cached_bazel_executed_on_this_linux_source_job": False,
+              "workspace_target_vector_executed_on_this_linux_source_job": False,
               "source_writeback": False,
               "runtime_authority": False,
               "production_authority": False,
@@ -75,9 +80,15 @@ jobs:
               "release_authority": False,
               "callers_ratchet": False,
           }
-          canonical = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+          canonical = json.dumps(
+              receipt,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode()
           receipt["receipt_binding_sha256"] = hashlib.sha256(canonical).hexdigest()
-          path = Path("artifacts/windows-gnullvm-qualification-boundary/receipt.json")
+          path = Path(
+              "artifacts/windows-gnullvm-qualification-boundary/receipt.json"
+          )
           path.write_text(
               json.dumps(receipt, indent=2, sort_keys=True) + "\n",
               encoding="utf-8",

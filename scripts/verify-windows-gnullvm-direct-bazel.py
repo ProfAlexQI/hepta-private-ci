@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+"""Q0.30-Q0.34 direct-Bazel, token, workspace, and target source verifier."""
+
 from __future__ import annotations
 
 import hashlib
@@ -9,33 +11,30 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / ".github" / "scripts"
-Q026_POLICY = SCRIPTS / "run_bazel_q022_negative_targets.py"
-Q028_POLICY = SCRIPTS / "run_bazel_q028_startup_contract.py"
 Q029_POLICY = SCRIPTS / "run_bazel_q029_job_executable.py"
 Q030_POLICY = SCRIPTS / "run_bazel_q030_direct_bazel.py"
+Q034_POLICY = SCRIPTS / "run_bazel_q034_workspace_targets.py"
 WRAPPER = SCRIPTS / "run_bazel_with_buildbuddy.py"
-TEST = SCRIPTS / "test_run_bazel_direct_bazel.py"
-SETUP_TOKEN_TEST = SCRIPTS / "test_run_bazel_setup_token_boundary.py"
-STARTUP_TEST = SCRIPTS / "test_run_bazel_startup_contract.py"
+DIRECT_TEST = SCRIPTS / "test_run_bazel_direct_bazel.py"
+TOKEN_TEST = SCRIPTS / "test_run_bazel_setup_token_boundary.py"
+Q034_TEST = SCRIPTS / "test_run_bazel_workspace_targets.py"
 BOUNDARY = SCRIPTS / "test_run_bazel_qualification_boundary.sh"
-WORKFLOW = (
-    ROOT / ".github" / "workflows" / "windows-gnullvm-qualification-boundary.yml"
-)
-SETUP_BAZEL_ACTION = (
-    ROOT / ".github" / "actions" / "setup-bazel-ci" / "action.yml"
-)
+WORKFLOW = ROOT / ".github" / "workflows" / "windows-gnullvm-qualification-boundary.yml"
+SETUP_BAZEL = ROOT / ".github" / "actions" / "setup-bazel-ci" / "action.yml"
+JOB_VERIFIER = ROOT / "scripts" / "verify-windows-gnullvm-job-executable.py"
 BAZELVERSION = ROOT / ".bazelversion"
 
-EXPECTED_Q026_BLOB = "e0729bd796b342568c624d15faf3638a1372d01d"
-EXPECTED_Q028_BLOB = "86225acd9158132df8cd5ae9dc6720205a7c47a6"
-EXPECTED_Q029_BLOB = "2d57d5e222b87a89b2f8b1c93c476f450b03e646"
-EXPECTED_Q030_BLOB = "1614f53c9572cdda3b1d7cf227f3a730e27b2adb"
-EXPECTED_WRAPPER_BLOB = "233d98f151b897caa42f4d762d119645cb13e641"
-EXPECTED_TEST_BLOB = "f03bb5d31ce5bca1c82f9a6349b506387e43b8e7"
-EXPECTED_SETUP_TOKEN_TEST_BLOB = "5778dd884ef087362a99b665fbb1c60cf2dce5f0"
-EXPECTED_BOUNDARY_BLOB = "f33a5411f26d9159e764c029cb02db29208e29fa"
-EXPECTED_WORKFLOW_BLOB = "3f30d90a7fffca2cc8057bf371575e3eb85502d6"
-EXPECTED_SETUP_BAZEL_ACTION_BLOB = "890567be46f3fd78c11b89a20950bef2f7af4bf6"
+EXPECTED_Q029_POLICY_BLOB = "2d57d5e222b87a89b2f8b1c93c476f450b03e646"
+EXPECTED_Q030_POLICY_BLOB = "1614f53c9572cdda3b1d7cf227f3a730e27b2adb"
+EXPECTED_Q034_POLICY_BLOB = "4eec6be942606d9b5ba62f07064ece625afb2e06"
+EXPECTED_WRAPPER_BLOB = "1a261df205703c9b903e54571162672dddb1d6ae"
+EXPECTED_DIRECT_TEST_BLOB = "f03bb5d31ce5bca1c82f9a6349b506387e43b8e7"
+EXPECTED_TOKEN_TEST_BLOB = "5778dd884ef087362a99b665fbb1c60cf2dce5f0"
+EXPECTED_Q034_TEST_BLOB = "a53f8a086a4071b606607385543c1f2cf0a1f370"
+EXPECTED_BOUNDARY_BLOB = "967ce708d716230fb791e4f054ca624ed225a85a"
+EXPECTED_WORKFLOW_BLOB = "f9baeaa495628400437a2599082e52cf9d236a13"
+EXPECTED_SETUP_BAZEL_BLOB = "890567be46f3fd78c11b89a20950bef2f7af4bf6"
+EXPECTED_JOB_VERIFIER_BLOB = "18df5d111edd64e0b2df1800d48ca3801cdfba97"
 EXPECTED_BAZELVERSION_BLOB = "f7ee06693c17a06e2a0f51ef7eb2a61866e77b8e"
 PINNED_SETUP_BAZEL = (
     "bazel-contrib/setup-bazel@"
@@ -53,7 +52,7 @@ def fail(message: str) -> None:
 
 def read(path: Path) -> str:
     if not path.is_file():
-        fail(f"missing Q0.30-Q0.33 contract path: {path.relative_to(ROOT)}")
+        fail(f"missing Q0.30-Q0.34 contract path: {path.relative_to(ROOT)}")
     return path.read_text(encoding="utf-8")
 
 
@@ -69,7 +68,7 @@ def require(condition: bool, message: str) -> None:
 
 
 def require_token(text: str, token: str, owner: str) -> None:
-    require(token in text, f"{owner} lacks Q0.30-Q0.33 token: {token}")
+    require(token in text, f"{owner} lacks Q0.30-Q0.34 token: {token}")
 
 
 def reject_token(text: str, token: str, owner: str) -> None:
@@ -93,153 +92,124 @@ def require_executable(path: Path) -> None:
 
 
 def main() -> None:
-    q026 = read(Q026_POLICY)
-    q028 = read(Q028_POLICY)
     q029 = read(Q029_POLICY)
     q030 = read(Q030_POLICY)
+    q034 = read(Q034_POLICY)
     wrapper = read(WRAPPER)
-    test = read(TEST)
-    setup_token_test = read(SETUP_TOKEN_TEST)
-    startup_test = read(STARTUP_TEST)
+    direct_test = read(DIRECT_TEST)
+    token_test = read(TOKEN_TEST)
+    q034_test = read(Q034_TEST)
     boundary = read(BOUNDARY)
     workflow = read(WORKFLOW)
-    setup_bazel_action = read(SETUP_BAZEL_ACTION)
+    setup_bazel = read(SETUP_BAZEL)
+    job_verifier = read(JOB_VERIFIER)
 
     for path in (
         WRAPPER,
-        TEST,
-        SETUP_TOKEN_TEST,
-        STARTUP_TEST,
+        DIRECT_TEST,
+        TOKEN_TEST,
+        Q034_TEST,
         BOUNDARY,
+        JOB_VERIFIER,
     ):
         require_executable(path)
 
     for path, expected, owner in (
-        (Q026_POLICY, EXPECTED_Q026_BLOB, "Q0.26 compatibility policy"),
-        (Q028_POLICY, EXPECTED_Q028_BLOB, "Q0.28 startup policy"),
-        (Q029_POLICY, EXPECTED_Q029_BLOB, "Q0.29 job policy"),
-        (Q030_POLICY, EXPECTED_Q030_BLOB, "Q0.32 direct Bazel policy"),
-        (WRAPPER, EXPECTED_WRAPPER_BLOB, "public Bazel wrapper"),
-        (TEST, EXPECTED_TEST_BLOB, "Q0.32 direct Bazel regression"),
-        (
-            SETUP_TOKEN_TEST,
-            EXPECTED_SETUP_TOKEN_TEST_BLOB,
-            "Q0.33 setup-token regression",
-        ),
+        (Q029_POLICY, EXPECTED_Q029_POLICY_BLOB, "Q0.29 compatibility policy"),
+        (Q030_POLICY, EXPECTED_Q030_POLICY_BLOB, "Q0.32 direct-Bazel policy"),
+        (Q034_POLICY, EXPECTED_Q034_POLICY_BLOB, "Q0.34 workspace/target policy"),
+        (WRAPPER, EXPECTED_WRAPPER_BLOB, "Q0.34 public wrapper"),
+        (DIRECT_TEST, EXPECTED_DIRECT_TEST_BLOB, "Q0.32 direct-Bazel regression"),
+        (TOKEN_TEST, EXPECTED_TOKEN_TEST_BLOB, "Q0.33 setup-token regression"),
+        (Q034_TEST, EXPECTED_Q034_TEST_BLOB, "Q0.34 regression"),
         (BOUNDARY, EXPECTED_BOUNDARY_BLOB, "qualification fixture"),
         (WORKFLOW, EXPECTED_WORKFLOW_BLOB, "qualification workflow"),
-        (
-            SETUP_BAZEL_ACTION,
-            EXPECTED_SETUP_BAZEL_ACTION_BLOB,
-            "setup-bazel-ci action",
-        ),
+        (SETUP_BAZEL, EXPECTED_SETUP_BAZEL_BLOB, "setup-bazel-ci action"),
+        (JOB_VERIFIER, EXPECTED_JOB_VERIFIER_BLOB, "Q0.34 job verifier"),
     ):
         require(git_blob_sha(path) == expected, f"{owner} drifted")
 
     for token in (
-        'CANONICAL_CLIPPY_NEGATIVE_TARGET = "-//codex-rs/v8-poc:all"',
-        "outside the canonical V8 exclusion",
+        'TEST_JOB = "test-windows-shard"',
+        'CLIPPY_JOB = "clippy"',
+        'RELEASE_JOB = "verify-release-build"',
+        "test shard requires positive workspace targets",
+        "clippy requires target prefix",
+        "release job requires the exact canonical release target payload",
     ):
-        require_token(q026, token, "Q0.26 compatibility policy")
+        require_token(q029, token, "Q0.29 policy")
 
     for token in (
-        "OUTPUT_BASE_PREFIX",
-        "requires BAZEL_OUTPUT_BASE",
-        "requires BAZEL_OUTPUT_USER_ROOT",
-        "def _validate_exact_startup",
-    ):
-        require_token(q028, token, "Q0.28 startup policy")
-
-    for token in (
-        "prepare_bazelisk_environment",
-        "_validate_bazelisk_inputs",
-        "_validate_runner_identity",
-        "_validate_paths",
-        "_validate_job_binding",
-    ):
-        require_token(q029, token, "Q0.29 job policy")
-
-    for token in (
-        "Q0.32 direct Bazel CAS, transport-token, and pre-launch authority",
         'SETUP_BAZEL_TRANSPORT_TOKEN = "BAZELISK_GITHUB_TOKEN"',
-        "def _matching_env_names(",
         "def consume_setup_bazel_transport_token(",
         "def _require_transport_token_absent(",
-        "consume_setup_bazel_transport_token(env)",
-        "Q0.32 Bazelisk preparation",
         "resolve_verified_bazel_command",
-        'run(\n        [str(bazelisk), "--print_env"]',
-        "Q0.32 Bazelisk resolution",
-        "retained the setup-only transport token",
-        "Bazelisk executable changed during child resolution",
+        "cwd=workspace",
         "cached Bazel executable SHA-256 drifted",
-        "content-addressed store",
         'env["PATH"] = child_path',
-        'env.pop("BAZEL_REAL", None)',
-        'env.pop("BAZELISK", None)',
-        "def _validate_child_path(",
-        "final PATH head is not the verified cached Bazel directory",
-        "validate_keyless_windows_gnullvm_command",
-        "Q0.32 final direct Bazel launch",
         "_validate_child_path(real_bazel, env)",
         "_validate_q028(command[1:], env)",
         "verified direct Bazel executable changed before launch",
     ):
-        require_token(q030, token, "Q0.32 direct Bazel policy")
-
-    require_order(
-        q030,
-        "consume_setup_bazel_transport_token(env)",
-        "_prepare_q029(env)",
-        "Q0.32 direct Bazel policy",
-    )
-    require_order(
-        q030,
-        "_validate_child_path(real_bazel, env)",
-        "_validate_q028(command[1:], env)",
-        "Q0.32 direct Bazel policy",
-    )
+        require_token(q030, token, "Q0.32 direct-Bazel policy")
     reject_token(
         q030,
         "stderr={result.stderr.strip()!r}",
-        "Q0.32 direct Bazel policy",
+        "Q0.32 direct-Bazel policy",
     )
-    reject_token(
-        q030,
-        "result.stdout.strip()",
-        "Q0.32 direct Bazel policy",
-    )
+    reject_token(q030, "result.stdout.strip()", "Q0.32 direct-Bazel policy")
 
     for token in (
-        "Q0.17-Q0.30 qualification ratchets",
-        "from run_bazel_q030_direct_bazel import prepare_bazelisk_environment",
-        "from run_bazel_q030_direct_bazel import resolve_verified_bazel_command",
-        "command = resolve_verified_bazel_command(command, os.environ)",
-        "validate_keyless_windows_gnullvm_command(command, os.environ)",
-        'f"--output_base={output_base}"',
-        "os.execvpe(command[0], command, os.environ)",
+        "TEST_TARGET_QUERY",
+        "CLIPPY_TARGET_QUERY",
+        "def posix_cksum(",
+        "def _query_labels(",
+        "cwd=workspace",
+        "capture_output=True",
+        "def _expected_test_targets(",
+        "def _expected_clippy_targets(",
+        "def _require_exact_targets(",
+        "expected_sha256=",
+        "observed_sha256=",
+        "changed during target-vector recomputation",
+        "return workspace",
     ):
-        require_token(wrapper, token, "public Bazel wrapper")
+        require_token(q034, token, "Q0.34 workspace/target policy")
+    reject_token(q034, "result.stdout.strip()", "Q0.34 workspace/target policy")
+    reject_token(q034, "result.stderr.strip()", "Q0.34 workspace/target policy")
+
+    for token in (
+        "Compatibility wrapper plus Q0.17-Q0.34 qualification ratchets",
+        "from run_bazel_q034_workspace_targets import (",
+        "validate_keyless_windows_gnullvm_workspace_and_targets",
+        "launch_cwd = None",
+        "launch_cwd = validate_keyless_windows_gnullvm_workspace_and_targets(",
+        "cwd=launch_cwd",
+        "env=os.environ",
+    ):
+        require_token(wrapper, token, "Q0.34 public wrapper")
+    require_order(
+        wrapper,
+        "validate_keyless_windows_gnullvm_command(command, os.environ)",
+        "launch_cwd = validate_keyless_windows_gnullvm_workspace_and_targets(",
+        "Q0.34 public wrapper",
+    )
+    require_order(
+        wrapper,
+        "launch_cwd = validate_keyless_windows_gnullvm_workspace_and_targets(",
+        "cwd=launch_cwd",
+        "Q0.34 public wrapper",
+    )
 
     for token in (
         "test_prepare_consumes_setup_bazel_transport_token",
         "test_resolver_rejects_unconsumed_transport_token",
         "test_resolver_verifies_bazelisk_and_cached_bazel",
-        "test_cached_bazel_is_rehashed_even_when_bazelisk_succeeds",
-        "test_cached_bazel_must_use_content_addressed_path",
-        "test_print_env_failure_fails_closed",
-        "test_print_env_failure_does_not_echo_transport_output",
-        "test_print_env_transport_token_fails_closed",
-        "test_missing_or_duplicate_path_binding_fails_closed",
-        "test_bare_bazelisk_override_fails_closed",
-        "test_unverified_initial_argv0_fails_closed",
         "test_direct_bazel_is_rehashed_immediately_before_launch",
         "test_final_command_rejects_transport_token",
         "test_final_path_head_drift_fails_closed",
-        "test_q026_canonical_clippy_negative_target_passes",
-        "test_q026_arbitrary_clippy_negative_target_fails_closed",
     ):
-        require_token(test, token, "Q0.32 regression")
+        require_token(direct_test, token, "Q0.32 direct-Bazel regression")
 
     for token in (
         "test_setup_bazel_is_centralized_in_scrubbed_composite_action",
@@ -250,7 +220,28 @@ def main() -> None:
         SETUP_SCRUB_STEP,
         SETUP_EMPTY_EXPORT,
     ):
-        require_token(setup_token_test, token, "Q0.33 setup-token regression")
+        require_token(token_test, token, "Q0.33 token regression")
+
+    for token in (
+        "test_posix_cksum_matches_reviewed_shell_generator",
+        "test_exact_test_shard_vector_is_accepted",
+        "test_omitted_or_substituted_test_target_fails_closed",
+        "test_exact_clippy_vector_is_accepted",
+        "test_omitted_clippy_target_fails_closed",
+        "test_query_failure_does_not_echo_query_output",
+        "test_release_reuses_existing_exact_payload_without_query",
+        "test_wrapper_binds_final_windows_launch_cwd_and_environment",
+    ):
+        require_token(q034_test, token, "Q0.34 regression")
+
+    for token in (
+        "python3 .github/scripts/test_run_bazel_direct_bazel.py",
+        "python3 .github/scripts/test_run_bazel_setup_token_boundary.py",
+        "python3 .github/scripts/test_run_bazel_workspace_targets.py",
+        "python3 scripts/verify-windows-gnullvm-job-executable.py",
+        "python3 scripts/verify-windows-gnullvm-direct-bazel.py",
+    ):
+        require_token(boundary, token, "qualification boundary fixture")
 
     for token in (
         PINNED_SETUP_BAZEL,
@@ -260,64 +251,53 @@ def main() -> None:
         "unset BAZELISK_GITHUB_TOKEN",
         "- name: Configure Bazel repository cache",
     ):
-        require_token(setup_bazel_action, token, "setup-bazel-ci action")
+        require_token(setup_bazel, token, "setup-bazel-ci action")
     require_order(
-        setup_bazel_action,
+        setup_bazel,
         "- name: Set up Bazel",
         SETUP_SCRUB_STEP,
         "setup-bazel-ci action",
     )
     require_order(
-        setup_bazel_action,
+        setup_bazel,
         SETUP_SCRUB_STEP,
         "- name: Configure Bazel repository cache",
         "setup-bazel-ci action",
     )
-    scrub_start = setup_bazel_action.index(SETUP_SCRUB_STEP)
-    scrub_end = setup_bazel_action.index(
+    scrub_start = setup_bazel.index(SETUP_SCRUB_STEP)
+    scrub_end = setup_bazel.index(
         "- name: Configure Bazel repository cache",
         scrub_start,
     )
-    scrub_block = setup_bazel_action[scrub_start:scrub_end]
-    reject_token(
-        scrub_block,
-        "${BAZELISK_GITHUB_TOKEN",
-        "setup-bazel-ci scrub step",
-    )
-    reject_token(
-        scrub_block,
-        "$BAZELISK_GITHUB_TOKEN",
-        "setup-bazel-ci scrub step",
-    )
+    scrub_block = setup_bazel[scrub_start:scrub_end]
+    reject_token(scrub_block, "${BAZELISK_GITHUB_TOKEN", "setup scrub")
+    reject_token(scrub_block, "$BAZELISK_GITHUB_TOKEN", "setup scrub")
 
     for token in (
-        "test_canonical_startup_vector_passes",
-        "test_missing_output_user_root_fails_closed",
-        "test_missing_output_base_fails_closed",
-        "test_output_base_drift_fails_closed",
-    ):
-        require_token(startup_test, token, "Q0.30 startup regression")
-
-    for token in (
-        "python3 .github/scripts/test_run_bazel_direct_bazel.py",
-        "python3 .github/scripts/test_run_bazel_setup_token_boundary.py",
-        "python3 scripts/verify-windows-gnullvm-direct-bazel.py",
-    ):
-        require_token(boundary, token, "qualification boundary fixture")
-
-    for token in (
-        "python3 scripts/verify-windows-gnullvm-direct-bazel.py",
-        '"setup_bazel_token_available_only_inside_pinned_setup_action": True',
-        '"setup_bazel_token_scrubbed_before_repository_steps": True',
-        '"repository_steps_receive_nonempty_setup_bazel_token": False',
-        '"setup_bazel_transport_token_consumed_before_resolution": True',
-        '"setup_bazel_transport_token_reaches_bazelisk": False',
-        '"setup_bazel_transport_token_reaches_direct_bazel": False',
-        '"bazelisk_failure_output_echoed": False',
-        '"final_child_path_head_source_bound": True',
-        '"cached_bazel_executed_on_this_linux_source_job": False',
+        "final_bazel_cwd_bound_to_canonical_workspace",
+        "test_target_vector_recomputed_and_exact",
+        "clippy_target_vector_recomputed_and_exact",
+        "release_target_vector_exact",
+        '"workspace_target_vector_executed_on_this_linux_source_job": False',
+        '"runtime_authority": False',
+        '"production_authority": False',
+        '"operator_acceptance": False',
+        '"promotion": False',
+        '"release_authority": False',
+        '"callers_ratchet": False',
     ):
         require_token(workflow, token, "qualification workflow")
+
+    require_token(
+        job_verifier,
+        f'EXPECTED_SETUP_BAZEL_BLOB = "{EXPECTED_SETUP_BAZEL_BLOB}"',
+        "Q0.34 job verifier",
+    )
+    reject_token(
+        job_verifier,
+        'EXPECTED_SETUP_BAZEL_BLOB = "ac4f5aa97c7556f6049bd1d0a33220759d9d13d1"',
+        "Q0.34 job verifier",
+    )
 
     require(
         BAZELVERSION.read_bytes() == b"9.0.0\n",
@@ -331,6 +311,7 @@ def main() -> None:
     print("PASS_WINDOWS_GNULLVM_Q0_30_DIRECT_BAZEL_SOURCE")
     print("PASS_WINDOWS_GNULLVM_Q0_32_TRANSPORT_AND_PATH_SOURCE")
     print("PASS_WINDOWS_GNULLVM_Q0_33_SETUP_TOKEN_JOB_BOUNDARY_SOURCE")
+    print("PASS_WINDOWS_GNULLVM_Q0_34_WORKSPACE_TARGET_AUTHORITY_SOURCE")
 
 
 if __name__ == "__main__":

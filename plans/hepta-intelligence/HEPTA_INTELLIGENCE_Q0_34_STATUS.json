@@ -1,0 +1,44 @@
+{
+  "all_gaps_closed": false,
+  "authority": {
+    "callers_ratchet": false,
+    "operator_acceptance": false,
+    "production_authority": false,
+    "promotion": false,
+    "release_authority": false,
+    "runtime_wired": false
+  },
+  "candidate": {
+    "binding_policy": "commit_and_tree_are_external_executable_receipt_fields",
+    "branch": "codex/hepta-intelligence-q0-34-workspace-target-authority-20260830",
+    "commit": null,
+    "tree": null
+  },
+  "execution_state": "SOURCE_PREPARED_EXECUTABLE_QUALIFICATION_REQUIRED",
+  "external_gates": {
+    "assigned_runner_evidence": false,
+    "canonical_selection": false,
+    "corpus_model_license_hardware_soak": false,
+    "independent_a0_review": false,
+    "live_ruleset_readback": false,
+    "repository_check_attribution": false
+  },
+  "generated_at_utc": null,
+  "parent": {
+    "branch": "codex/hepta-intelligence-q0-33-setup-token-job-boundary-20260830",
+    "commit": "7403616a93ac57a8e7a557c5705c21ddb78e008a",
+    "pr": 163,
+    "tree": "80ae115eb88aae56356bef1a366366526ec14494"
+  },
+  "repository": "ProfHepta/hepta-private-ci",
+  "schema": "hepta_intelligence_q0_34_status_v1",
+  "source": {
+    "clippy_target_vector_recomputed_and_exact": true,
+    "executable_qualification": false,
+    "final_bazel_cwd_bound_to_canonical_workspace": true,
+    "release_target_vector_exact_inherited": true,
+    "source_validation_prepared": true,
+    "stale_setup_action_verifier_binding_closed": true,
+    "test_target_vector_recomputed_and_exact": true
+  }
+}
