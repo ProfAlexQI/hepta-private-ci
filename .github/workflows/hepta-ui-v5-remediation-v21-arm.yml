@@ -1,0 +1,72 @@
+name: Hepta UI v5 remediation v21 ARM
+
+on:
+  push:
+    branches:
+      - ops/ui-v5-remediation-v21-arm-20260830
+    paths:
+      - .github/workflows/hepta-ui-v5-remediation-v21-arm.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-ui-v5-remediation-v21-arm
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    if: github.repository == 'ProfHepta/hepta-private-ci'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      BRANCH: codex/ui-v5-plan-and-repo-gap-closure-20260829
+      EXPECTED_PARENT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
+      BOOTSTRAP_PATH: .github/workflows/hepta-ui-v5-remediation-v21-arm.yml
+      UPSTREAM_URL: https://github.com/openai/codex.git
+      UPSTREAM_PREVIOUS: 61a44880a85d2fd0d8770908dea5733495e571c8
+      UPSTREAM_ROLE: current_r12
+      UPSTREAM_FROZEN_REF: refs/remotes/upstream/hepta-intake-20260830-r12
+      UPSTREAM_INTAKE_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_CURRENT_INTAKE_2026-08-30_R12.json
+      UPSTREAM_RECORD_PATH: docs/architecture/HEPTA_UPSTREAM_CODEX_R12_SEMANTIC_ABSORPTION_RECORD_2026-08-30.json
+      V12_DRIVER_COMMIT: 554d710f6a561166553f3c01fafc5b27cd8c28b9
+      V14_DRIVER_COMMIT: 3f2d8192439e8fcc5cb030011202a4f58ceda082
+      V18_DRIVER_COMMIT: 022b91a04f443d7fe4ca2bce853bc26bccf99f84
+      V20_DRIVER_COMMIT: 781c237dbc81f49d3f22432b341d904aaa929291
+      V21_DRIVER_COMMIT: 628b014c4471c9b8d3bbd6cf38b9920112173697
+    steps:
+      - name: Check out exact v21 ARM driver commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install deterministic remediation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes jq ripgrep ruby patch
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --no-self-update
+
+      - name: Execute exact v21 remediation logic on ARM
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source_workflow="$RUNNER_TEMP/hepta-ui-v5-remediation-v21.yml"
+          generated_driver="$RUNNER_TEMP/hepta-ui-v5-remediation-v21-arm-driver.sh"
+          if ! git cat-file -e "$V21_DRIVER_COMMIT^{commit}"; then
+            git fetch --no-tags origin "$V21_DRIVER_COMMIT"
+          fi
+          git show "$V21_DRIVER_COMMIT:.github/workflows/hepta-ui-v5-remediation-v21.yml" > "$source_workflow"
+          awk '
+            /      - name: Execute v20 remediation with exact duplicate payload semantics/ { found=1; next }
+            found && /        shell: bash/ { next }
+            found && /        run: \|/ { in_run=1; next }
+            in_run { sub(/^          /, ""); print }
+          ' "$source_workflow" > "$generated_driver"
+          test -s "$generated_driver"
+          bash -n "$generated_driver"
+          bash -x "$generated_driver"
