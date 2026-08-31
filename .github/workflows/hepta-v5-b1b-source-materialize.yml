@@ -65,14 +65,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat scripts/.hepta-v5-b1b-source-materialize.part-* > "$RUNNER_TEMP/hepta-v5-b1b-source-materialize.py"
-          python3 -m py_compile "$RUNNER_TEMP/hepta-v5-b1b-source-materialize.py"
-          python3 "$RUNNER_TEMP/hepta-v5-b1b-source-materialize.py"
+          materializer="scripts/.hepta-v5-b1b-source-materialize.py"
+          cat scripts/.hepta-v5-b1b-source-materialize.part-* > "$materializer"
+          python3 -m py_compile "$materializer"
+          python3 "$materializer"
+          rm -f "$materializer"
+          rm -rf scripts/__pycache__
           python3 -m py_compile \
             scripts/verify-hepta-v5-b1b-model-boundary.py \
             scripts/verify-hepta-v5-b1b-format.py
           python3 scripts/verify-hepta-v5-b1b-model-boundary.py
           python3 scripts/verify-hepta-v5-b1b-format.py --check
+          rm -rf scripts/__pycache__
           git diff --check
 
       - name: Format and execute owned Rust gates
@@ -104,6 +108,7 @@ jobs:
           rm \
             scripts/.hepta-v5-b1b-source-materialize.part-* \
             .github/workflows/hepta-v5-b1b-source-materialize.yml
+          rm -rf scripts/__pycache__
           git reset --soft "$STACK_PARENT"
           git add -A
           actual="$(git diff --cached --name-only | LC_ALL=C sort)"
