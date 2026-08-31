@@ -1,0 +1,31 @@
+{
+  "schema": "hepta.v5.b4.status.v1",
+  "schemaVersion": 1,
+  "package": "P0.7b/B4_global_no_bypass_proof",
+  "sourceState": "implemented_candidate",
+  "qualificationState": "pending_exact_head_execution",
+  "inventory": "docs/architecture/HEPTA_V5_B4_GLOBAL_CALLSITE_INVENTORY.json",
+  "verifier": "scripts/verify-hepta-v5-b4-no-bypass.py",
+  "contract": "docs/architecture/HEPTA_P0_7B_B4_NO_BYPASS_CONTRACT_V1.md",
+  "claims": {
+    "cargoTargetGraphBound": true,
+    "rustLexicalScannerImplemented": true,
+    "closedSetClassificationImplemented": true,
+    "generatedSensitiveSourceFailsClosed": true,
+    "unknownProductionCallerFailsClosed": true,
+    "currentProductionCallsitesRegistered": false,
+    "exactHeadQualified": false,
+    "mergeCandidateQualified": false,
+    "independentReviewIssued": false,
+    "allGapsClosed": false
+  },
+  "authority": {
+    "runtimeRegistered": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "externalEffect": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
