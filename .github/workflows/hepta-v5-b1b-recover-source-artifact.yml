@@ -1,0 +1,352 @@
+name: Hepta V5 B1b recover source artifact
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - automation/hepta-v5-b1b-recovery-gpt56-20260831
+    paths:
+      - ".github/workflows/hepta-v5-b1b-recover-source-artifact.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-v5-b1b-recovery-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  recover:
+    name: Recover and independently revalidate B1b source
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact recovery head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind recovery input
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "6c876b2c259ccabef928c7921c2037b3c10f051b"
+          test "$(git rev-parse '6c876b2c259ccabef928c7921c2037b3c10f051b^')" = "1d97988e9915a4ac9ac7c145a3ab98ab95b858fd"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Reconstruct materializer and recover raw DEFLATE payload
+        id: recover_source
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat scripts/.hepta-v5-b1b-source-materialize.part-* > /tmp/hepta-v5-b1b-source-materialize.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('/tmp/hepta-v5-b1b-source-materialize.py')
+          text = path.read_text(encoding='utf-8')
+          needle = '    decoded = zlib.decompress(base64.b64decode(PAYLOAD))\n'
+          replacement = '''    compressed = base64.b64decode(PAYLOAD, validate=True)\n    try:\n        decoded = zlib.decompress(compressed)\n    except zlib.error as exc:\n        if "incorrect data check" not in str(exc):\n            raise\n        if len(compressed) < 7:\n            raise RuntimeError("compressed payload too short for zlib envelope recovery") from exc\n        decoded = zlib.decompress(compressed[2:-4], wbits=-zlib.MAX_WBITS)\n'''
+          if text.count(needle) != 1:
+              raise SystemExit('expected exactly one zlib decode expression')
+          path.write_text(text.replace(needle, replacement, 1), encoding='utf-8')
+          PY
+          python3 -m py_compile /tmp/hepta-v5-b1b-source-materialize.py
+          python3 /tmp/hepta-v5-b1b-source-materialize.py
+
+      - name: Record payload recovery evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/hepta-v5-b1b-recovery"
+          python3 - <<'PY'
+          import ast
+          import base64
+          import hashlib
+          import json
+          from pathlib import Path
+          import zlib
+
+          script = Path('/tmp/hepta-v5-b1b-source-materialize.py')
+          evidence_path = Path('${{ runner.temp }}/hepta-v5-b1b-recovery/recovery-evidence.json')
+          evidence_path.parent.mkdir(parents=True, exist_ok=True)
+          evidence = {
+              'schema': 'hepta.v5.b1b.payload-recovery.v1',
+              'recovery_head': '${{ github.sha }}',
+              'source_materializer_head': '6c876b2c259ccabef928c7921c2037b3c10f051b',
+              'expected_final_parent': '537394a0067d204b215db8bee3de533494535481',
+              'ordinary_zlib_valid': False,
+              'raw_deflate_recovered': False,
+              'decoded_json_valid': False,
+              'fallback_grants_authority': False,
+              'source_qualification': False,
+              'production_authority': False,
+              'operator_acceptance': False,
+              'promotion': False,
+              'release': False,
+          }
+          try:
+              tree = ast.parse(script.read_text(encoding='utf-8'))
+              payload = None
+              for node in tree.body:
+                  if isinstance(node, ast.Assign):
+                      for target in node.targets:
+                          if isinstance(target, ast.Name) and target.id == 'PAYLOAD':
+                              payload = ast.literal_eval(node.value)
+              if not isinstance(payload, str):
+                  raise ValueError('PAYLOAD assignment not found')
+              compressed = base64.b64decode(payload, validate=True)
+              evidence['compressed_bytes'] = len(compressed)
+              evidence['compressed_sha256'] = hashlib.sha256(compressed).hexdigest()
+              evidence['stored_adler32'] = compressed[-4:].hex()
+              try:
+                  decoded = zlib.decompress(compressed)
+                  evidence['ordinary_zlib_valid'] = True
+                  evidence['recovery_mode'] = 'ordinary_zlib'
+              except zlib.error as exc:
+                  evidence['ordinary_zlib_error'] = str(exc)
+                  if 'incorrect data check' not in str(exc):
+                      raise
+                  decoded = zlib.decompress(compressed[2:-4], wbits=-zlib.MAX_WBITS)
+                  evidence['raw_deflate_recovered'] = True
+                  evidence['recovery_mode'] = 'raw_deflate_after_checksum_failure'
+              evidence['decoded_bytes'] = len(decoded)
+              evidence['decoded_sha256'] = hashlib.sha256(decoded).hexdigest()
+              evidence['computed_adler32'] = f'{zlib.adler32(decoded) & 0xffffffff:08x}'
+              files = json.loads(decoded)
+              evidence['decoded_json_valid'] = isinstance(files, dict)
+              evidence['payload_paths'] = sorted(files)
+              evidence['payload_path_count'] = len(files)
+          except Exception as exc:
+              evidence['recovery_error'] = f'{type(exc).__name__}: {exc}'
+          evidence_path.write_text(json.dumps(evidence, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          PY
+
+      - name: Require exact generated source delta
+        id: exact_delta
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+
+          expected = {
+              '.github/workflows/hepta-architecture-v5-b1b-model-boundary.yml',
+              'codex-rs/hepta-contracts/src/checked_model_invocation.rs',
+              'codex-rs/hepta-contracts/src/checked_model_invocation_tests.rs',
+              'codex-rs/hepta-contracts/src/lib.rs',
+              'codex-rs/hepta-contracts/tests/model_verified_use_boundary.rs',
+              'docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json',
+              'docs/architecture/HEPTA_CURRENT_PLAN.json',
+              'docs/architecture/HEPTA_P0_7B_B1B_MODEL_INVOCATION_CONTRACT_V1.md',
+              'docs/architecture/HEPTA_P0_7B_B1B_STATUS.json',
+              'docs/architecture/HEPTA_V5_B1B_MODEL_CALLSITE_INVENTORY.json',
+              'scripts/verify-hepta-v5-b1b-format.py',
+              'scripts/verify-hepta-v5-b1b-model-boundary.py',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          if changed != expected:
+              raise SystemExit(f'exact generated delta mismatch\nmissing={sorted(expected-changed)}\nextra={sorted(changed-expected)}')
+          print('PASS_EXACT_B1B_GENERATED_DELTA')
+          PY
+          git diff --check
+
+      - name: Verify recovered source contract
+        id: source_contract
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/verify-hepta-v5-b1b-model-boundary.py \
+            scripts/verify-hepta-v5-b1b-format.py
+          python3 scripts/verify-hepta-v5-b1b-model-boundary.py
+          python3 scripts/verify-hepta-v5-b1b-format.py --check
+
+      - name: Install Rust 1.95
+        if: always()
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Locked metadata
+        id: metadata
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --locked --no-deps --format-version 1 >/dev/null
+
+      - name: Rust format
+        id: format
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-contracts -- --check
+
+      - name: Focused model boundary tests
+        id: focused
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-contracts --test model_verified_use_boundary -- --nocapture
+
+      - name: Complete contracts tests
+        id: package
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-contracts
+
+      - name: All-target check
+        id: check
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked -p codex-hepta-contracts --all-targets
+
+      - name: Strict Clippy
+        id: clippy
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked -p codex-hepta-contracts --all-targets -- -D warnings
+
+      - name: Bazel lock
+        id: bazel_lock
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          just bazel-lock-check
+
+      - name: Record diagnostic outcomes
+        if: always()
+        shell: bash
+        env:
+          RECOVER_OUTCOME: ${{ steps.recover_source.outcome }}
+          DELTA_OUTCOME: ${{ steps.exact_delta.outcome }}
+          SOURCE_OUTCOME: ${{ steps.source_contract.outcome }}
+          METADATA_OUTCOME: ${{ steps.metadata.outcome }}
+          FORMAT_OUTCOME: ${{ steps.format.outcome }}
+          FOCUSED_OUTCOME: ${{ steps.focused.outcome }}
+          PACKAGE_OUTCOME: ${{ steps.package.outcome }}
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+          CLIPPY_OUTCOME: ${{ steps.clippy.outcome }}
+          BAZEL_LOCK_OUTCOME: ${{ steps.bazel_lock.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/hepta-v5-b1b-recovery"
+          cat > "$RUNNER_TEMP/hepta-v5-b1b-recovery/outcomes.txt" <<EOF
+          recovery_head=$GITHUB_SHA
+          recover_outcome=$RECOVER_OUTCOME
+          exact_delta_outcome=$DELTA_OUTCOME
+          source_contract_outcome=$SOURCE_OUTCOME
+          metadata_outcome=$METADATA_OUTCOME
+          format_outcome=$FORMAT_OUTCOME
+          focused_outcome=$FOCUSED_OUTCOME
+          package_outcome=$PACKAGE_OUTCOME
+          check_outcome=$CHECK_OUTCOME
+          clippy_outcome=$CLIPPY_OUTCOME
+          bazel_lock_outcome=$BAZEL_LOCK_OUTCOME
+          source_qualification=false
+          production_authority=false
+          operator_acceptance=false
+          promotion=false
+          release=false
+          EOF
+          git diff --binary > "$RUNNER_TEMP/hepta-v5-b1b-recovery/recovered-source.patch" || true
+          git status --short > "$RUNNER_TEMP/hepta-v5-b1b-recovery/git-status.txt" || true
+
+      - name: Stage recovered source artifact
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/hepta-v5-b1b-recovery/source"
+          mkdir -p "$out"
+          for path in \
+            .github/workflows/hepta-architecture-v5-b1b-model-boundary.yml \
+            codex-rs/hepta-contracts/src/checked_model_invocation.rs \
+            codex-rs/hepta-contracts/src/checked_model_invocation_tests.rs \
+            codex-rs/hepta-contracts/src/lib.rs \
+            codex-rs/hepta-contracts/tests/model_verified_use_boundary.rs \
+            docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json \
+            docs/architecture/HEPTA_CURRENT_PLAN.json \
+            docs/architecture/HEPTA_P0_7B_B1B_MODEL_INVOCATION_CONTRACT_V1.md \
+            docs/architecture/HEPTA_P0_7B_B1B_STATUS.json \
+            docs/architecture/HEPTA_V5_B1B_MODEL_CALLSITE_INVENTORY.json \
+            scripts/verify-hepta-v5-b1b-format.py \
+            scripts/verify-hepta-v5-b1b-model-boundary.py
+          do
+            if [[ -f "$path" ]]; then
+              mkdir -p "$out/$(dirname "$path")"
+              cp "$path" "$out/$path"
+            fi
+          done
+          find "$out" -type f -print0 | sort -z | xargs -0 sha256sum > "$RUNNER_TEMP/hepta-v5-b1b-recovery/SHA256SUMS" || true
+
+      - name: Upload recovered source and diagnostics
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-v5-b1b-recovered-source-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-v5-b1b-recovery
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Require complete recovery qualification
+        if: always() && !cancelled()
+        shell: bash
+        env:
+          RECOVER_OUTCOME: ${{ steps.recover_source.outcome }}
+          DELTA_OUTCOME: ${{ steps.exact_delta.outcome }}
+          SOURCE_OUTCOME: ${{ steps.source_contract.outcome }}
+          METADATA_OUTCOME: ${{ steps.metadata.outcome }}
+          FORMAT_OUTCOME: ${{ steps.format.outcome }}
+          FOCUSED_OUTCOME: ${{ steps.focused.outcome }}
+          PACKAGE_OUTCOME: ${{ steps.package.outcome }}
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+          CLIPPY_OUTCOME: ${{ steps.clippy.outcome }}
+          BAZEL_LOCK_OUTCOME: ${{ steps.bazel_lock.outcome }}
+        run: |
+          set -euo pipefail
+          test "$RECOVER_OUTCOME" = success
+          test "$DELTA_OUTCOME" = success
+          test "$SOURCE_OUTCOME" = success
+          test "$METADATA_OUTCOME" = success
+          test "$FORMAT_OUTCOME" = success
+          test "$FOCUSED_OUTCOME" = success
+          test "$PACKAGE_OUTCOME" = success
+          test "$CHECK_OUTCOME" = success
+          test "$CLIPPY_OUTCOME" = success
+          test "$BAZEL_LOCK_OUTCOME" = success
+
+      - name: Confirm no repository writeback
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain | grep '^??' || true)"
