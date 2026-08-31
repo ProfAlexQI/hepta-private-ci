@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "fb2bbd1aa5c4ac7054a4f3cb257e8782866ce44c"
+          test "$(git rev-parse HEAD^)" = "5d699d2cc581195f9b3448543cd761b3dbbb8ac1"
           test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = \
             ".github/workflows/hepta-v5-b0-diagnostic-repair-once.yml"
           test "$(git ls-remote origin refs/heads/codex/hepta-architecture-v5-b0-exact-restack-20260831 | cut -f1)" = "$GITHUB_SHA"
