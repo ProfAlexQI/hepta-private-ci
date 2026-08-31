@@ -1,0 +1,157 @@
+{
+  "schema": "hepta.repository-current.v1",
+  "schemaVersion": 1,
+  "documentClass": "candidate_discovery_index",
+  "authority": "discovery_only",
+  "observedAt": "2026-08-31T08:01:10Z",
+  "staleAfterSeconds": 86400,
+  "repository": "TrillionniumFoundation/hepta-private-ci",
+  "defaultBaseline": {
+    "branch": "integration/vnext-main-20260811",
+    "commit": "b621768b70a09d56626bb8a2c331e3dc424e6a4d",
+    "tree": "f2e82fd525d337efae355adf6f19398812d4180c",
+    "state": "verification_mirror_baseline",
+    "productionAuthority": false
+  },
+  "normativePlanCandidate": {
+    "planId": "HEPTA-ARCHITECTURE-CONVERGENCE-V5",
+    "version": "5.0.1",
+    "path": "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md",
+    "branch": "codex/hepta-architecture-v5-b0-exact-restack-20260831",
+    "commit": "ad7845a8d67390299f86e931bab11d8b0ec13115",
+    "tree": "81a07047a20d107aafad1670f670a904effcf514",
+    "selectionState": "candidate_not_default_branch",
+    "qualificationState": "not_proven"
+  },
+  "currentExecutionFocus": {
+    "package": "P0.7b/B1b_model_invocation_verified_use_boundary",
+    "state": "source_recovery_and_revalidation",
+    "activationAllowed": false
+  },
+  "activeStack": [
+    {
+      "id": "P0.7a_signed_runtime_bootstrap_closure",
+      "branch": "codex/hepta-architecture-v4-p0-7a-executable-closure-20260830",
+      "commit": "92d22e241972fd02f2a3a0bf69849b0b4c7a8b7f",
+      "tree": "c711d50d642e628848290059367ab25399563cac",
+      "sourceState": "source_implemented",
+      "executionState": "cancelled",
+      "qualificationClaim": "not_qualified",
+      "activationAllowed": false
+    },
+    {
+      "id": "P0.7b/B0_verified_use_kernel",
+      "branch": "codex/hepta-architecture-v5-b0-exact-restack-20260831",
+      "commit": "ad7845a8d67390299f86e931bab11d8b0ec13115",
+      "tree": "81a07047a20d107aafad1670f670a904effcf514",
+      "sourceState": "source_implemented",
+      "executionState": "cancelled",
+      "qualificationClaim": "not_qualified",
+      "activationAllowed": false
+    },
+    {
+      "id": "P0.7b/B1a_provider_verified_use_boundary",
+      "branch": "codex/hepta-architecture-v5-b1a-restack-eb8adb-20260831",
+      "commit": "537394a0067d204b215db8bee3de533494535481",
+      "tree": "fd0f84d73504507078cecfcc1043490ca0856187",
+      "sourceState": "source_implemented",
+      "executionState": "not_run",
+      "qualificationClaim": "not_qualified",
+      "activationAllowed": false
+    },
+    {
+      "id": "P0.7b/B1b_model_invocation_verified_use_boundary",
+      "branch": "codex/hepta-architecture-v5-b1b-model-invocation-20260831",
+      "commit": "6c876b2c259ccabef928c7921c2037b3c10f051b",
+      "tree": "6a7f4deef959b386e0a8eace854019e106c32c37",
+      "sourceState": "materializer_present_final_source_absent",
+      "executionState": "failed",
+      "failureClass": "payload_checksum_failure",
+      "qualificationClaim": "not_qualified",
+      "activationAllowed": false
+    },
+    {
+      "id": "P0.7b/B1b_read_only_recovery",
+      "branch": "automation/hepta-v5-b1b-recovery-gpt56-20260831",
+      "commit": "cffd615f559fdf6f4f143fb7d5b50b2512b9e36c",
+      "tree": "549ac02ff47d3e7bd52068bae7a248004997ecb2",
+      "sourceState": "recovery_workflow_present",
+      "executionState": "queued",
+      "qualificationClaim": "not_evidence",
+      "activationAllowed": false
+    },
+    {
+      "id": "AUTHBUS_P1_3_CANONICAL_QUOTA",
+      "branch": "codex/authbus-p1-3-semantic-closure-v11-20260830",
+      "commit": "8572f3d2182541b14e0719b229ccd8754494f134",
+      "tree": "aac769f278dad18b97b3c63c97f9b43dd325aa24",
+      "sourceState": "executed_test_inventory_pass",
+      "executionState": "passed",
+      "semanticQualification": "blocked",
+      "qualificationClaim": "not_qualified",
+      "activationAllowed": false,
+      "openSemanticGaps": [
+        "window_keyed_rpm_tpm_day_budget_accounting",
+        "per_request_context_non_accumulation",
+        "reservation_conservation_and_state_rules",
+        "canonical_window_and_digest_chain_verification",
+        "adversarial_multi_window_and_multi_request_tests"
+      ]
+    }
+  ],
+  "executionStateVocabulary": [
+    "not_run",
+    "queued",
+    "running",
+    "passed",
+    "failed",
+    "blocked",
+    "cancelled",
+    "timed_out",
+    "skipped",
+    "neutral",
+    "action_required",
+    "stale",
+    "superseded"
+  ],
+  "evidenceRules": {
+    "queuedCanPass": false,
+    "cancelledCanPass": false,
+    "runnerZeroCanPass": false,
+    "emptyStepsCanPass": false,
+    "sourceVerifierCanReplaceExecutableQualification": false,
+    "generatedArtifactCanGrantAuthority": false,
+    "sourceCanSelfIssueIndependentReview": false,
+    "sourceCanSelfIssueOperatorAcceptance": false,
+    "sourceCanSelfIssuePromotion": false,
+    "sourceCanSelfIssueRelease": false
+  },
+  "externalGates": {
+    "repositoryRulesetEnforcement": "not_issued",
+    "independentExactCandidateReview": "not_issued",
+    "physicalPlatformEvidence": "not_issued",
+    "realModelProviderCorpusEvidence": "not_issued",
+    "humanAccessibilityVisualAcceptance": "not_issued",
+    "candidateBoundOperatorAcceptance": "not_issued",
+    "productionTrustRootCeremony": "not_issued",
+    "promotionDecision": "not_issued",
+    "releaseDecision": "not_issued"
+  },
+  "authorityFlags": {
+    "runtimeAuthority": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalFilesystemMutation": false,
+    "secretOperation": false,
+    "matrixSend": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
