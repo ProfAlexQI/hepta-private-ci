@@ -50,7 +50,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Initialize identity-bound evidence
+      - name: Initialize identity-bound evidence and isolated build paths
         shell: bash
         env:
           IDENTITY_KIND: ${{ matrix.identity }}
@@ -62,6 +62,8 @@ jobs:
           set -euo pipefail
           evidence_dir="$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12-$IDENTITY_KIND"
           mkdir -p "$evidence_dir"
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12-$IDENTITY_KIND/cargo-target" >> "$GITHUB_ENV"
+          echo "PYTHONPYCACHEPREFIX=$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12-$IDENTITY_KIND/pycache" >> "$GITHUB_ENV"
           actual_head="$(git rev-parse HEAD)"
           actual_tree="$(git rev-parse 'HEAD^{tree}')"
           if test "$IDENTITY_KIND" = source_head; then
@@ -96,6 +98,8 @@ jobs:
             echo "synthetic_merge=$SYNTHETIC_MERGE"
             echo "first_parent=$first_parent"
             echo "second_parent=$second_parent"
+            echo "cargo_target_dir=$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12-$IDENTITY_KIND/cargo-target"
+            echo "python_pycache_prefix=$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12-$IDENTITY_KIND/pycache"
             echo "qualification_only=true"
             echo "production_caller=false"
             echo "production_writer=false"
@@ -121,8 +125,7 @@ jobs:
         run: |
           set -euo pipefail
           evidence_dir="$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12-$IDENTITY_KIND"
-          PYTHONPYCACHEPREFIX="$RUNNER_TEMP/pycache-$IDENTITY_KIND" \
-            python3 -m py_compile scripts/verify-authbus-p1-3-semantic-v12.py
+          python3 -m py_compile scripts/verify-authbus-p1-3-semantic-v12.py
           python3 scripts/verify-authbus-p1-3-semantic-v12.py --check-git-delta \
             2>&1 | tee "$evidence_dir/source-verifier.log"
 
@@ -222,6 +225,29 @@ jobs:
             echo "semantic_qualification_accepted=false"
           } >> "$evidence_dir/posture.txt"
 
+      - name: Verify clean and stable identity
+        id: clean
+        if: always() && !cancelled()
+        continue-on-error: true
+        shell: bash
+        env:
+          IDENTITY_KIND: ${{ matrix.identity }}
+          SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          SYNTHETIC_MERGE: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12-$IDENTITY_KIND"
+          if test "$IDENTITY_KIND" = source_head; then
+            expected="$SOURCE_HEAD"
+          else
+            expected="$SYNTHETIC_MERGE"
+          fi
+          git status --porcelain=v1 --untracked-files=all | tee "$evidence_dir/worktree-status.txt"
+          test "$(git rev-parse HEAD)" = "$expected"
+          git diff --exit-code
+          git diff --cached --exit-code
+          test ! -s "$evidence_dir/worktree-status.txt"
+
       - name: Upload exact diagnostic evidence
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -242,6 +268,7 @@ jobs:
           PACKAGE_OUTCOME: ${{ steps.package.outcome }}
           CHECK_OUTCOME: ${{ steps.check.outcome }}
           CLIPPY_OUTCOME: ${{ steps.clippy.outcome }}
+          CLEAN_OUTCOME: ${{ steps.clean.outcome }}
         run: |
           set -euo pipefail
           test "$SOURCE_OUTCOME" = success
@@ -251,25 +278,7 @@ jobs:
           test "$PACKAGE_OUTCOME" = success
           test "$CHECK_OUTCOME" = success
           test "$CLIPPY_OUTCOME" = success
-
-      - name: Require clean and stable identity
-        if: always() && !cancelled()
-        shell: bash
-        env:
-          IDENTITY_KIND: ${{ matrix.identity }}
-          SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-          SYNTHETIC_MERGE: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          if test "$IDENTITY_KIND" = source_head; then
-            expected="$SOURCE_HEAD"
-          else
-            expected="$SYNTHETIC_MERGE"
-          fi
-          test "$(git rev-parse HEAD)" = "$expected"
-          git diff --exit-code
-          git diff --cached --exit-code
-          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$CLEAN_OUTCOME" = success
 
   qualification_result:
     name: AuthBus P1.3 semantic v12 required
