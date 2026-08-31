@@ -1,0 +1,192 @@
+name: Hepta V5 B0 diagnostic repair (one shot)
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-v5-b0-exact-restack-20260831
+    paths:
+      - .github/workflows/hepta-v5-b0-diagnostic-repair-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-v5-b0-diagnostic-repair-once
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Repair B0 prose verification and executable diagnostics
+    if: >-
+      github.repository == 'ProfHepta/hepta-private-ci' &&
+      github.ref == 'refs/heads/codex/hepta-architecture-v5-b0-exact-restack-20260831'
+    runs-on: macos-15-xlarge
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact repair input
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          fetch-depth: 2
+
+      - name: Verify exact parent and trigger scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "b0392302d71b4eb158d628a279e4e3b2078e7d35"
+          test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = \
+            ".github/workflows/hepta-v5-b0-diagnostic-repair-once.yml"
+          test "$(git ls-remote origin refs/heads/codex/hepta-architecture-v5-b0-exact-restack-20260831 | cut -f1)" = "$GITHUB_SHA"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Apply deterministic verifier and workflow repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          verifier = Path("scripts/verify-hepta-architecture-plan-v5.py")
+          workflow = Path(".github/workflows/hepta-architecture-v5-b0-verified-use.yml")
+
+          def replace_exact(path: Path, old: str, new: str, expected: int = 1) -> None:
+              source = path.read_text(encoding="utf-8")
+              observed = source.count(old)
+              if observed != expected:
+                  raise SystemExit(
+                      f"{path}: expected {expected} occurrences of {old!r}, observed {observed}"
+                  )
+              path.write_text(source.replace(old, new), encoding="utf-8")
+
+          marker_helper = '''def require_markers(relative: str, markers: tuple[str, ...]) -> str:
+              source = text(relative)
+              for marker in markers:
+                  if marker not in source:
+                      fail(f"{relative} is missing {marker!r}")
+              return source
+          '''
+          prose_helper = marker_helper + '''
+
+          def normalize_prose(source: str) -> str:
+              return re.sub(r"\\s+", " ", source).strip()
+
+
+          def require_prose_markers(relative: str, markers: tuple[str, ...]) -> str:
+              source = normalize_prose(text(relative))
+              for marker in markers:
+                  normalized_marker = normalize_prose(marker)
+                  if normalized_marker not in source:
+                      fail(f"{relative} is missing prose marker {marker!r}")
+              return source
+          '''
+          replace_exact(verifier, marker_helper, prose_helper)
+          replace_exact(
+              verifier,
+              '''    require_markers(
+                  BOUNDARY,
+          ''',
+              '''    require_prose_markers(
+                  BOUNDARY,
+          ''',
+          )
+
+          replace_exact(
+              workflow,
+              "    runs-on: ubuntu-24.04",
+              "    runs-on: macos-15-xlarge",
+              expected=2,
+          )
+
+          diagnostic_steps = {
+              "Verify selected V5 B0 source contract": "source_contract",
+              "Locked workspace metadata": "metadata",
+              "Rust 1.95 scoped format": "format",
+              "Focused verified-use tests": "focused",
+              "Complete hepta-contracts tests": "package",
+              "Locked all-target check": "check",
+              "Strict Clippy": "clippy",
+              "Verify committed Bazel lock": "bazel_lock",
+          }
+          for name, step_id in diagnostic_steps.items():
+              replace_exact(
+                  workflow,
+                  f"      - name: {name}\n",
+                  f"      - name: {name}\n        id: {step_id}\n        continue-on-error: true\n",
+              )
+
+          def gh(expression: str) -> str:
+              return "${" + "{ " + expression + " }}"
+
+          aggregate = f'''      - name: Require all B0 diagnostics
+                  if: always() && !cancelled()
+                  working-directory: .
+                  shell: bash
+                  env:
+                    SOURCE_OUTCOME: {gh("steps.source_contract.outcome")}
+                    METADATA_OUTCOME: {gh("steps.metadata.outcome")}
+                    FORMAT_OUTCOME: {gh("steps.format.outcome")}
+                    FOCUSED_OUTCOME: {gh("steps.focused.outcome")}
+                    PACKAGE_OUTCOME: {gh("steps.package.outcome")}
+                    CHECK_OUTCOME: {gh("steps.check.outcome")}
+                    CLIPPY_OUTCOME: {gh("steps.clippy.outcome")}
+                    BAZEL_LOCK_OUTCOME: {gh("steps.bazel_lock.outcome")}
+                  run: |
+                    set -euo pipefail
+                    failures=()
+                    for item in \\
+                      "source=$SOURCE_OUTCOME" \\
+                      "metadata=$METADATA_OUTCOME" \\
+                      "format=$FORMAT_OUTCOME" \\
+                      "focused=$FOCUSED_OUTCOME" \\
+                      "package=$PACKAGE_OUTCOME" \\
+                      "check=$CHECK_OUTCOME" \\
+                      "clippy=$CLIPPY_OUTCOME" \\
+                      "bazel_lock=$BAZEL_LOCK_OUTCOME"
+                    do
+                      name="${{item%%=*}}"
+                      outcome="${{item#*=}}"
+                      if [[ "$outcome" != success ]]; then
+                        failures+=("$name=$outcome")
+                      fi
+                    done
+                    if (( ${{#failures[@]}} > 0 )); then
+                      printf 'B0 diagnostic failures:\n' >&2
+                      printf ' - %s\n' "${{failures[@]}}" >&2
+                      exit 1
+                    fi
+                    echo "All B0 diagnostics passed."
+
+          '''
+          replace_exact(
+              workflow,
+              "      - name: Record job result\n",
+              aggregate + "      - name: Record job result\n",
+          )
+          PY
+
+          python3 -m py_compile \
+            scripts/verify-hepta-selected-architecture-plan.py \
+            scripts/verify-hepta-architecture-plan-v5.py \
+            scripts/verify-hepta-v5-b0-format.py
+          python3 scripts/verify-hepta-selected-architecture-plan.py
+          python3 scripts/verify-hepta-v5-b0-format.py --check
+          git diff --check
+
+      - name: Publish final repair commit and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Qian QI"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git rm .github/workflows/hepta-v5-b0-diagnostic-repair-once.yml
+          git add \
+            scripts/verify-hepta-architecture-plan-v5.py \
+            .github/workflows/hepta-architecture-v5-b0-verified-use.yml
+          git diff --cached --check
+          git commit -m "ci(hepta): execute complete B0 diagnostics on available lane"
+          new_head="$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD^)" = "$GITHUB_SHA"
+          git push origin HEAD:refs/heads/codex/hepta-architecture-v5-b0-exact-restack-20260831
+          echo "published_head=$new_head" >> "$GITHUB_STEP_SUMMARY"
