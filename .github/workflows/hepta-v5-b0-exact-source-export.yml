@@ -1,0 +1,86 @@
+name: Hepta V5 B0 exact source export
+
+on:
+  push:
+    branches:
+      - automation/hepta-v5-b0-exact-source-05efd84-20260831
+    paths:
+      - .github/workflows/hepta-v5-b0-exact-source-export.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-v5-b0-exact-source-export-05efd84
+  cancel-in-progress: true
+
+env:
+  EXPECTED_REPOSITORY: ProfHepta/hepta-private-ci
+  EXPECTED_HEAD: 05efd84db944188f0e9b048b99ed1379a4603323
+  EXPECTED_TREE: dd7f06d104083d3f554257a6fca6212e63e2615a
+  EXPECTED_PARENT: 0414253e17be27a5f467892dc3b5d6c16a9e2250
+
+jobs:
+  snapshot:
+    name: Archive exact B0 candidate without source writeback
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ProfHepta/hepta-private-ci
+          ref: ${{ env.EXPECTED_HEAD }}
+          path: target
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify exact identity and build archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "$(git -C target rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$(git -C target rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          test "$(git -C target rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test -z "$(git -C target status --porcelain --untracked-files=no)"
+          mkdir -p artifact
+          git -C target archive --format=tar.gz \
+            --output="../artifact/hepta-private-ci-${EXPECTED_HEAD}.tar.gz" HEAD
+          sha256sum "artifact/hepta-private-ci-${EXPECTED_HEAD}.tar.gz" > artifact/SHA256SUMS
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          archive = Path("artifact") / f"hepta-private-ci-{os.environ['EXPECTED_HEAD']}.tar.gz"
+          manifest = {
+              "schema": "hepta_v5_b0_exact_source_export_v1",
+              "classification": "DIAGNOSTIC_ARCHIVE_NO_AUTHORITY_OR_SELECTION_EFFECT",
+              "repository": os.environ["EXPECTED_REPOSITORY"],
+              "candidate": {
+                  "head": os.environ["EXPECTED_HEAD"],
+                  "tree": os.environ["EXPECTED_TREE"],
+                  "parent": os.environ["EXPECTED_PARENT"],
+              },
+              "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+              "source_writeback": False,
+              "qualified": False,
+              "selected": False,
+              "merge_authority": False,
+              "runtime_authority": False,
+          }
+          Path("artifact/manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload exact source snapshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-v5-b0-exact-source-${{ env.EXPECTED_HEAD }}
+          path: artifact/**
+          if-no-files-found: error
+          retention-days: 7
