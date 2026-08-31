@@ -14,7 +14,7 @@ from types import ModuleType
 from typing import Any
 
 V1_FILENAME = "verify-hepta-intelligence-integration-admission.py"
-V1_SHA256 = "86ad5a7cf238711f7c944be85bfc1369a8a6dcb7527f325b61ec91bafe6be413"
+V1_SHA256 = "a9f9c1e9db6a106884843aa994558ade5ae7b83083d6aa7cfac4f378732b5776"
 MAX_GIT_COMMIT_RESPONSE_BYTES = 512 * 1024
 MAX_SIGNATURE_BYTES = 128 * 1024
 MAX_SIGNED_PAYLOAD_BYTES = 256 * 1024
