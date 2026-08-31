@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: hepta-v6-document-migration-preview-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   BASE_COMMIT: b621768b70a09d56626bb8a2c331e3dc424e6a4d
@@ -23,7 +23,7 @@ env:
 jobs:
   migrate-and-package:
     name: Clean legacy development docs and package exact tree delta
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
       - name: Checkout exact bootstrap head
@@ -46,22 +46,36 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          payload="$RUNNER_TEMP/hepta-v6-bootstrap.tar.xz"
-          kit="$RUNNER_TEMP/hepta-v6-kit"
-          cat .hepta-v6-bootstrap/part-*.b64 | base64 --decode > "$payload"
-          echo "$PAYLOAD_SHA256  $payload" | sha256sum --check --strict
-          mkdir -p "$kit"
-          tar -xJf "$payload" -C "$kit"
-          test -f "$kit/migration/clean_legacy.py"
-          test -f "$kit/overlay/docs/DEVELOPMENT.md"
-          test -f "$kit/overlay/scripts/hepta-docs.py"
+          python3 - <<'PY'
+          import base64, hashlib, pathlib, tarfile
+          root = pathlib.Path.cwd()
+          payload = pathlib.Path.home() / "hepta-v6-bootstrap.tar.xz"
+          kit = pathlib.Path.home() / "hepta-v6-kit"
+          encoded = "".join(
+              p.read_text(encoding="utf-8")
+              for p in sorted((root / ".hepta-v6-bootstrap").glob("part-*.b64"))
+          )
+          raw = base64.b64decode(encoded, validate=True)
+          assert hashlib.sha256(raw).hexdigest() == "02fd9e992ad31ae40df2b346a502b7105ce4df918e23cd236c7097de11548214"
+          payload.write_bytes(raw)
+          kit.mkdir(parents=True, exist_ok=True)
+          with tarfile.open(payload, "r:xz") as archive:
+              for member in archive.getmembers():
+                  path = pathlib.PurePosixPath(member.name)
+                  assert not path.is_absolute() and ".." not in path.parts
+                  assert not member.issym() and not member.islnk()
+              archive.extractall(kit, filter="data")
+          assert (kit / "migration/clean_legacy.py").is_file()
+          assert (kit / "overlay/docs/DEVELOPMENT.md").is_file()
+          assert (kit / "overlay/scripts/hepta-docs.py").is_file()
+          PY
 
       - name: Inventory and apply fail-closed legacy cleanup
         id: cleanup
         shell: bash
         run: |
           set -euo pipefail
-          kit="$RUNNER_TEMP/hepta-v6-kit"
+          kit="$HOME/hepta-v6-kit"
           report="$RUNNER_TEMP/hepta-v6-cleanup-report.json"
           python3 "$kit/migration/clean_legacy.py" \
             --repo "$GITHUB_WORKSPACE" \
@@ -81,7 +95,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          kit="$RUNNER_TEMP/hepta-v6-kit"
+          kit="$HOME/hepta-v6-kit"
           cp -a "$kit/overlay/." "$GITHUB_WORKSPACE/"
           rm -rf scripts/__pycache__ .hepta-v6-bootstrap
           rm -f .github/workflows/hepta-v6-migration-preview.yml
@@ -112,22 +126,40 @@ jobs:
           git diff --cached --no-renames --name-only --diff-filter=D "$BASE_COMMIT" > "$artifact/deleted-paths.txt"
           git ls-files -s > "$artifact/full-index.txt"
           git diff --cached --binary --no-renames "$BASE_COMMIT" > "$artifact/delta.patch"
-          git diff --cached --no-renames --name-only --diff-filter=AM -z "$BASE_COMMIT" \
-            | tar --null --files-from=- -czf "$artifact/changed-files.tar.gz"
-          {
-            echo "base_commit=$BASE_COMMIT"
-            echo "bootstrap_head=$(git rev-parse HEAD)"
-            echo "result_tree=$(git write-tree)"
-            echo "changed_paths=$(git diff --cached --no-renames --name-only "$BASE_COMMIT" | wc -l | tr -d ' ')"
-            echo "deleted_paths=$(wc -l < "$artifact/deleted-paths.txt" | tr -d ' ')"
-            echo "authority_runtime=false"
-            echo "authority_production=false"
-            echo "authority_effect=false"
-            echo "operator_acceptance=false"
-            echo "promotion=false"
-            echo "release=false"
-          } > "$artifact/posture.txt"
-          sha256sum "$artifact"/* > "$artifact/SHA256SUMS"
+          python3 - "$BASE_COMMIT" "$artifact" <<'PY'
+          import hashlib, pathlib, subprocess, sys, tarfile
+          base, artifact_arg = sys.argv[1], sys.argv[2]
+          artifact = pathlib.Path(artifact_arg)
+          raw = subprocess.check_output([
+              "git", "diff", "--cached", "--no-renames", "--name-only", "--diff-filter=AM", "-z", base
+          ])
+          paths = [pathlib.Path(x.decode("utf-8")) for x in raw.split(b"\0") if x]
+          with tarfile.open(artifact / "changed-files.tar.gz", "w:gz") as archive:
+              for path in paths:
+                  archive.add(path, arcname=path.as_posix(), recursive=False)
+          deleted = (artifact / "deleted-paths.txt").read_text(encoding="utf-8").splitlines()
+          changed = subprocess.check_output([
+              "git", "diff", "--cached", "--no-renames", "--name-only", base
+          ], text=True).splitlines()
+          posture = [
+              f"base_commit={base}",
+              f"bootstrap_head={subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip()}",
+              f"result_tree={subprocess.check_output(['git','write-tree'], text=True).strip()}",
+              f"changed_paths={len(changed)}",
+              f"deleted_paths={len(deleted)}",
+              "authority_runtime=false",
+              "authority_production=false",
+              "authority_effect=false",
+              "operator_acceptance=false",
+              "promotion=false",
+              "release=false",
+          ]
+          (artifact / "posture.txt").write_text("\n".join(posture) + "\n", encoding="utf-8")
+          entries = []
+          for path in sorted(p for p in artifact.iterdir() if p.name != "SHA256SUMS"):
+              entries.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}")
+          (artifact / "SHA256SUMS").write_text("\n".join(entries) + "\n", encoding="utf-8")
+          PY
 
       - name: Upload exact migration result
         if: always()
