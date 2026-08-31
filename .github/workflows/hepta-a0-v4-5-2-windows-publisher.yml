@@ -1,0 +1,61 @@
+name: Temporary Hepta A0 V4.5.2 Windows publisher
+
+on:
+  push:
+    branches:
+      - "automation/hepta-a0-v4-5-2-replacement-20260830"
+
+permissions:
+  contents: write
+  issues: read
+
+concurrency:
+  group: hepta-a0-v4-5-2-windows-publisher
+  cancel-in-progress: true
+
+jobs:
+  publish-windows:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
+      Q0_TREE: ca455a9ef797cd95164c880c7b8faba80b305589
+      TARGET_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+      EXPECTED_OLD_HEAD: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
+      PAYLOAD_ISSUE: "89"
+      PAYLOAD_SHA256: 7406efe4d89d7693a752bbbecd49c5be045b97b67be3c03a57c2b71a7c6a9832
+      PAYLOAD_BYTES: "51712"
+      PAYLOAD_ENCODED_CHARS: "68952"
+      GIT_NO_REPLACE_OBJECTS: "1"
+    steps:
+      - name: Checkout publisher source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Execute the content-bound canonical publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'EXTRACT'
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          workflow = Path('.github/workflows/hepta-a0-v4-5-2-replacement-once.yml')
+          text = workflow.read_text(encoding='utf-8')
+          opening = "          python3 - <<'PY'\n"
+          start = text.index(opening) + len(opening)
+          end = text.index("\n          PY\n", start)
+          lines = text[start:end].splitlines()
+          source = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in lines
+          ) + "\n"
+          destination = Path('hepta-a0-v452-publisher.py')
+          destination.write_text(source, encoding='utf-8')
+          subprocess.run([sys.executable, '-m', 'py_compile', destination], check=True)
+          subprocess.run([sys.executable, destination], check=True)
+          EXTRACT
