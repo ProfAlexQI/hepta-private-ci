@@ -1,3 +1,4 @@
+# Repository-transfer retrigger; this workflow removes itself before source publication.
 name: Hepta V5 B1b source materializer
 
 on:
