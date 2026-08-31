@@ -1,0 +1,56 @@
+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"
+EXPORT_BLOCK = 'pub use checked_model_invocation::{\n    AuthorizedModelInvocation, B1_MODEL_BOUNDARY_EXTERNAL_EFFECT,\n    B1_MODEL_BOUNDARY_MODEL_INVOCATION, B1_MODEL_BOUNDARY_OPERATOR_ACCEPTANCE,\n    B1_MODEL_BOUNDARY_PRODUCTION_CALLER, B1_MODEL_BOUNDARY_PRODUCTION_WRITER,\n    B1_MODEL_BOUNDARY_PROMOTION, B1_MODEL_BOUNDARY_PROVIDER_DISPATCH,\n    B1_MODEL_BOUNDARY_RELEASE, B1_MODEL_BOUNDARY_RUNTIME_REGISTERED,\n    B1_MODEL_BOUNDARY_TOOL_EFFECT_AUTHORITY, ClaimedModelInvocation,\n    ModelInvocationAdapter, ModelInvocationAdapterRequest, ModelInvocationBinding,\n    ModelInvocationBoundaryError, ModelInvocationCoordinator, ModelInvocationFuture,\n    ModelInvocationPurpose, ModelInvocationReceipt, ModelInvocationRecoveryDisposition,\n    ModelInvocationRequest, ModelInvocationRequestError, ModelInvocationTransport,\n    ModelInvocationWitnessPersistenceRequest, ModelInvocationWitnessStore,\n};\n'
+
+
+def write_files() -> None:
+    decoded = zlib.decompress(base64.b64decode(PAYLOAD))
+    files: dict[str, str] = json.loads(decoded)
+    for relative, content in files.items():
+        path = ROOT / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+
+def patch_lib() -> None:
+    path = ROOT / "codex-rs/hepta-contracts/src/lib.rs"
+    text = path.read_text(encoding="utf-8")
+    module_anchor = "mod canonical;\nmod checked_provider_operation;\n"
+    module_replacement = "mod canonical;\nmod checked_model_invocation;\nmod checked_provider_operation;\n"
+    if module_anchor not in text:
+        raise SystemExit("lib.rs module anchor missing")
+    text = text.replace(module_anchor, module_replacement, 1)
+    export_anchor = "pub use checked_provider_operation::ProviderOperationCoordinator;\n"
+    if export_anchor not in text:
+        raise SystemExit("lib.rs export anchor missing")
+    text = text.replace(export_anchor, EXPORT_BLOCK + export_anchor, 1)
+    path.write_text(text, encoding="utf-8")
+
+
+def patch_current_plan() -> None:
+    path = ROOT / "docs/architecture/HEPTA_CURRENT_PLAN.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["currentPackage"] = "P0.7b/B1b_model_invocation_verified_use_boundary"
+    binding = data["candidateBinding"]
+    binding["stackParentCommit"] = EXPECTED_PARENT
+    binding["stackParentTree"] = EXPECTED_PARENT_TREE
+    binding["sourceCommit"] = "resolved_by_exact_source_head_workflow"
+    binding["sourceTree"] = "resolved_by_exact_source_head_workflow"
+    binding["mergeCandidate"] = "resolved_by_pull_request_workflow"
+    claims = data["claims"]
+    claims["sourcePlanCurrentOnCandidateBranch"] = True
+    claims["allSourceGapsClosed"] = False
+    claims["exactHeadQualified"] = False
+    claims["mergeCandidateQualified"] = False
+    claims["independentReviewIssued"] = False
+    claims["operatorAccepted"] = False
+    claims["promoted"] = False
+    claims["released"] = False
+    claims["allGapsClosed"] = False
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def patch_gap_ledger() -> None:
+    path = ROOT / "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["currentPackage"] = "P0.7b/B1b_model_invocation_verified_use_boundary"
+    for package in d
