@@ -13,6 +13,8 @@ V12 does not relabel that earlier evidence. It adds a separate qualification-onl
 
 ## Source design
 
+The qualification kernel provides per-request context enforcement while keeping terminal context outside aggregate spend.
+
 `WindowedQuotaLedger` uses window-keyed accounting and separates the six canonical dimensions by lifecycle:
 
 | Dimension | Lifecycle in V12 |
@@ -80,11 +82,12 @@ The focused suite covers:
 
 ## Qualification boundary
 
-The source must still pass, on the exact source head and GitHub merge candidate:
+The source must still pass, on the exact source head and GitHub merge candidate in separately named, separately retained lanes:
 
 ```text
 static source verifier
 Rust 1.95 format
+default-off posture
 focused P1.3 semantic tests
 complete P1.3 qualification tests
 all-target cargo check

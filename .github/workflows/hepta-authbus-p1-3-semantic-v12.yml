@@ -31,33 +31,71 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
+  CARGO_MANIFEST: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
 
 jobs:
   qualification:
-    name: AuthBus P1.3 semantic v12 required
-    runs-on: ubuntu-24.04-arm
+    name: AuthBus P1.3 semantic v12 ${{ matrix.identity == 'source_head' && 'exact source head' || 'synthetic merge candidate' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        identity: ${{ fromJSON(github.event_name == 'pull_request' && '["source_head","merge_candidate"]' || '["source_head"]') }}
     steps:
-      - name: Checkout exact event identity
+      - name: Checkout exact identity
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ matrix.identity == 'source_head' && (github.event.pull_request.head.sha || github.sha) || github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Initialize exact evidence
+      - name: Initialize identity-bound evidence
         shell: bash
+        env:
+          IDENTITY_KIND: ${{ matrix.identity }}
+          SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha || '' }}
+          PR_BASE: ${{ github.event.pull_request.base.sha || '' }}
+          SYNTHETIC_MERGE: ${{ github.sha }}
         run: |
           set -euo pipefail
-          evidence_dir="$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12"
+          evidence_dir="$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12-$IDENTITY_KIND"
           mkdir -p "$evidence_dir"
+          actual_head="$(git rev-parse HEAD)"
+          actual_tree="$(git rev-parse 'HEAD^{tree}')"
+          if test "$IDENTITY_KIND" = source_head; then
+            expected_head="$SOURCE_HEAD"
+            test "$actual_head" = "$expected_head"
+            if test "$GITHUB_EVENT_NAME" = pull_request; then
+              test "$actual_head" = "$PR_HEAD"
+              test -n "$PR_BASE"
+              test -n "$SYNTHETIC_MERGE"
+            fi
+            first_parent=""
+            second_parent=""
+          else
+            test "$GITHUB_EVENT_NAME" = pull_request
+            expected_head="$SYNTHETIC_MERGE"
+            first_parent="$(git rev-parse HEAD^1)"
+            second_parent="$(git rev-parse HEAD^2)"
+            test "$actual_head" = "$expected_head"
+            test "$first_parent" = "$PR_BASE"
+            test "$second_parent" = "$PR_HEAD"
+          fi
+          test -z "$(git status --porcelain --untracked-files=all)"
           {
+            echo "identity_kind=$IDENTITY_KIND"
             echo "event=$GITHUB_EVENT_NAME"
             echo "ref=$GITHUB_REF"
             echo "github_sha=$GITHUB_SHA"
-            echo "commit=$(git rev-parse HEAD)"
-            echo "tree=$(git rev-parse 'HEAD^{tree}')"
-            echo "pr_head=${{ github.event.pull_request.head.sha || '' }}"
-            echo "pr_base=${{ github.event.pull_request.base.sha || '' }}"
+            echo "commit=$actual_head"
+            echo "tree=$actual_tree"
+            echo "pr_head=$PR_HEAD"
+            echo "pr_base=$PR_BASE"
+            echo "synthetic_merge=$SYNTHETIC_MERGE"
+            echo "first_parent=$first_parent"
+            echo "second_parent=$second_parent"
             echo "qualification_only=true"
             echo "production_caller=false"
             echo "production_writer=false"
@@ -68,9 +106,6 @@ jobs:
             echo "promotion=false"
             echo "release=false"
           } > "$evidence_dir/posture.txt"
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          git diff --exit-code
-          git diff --cached --exit-code
 
       - name: Install Rust 1.95
         uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
@@ -81,10 +116,13 @@ jobs:
         id: source
         continue-on-error: true
         shell: bash
+        env:
+          IDENTITY_KIND: ${{ matrix.identity }}
         run: |
           set -euo pipefail
-          evidence_dir="$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12"
-          python3 -m py_compile scripts/verify-authbus-p1-3-semantic-v12.py
+          evidence_dir="$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12-$IDENTITY_KIND"
+          PYTHONPYCACHEPREFIX="$RUNNER_TEMP/pycache-$IDENTITY_KIND" \
+            python3 -m py_compile scripts/verify-authbus-p1-3-semantic-v12.py
           python3 scripts/verify-authbus-p1-3-semantic-v12.py --check-git-delta \
             2>&1 | tee "$evidence_dir/source-verifier.log"
 
@@ -92,76 +130,77 @@ jobs:
         id: format
         continue-on-error: true
         shell: bash
+        env:
+          IDENTITY_KIND: ${{ matrix.identity }}
         run: |
           set -euo pipefail
-          cargo fmt \
-            --manifest-path codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml \
-            -- --check \
-            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12/rustfmt.log"
+          cargo fmt --manifest-path "$CARGO_MANIFEST" -- --check \
+            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12-$IDENTITY_KIND/rustfmt.log"
 
       - name: Default-off posture
         id: default_off
         continue-on-error: true
         shell: bash
+        env:
+          IDENTITY_KIND: ${{ matrix.identity }}
         run: |
           set -euo pipefail
-          cargo test --locked \
-            --manifest-path codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml \
-            --no-default-features \
-            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12/default-off.log"
+          cargo test --locked --manifest-path "$CARGO_MANIFEST" --no-default-features \
+            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12-$IDENTITY_KIND/default-off.log"
 
       - name: Focused semantic adversarial matrix
         id: focused
         continue-on-error: true
         shell: bash
+        env:
+          IDENTITY_KIND: ${{ matrix.identity }}
         run: |
           set -euo pipefail
-          cargo test --locked \
-            --manifest-path codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml \
-            --features p1-3-qualification \
-            --test p1_3_semantic -- --nocapture \
-            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12/focused-tests.log"
+          cargo test --locked --manifest-path "$CARGO_MANIFEST" \
+            --features p1-3-qualification --test p1_3_semantic -- --nocapture \
+            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12-$IDENTITY_KIND/focused-tests.log"
 
       - name: Complete P1.3 test inventory
         id: package
         continue-on-error: true
         shell: bash
+        env:
+          IDENTITY_KIND: ${{ matrix.identity }}
         run: |
           set -euo pipefail
-          cargo test --locked \
-            --manifest-path codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml \
-            --features p1-3-qualification \
-            --tests -- --nocapture \
-            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12/package-tests.log"
+          cargo test --locked --manifest-path "$CARGO_MANIFEST" \
+            --features p1-3-qualification --tests -- --nocapture \
+            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12-$IDENTITY_KIND/package-tests.log"
 
       - name: All-target check
         id: check
         continue-on-error: true
         shell: bash
+        env:
+          IDENTITY_KIND: ${{ matrix.identity }}
         run: |
           set -euo pipefail
-          cargo check --locked \
-            --manifest-path codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml \
-            --features p1-3-qualification \
-            --all-targets \
-            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12/check.log"
+          cargo check --locked --manifest-path "$CARGO_MANIFEST" \
+            --features p1-3-qualification --all-targets \
+            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12-$IDENTITY_KIND/check.log"
 
       - name: Strict Clippy
         id: clippy
         continue-on-error: true
         shell: bash
+        env:
+          IDENTITY_KIND: ${{ matrix.identity }}
         run: |
           set -euo pipefail
-          cargo clippy --locked \
-            --manifest-path codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml \
-            --features p1-3-qualification \
-            --all-targets -- -D warnings \
-            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12/clippy.log"
+          cargo clippy --locked --manifest-path "$CARGO_MANIFEST" \
+            --features p1-3-qualification --all-targets -- -D warnings \
+            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12-$IDENTITY_KIND/clippy.log"
 
       - name: Record all diagnostic outcomes
         if: always()
         shell: bash
         env:
+          IDENTITY_KIND: ${{ matrix.identity }}
           SOURCE_OUTCOME: ${{ steps.source.outcome }}
           FORMAT_OUTCOME: ${{ steps.format.outcome }}
           DEFAULT_OUTCOME: ${{ steps.default_off.outcome }}
@@ -171,7 +210,7 @@ jobs:
           CLIPPY_OUTCOME: ${{ steps.clippy.outcome }}
         run: |
           set -euo pipefail
-          evidence_dir="$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12"
+          evidence_dir="$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12-$IDENTITY_KIND"
           {
             echo "source_outcome=$SOURCE_OUTCOME"
             echo "format_outcome=$FORMAT_OUTCOME"
@@ -187,8 +226,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-authbus-p1-3-semantic-v12-${{ github.event_name }}-${{ github.sha }}
-          path: ${{ runner.temp }}/hepta-authbus-p1-3-semantic-v12
+          name: hepta-authbus-p1-3-semantic-v12-${{ matrix.identity }}-${{ matrix.identity == 'source_head' && (github.event.pull_request.head.sha || github.sha) || github.sha }}
+          path: ${{ runner.temp }}/hepta-authbus-p1-3-semantic-v12-${{ matrix.identity }}
           if-no-files-found: error
           retention-days: 14
 
@@ -213,11 +252,36 @@ jobs:
           test "$CHECK_OUTCOME" = success
           test "$CLIPPY_OUTCOME" = success
 
-      - name: Clean worktree
+      - name: Require clean and stable identity
         if: always() && !cancelled()
         shell: bash
+        env:
+          IDENTITY_KIND: ${{ matrix.identity }}
+          SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          SYNTHETIC_MERGE: ${{ github.sha }}
         run: |
           set -euo pipefail
+          if test "$IDENTITY_KIND" = source_head; then
+            expected="$SOURCE_HEAD"
+          else
+            expected="$SYNTHETIC_MERGE"
+          fi
+          test "$(git rev-parse HEAD)" = "$expected"
           git diff --exit-code
           git diff --cached --exit-code
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+  qualification_result:
+    name: AuthBus P1.3 semantic v12 required
+    if: always()
+    needs: qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every identity lane
+        shell: bash
+        env:
+          QUALIFICATION_RESULT: ${{ needs.qualification.result }}
+        run: |
+          set -euo pipefail
+          test "$QUALIFICATION_RESULT" = success
