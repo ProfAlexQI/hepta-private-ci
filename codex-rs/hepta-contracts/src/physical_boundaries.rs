@@ -6,6 +6,7 @@
 //! composition supplies externally verified capabilities and durable stores.
 
 pub mod external;
+pub mod governed;
 
 pub const PHYSICAL_BOUNDARIES_RUNTIME_REGISTERED: bool = false;
 pub const PHYSICAL_BOUNDARIES_PRODUCTION_CALLER: bool = false;

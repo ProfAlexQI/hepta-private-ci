@@ -1,0 +1,63 @@
+{
+  "schema": "hepta.p0-7b-b3-governed-boundaries-status.v1",
+  "schemaVersion": 1,
+  "package": "P0.7b/B3_secret_matrix_fleet_operator_release_boundaries",
+  "state": "source_implemented_executable_qualification_pending",
+  "repository": "TrillionniumFoundation/hepta-private-ci",
+  "parentCommit": "24a2c1b733cc1d0f1288b39ffd42057dc6ade8ba",
+  "parentTree": "7ed08fb76eb8f0a30f3be926b66ff0d81fa46336",
+  "sourceBranch": "codex/hepta-architecture-v5-b3-governed-boundaries-gpt56-20260831",
+  "sourceCommit": "resolved_by_exact_source_head_workflow",
+  "sourceTree": "resolved_by_exact_source_head_workflow",
+  "implementedFacts": [
+    "modular_shared_governed_boundary_core",
+    "raw_secret_free_secret_operation_intent",
+    "secret_provider_profile_token_family_purpose_audience_revision_and_deadline_binding",
+    "matrix_room_event_identity_generation_outbox_and_route_binding",
+    "fleet_registry_revision_release_owner_epoch_generation_and_prior_state_binding",
+    "operator_exact_candidate_complete_evidence_policy_challenge_and_validity_binding",
+    "operator_implementer_and_independent_reviewer_identity_separation",
+    "release_candidate_manifest_artifact_sbom_migration_rollback_review_operator_and_policy_binding",
+    "capability_specific_checked_wrappers",
+    "current_revocation_and_runtime_context_reverification",
+    "durable_single_use_claim_before_adapter",
+    "caller_owned_witness_persistence_before_adapter",
+    "post_crossing_failure_is_indeterminate",
+    "no_blind_retry_api",
+    "no_raw_adapter_accessor",
+    "no_source_issued_operator_or_release_receipt",
+    "no_product_callsite_registered"
+  ],
+  "activationBlockers": [
+    "P0.7a_signed_runtime_bootstrap_closure.qualified_exact",
+    "P0.7b/B0_verified_use_kernel.qualified_exact",
+    "P0.7b/B1a_provider_verified_use_boundary.qualified_exact",
+    "P0.7b/B1b_model_invocation_verified_use_boundary.qualified_exact",
+    "P0.7b/B2_tool_network_filesystem_boundaries.qualified_exact",
+    "B3_exact_head_nonempty_qualification",
+    "B3_merge_candidate_nonempty_qualification",
+    "independent_exact_candidate_review",
+    "P0.7b/B4_negative_callsite_proof",
+    "external_operator_and_release_issuers"
+  ],
+  "evidence": {
+    "sourceVerifier": "scripts/verify-hepta-v5-b3-governed-boundaries.py",
+    "workflow": ".github/workflows/hepta-architecture-v5-b3-governed-boundaries.yml",
+    "exactHeadRun": null,
+    "mergeCandidateRun": null,
+    "independentReviewReceipt": null,
+    "operatorAcceptanceReceipt": null,
+    "releaseReceipt": null
+  },
+  "authority": {
+    "runtimeRegistered": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "secretOperation": false,
+    "matrixSend": false,
+    "fleetMutation": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

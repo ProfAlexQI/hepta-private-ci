@@ -1,0 +1,84 @@
+{
+  "schema": "hepta.v5.b3.governed-callsite-inventory.v1",
+  "schemaVersion": 1,
+  "repository": "TrillionniumFoundation/hepta-private-ci",
+  "package": "P0.7b/B3_secret_matrix_fleet_operator_release_boundaries",
+  "inventoryState": "checked_boundaries_source_only",
+  "sharedCore": {
+    "file": "codex-rs/hepta-contracts/src/physical_boundaries/governed/core.rs",
+    "symbol": "GovernedBoundaryCore::cross_once",
+    "adapterVisibility": "private_field_no_accessor",
+    "claimOwner": "caller_supplied_durable_claim_store",
+    "witnessOwner": "caller_supplied_durable_witness_transaction"
+  },
+  "boundaries": [
+    {
+      "physicalKind": "secret_operation",
+      "capability": "Authorized<ExternalEffectCapability>",
+      "wrapper": "CheckedSecretOperation",
+      "intent": "SecretOperationIntent",
+      "source": "codex-rs/hepta-contracts/src/physical_boundaries/governed/secret.rs"
+    },
+    {
+      "physicalKind": "matrix_send",
+      "capability": "Authorized<ExternalEffectCapability>",
+      "wrapper": "CheckedMatrixSend",
+      "intent": "MatrixSendIntent",
+      "source": "codex-rs/hepta-contracts/src/physical_boundaries/governed/matrix.rs"
+    },
+    {
+      "physicalKind": "fleet_mutation",
+      "capability": "Authorized<FleetMutationCapability>",
+      "wrapper": "CheckedFleetMutation",
+      "intent": "FleetMutationIntent",
+      "source": "codex-rs/hepta-contracts/src/physical_boundaries/governed/fleet.rs"
+    },
+    {
+      "physicalKind": "operator_acceptance",
+      "capability": "Authorized<OperatorAcceptanceCapability>",
+      "wrapper": "CheckedOperatorAcceptance",
+      "intent": "OperatorAcceptanceIntent",
+      "source": "codex-rs/hepta-contracts/src/physical_boundaries/governed/operator.rs",
+      "externalIssuerRequired": true
+    },
+    {
+      "physicalKind": "release_promotion",
+      "capability": "Authorized<ReleasePromotionCapability>",
+      "wrapper": "CheckedReleasePromotion",
+      "intent": "ReleasePromotionIntent",
+      "source": "codex-rs/hepta-contracts/src/physical_boundaries/governed/release.rs",
+      "externalIssuerRequired": true
+    }
+  ],
+  "productCallsitesRegistered": false,
+  "knownProductCallsites": [],
+  "rawBoundaryAdapterConstructorsAllowed": [],
+  "sourceMayIssueIndependentReview": false,
+  "sourceMayIssueOperatorAcceptance": false,
+  "sourceMayIssuePromotion": false,
+  "sourceMayIssueRelease": false,
+  "b4GlobalInventoryRequired": true,
+  "b4RequiredFields": [
+    "file",
+    "symbol",
+    "physical_kind",
+    "capability",
+    "issuer",
+    "consumer",
+    "final_payload_builder",
+    "claim_store_owner",
+    "witness_store_owner",
+    "reconciliation_owner"
+  ],
+  "authority": {
+    "runtimeRegistered": false,
+    "secretOperation": false,
+    "matrixSend": false,
+    "fleetMutation": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false,
+    "productionCaller": false,
+    "productionWriter": false
+  }
+}

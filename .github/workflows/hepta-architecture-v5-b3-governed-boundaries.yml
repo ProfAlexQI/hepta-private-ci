@@ -1,0 +1,228 @@
+name: Hepta V5 B3 governed verified-use boundaries
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/hepta-architecture-v5-b3-governed-boundaries-gpt56-20260831
+    paths:
+      - "codex-rs/hepta-contracts/src/physical_boundaries.rs"
+      - "codex-rs/hepta-contracts/src/physical_boundaries/governed.rs"
+      - "codex-rs/hepta-contracts/src/physical_boundaries/governed/**"
+      - "codex-rs/hepta-contracts/tests/governed_verified_use_boundaries.rs"
+      - "docs/architecture/HEPTA_CURRENT_PLAN.json"
+      - "docs/architecture/HEPTA_P0_7B_B3_*"
+      - "docs/architecture/HEPTA_V5_B3_GOVERNED_CALLSITE_INVENTORY.json"
+      - "scripts/verify-hepta-v5-b3-governed-boundaries.py"
+      - ".github/workflows/hepta-architecture-v5-b3-governed-boundaries.yml"
+  pull_request:
+    paths:
+      - "codex-rs/hepta-contracts/src/physical_boundaries.rs"
+      - "codex-rs/hepta-contracts/src/physical_boundaries/governed.rs"
+      - "codex-rs/hepta-contracts/src/physical_boundaries/governed/**"
+      - "codex-rs/hepta-contracts/tests/governed_verified_use_boundaries.rs"
+      - "docs/architecture/HEPTA_CURRENT_PLAN.json"
+      - "docs/architecture/HEPTA_P0_7B_B3_*"
+      - "docs/architecture/HEPTA_V5_B3_GOVERNED_CALLSITE_INVENTORY.json"
+      - "scripts/verify-hepta-v5-b3-governed-boundaries.py"
+      - ".github/workflows/hepta-architecture-v5-b3-governed-boundaries.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-v5-b3-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  qualification:
+    name: Hepta V5 B3 required
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact event identity
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Initialize exact-candidate evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-v5-b3"
+          mkdir -p "$evidence_dir"
+          {
+            echo "event=$GITHUB_EVENT_NAME"
+            echo "github_sha=$GITHUB_SHA"
+            echo "checked_out_commit=$(git rev-parse HEAD)"
+            echo "checked_out_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "pr_head=${{ github.event.pull_request.head.sha || '' }}"
+            echo "pr_base=${{ github.event.pull_request.base.sha || '' }}"
+            echo "package=P0.7b/B3_secret_matrix_fleet_operator_release_boundaries"
+            echo "runtime_registered=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "secret_operation=false"
+            echo "matrix_send=false"
+            echo "fleet_mutation=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release=false"
+          } > "$evidence_dir/posture.txt"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Compile-check B3 verifier
+        id: verifier_compile
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/verify-hepta-v5-b3-governed-boundaries.py \
+            2>&1 | tee "$RUNNER_TEMP/hepta-v5-b3/verifier-compile.log"
+          rm -rf scripts/__pycache__
+
+      - name: Verify exact B3 source contract
+        id: source_contract
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            python3 scripts/verify-hepta-v5-b3-governed-boundaries.py --require-direct-parent
+          else
+            python3 scripts/verify-hepta-v5-b3-governed-boundaries.py
+          fi 2>&1 | tee "$RUNNER_TEMP/hepta-v5-b3/source-verifier.log"
+          git diff --check
+
+      - name: Rust 1.95 format
+        id: format
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-contracts -- --check \
+            2>&1 | tee "$RUNNER_TEMP/hepta-v5-b3/rustfmt.log"
+
+      - name: Locked metadata
+        id: metadata
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --locked --no-deps --format-version 1 \
+            2>&1 | tee "$RUNNER_TEMP/hepta-v5-b3/metadata.log" >/dev/null
+
+      - name: Focused B3 boundary tests
+        id: focused
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-contracts \
+            --test governed_verified_use_boundaries -- --nocapture \
+            2>&1 | tee "$RUNNER_TEMP/hepta-v5-b3/focused-tests.log"
+
+      - name: Complete contracts tests
+        id: package
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-contracts \
+            2>&1 | tee "$RUNNER_TEMP/hepta-v5-b3/package-tests.log"
+
+      - name: All-target check
+        id: check
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked -p codex-hepta-contracts --all-targets \
+            2>&1 | tee "$RUNNER_TEMP/hepta-v5-b3/check.log"
+
+      - name: Strict Clippy
+        id: clippy
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked -p codex-hepta-contracts --all-targets -- -D warnings \
+            2>&1 | tee "$RUNNER_TEMP/hepta-v5-b3/clippy.log"
+
+      - name: Bazel lock
+        id: bazel_lock
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          just bazel-lock-check \
+            2>&1 | tee "$RUNNER_TEMP/hepta-v5-b3/bazel-lock.log"
+
+      - name: Require all B3 diagnostics
+        if: always() && !cancelled()
+        shell: bash
+        env:
+          VERIFIER_COMPILE_OUTCOME: ${{ steps.verifier_compile.outcome }}
+          SOURCE_OUTCOME: ${{ steps.source_contract.outcome }}
+          FORMAT_OUTCOME: ${{ steps.format.outcome }}
+          METADATA_OUTCOME: ${{ steps.metadata.outcome }}
+          FOCUSED_OUTCOME: ${{ steps.focused.outcome }}
+          PACKAGE_OUTCOME: ${{ steps.package.outcome }}
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+          CLIPPY_OUTCOME: ${{ steps.clippy.outcome }}
+          BAZEL_LOCK_OUTCOME: ${{ steps.bazel_lock.outcome }}
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-v5-b3"
+          {
+            echo "verifier_compile_outcome=$VERIFIER_COMPILE_OUTCOME"
+            echo "source_outcome=$SOURCE_OUTCOME"
+            echo "format_outcome=$FORMAT_OUTCOME"
+            echo "metadata_outcome=$METADATA_OUTCOME"
+            echo "focused_outcome=$FOCUSED_OUTCOME"
+            echo "package_outcome=$PACKAGE_OUTCOME"
+            echo "check_outcome=$CHECK_OUTCOME"
+            echo "clippy_outcome=$CLIPPY_OUTCOME"
+            echo "bazel_lock_outcome=$BAZEL_LOCK_OUTCOME"
+          } >> "$evidence_dir/posture.txt"
+          test "$VERIFIER_COMPILE_OUTCOME" = success
+          test "$SOURCE_OUTCOME" = success
+          test "$FORMAT_OUTCOME" = success
+          test "$METADATA_OUTCOME" = success
+          test "$FOCUSED_OUTCOME" = success
+          test "$PACKAGE_OUTCOME" = success
+          test "$CHECK_OUTCOME" = success
+          test "$CLIPPY_OUTCOME" = success
+          test "$BAZEL_LOCK_OUTCOME" = success
+
+      - name: Upload exact-candidate evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-v5-b3-${{ github.event_name }}-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-v5-b3
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
