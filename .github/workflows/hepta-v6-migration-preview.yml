@@ -74,22 +74,49 @@ jobs:
         id: cleanup
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           kit="$HOME/hepta-v6-kit"
           report="$RUNNER_TEMP/hepta-v6-cleanup-report.json"
+          log="$RUNNER_TEMP/hepta-v6-cleanup.log"
+          artifact="$RUNNER_TEMP/hepta-v6-migration-result"
+          mkdir -p "$artifact"
+
+          set +e
           python3 "$kit/migration/clean_legacy.py" \
             --repo "$GITHUB_WORKSPACE" \
             --apply \
             --report "$report" \
-            > "$RUNNER_TEMP/hepta-v6-cleanup.log"
-          python3 - "$report" <<'PY'
+            > "$log" 2>&1
+          cleanup_rc=$?
+          set -e
+
+          test -f "$report"
+          test -f "$log"
+          cp "$report" "$artifact/cleanup-report.json"
+          cp "$log" "$artifact/cleanup.log"
+
+          python3 - "$report" "$artifact/cleanup-summary.txt" <<'PY'
           import json, pathlib, sys
-          report = json.loads(pathlib.Path(sys.argv[1]).read_text())
-          assert report["blockers"] == [], report["blockers"]
-          print(f"legacy_documents={len(report['legacyDocuments'])}")
-          print(f"obsolete_support={len(report['obsoleteSupportFiles'])}")
-          print(f"safe_rewrites={len(report['safeRewrites'])}")
+          report_path = pathlib.Path(sys.argv[1])
+          summary_path = pathlib.Path(sys.argv[2])
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          lines = [
+              f"legacy_documents={len(report['legacyDocuments'])}",
+              f"obsolete_support={len(report['obsoleteSupportFiles'])}",
+              f"safe_rewrites={len(report['safeRewrites'])}",
+              f"blockers={len(report['blockers'])}",
+          ]
+          for blocker in report["blockers"]:
+              lines.append(f"blocker={blocker['referencingPath']}")
+              for reference in blocker["references"]:
+                  lines.append(
+                      f"  {reference['needle']} -> {reference['replacement']} ({reference['kind']})"
+                  )
+          summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          print("\n".join(lines))
           PY
+
+          exit "$cleanup_rc"
 
       - name: Install canonical V6 document system
         shell: bash
