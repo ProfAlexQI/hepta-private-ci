@@ -1,0 +1,76 @@
+name: Temporary AuthBus P1.3 branch repair
+
+on:
+  push:
+    branches:
+      - codex/authbus-p1-3-semantic-closure-v12-gpt56-20260831
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/authbus-p1-3-semantic-closure-v12-gpt56-20260831
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install deterministic formatter
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt
+
+      - name: Apply fail-closed qualification repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path('codex-rs/hepta-authbus-p1-3-qualification/src/semantic_quota.rs')
+          text = source.read_text(encoding='utf-8')
+          old = 'self.starts_at_s % duration != 0'
+          new = '!self.starts_at_s.is_multiple_of(duration)'
+          if old not in text:
+              raise SystemExit('expected Clippy repair anchor missing')
+          source.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          design = Path('docs/hepta-vnext/authbus/AUTHBUS_P1_3_SEMANTIC_CLOSURE_V12_2026-08-31.md')
+          text = design.read_text(encoding='utf-8')
+          anchor = '## Source design\n\n'
+          insertion = (
+              '## Source design\n\n'
+              'The qualification kernel uses window-keyed accounting for RPM, TPM, and daily budget, '
+              'while enforcing context strictly per request.\n\n'
+          )
+          if 'window-keyed accounting' not in text:
+              if anchor not in text:
+                  raise SystemExit('expected design-note repair anchor missing')
+              text = text.replace(anchor, insertion, 1)
+          design.write_text(text, encoding='utf-8')
+          PY
+
+          cargo +1.95.0 fmt \
+            --manifest-path codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml \
+            --all
+
+          git rm -- .github/workflows/_temporary-authbus-p1-3-branch-repair.yml
+          git diff --check
+
+      - name: Commit branch-only repair and remove bootstrap workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'hepta-closure-bot'
+          git config user.email 'hepta-closure-bot@users.noreply.github.com'
+          git add \
+            codex-rs/hepta-authbus-p1-3-qualification/src/semantic_quota.rs \
+            codex-rs/hepta-authbus-p1-3-qualification/tests/p1_3_semantic.rs \
+            docs/hepta-vnext/authbus/AUTHBUS_P1_3_SEMANTIC_CLOSURE_V12_2026-08-31.md \
+            .github/workflows/_temporary-authbus-p1-3-branch-repair.yml
+          git commit -m 'fix(authbus): close remaining P1.3 qualification blockers'
+          git push origin HEAD:codex/authbus-p1-3-semantic-closure-v12-gpt56-20260831
