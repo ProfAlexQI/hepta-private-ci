@@ -34,7 +34,7 @@ jobs:
       EXPECTED_HEAD_BRANCH: ${{ github.head_ref || inputs.expected_head_branch }}
       EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || inputs.expected_head }}
       EXPECTED_Q0_SOURCE_BRANCH: >-
-        codex/hepta-intelligence-q0-62-http-boundary-fixture-20260831
+        codex/hepta-intelligence-q0-63-checkout-config-normalization-20260831
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONNOUSERSITE: "1"
     steps:
