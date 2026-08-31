@@ -1,0 +1,78 @@
+{
+  "schema": "hepta.authbus.p1.3.semantic-closure.v12",
+  "schemaVersion": 12,
+  "status": "source_implemented_executable_qualification_pending",
+  "repository": "TrillionniumFoundation/hepta-private-ci",
+  "parent": {
+    "branch": "codex/authbus-p1-3-semantic-closure-v11-20260830",
+    "commit": "8572f3d2182541b14e0719b229ccd8754494f134",
+    "tree": "aac769f278dad18b97b3c63c97f9b43dd325aa24"
+  },
+  "candidate": {
+    "branch": "codex/authbus-p1-3-semantic-closure-v12-gpt56-20260831",
+    "commit": "resolved_by_exact_head_workflow",
+    "tree": "resolved_by_exact_head_workflow",
+    "mergeCandidate": "resolved_by_pull_request_workflow"
+  },
+  "sourceScope": {
+    "qualificationOnly": true,
+    "productWorkspaceWired": false,
+    "listenerEnabled": false,
+    "providerCallEnabled": false,
+    "openBaoEnabled": false,
+    "semanticKernel": "codex-rs/hepta-authbus-p1-3-qualification/src/semantic_quota.rs",
+    "adversarialTests": "codex-rs/hepta-authbus-p1-3-qualification/tests/p1_3_semantic.rs"
+  },
+  "closedInSource": [
+    "window_keyed_revision_bound_rpm_accounting",
+    "window_keyed_revision_bound_tpm_accounting",
+    "window_keyed_revision_bound_daily_budget_accounting",
+    "exact_utc_minute_and_day_interval_validation",
+    "per_request_context_non_accumulation",
+    "active_only_concurrency_holds",
+    "reservation_held_consumed_remaining_conservation",
+    "state_specific_vector_rules",
+    "stale_revision_rejection",
+    "exact_idempotency_replay_and_binding_conflict",
+    "append_only_recomputed_transition_digest_chain",
+    "invalid_transition_and_post_dispatch_expiry_rejection",
+    "multi_window_multi_request_and_tamper_tests"
+  ],
+  "executionQualification": {
+    "exactHead": "not_run",
+    "mergeCandidate": "not_run",
+    "sourceVerifier": "not_run",
+    "rustFormat": "not_run",
+    "focusedSemanticTests": "not_run",
+    "completeP13Tests": "not_run",
+    "allTargetCheck": "not_run",
+    "strictClippy": "not_run",
+    "independentReview": "not_issued",
+    "semanticQualificationAccepted": false
+  },
+  "requiredTests": [
+    "rpm_and_tpm_are_isolated_by_exact_minute_window",
+    "daily_budget_rolls_only_at_exact_utc_day_boundary",
+    "max_context_is_per_request_and_never_aggregate_spend",
+    "context_above_per_request_limit_fails_before_any_counter_changes",
+    "stale_or_wrong_window_binding_fails_closed",
+    "stale_revision_and_changed_idempotency_binding_fail_closed",
+    "completed_transition_conserves_hold_consumed_and_remaining",
+    "invalid_state_transitions_and_post_dispatch_expiry_are_rejected",
+    "transition_chain_detects_digest_tampering",
+    "request_count_is_cumulative_across_window_rollover",
+    "unknown_limit_and_authority_escape_are_rejected"
+  ],
+  "authority": {
+    "authBus": false,
+    "effect": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "g5Allowed": false,
+    "executeAllowed": false,
+    "runtime": false,
+    "release": false
+  }
+}

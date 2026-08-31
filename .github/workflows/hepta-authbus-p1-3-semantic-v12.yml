@@ -1,0 +1,223 @@
+name: Hepta AuthBus P1.3 semantic v12
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/authbus-p1-3-semantic-closure-v12-gpt56-20260831
+    paths:
+      - "codex-rs/hepta-authbus-p1-3-qualification/src/lib.rs"
+      - "codex-rs/hepta-authbus-p1-3-qualification/src/semantic_quota.rs"
+      - "codex-rs/hepta-authbus-p1-3-qualification/tests/p1_3_semantic.rs"
+      - "docs/hepta-vnext/authbus/AUTHBUS_P1_3_SEMANTIC_CLOSURE_V12_2026-08-31.*"
+      - "scripts/verify-authbus-p1-3-semantic-v12.py"
+      - ".github/workflows/hepta-authbus-p1-3-semantic-v12.yml"
+  pull_request:
+    paths:
+      - "codex-rs/hepta-authbus-p1-3-qualification/src/lib.rs"
+      - "codex-rs/hepta-authbus-p1-3-qualification/src/semantic_quota.rs"
+      - "codex-rs/hepta-authbus-p1-3-qualification/tests/p1_3_semantic.rs"
+      - "docs/hepta-vnext/authbus/AUTHBUS_P1_3_SEMANTIC_CLOSURE_V12_2026-08-31.*"
+      - "scripts/verify-authbus-p1-3-semantic-v12.py"
+      - ".github/workflows/hepta-authbus-p1-3-semantic-v12.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-authbus-p1-3-semantic-v12-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  qualification:
+    name: AuthBus P1.3 semantic v12 required
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact event identity
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Initialize exact evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12"
+          mkdir -p "$evidence_dir"
+          {
+            echo "event=$GITHUB_EVENT_NAME"
+            echo "ref=$GITHUB_REF"
+            echo "github_sha=$GITHUB_SHA"
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "pr_head=${{ github.event.pull_request.head.sha || '' }}"
+            echo "pr_base=${{ github.event.pull_request.base.sha || '' }}"
+            echo "qualification_only=true"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "provider_call_enabled=false"
+            echo "openbao_enabled=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release=false"
+          } > "$evidence_dir/posture.txt"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Compile and execute source verifier
+        id: source
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12"
+          python3 -m py_compile scripts/verify-authbus-p1-3-semantic-v12.py
+          python3 scripts/verify-authbus-p1-3-semantic-v12.py --check-git-delta \
+            2>&1 | tee "$evidence_dir/source-verifier.log"
+
+      - name: Rust format
+        id: format
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt \
+            --manifest-path codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml \
+            -- --check \
+            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12/rustfmt.log"
+
+      - name: Default-off posture
+        id: default_off
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked \
+            --manifest-path codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml \
+            --no-default-features \
+            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12/default-off.log"
+
+      - name: Focused semantic adversarial matrix
+        id: focused
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked \
+            --manifest-path codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml \
+            --features p1-3-qualification \
+            --test p1_3_semantic -- --nocapture \
+            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12/focused-tests.log"
+
+      - name: Complete P1.3 test inventory
+        id: package
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked \
+            --manifest-path codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml \
+            --features p1-3-qualification \
+            --tests -- --nocapture \
+            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12/package-tests.log"
+
+      - name: All-target check
+        id: check
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked \
+            --manifest-path codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml \
+            --features p1-3-qualification \
+            --all-targets \
+            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12/check.log"
+
+      - name: Strict Clippy
+        id: clippy
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked \
+            --manifest-path codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml \
+            --features p1-3-qualification \
+            --all-targets -- -D warnings \
+            2>&1 | tee "$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12/clippy.log"
+
+      - name: Record all diagnostic outcomes
+        if: always()
+        shell: bash
+        env:
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          FORMAT_OUTCOME: ${{ steps.format.outcome }}
+          DEFAULT_OUTCOME: ${{ steps.default_off.outcome }}
+          FOCUSED_OUTCOME: ${{ steps.focused.outcome }}
+          PACKAGE_OUTCOME: ${{ steps.package.outcome }}
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+          CLIPPY_OUTCOME: ${{ steps.clippy.outcome }}
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-authbus-p1-3-semantic-v12"
+          {
+            echo "source_outcome=$SOURCE_OUTCOME"
+            echo "format_outcome=$FORMAT_OUTCOME"
+            echo "default_off_outcome=$DEFAULT_OUTCOME"
+            echo "focused_outcome=$FOCUSED_OUTCOME"
+            echo "package_outcome=$PACKAGE_OUTCOME"
+            echo "check_outcome=$CHECK_OUTCOME"
+            echo "clippy_outcome=$CLIPPY_OUTCOME"
+            echo "semantic_qualification_accepted=false"
+          } >> "$evidence_dir/posture.txt"
+
+      - name: Upload exact diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-authbus-p1-3-semantic-v12-${{ github.event_name }}-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-authbus-p1-3-semantic-v12
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Require every repository-controlled gate
+        if: always() && !cancelled()
+        shell: bash
+        env:
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          FORMAT_OUTCOME: ${{ steps.format.outcome }}
+          DEFAULT_OUTCOME: ${{ steps.default_off.outcome }}
+          FOCUSED_OUTCOME: ${{ steps.focused.outcome }}
+          PACKAGE_OUTCOME: ${{ steps.package.outcome }}
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+          CLIPPY_OUTCOME: ${{ steps.clippy.outcome }}
+        run: |
+          set -euo pipefail
+          test "$SOURCE_OUTCOME" = success
+          test "$FORMAT_OUTCOME" = success
+          test "$DEFAULT_OUTCOME" = success
+          test "$FOCUSED_OUTCOME" = success
+          test "$PACKAGE_OUTCOME" = success
+          test "$CHECK_OUTCOME" = success
+          test "$CLIPPY_OUTCOME" = success
+
+      - name: Clean worktree
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          git diff --cached --exit-code
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"

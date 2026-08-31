@@ -3,8 +3,8 @@
 //! AuthBus P1.3 canonical quota-registry qualification seam.
 //!
 //! The default build exposes only immutable negative-authority constants.
-//! Registry and adapter qualification is compiled only through the explicit
-//! `p1-3-qualification` feature.
+//! Registry, adapter, and semantic-closure qualification is compiled only
+//! through the explicit `p1-3-qualification` feature.
 
 /// This tranche is qualification evidence only.
 pub const AUTHBUS_P1_3_QUALIFICATION_ONLY: bool = true;
@@ -55,6 +55,32 @@ pub fn authority_posture_is_closed() -> bool {
         && !AUTHBUS_P1_3_G5_ALLOWED
         && !AUTHBUS_P1_3_EXECUTE_ALLOWED
 }
+
+#[cfg(feature = "p1-3-qualification")]
+mod semantic_quota;
+
+#[cfg(feature = "p1-3-qualification")]
+pub use semantic_quota::QuotaWindowBindings;
+#[cfg(feature = "p1-3-qualification")]
+pub use semantic_quota::QuotaWindowKey;
+#[cfg(feature = "p1-3-qualification")]
+pub use semantic_quota::QuotaWindowKind;
+#[cfg(feature = "p1-3-qualification")]
+pub use semantic_quota::SemanticAdmissionDisposition;
+#[cfg(feature = "p1-3-qualification")]
+pub use semantic_quota::SemanticQuotaError;
+#[cfg(feature = "p1-3-qualification")]
+pub use semantic_quota::SemanticReservationRecord;
+#[cfg(feature = "p1-3-qualification")]
+pub use semantic_quota::SemanticReservationRequest;
+#[cfg(feature = "p1-3-qualification")]
+pub use semantic_quota::SemanticReservationState;
+#[cfg(feature = "p1-3-qualification")]
+pub use semantic_quota::SemanticTransitionReceipt;
+#[cfg(feature = "p1-3-qualification")]
+pub use semantic_quota::WindowedQuotaLedger;
+#[cfg(feature = "p1-3-qualification")]
+pub use semantic_quota::verify_transition_chain;
 
 #[cfg(test)]
 mod tests {
