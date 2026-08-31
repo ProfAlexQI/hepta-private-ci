@@ -1,0 +1,130 @@
+name: Hepta V5 B1b portable recovery race
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - automation/hepta-v5-b1b-recovery-gpt56-20260831
+    paths:
+      - ".github/workflows/hepta-v5-b1b-recover-source-race.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-v5-b1b-recovery-race-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  recover:
+    name: Recover B1b on ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+          - name: macos
+            os: macos-latest
+          - name: windows
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact recovery head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Recover source from checksum-damaged envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          materializer="scripts/.hepta-v5-b1b-source-materialize.recovered.py"
+          cat scripts/.hepta-v5-b1b-source-materialize.part-* > "$materializer"
+          python3 - "$materializer" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          text = path.read_text(encoding='utf-8')
+          needle = '    decoded = zlib.decompress(base64.b64decode(PAYLOAD))\n'
+          replacement = '''    compressed = base64.b64decode(PAYLOAD, validate=True)\n    try:\n        decoded = zlib.decompress(compressed)\n    except zlib.error as exc:\n        if "incorrect data check" not in str(exc):\n            raise\n        if len(compressed) < 7:\n            raise RuntimeError("compressed payload too short for zlib envelope recovery") from exc\n        decoded = zlib.decompress(compressed[2:-4], wbits=-zlib.MAX_WBITS)\n'''
+          if text.count(needle) != 1:
+              raise SystemExit('expected exactly one zlib decode expression')
+          path.write_text(text.replace(needle, replacement, 1), encoding='utf-8')
+          PY
+          python3 -m py_compile "$materializer"
+          python3 "$materializer"
+          rm -f "$materializer"
+
+      - name: Require exact recovered source delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+          expected = {
+              '.github/workflows/hepta-architecture-v5-b1b-model-boundary.yml',
+              'codex-rs/hepta-contracts/src/checked_model_invocation.rs',
+              'codex-rs/hepta-contracts/src/checked_model_invocation_tests.rs',
+              'codex-rs/hepta-contracts/src/lib.rs',
+              'codex-rs/hepta-contracts/tests/model_verified_use_boundary.rs',
+              'docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json',
+              'docs/architecture/HEPTA_CURRENT_PLAN.json',
+              'docs/architecture/HEPTA_P0_7B_B1B_MODEL_INVOCATION_CONTRACT_V1.md',
+              'docs/architecture/HEPTA_P0_7B_B1B_STATUS.json',
+              'docs/architecture/HEPTA_V5_B1B_MODEL_CALLSITE_INVENTORY.json',
+              'scripts/verify-hepta-v5-b1b-format.py',
+              'scripts/verify-hepta-v5-b1b-model-boundary.py',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          if changed != expected:
+              raise SystemExit(f'delta mismatch: missing={sorted(expected-changed)} extra={sorted(changed-expected)}')
+          print('PASS_EXACT_B1B_RECOVERED_SOURCE_DELTA')
+          PY
+          git diff --check
+          python3 -m py_compile scripts/verify-hepta-v5-b1b-model-boundary.py scripts/verify-hepta-v5-b1b-format.py
+          python3 scripts/verify-hepta-v5-b1b-model-boundary.py
+
+      - name: Stage recovered source
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/hepta-v5-b1b-recovery/source"
+          mkdir -p "$out"
+          git diff --name-only | while IFS= read -r path; do
+            mkdir -p "$out/$(dirname "$path")"
+            cp "$path" "$out/$path"
+          done
+          (
+            cd "$out"
+            find . -type f -print0 | sort -z | xargs -0 sha256sum
+          ) > "$RUNNER_TEMP/hepta-v5-b1b-recovery/SHA256SUMS"
+          cat > "$RUNNER_TEMP/hepta-v5-b1b-recovery/posture.txt" <<EOF
+          recovery_head=$GITHUB_SHA
+          source_materializer_head=6c876b2c259ccabef928c7921c2037b3c10f051b
+          exact_final_parent=537394a0067d204b215db8bee3de533494535481
+          runner=${{ matrix.name }}
+          recovery_only=true
+          source_qualification=false
+          production_authority=false
+          operator_acceptance=false
+          promotion=false
+          release=false
+          EOF
+
+      - name: Upload recovered source
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-v5-b1b-recovered-${{ matrix.name }}-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-v5-b1b-recovery
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Confirm recovery did not rewrite Git history
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
