@@ -425,7 +425,7 @@ fn request_count_is_cumulative_across_window_rollover() {
 }
 
 #[test]
-fn unknown_limit_and authority_escape_are_rejected() {
+fn unknown_limit_and_authority_escape_are_rejected() {
     let unknown = CanonicalQuotaLimits {
         request_count: Some(10),
         rpm: Some(10),
