@@ -1,0 +1,87 @@
+name: Diagnostic Hepta V6 source export
+
+on:
+  push:
+    branches:
+      - diagnostic/hepta-v6-hardening-inventory-gpt56-20260831
+    paths:
+      - .github/workflows/_diagnostic-hepta-v6-source-export.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact diagnostic head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Package bounded governance source set
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/hepta-v6-source-export"
+          mkdir -p "$out/source"
+          paths=(
+            README.md
+            docs/DEVELOPMENT.md
+            docs/CURRENT.json
+            docs/STATUS.md
+            docs/governance/DOCUMENT_SYSTEM.json
+            docs/architecture/ARCHITECTURE.json
+            docs/modules/MODULES.json
+            docs/delivery/WORK_PACKAGES.json
+            docs/delivery/DEVELOPMENT_DAG.json
+            docs/delivery/ACTIVATION_DAG.json
+            docs/delivery/EVIDENCE_DAG.json
+            docs/control-plane/OBJECTIVES.json
+            docs/evidence/INDEX.json
+            scripts/hepta-docs.py
+            .github/workflows/hepta-development-docs.yml
+          )
+          for path in "${paths[@]}"; do
+            test -f "$path"
+            mkdir -p "$out/source/$(dirname "$path")"
+            cp "$path" "$out/source/$path"
+          done
+          git ls-files -z > "$out/tracked-paths.zlist"
+          git diff --name-status --no-renames b621768b70a09d56626bb8a2c331e3dc424e6a4d HEAD > "$out/base-to-head.name-status"
+          git diff --name-only --diff-filter=D --no-renames b621768b70a09d56626bb8a2c331e3dc424e6a4d HEAD > "$out/deleted-paths.txt"
+          python3 - "$out/root-directories.json" <<'PY'
+          import json, pathlib, sys
+          root = pathlib.Path.cwd()
+          patterns = [
+              "codex-rs/hepta-*",
+              "codex-rs/app-server",
+              "apps/hepta-*",
+              "tools/hepta-*",
+              "external/HeptaBao",
+              "third_party/servo-patches",
+          ]
+          directories = sorted({
+              p.relative_to(root).as_posix()
+              for pattern in patterns
+              for p in root.glob(pattern)
+              if p.is_dir()
+          })
+          pathlib.Path(sys.argv[1]).write_text(json.dumps(directories, indent=2) + "\n", encoding="utf-8")
+          PY
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "base=b621768b70a09d56626bb8a2c331e3dc424e6a4d"
+            echo "base_tree=$(git rev-parse 'b621768b70a09d56626bb8a2c331e3dc424e6a4d^{tree}')"
+          } > "$out/identity.txt"
+
+      - name: Upload bounded source export
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-v6-source-export-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-v6-source-export
+          if-no-files-found: error
+          retention-days: 7
