@@ -1,0 +1,82 @@
+{
+  "schema": "hepta.architecture-v5.b1a-status.v1",
+  "schemaVersion": 1,
+  "planId": "HEPTA-ARCHITECTURE-CONVERGENCE-V5",
+  "package": "P0.7b/B1_model_provider_boundaries",
+  "subPackage": "B1a_provider_verified_use_boundary",
+  "repository": "ProfHepta/hepta-private-ci",
+  "stackParent": {
+    "branch": "codex/hepta-architecture-v5-b0-exact-restack-20260831",
+    "commit": "aff643de331ef1ce54940e3925aa64077a019ff7",
+    "tree": "5dc6fb8ad3e82b50b37eb01a1dcdc89119f93404"
+  },
+  "source": {
+    "implemented": true,
+    "finalPayloadBound": true,
+    "providerDispatchCapabilityDistinct": true,
+    "externalEffectCapabilityDistinct": true,
+    "trustedClockRequired": true,
+    "durableSingleUseClaimsRequired": true,
+    "witnessPairPersistenceBeforeSend": true,
+    "rawNoPayloadDispatchPublic": false,
+    "productCallerAdded": false,
+    "layout": "split_include_items_v1",
+    "files": [
+      "codex-rs/hepta-contracts/src/checked_provider_operation.rs",
+      "codex-rs/hepta-contracts/src/checked_provider_operation_parts/impl_construction.rs",
+      "codex-rs/hepta-contracts/src/checked_provider_operation_parts/impl_dispatch.rs",
+      "codex-rs/hepta-contracts/src/checked_provider_operation_parts/impl_reconcile.rs",
+      "codex-rs/hepta-contracts/src/checked_provider_operation_parts/helpers.rs",
+      "codex-rs/hepta-contracts/src/checked_provider_operation_parts/tests.rs",
+      "codex-rs/hepta-contracts/tests/provider_verified_use_boundary.rs",
+      "codex-rs/hepta-contracts/tests/provider_verified_use_boundary_parts/support1.rs",
+      "codex-rs/hepta-contracts/tests/provider_verified_use_boundary_parts/support2.rs",
+      "codex-rs/hepta-contracts/tests/provider_verified_use_boundary_parts/tests1.rs",
+      "codex-rs/hepta-contracts/tests/provider_verified_use_boundary_parts/tests2.rs"
+    ]
+  },
+  "qualification": {
+    "sourceVerifierPassed": false,
+    "exactHeadExecutable": false,
+    "mergeCandidateExecutable": false,
+    "independentReviewIssued": false,
+    "qualified": false
+  },
+  "activationBlockedBy": [
+    "P0.7a_signed_runtime_bootstrap_closure.qualified_exact",
+    "P0.7b/B0_verified_use_kernel.qualified_exact",
+    "B1a_exact_head_and_merge_candidate_qualification",
+    "independent_exact_candidate_review"
+  ],
+  "remainingB1Work": [
+    "B1b_model_invocation_verified_use_boundary",
+    "P0.7d_F07_after_claim_before_send_recovery",
+    "P0.7d_F08_after_claim_before_send_quarantine_adoption"
+  ],
+  "partialPreSendOutcomes": [
+    {
+      "state": "provider_claim_committed_effect_claim_failed",
+      "providerCallAttempted": false,
+      "blindRetryAllowed": false,
+      "disposition": "quarantine_until_common_fault_matrix_reconcile"
+    },
+    {
+      "state": "both_claims_committed_witness_pair_persistence_failed",
+      "providerCallAttempted": false,
+      "blindRetryAllowed": false,
+      "disposition": "quarantine_until_common_fault_matrix_reconcile"
+    }
+  ],
+  "authority": {
+    "runtimeRegistered": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "externalEffect": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  },
+  "allGapsClosed": false
+}
