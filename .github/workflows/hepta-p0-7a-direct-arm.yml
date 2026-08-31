@@ -74,15 +74,81 @@ jobs:
           python3 scripts/verify-hepta-p0-7a-format.py --check
           just bazel-lock-check
 
-      - name: Run P0.7a package tests
+      - name: Run hepta-contracts tests
+        id: test_contracts
+        continue-on-error: true
         working-directory: codex-rs
         shell: bash
         run: |
-          set -euo pipefail
-          just test -p codex-hepta-contracts
-          just test -p codex-hepta-fleet
-          just test -p codex-hepta-supervisor
-          just test -p codex-hepta-agentd
+          set -uo pipefail
+          evidence_dir="$RUNNER_TEMP/p0-7a-package-tests"
+          mkdir -p "$evidence_dir"
+          rm -f junit.xml
+          set +e
+          just test -p codex-hepta-contracts 2>&1 | tee "$evidence_dir/hepta-contracts.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [[ -f junit.xml ]]; then
+            mv junit.xml "$evidence_dir/hepta-contracts-junit.xml"
+          fi
+          exit "$status"
+
+      - name: Run hepta-fleet tests
+        id: test_fleet
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -uo pipefail
+          evidence_dir="$RUNNER_TEMP/p0-7a-package-tests"
+          mkdir -p "$evidence_dir"
+          rm -f junit.xml
+          set +e
+          just test -p codex-hepta-fleet 2>&1 | tee "$evidence_dir/hepta-fleet.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [[ -f junit.xml ]]; then
+            mv junit.xml "$evidence_dir/hepta-fleet-junit.xml"
+          fi
+          exit "$status"
+
+      - name: Run hepta-supervisor tests
+        id: test_supervisor
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -uo pipefail
+          evidence_dir="$RUNNER_TEMP/p0-7a-package-tests"
+          mkdir -p "$evidence_dir"
+          rm -f junit.xml
+          set +e
+          just test -p codex-hepta-supervisor 2>&1 | tee "$evidence_dir/hepta-supervisor.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [[ -f junit.xml ]]; then
+            mv junit.xml "$evidence_dir/hepta-supervisor-junit.xml"
+          fi
+          exit "$status"
+
+      - name: Run hepta-agentd tests
+        id: test_agentd
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -uo pipefail
+          evidence_dir="$RUNNER_TEMP/p0-7a-package-tests"
+          mkdir -p "$evidence_dir"
+          rm -f junit.xml
+          set +e
+          just test -p codex-hepta-agentd 2>&1 | tee "$evidence_dir/hepta-agentd.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [[ -f junit.xml ]]; then
+            mv junit.xml "$evidence_dir/hepta-agentd-junit.xml"
+          fi
+          exit "$status"
 
       - name: Check all P0.7a targets
         working-directory: codex-rs
@@ -113,6 +179,31 @@ jobs:
           set -euo pipefail
           python3 scripts/verify-hepta-architecture-plan-v4.py
           git diff --check
+
+      - name: Upload P0.7a package-test diagnostics
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: p0-7a-package-tests-${{ github.sha }}
+          path: ${{ runner.temp }}/p0-7a-package-tests
+          if-no-files-found: error
+
+      - name: Require every P0.7a package test to pass
+        if: always() && !cancelled()
+        env:
+          CONTRACTS: ${{ steps.test_contracts.outcome }}
+          FLEET: ${{ steps.test_fleet.outcome }}
+          SUPERVISOR: ${{ steps.test_supervisor.outcome }}
+          AGENTD: ${{ steps.test_agentd.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'contracts=%s\nfleet=%s\nsupervisor=%s\nagentd=%s\n' \
+            "$CONTRACTS" "$FLEET" "$SUPERVISOR" "$AGENTD"
+          test "$CONTRACTS" = success
+          test "$FLEET" = success
+          test "$SUPERVISOR" = success
+          test "$AGENTD" = success
 
       - name: Require clean output
         if: always() && !cancelled()
