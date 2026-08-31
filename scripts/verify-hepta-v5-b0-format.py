@@ -12,6 +12,7 @@ FILES = (
     "codex-rs/hepta-contracts/src/lib.rs",
     "codex-rs/hepta-contracts/src/verified_use.rs",
     "codex-rs/hepta-contracts/src/verified_use_tests.rs",
+    "codex-rs/hepta-contracts/tests/verified_use_negative.rs",
 )
 
 

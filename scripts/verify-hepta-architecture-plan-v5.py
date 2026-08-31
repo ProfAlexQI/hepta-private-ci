@@ -21,6 +21,7 @@ FAULTS = "docs/architecture/HEPTA_COMMON_DURABLE_FAULT_MATRIX_V1.md"
 BUDGETS = "docs/architecture/HEPTA_RESOURCE_BUDGETS_V1.md"
 SOURCE = "codex-rs/hepta-contracts/src/verified_use.rs"
 TESTS = "codex-rs/hepta-contracts/src/verified_use_tests.rs"
+NEGATIVE_TESTS = "codex-rs/hepta-contracts/tests/verified_use_negative.rs"
 LIB = "codex-rs/hepta-contracts/src/lib.rs"
 ROUTER = "scripts/verify-hepta-selected-architecture-plan.py"
 V4_VERIFIER = "scripts/verify-hepta-architecture-plan-v4.py"
@@ -30,6 +31,10 @@ V4_WORKFLOW = ".github/workflows/hepta-architecture-plan-v4.yml"
 P07A_WORKFLOW = ".github/workflows/hepta-runtime-bootstrap-p0-7a.yml"
 P07A_ARM_WORKFLOW = ".github/workflows/hepta-p0-7a-direct-arm.yml"
 WORKFLOW = ".github/workflows/hepta-architecture-v5-b0-verified-use.yml"
+
+STACK_PARENT_COMMIT = "92d22e241972fd02f2a3a0bf69849b0b4c7a8b7f"
+STACK_PARENT_TREE = "c711d50d642e628848290059367ab25399563cac"
+SOURCE_BRANCH = "codex/hepta-architecture-v5-b0-exact-restack-20260831"
 
 PACKAGE_IDS = [
     "P0.7a_signed_runtime_bootstrap_closure",
@@ -66,6 +71,7 @@ PHYSICAL_KINDS = [
 B0_OWNED_PATHS = {
     SOURCE,
     TESTS,
+    NEGATIVE_TESTS,
     LIB,
     DELIVERY,
     PLAN,
@@ -150,16 +156,18 @@ def require_false_authority(value: Any, location: str) -> None:
 
 
 def verify_required_files() -> None:
-    for relative in sorted(
-        INDEXED_V5_PATHS
-        | {
-            SOURCE,
-            TESTS,
-            LIB,
-        }
-    ):
+    for relative in sorted(INDEXED_V5_PATHS | {SOURCE, TESTS, NEGATIVE_TESTS, LIB}):
         if not (ROOT / relative).is_file():
             fail(f"required V5/B0 file is missing: {relative}")
+
+
+def verify_no_transient_materializers() -> None:
+    transient = sorted(
+        path.relative_to(ROOT).as_posix()
+        for path in (ROOT / "scripts").glob(".hepta-v5-b0-*-materializer*")
+    )
+    if transient:
+        fail(f"transient B0 materializer artifacts escaped source assembly: {transient}")
 
 
 def verify_pointer() -> None:
@@ -200,9 +208,9 @@ def verify_pointer() -> None:
     binding = pointer.get("candidateBinding")
     if not isinstance(binding, dict):
         fail("current plan candidate binding must be an object")
-    if binding.get("stackParentCommit") != "f69e5a4a5068a2657f1470da43c26b1410d53c6f":
+    if binding.get("stackParentCommit") != STACK_PARENT_COMMIT:
         fail("current plan stack-parent commit drifted")
-    if binding.get("stackParentTree") != "532307507d2b02a479d3c76042d42cc948b499df":
+    if binding.get("stackParentTree") != STACK_PARENT_TREE:
         fail("current plan stack-parent tree drifted")
     require_false_authority(pointer.get("authority"), "current plan authority")
 
@@ -260,6 +268,8 @@ def verify_plan() -> None:
         PLAN,
         (
             "HEPTA-ARCHITECTURE-CONVERGENCE-V5",
+            STACK_PARENT_COMMIT,
+            STACK_PARENT_TREE,
             "P0.7a — signed runtime bootstrap closure",
             "P0.7b — verified physical capability closure",
             "B0 common verified-use kernel",
@@ -280,6 +290,7 @@ def verify_plan() -> None:
             "all_gaps_closed=false",
             "non-serializable verified-use token",
             "No adapter may mint the capability or verified-use token that it consumes",
+            NEGATIVE_TESTS,
         ),
     )
     ordered = (
@@ -316,9 +327,9 @@ def verify_ledger() -> None:
     stack_parent = ledger.get("stackParent")
     if not isinstance(stack_parent, dict):
         fail("V5 gap ledger stack parent must be an object")
-    if stack_parent.get("commit") != "f69e5a4a5068a2657f1470da43c26b1410d53c6f":
+    if stack_parent.get("commit") != STACK_PARENT_COMMIT:
         fail("V5 gap ledger stack-parent commit drifted")
-    if stack_parent.get("tree") != "532307507d2b02a479d3c76042d42cc948b499df":
+    if stack_parent.get("tree") != STACK_PARENT_TREE:
         fail("V5 gap ledger stack-parent tree drifted")
     identity_policy = ledger.get("candidateIdentityPolicy")
     if not isinstance(identity_policy, dict):
@@ -357,6 +368,8 @@ def verify_ledger() -> None:
         "current_revision_verifier",
         "nonclone_nonserializable_private_token",
         "consume_by_value",
+        "durable_claim_store_contract",
+        "public_boundary_adapter_api",
         "selected_plan_verifier_routing",
         "no_product_caller_change",
     ):
@@ -398,6 +411,16 @@ def verify_status() -> None:
         fail("qualification status plan binding drifted")
     if status.get("claimLevel") != "source_execution_in_progress_unqualified":
         fail("qualification status overclaims executable evidence")
+    subject = status.get("subject")
+    if not isinstance(subject, dict):
+        fail("qualification status subject is missing")
+    if subject.get("stackParentCommit") != STACK_PARENT_COMMIT:
+        fail("qualification status stack-parent commit drifted")
+    if subject.get("stackParentTree") != STACK_PARENT_TREE:
+        fail("qualification status stack-parent tree drifted")
+    if subject.get("sourceBranch") != SOURCE_BRANCH:
+        fail("qualification status source branch drifted")
+
     execution_states = set(status.get("executionStateVocabulary", []))
     expected_execution_states = {
         "not_run",
@@ -426,7 +449,7 @@ def verify_status() -> None:
     observed = status.get("observedExecution")
     if not isinstance(observed, dict):
         fail("qualification status lacks observed execution")
-    for name in ("b0ExactHead", "b0MergeCandidate"):
+    for name in ("p07aExactHead", "b0ExactHead", "b0MergeCandidate"):
         row = observed.get(name)
         if not isinstance(row, dict) or row.get("state") not in execution_states:
             fail(f"{name} contains an invalid execution state")
@@ -492,16 +515,22 @@ def verify_verified_use_source() -> None:
         SOURCE,
         tuple(
             [
-                "pub const VERIFIED_USE_SCHEMA_VERSION: u32 = 1",
+                "pub const VERIFIED_USE_SCHEMA_VERSION: u32 = 2",
                 "pub enum PhysicalCapabilityKind",
                 "pub struct RevocationRevision",
                 "pub struct PhysicalUseWindow",
                 "pub struct PhysicalUseVerificationRequest",
                 "pub struct PhysicalUseVerification",
+                "pub trait TrustedPhysicalClock",
                 "pub trait PhysicalUseVerifier: CapabilityUseVerifier",
+                "pub struct PhysicalUseClaimKey",
+                "pub struct PhysicalUseClaimRequest",
+                "pub struct PhysicalUseClaimReceipt",
+                "pub trait PhysicalUseClaimStore",
                 "pub fn verify_physical_capability_use",
                 "pub struct PhysicalUseFinalCheck",
                 "pub struct VerifiedUseToken<C>",
+                "pub struct VerifiedUseBoundaryPermit<C>",
                 "pub struct VerifiedUseWitness",
                 "external_lease_binding()",
                 "verify_capability_use(",
@@ -510,27 +539,38 @@ def verify_verified_use_source() -> None:
                 "runtime_authority_context_sha256",
                 "verifier_receipt_sha256",
                 "token_sha256",
+                "claim_once(",
                 "witness_sha256",
             ]
             + PHYSICAL_KINDS
         ),
     )
-    if not re.search(r"pub fn consume\(\s*self,", source):
-        fail("VerifiedUseToken consumption must take self by value")
+    if not re.search(r"pub fn consume_at_boundary\s*<[^>]*>\s*\(\s*self,", source):
+        fail("VerifiedUseToken.consume_at_boundary must take self by value")
     token_declaration = source.find("pub struct VerifiedUseToken<C>")
     if token_declaration < 0:
         fail("VerifiedUseToken declaration is missing")
-    preceding = source[max(0, token_declaration - 120) : token_declaration]
+    preceding = source[max(0, token_declaration - 160) : token_declaration]
     if "#[derive" in preceding:
         fail("VerifiedUseToken must not derive Clone, Copy or Serde traits")
+    permit_declaration = source.find("pub struct VerifiedUseBoundaryPermit<C>")
+    if permit_declaration < 0:
+        fail("VerifiedUseBoundaryPermit declaration is missing")
+    permit_preceding = source[max(0, permit_declaration - 160) : permit_declaration]
+    if "#[derive" in permit_preceding:
+        fail("VerifiedUseBoundaryPermit must not derive Clone, Copy or Serde traits")
     for marker in (
         "impl<C> Clone for VerifiedUseToken",
         "impl<C> Copy for VerifiedUseToken",
         "impl<C> Serialize for VerifiedUseToken",
         "impl<'de, C> Deserialize<'de> for VerifiedUseToken",
+        "impl<C> Clone for VerifiedUseBoundaryPermit",
+        "impl<C> Copy for VerifiedUseBoundaryPermit",
+        "impl<C> Serialize for VerifiedUseBoundaryPermit",
+        "impl<'de, C> Deserialize<'de> for VerifiedUseBoundaryPermit",
     ):
         if marker in source:
-            fail(f"VerifiedUseToken contains forbidden implementation {marker}")
+            fail(f"verified-use authority object contains forbidden implementation {marker}")
     token_impl_match = re.search(
         r"impl<C> VerifiedUseToken<C>.*?impl<C> fmt::Debug for VerifiedUseToken<C>",
         source,
@@ -554,35 +594,47 @@ def verify_verified_use_source() -> None:
         candidate = path.read_text(encoding="utf-8")
         if "verify_physical_capability_use" in candidate:
             callsites.add(path.relative_to(ROOT).as_posix())
-    expected_callsites = {SOURCE, TESTS, LIB}
+    expected_callsites = {SOURCE, TESTS, NEGATIVE_TESTS, LIB}
     if callsites != expected_callsites:
         fail(f"B0 changed or missed product verified-use call sites: {sorted(callsites)}")
 
 
 def verify_tests_and_exports() -> None:
-    require_markers(
-        TESTS,
-        (
-            "exact_final_payload_issues_and_consumes_one_stable_token",
-            "kind_action_mismatch_is_rejected_before_any_verifier_call",
-            "local_broad_capability_cannot_cross_a_physical_write_boundary",
-            "broad_authority_context_drift_and_expiry_fail_before_physical_verification",
-            "requested_window_and_current_revocation_revision_are_fail_closed",
-            "verifier_denial_and_expired_verifier_window_are_distinct",
-            "final_operation_payload_context_kind_and_revision_drift_are_rejected",
-            "final_crossing_time_must_be_inside_the_verified_window",
-            "revocation_revision_and_window_reject_zero_or_empty_values",
-        ),
-    )
+    test_source = text(TESTS) + "\n" + text(NEGATIVE_TESTS)
+    for marker in (
+        "exact_final_payload_issues_and_consumes_one_stable_token",
+        "kind_action_mismatch_is_rejected_before_any_verifier_call",
+        "local_broad_capability_cannot_cross_a_physical_write_boundary",
+        "broad_authority_context_drift_and_expiry_fail_before_physical_verification",
+        "requested_window_and_current_revocation_revision_are_fail_closed",
+        "verifier_denial_and_expired_verifier_window_are_distinct",
+        "final_operation_payload_context_kind_and_revision_drift_are_rejected",
+        "final_crossing_time_must_be_inside_the_verified_window",
+        "revocation_revision_and_window_reject_zero_or_empty_values",
+    ):
+        if marker not in test_source:
+            fail(f"verified-use negative matrix is missing {marker!r}")
+
     library = text(LIB)
     if "mod verified_use;" not in library:
         fail("hepta-contracts does not compile the verified-use module")
     for marker in (
         "pub use verified_use::PhysicalCapabilityKind;",
+        "pub use verified_use::PhysicalUseClaimKey;",
+        "pub use verified_use::PhysicalUseClaimReceipt;",
+        "pub use verified_use::PhysicalUseClaimRequest;",
+        "pub use verified_use::PhysicalUseClaimStore;",
+        "pub use verified_use::PhysicalUseClaimStoreError;",
         "pub use verified_use::PhysicalUseFinalCheck;",
+        "pub use verified_use::PhysicalUseVerification;",
         "pub use verified_use::PhysicalUseVerificationRequest;",
         "pub use verified_use::PhysicalUseVerifier;",
+        "pub use verified_use::PhysicalUseWindow;",
         "pub use verified_use::RevocationRevision;",
+        "pub use verified_use::TrustedPhysicalClock;",
+        "pub use verified_use::VERIFIED_USE_SCHEMA_VERSION;",
+        "pub use verified_use::VerifiedUseBoundaryPermit;",
+        "pub use verified_use::VerifiedUseError;",
         "pub use verified_use::VerifiedUseToken;",
         "pub use verified_use::VerifiedUseWitness;",
         "pub use verified_use::verify_physical_capability_use;",
@@ -631,9 +683,10 @@ def verify_scoped_formatter() -> None:
     formatter = require_markers(
         FORMAT,
         (
-            "codex-rs/hepta-contracts/src/lib.rs",
-            "codex-rs/hepta-contracts/src/verified_use.rs",
-            "codex-rs/hepta-contracts/src/verified_use_tests.rs",
+            LIB,
+            SOURCE,
+            TESTS,
+            NEGATIVE_TESTS,
             '"rustfmt"',
             '"--edition"',
             '"2024"',
@@ -648,6 +701,7 @@ def verify_scoped_formatter() -> None:
 
 def main() -> None:
     verify_required_files()
+    verify_no_transient_materializers()
     verify_pointer()
     verify_document_index()
     verify_plan()

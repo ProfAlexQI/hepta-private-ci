@@ -2,11 +2,11 @@
   "schema": "hepta.architecture-gap-ledger.v5",
   "planId": "HEPTA-ARCHITECTURE-CONVERGENCE-V5",
   "planPath": "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md",
-  "generatedAt": "2026-08-30",
+  "generatedAt": "2026-08-31",
   "repository": "ProfHepta/hepta-private-ci",
   "stackParent": {
-    "commit": "f69e5a4a5068a2657f1470da43c26b1410d53c6f",
-    "tree": "532307507d2b02a479d3c76042d42cc948b499df",
+    "commit": "92d22e241972fd02f2a3a0bf69849b0b4c7a8b7f",
+    "tree": "c711d50d642e628848290059367ab25399563cac",
     "pr": 83,
     "state": "source_implemented_executable_qualification_pending"
   },
@@ -68,6 +68,7 @@
       "ownedPaths": [
         "codex-rs/hepta-contracts/src/verified_use.rs",
         "codex-rs/hepta-contracts/src/verified_use_tests.rs",
+        "codex-rs/hepta-contracts/tests/verified_use_negative.rs",
         "codex-rs/hepta-contracts/src/lib.rs",
         "docs/architecture/HEPTA_P0_7B_VERIFIED_USE_DELIVERY_CONTRACT_V1.md",
         "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md",
@@ -94,6 +95,8 @@
         "nonclone_nonserializable_private_token",
         "consume_by_value",
         "final_boundary_recheck",
+        "durable_claim_store_contract",
+        "public_boundary_adapter_api",
         "digest_bound_witness",
         "selected_plan_verifier_routing",
         "no_product_caller_change"

@@ -11,8 +11,8 @@
   "currentPackage": "P0.7b/B0_verified_use_kernel",
   "supersedesPlan": "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V4.md",
   "candidateBinding": {
-    "stackParentCommit": "f69e5a4a5068a2657f1470da43c26b1410d53c6f",
-    "stackParentTree": "532307507d2b02a479d3c76042d42cc948b499df",
+    "stackParentCommit": "92d22e241972fd02f2a3a0bf69849b0b4c7a8b7f",
+    "stackParentTree": "c711d50d642e628848290059367ab25399563cac",
     "sourceCommit": "resolved_by_exact_source_head_workflow",
     "sourceTree": "resolved_by_exact_source_head_workflow",
     "mergeCandidate": "resolved_by_pull_request_workflow"

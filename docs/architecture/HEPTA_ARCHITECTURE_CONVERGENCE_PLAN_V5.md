@@ -1,11 +1,11 @@
 # Hepta Architecture Convergence Plan V5
 
 **Plan ID:** `HEPTA-ARCHITECTURE-CONVERGENCE-V5`  
-**Version:** `5.0.0`  
-**Date:** 2026-08-30  
+**Version:** `5.0.1`  
+**Date:** 2026-08-31  
 **Status:** selected source candidate on the architecture-convergence stack; executable qualification and independent acceptance remain separate.  
 **Repository:** `ProfHepta/hepta-private-ci`  
-**Immediate lineage:** `f69e5a4a5068a2657f1470da43c26b1410d53c6f` / tree `532307507d2b02a479d3c76042d42cc948b499df`  
+**Immediate lineage:** `92d22e241972fd02f2a3a0bf69849b0b4c7a8b7f` / tree `c711d50d642e628848290059367ab25399563cac`  
 **Predecessor:** `HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V4.md`
 
 V5 retains the V4 authority, ownership, recovery, evidence and release boundaries, but converts the remaining chapter-level backlog into one executable package graph. It also freezes the missing common primitive required by every irreversible boundary: a final-payload, operation-bound, revocation-revision-bound, short-lived and non-serializable verified-use token.
@@ -14,9 +14,9 @@ This document is a source contract. Its presence does not establish that a runne
 
 ## 1. Current truthful state
 
-The architecture stack has implemented the source portion of the Supervisor-signed runtime bootstrap. The exact P0.7a candidate exposed a deterministic Rust 1.95 formatting failure on an assigned ARM runner. The minimal successor fixes only that emitted formatter delta. Until both exact-head and merge-candidate jobs execute non-empty successful steps, P0.7a remains `source_implemented_executable_qualification_pending`.
+The architecture stack has implemented the source portion of the Supervisor-signed runtime bootstrap at exact commit `92d22e241972fd02f2a3a0bf69849b0b4c7a8b7f`. Package-level diagnostics and a dedicated ARM qualification lane are committed, while the required exact-head and merge-candidate jobs remain unqualified until assigned runners execute non-empty successful steps. P0.7a therefore remains `source_implemented_executable_qualification_pending`.
 
-V5 starts B0 on top of that candidate because all later physical-boundary work consumes the same verified-use kernel. B0 source may be reviewed and qualified in a stacked Draft, but B1 or later activation may not treat B0 as available until P0.7a and B0 each reach `qualified_exact` on their own exact candidates.
+V5 starts B0 on top of that exact candidate because all later physical-boundary work consumes the same verified-use kernel. B0 source may be reviewed and qualified in a stacked Draft, but B1 or later activation may not treat B0 as available until P0.7a and B0 each reach `qualified_exact` on their own exact candidates.
 
 Current claim boundary:
 
@@ -211,6 +211,7 @@ Revert only the P0.7a stack. Do not reinterpret a pending reservation or partial
 ```text
 codex-rs/hepta-contracts/src/verified_use.rs
 codex-rs/hepta-contracts/src/verified_use_tests.rs
+codex-rs/hepta-contracts/tests/verified_use_negative.rs
 codex-rs/hepta-contracts/src/lib.rs
 docs/architecture/HEPTA_P0_7B_VERIFIED_USE_DELIVERY_CONTRACT_V1.md
 docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json
@@ -227,7 +228,8 @@ scripts/verify-hepta-architecture-plan-v5.py
 - `PhysicalUseVerificationRequest` carrying operation ID, final payload digest, runtime context and expected revision;
 - verifier response carrying current revision, verifier receipt digest and validity bound;
 - `verify_physical_capability_use` composes the existing per-use verifier and returns a private-constructor token;
-- `VerifiedUseToken<C>` has no `Clone`, `Copy`, `Serialize` or `Deserialize` implementation;
+- durable single-use claim interfaces, trusted clock and boundary permit are public from the crate root for downstream adapters, while their constructors remain controlled by the kernel;
+- `VerifiedUseToken<C>` and `VerifiedUseBoundaryPermit<C>` have no `Clone`, `Copy`, `Serialize` or `Deserialize` implementation;
 - boundary entry consumes the token by value and emits a digest-bound witness;
 - final operation, payload, context, revision, kind and time are rechecked during consumption.
 

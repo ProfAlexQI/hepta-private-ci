@@ -33,9 +33,9 @@
     "repository": "ProfHepta/hepta-private-ci",
     "stackParentPr": 83,
     "stackParentBranch": "codex/hepta-architecture-v4-p0-7a-executable-closure-20260830",
-    "stackParentCommit": "f69e5a4a5068a2657f1470da43c26b1410d53c6f",
-    "stackParentTree": "532307507d2b02a479d3c76042d42cc948b499df",
-    "sourceBranch": "codex/hepta-architecture-v5-b0-verified-use-kernel-20260830",
+    "stackParentCommit": "92d22e241972fd02f2a3a0bf69849b0b4c7a8b7f",
+    "stackParentTree": "c711d50d642e628848290059367ab25399563cac",
+    "sourceBranch": "codex/hepta-architecture-v5-b0-exact-restack-20260831",
     "sourceCommit": "resolved_by_exact_head_workflow",
     "sourceTree": "resolved_by_exact_head_workflow",
     "mergeCandidate": "resolved_by_pull_request_workflow"
@@ -61,36 +61,32 @@
       "docs/architecture/HEPTA_P0_7B_VERIFIED_USE_DELIVERY_CONTRACT_V1.md",
       "codex-rs/hepta-contracts/src/verified_use.rs",
       "codex-rs/hepta-contracts/src/verified_use_tests.rs",
+      "codex-rs/hepta-contracts/tests/verified_use_negative.rs",
       "scripts/verify-hepta-architecture-plan-v5.py",
       ".github/workflows/hepta-architecture-v5-b0-verified-use.yml"
     ]
   },
   "observedExecution": {
-    "observedAt": "2026-08-30",
+    "observedAt": "2026-08-31",
     "p07aExactHead": {
-      "commit": "f69e5a4a5068a2657f1470da43c26b1410d53c6f",
+      "commit": "92d22e241972fd02f2a3a0bf69849b0b4c7a8b7f",
       "state": "queued",
       "qualificationClaim": "not_run",
       "runs": [
         {
           "name": "Hepta P0.7a direct qualification ARM",
-          "runId": 33271360146,
+          "runId": 33345631354,
           "state": "queued"
         },
         {
           "name": "Hepta P0.7a runtime bootstrap",
-          "runId": 33271360151,
-          "state": "queued"
-        },
-        {
-          "name": "blocking-ci",
-          "runId": 33271360301,
+          "runId": 33345631324,
           "state": "queued"
         }
       ]
     },
     "b0ExactHead": {
-      "state": "not_run",
+      "state": "queued",
       "runId": null,
       "jobId": null,
       "runnerId": null,
@@ -98,7 +94,7 @@
       "qualificationClaim": "not_run"
     },
     "b0MergeCandidate": {
-      "state": "not_run",
+      "state": "queued",
       "runId": null,
       "jobId": null,
       "runnerId": null,
