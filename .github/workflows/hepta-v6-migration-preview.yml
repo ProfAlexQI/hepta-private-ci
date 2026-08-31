@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: hepta-v6-document-migration-finalizer-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   BASE_COMMIT: b621768b70a09d56626bb8a2c331e3dc424e6a4d
@@ -24,7 +24,7 @@ env:
 jobs:
   finalize:
     name: Build, verify, commit, and publish canonical V6 document tree
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Checkout exact finalizer head
