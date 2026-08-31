@@ -8,14 +8,18 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: authbus-p1-3-branch-repair-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   repair:
     if: github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
+    runs-on: macos-15
     timeout-minutes: 20
     steps:
       - name: Check out exact branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: codex/authbus-p1-3-semantic-closure-v12-gpt56-20260831
           fetch-depth: 0
