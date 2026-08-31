@@ -70,7 +70,8 @@ class FakeResponse:
         return self.url
 
     def read(self, limit: int) -> bytes:
-        return self.payload[:limit]
+        chunk, self.payload = self.payload[:limit], self.payload[limit:]
+        return chunk
 
 
 def valid_metadata() -> dict[str, object]:
@@ -108,7 +109,7 @@ def encoded_metadata() -> bytes:
 
 class GitHubResponseBoundaryTest(unittest.TestCase):
     def fetch(self, response: FakeResponse) -> dict[str, object]:
-        with patch.object(API.urllib.request, "urlopen", return_value=response):
+        with patch.object(API.URL_OPENER, "open", return_value=response):
             return API.fetch_commit_metadata(REPOSITORY, HEAD, "fixture-token")
 
     def test_valid_response_is_adapted(self) -> None:
