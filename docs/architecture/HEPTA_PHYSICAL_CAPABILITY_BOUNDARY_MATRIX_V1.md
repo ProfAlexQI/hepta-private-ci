@@ -5,8 +5,8 @@
 A typed grant or a start-time runtime bootstrap is insufficient by itself. The
 component crossing a physical boundary must obtain a short-lived,
 operation-bound verified-use token immediately before the crossing. The token
-is non-serializable, carries the current authority context digest and cannot be
-reused for another operation.
+is non-serializable, carries the current authority context digest and
+cannot be reused for another operation.
 
 | Boundary | Typed capability | Immediate verifier facts | Unknown outcome | Local profiles |
 |---|---|---|---|---|
