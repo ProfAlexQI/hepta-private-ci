@@ -53,7 +53,7 @@ concurrency:
 jobs:
   source-qualification:
     name: V5 B0 source qualification
-    runs-on: ubuntu-24.04
+    runs-on: macos-latest
     timeout-minutes: 90
     defaults:
       run:
@@ -123,6 +123,8 @@ jobs:
             scripts/verify-hepta-v5-b0-format.py
 
       - name: Verify selected V5 B0 source contract
+        id: source_contract
+        continue-on-error: true
         working-directory: .
         shell: bash
         run: |
@@ -133,6 +135,8 @@ jobs:
           echo "source_verifier=passed" >> "$evidence_dir/posture.txt"
 
       - name: Locked workspace metadata
+        id: metadata
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -141,6 +145,8 @@ jobs:
           echo "locked_metadata=passed" >> "$evidence_dir/posture.txt"
 
       - name: Rust 1.95 scoped format
+        id: format
+        continue-on-error: true
         working-directory: .
         shell: bash
         run: |
@@ -150,6 +156,8 @@ jobs:
           echo "format=passed" >> "$evidence_dir/posture.txt"
 
       - name: Focused verified-use tests
+        id: focused
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -158,6 +166,8 @@ jobs:
           echo "focused_tests=passed" >> "$evidence_dir/posture.txt"
 
       - name: Complete hepta-contracts tests
+        id: package
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -166,6 +176,8 @@ jobs:
           echo "package_tests=passed" >> "$evidence_dir/posture.txt"
 
       - name: Locked all-target check
+        id: check
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -174,6 +186,8 @@ jobs:
           echo "all_target_check=passed" >> "$evidence_dir/posture.txt"
 
       - name: Strict Clippy
+        id: clippy
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -182,6 +196,8 @@ jobs:
           echo "strict_clippy=passed" >> "$evidence_dir/posture.txt"
 
       - name: Verify committed Bazel lock
+        id: bazel_lock
+        continue-on-error: true
         working-directory: .
         shell: bash
         run: |
@@ -189,6 +205,31 @@ jobs:
           evidence_dir="$RUNNER_TEMP/hepta-v5-b0"
           just bazel-lock-check 2>&1 | tee "$evidence_dir/bazel-lock.log"
           echo "bazel_lock=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Require all B0 diagnostics
+        if: always() && !cancelled()
+        working-directory: .
+        shell: bash
+        env:
+          SOURCE_OUTCOME: ${{ steps.source_contract.outcome }}
+          METADATA_OUTCOME: ${{ steps.metadata.outcome }}
+          FORMAT_OUTCOME: ${{ steps.format.outcome }}
+          FOCUSED_OUTCOME: ${{ steps.focused.outcome }}
+          PACKAGE_OUTCOME: ${{ steps.package.outcome }}
+          CHECK_OUTCOME: ${{ steps.check.outcome }}
+          CLIPPY_OUTCOME: ${{ steps.clippy.outcome }}
+          BAZEL_LOCK_OUTCOME: ${{ steps.bazel_lock.outcome }}
+        run: |
+          set -euo pipefail
+          test "$SOURCE_OUTCOME" = success
+          test "$METADATA_OUTCOME" = success
+          test "$FORMAT_OUTCOME" = success
+          test "$FOCUSED_OUTCOME" = success
+          test "$PACKAGE_OUTCOME" = success
+          test "$CHECK_OUTCOME" = success
+          test "$CLIPPY_OUTCOME" = success
+          test "$BAZEL_LOCK_OUTCOME" = success
+          echo "All B0 diagnostics passed."
 
       - name: Record job result
         if: always()
@@ -223,7 +264,7 @@ jobs:
     if: ${{ always() }}
     needs:
       - source-qualification
-    runs-on: ubuntu-24.04
+    runs-on: macos-latest
     steps:
       - name: Require successful V5 B0 qualification
         env:
