@@ -117,7 +117,7 @@ jobs:
           assert report["blockers"] == [], report["blockers"]
           assert len(report["legacyDocuments"]) == 138, len(report["legacyDocuments"])
           assert report["obsoleteSupportFiles"] == []
-          assert report["safeRewrites"] == []
+          assert report["safeRewrites"] == {}
           print("legacy_documents_removed=138")
           PY
 
