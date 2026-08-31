@@ -1,0 +1,762 @@
+name: Hepta V5 B0 source integrity repair (one shot)
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-v5-b0-exact-restack-20260831
+    paths:
+      - .github/workflows/hepta-v5-b0-source-integrity-repair-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-v5-b0-source-integrity-repair-once
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Repair exact B0 provenance, public API and negative coverage
+    if: >-
+      github.repository == 'ProfHepta/hepta-private-ci' &&
+      github.ref == 'refs/heads/codex/hepta-architecture-v5-b0-exact-restack-20260831'
+    runs-on: macos-15-xlarge
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact repair input
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          fetch-depth: 2
+
+      - name: Verify exact parent and single-file trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "0ed884a0bc92bda01e4dd5dd25b3bca959d8d81b"
+          test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = \
+            ".github/workflows/hepta-v5-b0-source-integrity-repair-once.yml"
+          test "$(git ls-remote origin refs/heads/codex/hepta-architecture-v5-b0-exact-restack-20260831 | cut -f1)" = "$GITHUB_SHA"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: nextest@0.9.143
+
+      - name: Apply deterministic B0 source-integrity repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          OLD_COMMIT = "f69e5a4a5068a2657f1470da43c26b1410d53c6f"
+          NEW_COMMIT = "92d22e241972fd02f2a3a0bf69849b0b4c7a8b7f"
+          OLD_TREE = "532307507d2b02a479d3c76042d42cc948b499df"
+          NEW_TREE = "c711d50d642e628848290059367ab25399563cac"
+          OLD_BRANCH = "codex/hepta-architecture-v5-b0-verified-use-kernel-20260830"
+          NEW_BRANCH = "codex/hepta-architecture-v5-b0-exact-restack-20260831"
+
+          PLAN = Path("docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md")
+          LEDGER = Path("docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json")
+          POINTER = Path("docs/architecture/HEPTA_CURRENT_PLAN.json")
+          STATUS = Path("docs/architecture/HEPTA_QUALIFICATION_STATUS_V4.json")
+          VERIFIER = Path("scripts/verify-hepta-architecture-plan-v5.py")
+          LIB = Path("codex-rs/hepta-contracts/src/lib.rs")
+          TESTS = Path("codex-rs/hepta-contracts/src/verified_use_tests.rs")
+
+          def replace_exact(path: Path, old: str, new: str, expected: int = 1) -> None:
+              source = path.read_text(encoding="utf-8")
+              observed = source.count(old)
+              if observed != expected:
+                  raise SystemExit(
+                      f"{path}: expected {expected} occurrences of {old!r}, observed {observed}"
+                  )
+              path.write_text(source.replace(old, new), encoding="utf-8")
+
+          provenance_counts = {
+              PLAN: (1, 1),
+              LEDGER: (1, 1),
+              POINTER: (1, 1),
+              STATUS: (2, 1),
+              VERIFIER: (2, 2),
+          }
+          for path, (commit_count, tree_count) in provenance_counts.items():
+              replace_exact(path, OLD_COMMIT, NEW_COMMIT, commit_count)
+              replace_exact(path, OLD_TREE, NEW_TREE, tree_count)
+          replace_exact(STATUS, OLD_BRANCH, NEW_BRANCH)
+
+          replace_exact(
+              VERIFIER,
+              '"pub const VERIFIED_USE_SCHEMA_VERSION: u32 = 1",',
+              '"pub const VERIFIED_USE_SCHEMA_VERSION: u32 = 2",',
+          )
+          replace_exact(
+              VERIFIER,
+              'if not re.search(r"pub fn consume\\(\\s*self,", source):',
+              'if not re.search(r"pub fn consume_at_boundary\\(\\s*self,", source):',
+          )
+          replace_exact(
+              VERIFIER,
+              'fail("VerifiedUseToken consumption must take self by value")',
+              'fail("VerifiedUseToken.consume_at_boundary must take self by value")',
+          )
+          replace_exact(
+              VERIFIER,
+              "\n\ndef verify_pointer() -> None:\n",
+              """
+
+          def verify_no_transient_materializers() -> None:
+              transient = sorted(
+                  path.relative_to(ROOT).as_posix()
+                  for path in (ROOT / "scripts").glob(".hepta-v5-b0-*-materializer*")
+              )
+              if transient:
+                  fail(f"transient B0 materializer artifacts escaped source assembly: {transient}")
+
+
+          def verify_pointer() -> None:
+          """,
+          )
+          replace_exact(
+              VERIFIER,
+              "    verify_required_files()\n    verify_pointer()",
+              "    verify_required_files()\n    verify_no_transient_materializers()\n    verify_pointer()",
+          )
+
+          verifier_exports = """        \"pub use verified_use::PhysicalCapabilityKind;\",
+                  \"pub use verified_use::PhysicalUseFinalCheck;\",
+                  \"pub use verified_use::PhysicalUseVerificationRequest;\",
+                  \"pub use verified_use::PhysicalUseVerifier;\",
+                  \"pub use verified_use::RevocationRevision;\",
+                  \"pub use verified_use::VerifiedUseToken;\",
+                  \"pub use verified_use::VerifiedUseWitness;\",
+                  \"pub use verified_use::verify_physical_capability_use;\","""
+          expanded_verifier_exports = """        \"pub use verified_use::PhysicalCapabilityKind;\",
+                  \"pub use verified_use::PhysicalUseClaimKey;\",
+                  \"pub use verified_use::PhysicalUseClaimReceipt;\",
+                  \"pub use verified_use::PhysicalUseClaimRequest;\",
+                  \"pub use verified_use::PhysicalUseClaimStore;\",
+                  \"pub use verified_use::PhysicalUseClaimStoreError;\",
+                  \"pub use verified_use::PhysicalUseFinalCheck;\",
+                  \"pub use verified_use::PhysicalUseVerification;\",
+                  \"pub use verified_use::PhysicalUseVerificationRequest;\",
+                  \"pub use verified_use::PhysicalUseVerifier;\",
+                  \"pub use verified_use::PhysicalUseWindow;\",
+                  \"pub use verified_use::RevocationRevision;\",
+                  \"pub use verified_use::TrustedPhysicalClock;\",
+                  \"pub use verified_use::VERIFIED_USE_SCHEMA_VERSION;\",
+                  \"pub use verified_use::VerifiedUseBoundaryPermit;\",
+                  \"pub use verified_use::VerifiedUseError;\",
+                  \"pub use verified_use::VerifiedUseToken;\",
+                  \"pub use verified_use::VerifiedUseWitness;\",
+                  \"pub use verified_use::verify_physical_capability_use;\","""
+          replace_exact(VERIFIER, verifier_exports, expanded_verifier_exports)
+
+          old_lib_exports = """pub use verified_use::PhysicalCapabilityKind;
+          pub use verified_use::PhysicalUseFinalCheck;
+          pub use verified_use::PhysicalUseVerification;
+          pub use verified_use::PhysicalUseVerificationRequest;
+          pub use verified_use::PhysicalUseVerifier;
+          pub use verified_use::PhysicalUseWindow;
+          pub use verified_use::RevocationRevision;
+          pub use verified_use::VERIFIED_USE_SCHEMA_VERSION;
+          pub use verified_use::VerifiedUseError;
+          pub use verified_use::VerifiedUseToken;
+          pub use verified_use::VerifiedUseWitness;
+          pub use verified_use::verify_physical_capability_use;"""
+          new_lib_exports = """pub use verified_use::PhysicalCapabilityKind;
+          pub use verified_use::PhysicalUseClaimKey;
+          pub use verified_use::PhysicalUseClaimReceipt;
+          pub use verified_use::PhysicalUseClaimRequest;
+          pub use verified_use::PhysicalUseClaimStore;
+          pub use verified_use::PhysicalUseClaimStoreError;
+          pub use verified_use::PhysicalUseFinalCheck;
+          pub use verified_use::PhysicalUseVerification;
+          pub use verified_use::PhysicalUseVerificationRequest;
+          pub use verified_use::PhysicalUseVerifier;
+          pub use verified_use::PhysicalUseWindow;
+          pub use verified_use::RevocationRevision;
+          pub use verified_use::TrustedPhysicalClock;
+          pub use verified_use::VERIFIED_USE_SCHEMA_VERSION;
+          pub use verified_use::VerifiedUseBoundaryPermit;
+          pub use verified_use::VerifiedUseError;
+          pub use verified_use::VerifiedUseToken;
+          pub use verified_use::VerifiedUseWitness;
+          pub use verified_use::verify_physical_capability_use;"""
+          replace_exact(LIB, old_lib_exports, new_lib_exports)
+
+          replace_exact(
+              TESTS,
+              "fn trusted_final_verification_and_durable_claim_issue_one_permit()",
+              "fn exact_final_payload_issues_and_consumes_one_stable_token()",
+          )
+          replace_exact(
+              TESTS,
+              "fn invalid_windows_revisions_and_trusted_clock_fail_closed()",
+              "fn revocation_revision_and_window_reject_zero_or_empty_values()",
+          )
+          replace_exact(
+              TESTS,
+              """struct TestPhysicalVerifier {
+              revision: AtomicU64,
+              valid_until: AtomicU64,
+              broad_calls: AtomicUsize,
+              physical_calls: AtomicUsize,
+          }""",
+              """struct TestPhysicalVerifier {
+              revision: AtomicU64,
+              valid_until: AtomicU64,
+              reject_physical: AtomicBool,
+              broad_calls: AtomicUsize,
+              physical_calls: AtomicUsize,
+          }""",
+          )
+          replace_exact(
+              TESTS,
+              """            revision: AtomicU64::new(revision.get()),
+                      valid_until: AtomicU64::new(valid_until),
+                      broad_calls: AtomicUsize::new(0),
+                      physical_calls: AtomicUsize::new(0),""",
+              """            revision: AtomicU64::new(revision.get()),
+                      valid_until: AtomicU64::new(valid_until),
+                      reject_physical: AtomicBool::new(false),
+                      broad_calls: AtomicUsize::new(0),
+                      physical_calls: AtomicUsize::new(0),""",
+          )
+          replace_exact(
+              TESTS,
+              """    fn set_revision(&self, revision: RevocationRevision) {
+                  self.revision.store(revision.get(), Ordering::SeqCst);
+              }
+          }""",
+              """    fn set_revision(&self, revision: RevocationRevision) {
+                  self.revision.store(revision.get(), Ordering::SeqCst);
+              }
+
+              fn set_reject_physical(&self, reject: bool) {
+                  self.reject_physical.store(reject, Ordering::SeqCst);
+              }
+          }""",
+          )
+          replace_exact(
+              TESTS,
+              """        let call = self.physical_calls.fetch_add(1, Ordering::SeqCst) + 1;
+                  if request.operation_id().as_str().is_empty()""",
+              """        let call = self.physical_calls.fetch_add(1, Ordering::SeqCst) + 1;
+                  if self.reject_physical.load(Ordering::SeqCst) {
+                      return Err("physical authority denied".to_string());
+                  }
+                  if request.operation_id().as_str().is_empty()""",
+          )
+
+          extra_tests = r'''
+
+          #[test]
+          fn kind_action_mismatch_is_rejected_before_any_verifier_call() {
+              let (capability, runtime_context) = external_fixture(200);
+              let verifier = TestPhysicalVerifier::allowing(revision(1), 180);
+              let clock = TestClock::at(110);
+              let operation_id = operation("operation:verified-use:kind-action-mismatch");
+              let payload_sha256 = Sha256Digest::for_bytes(b"payload");
+
+              assert!(matches!(
+                  verify_physical_capability_use(
+                      &capability,
+                      PhysicalCapabilityKind::ModelInvocation,
+                      &operation_id,
+                      &payload_sha256,
+                      &runtime_context,
+                      revision(1),
+                      PhysicalUseWindow::new(170)
+                          .unwrap_or_else(|error| panic!("window must build: {error}")),
+                      &verifier,
+                      &clock,
+                  ),
+                  Err(VerifiedUseError::CapabilityKindActionMismatch {
+                      kind: PhysicalCapabilityKind::ModelInvocation,
+                      ..
+                  })
+              ));
+              assert_eq!(clock.calls.load(Ordering::SeqCst), 0);
+              assert_eq!(verifier.broad_calls.load(Ordering::SeqCst), 0);
+              assert_eq!(verifier.physical_calls.load(Ordering::SeqCst), 0);
+          }
+
+          #[test]
+          fn local_broad_capability_cannot_cross_a_physical_write_boundary() {
+              let grant = AuthorityGrant::qualification_cognitive_write(agent_id(), GENERATION)
+                  .unwrap_or_else(|error| panic!("qualification grant must build: {error}"));
+              let capability = grant
+                  .authorize::<CognitiveWriteCapability>()
+                  .unwrap_or_else(|error| panic!("local capability must authorize: {error}"));
+              let runtime_context = RuntimeAuthorityContext::new(
+                  agent_id(),
+                  AUTHORITY_EPOCH,
+                  OWNER_EPOCH,
+                  GENERATION,
+                  Sha256Digest::for_bytes(b"local-fence"),
+                  grant.digest(),
+              )
+              .unwrap_or_else(|error| panic!("local context must build: {error}"));
+              let verifier = TestPhysicalVerifier::allowing(revision(1), 180);
+              let clock = TestClock::at(110);
+              let payload_sha256 = Sha256Digest::for_bytes(b"payload");
+
+              assert!(matches!(
+                  verify_physical_capability_use(
+                      &capability,
+                      PhysicalCapabilityKind::CognitiveStateWrite,
+                      &operation("operation:verified-use:local-explicit"),
+                      &payload_sha256,
+                      &runtime_context,
+                      revision(1),
+                      PhysicalUseWindow::new(170)
+                          .unwrap_or_else(|error| panic!("window must build: {error}")),
+                      &verifier,
+                      &clock,
+                  ),
+                  Err(VerifiedUseError::ExternalAuthorityRequired(
+                      PhysicalCapabilityKind::CognitiveStateWrite
+                  ))
+              ));
+              assert_eq!(clock.calls.load(Ordering::SeqCst), 0);
+              assert_eq!(verifier.broad_calls.load(Ordering::SeqCst), 0);
+              assert_eq!(verifier.physical_calls.load(Ordering::SeqCst), 0);
+          }
+
+          #[test]
+          fn broad_authority_context_drift_and_expiry_fail_before_physical_verification() {
+              let (capability, _runtime_context) = external_fixture(200);
+              let drifted_context = RuntimeAuthorityContext::new(
+                  agent_id(),
+                  AUTHORITY_EPOCH,
+                  OWNER_EPOCH,
+                  GENERATION,
+                  Sha256Digest::for_bytes(b"drifted-effect-fence"),
+                  Sha256Digest::for_bytes(b"signed-effect-grant"),
+              )
+              .unwrap_or_else(|error| panic!("drifted context must build: {error}"));
+              let verifier = TestPhysicalVerifier::allowing(revision(1), 180);
+              let clock = TestClock::at(110);
+              let payload_sha256 = Sha256Digest::for_bytes(b"payload");
+              assert!(matches!(
+                  issue(
+                      &capability,
+                      &drifted_context,
+                      &operation("operation:verified-use:context-drift"),
+                      &payload_sha256,
+                      PhysicalCapabilityKind::ExternalEffect,
+                      revision(1),
+                      170,
+                      &verifier,
+                      &clock,
+                  ),
+                  Err(VerifiedUseError::Authority(_))
+              ));
+              assert_eq!(verifier.physical_calls.load(Ordering::SeqCst), 0);
+
+              let (expired_capability, expired_context) = external_fixture(120);
+              let expired_verifier = TestPhysicalVerifier::allowing(revision(1), 180);
+              let expired_clock = TestClock::at(121);
+              assert!(matches!(
+                  issue(
+                      &expired_capability,
+                      &expired_context,
+                      &operation("operation:verified-use:expired-authority"),
+                      &payload_sha256,
+                      PhysicalCapabilityKind::ExternalEffect,
+                      revision(1),
+                      130,
+                      &expired_verifier,
+                      &expired_clock,
+                  ),
+                  Err(VerifiedUseError::Authority(_))
+              ));
+              assert_eq!(expired_verifier.physical_calls.load(Ordering::SeqCst), 0);
+          }
+
+          #[test]
+          fn requested_window_and_current_revocation_revision_are_fail_closed() {
+              let (capability, runtime_context) = external_fixture(150);
+              let verifier = TestPhysicalVerifier::allowing(revision(1), 180);
+              let clock = TestClock::at(110);
+              let payload_sha256 = Sha256Digest::for_bytes(b"payload");
+              assert!(matches!(
+                  issue(
+                      &capability,
+                      &runtime_context,
+                      &operation("operation:verified-use:window-exceeds-lease"),
+                      &payload_sha256,
+                      PhysicalCapabilityKind::ExternalEffect,
+                      revision(1),
+                      151,
+                      &verifier,
+                      &clock,
+                  ),
+                  Err(VerifiedUseError::RequestedWindowExceedsAuthorityLease {
+                      requested_expires_at: 151,
+                      authority_expires_at: 150,
+                  })
+              ));
+              assert_eq!(verifier.physical_calls.load(Ordering::SeqCst), 0);
+
+              let (capability, runtime_context) = external_fixture(200);
+              let revision_verifier = TestPhysicalVerifier::allowing(revision(2), 180);
+              assert!(matches!(
+                  issue(
+                      &capability,
+                      &runtime_context,
+                      &operation("operation:verified-use:revision-drift"),
+                      &payload_sha256,
+                      PhysicalCapabilityKind::ExternalEffect,
+                      revision(1),
+                      170,
+                      &revision_verifier,
+                      &clock,
+                  ),
+                  Err(VerifiedUseError::RevocationRevisionDrift { expected, current })
+                      if expected == revision(1) && current == revision(2)
+              ));
+          }
+
+          #[test]
+          fn verifier_denial_and_expired_verifier_window_are_distinct() {
+              let (capability, runtime_context) = external_fixture(200);
+              let payload_sha256 = Sha256Digest::for_bytes(b"payload");
+              let clock = TestClock::at(110);
+
+              let denied = TestPhysicalVerifier::allowing(revision(1), 180);
+              denied.set_reject_physical(true);
+              assert!(matches!(
+                  issue(
+                      &capability,
+                      &runtime_context,
+                      &operation("operation:verified-use:physical-denied"),
+                      &payload_sha256,
+                      PhysicalCapabilityKind::ExternalEffect,
+                      revision(1),
+                      170,
+                      &denied,
+                      &clock,
+                  ),
+                  Err(VerifiedUseError::PhysicalVerificationRejected(reason))
+                      if reason == "physical authority denied"
+              ));
+
+              let expired = TestPhysicalVerifier::allowing(revision(1), 110);
+              assert!(matches!(
+                  issue(
+                      &capability,
+                      &runtime_context,
+                      &operation("operation:verified-use:verifier-expired"),
+                      &payload_sha256,
+                      PhysicalCapabilityKind::ExternalEffect,
+                      revision(1),
+                      170,
+                      &expired,
+                      &clock,
+                  ),
+                  Err(VerifiedUseError::VerifierValidityExpired { valid_until: 110 })
+              ));
+          }
+
+          #[test]
+          fn final_operation_payload_context_kind_and_revision_drift_are_rejected() {
+              let (capability, runtime_context) = external_fixture(200);
+              let operation_id = operation("operation:verified-use:final-drift");
+              let other_operation = operation("operation:verified-use:final-drift-other");
+              let payload_sha256 = Sha256Digest::for_bytes(b"payload");
+              let other_payload = Sha256Digest::for_bytes(b"other-payload");
+              let expected_revision = revision(1);
+              let verifier = TestPhysicalVerifier::allowing(expected_revision, 180);
+              let clock = TestClock::at(110);
+              let store = InMemoryClaimStore::default();
+              let issue_token = || {
+                  clock.set(110);
+                  issue(
+                      &capability,
+                      &runtime_context,
+                      &operation_id,
+                      &payload_sha256,
+                      PhysicalCapabilityKind::ExternalEffect,
+                      expected_revision,
+                      170,
+                      &verifier,
+                      &clock,
+                  )
+                  .unwrap_or_else(|error| panic!("token must issue: {error}"))
+              };
+
+              let kind_token = issue_token();
+              clock.set(120);
+              assert!(matches!(
+                  kind_token.consume_at_boundary(
+                      final_check(
+                          PhysicalCapabilityKind::ToolProcessSpawn,
+                          &operation_id,
+                          &payload_sha256,
+                          &runtime_context,
+                      ),
+                      &verifier,
+                      &clock,
+                      &store,
+                  ),
+                  Err(VerifiedUseError::FinalCapabilityKindDrift { .. })
+              ));
+
+              let operation_token = issue_token();
+              clock.set(120);
+              assert!(matches!(
+                  operation_token.consume_at_boundary(
+                      final_check(
+                          PhysicalCapabilityKind::ExternalEffect,
+                          &other_operation,
+                          &payload_sha256,
+                          &runtime_context,
+                      ),
+                      &verifier,
+                      &clock,
+                      &store,
+                  ),
+                  Err(VerifiedUseError::FinalOperationDrift)
+              ));
+
+              let payload_token = issue_token();
+              clock.set(120);
+              assert!(matches!(
+                  payload_token.consume_at_boundary(
+                      final_check(
+                          PhysicalCapabilityKind::ExternalEffect,
+                          &operation_id,
+                          &other_payload,
+                          &runtime_context,
+                      ),
+                      &verifier,
+                      &clock,
+                      &store,
+                  ),
+                  Err(VerifiedUseError::FinalPayloadDrift)
+              ));
+
+              let drifted_context = RuntimeAuthorityContext::new(
+                  agent_id(),
+                  AUTHORITY_EPOCH,
+                  OWNER_EPOCH,
+                  GENERATION,
+                  Sha256Digest::for_bytes(b"drifted-effect-fence"),
+                  Sha256Digest::for_bytes(b"signed-effect-grant"),
+              )
+              .unwrap_or_else(|error| panic!("drifted context must build: {error}"));
+              let context_token = issue_token();
+              clock.set(120);
+              assert!(matches!(
+                  context_token.consume_at_boundary(
+                      final_check(
+                          PhysicalCapabilityKind::ExternalEffect,
+                          &operation_id,
+                          &payload_sha256,
+                          &drifted_context,
+                      ),
+                      &verifier,
+                      &clock,
+                      &store,
+                  ),
+                  Err(VerifiedUseError::FinalRuntimeContextDrift)
+              ));
+
+              let revision_token = issue_token();
+              verifier.set_revision(revision(2));
+              clock.set(120);
+              assert!(matches!(
+                  revision_token.consume_at_boundary(
+                      final_check(
+                          PhysicalCapabilityKind::ExternalEffect,
+                          &operation_id,
+                          &payload_sha256,
+                          &runtime_context,
+                      ),
+                      &verifier,
+                      &clock,
+                      &store,
+                  ),
+                  Err(VerifiedUseError::FinalRevocationRevisionDrift { verified, current })
+                      if verified == revision(1) && current == revision(2)
+              ));
+              assert_eq!(store.calls.load(Ordering::SeqCst), 0);
+          }
+
+          #[test]
+          fn final_crossing_time_must_be_inside_the_verified_window() {
+              let (capability, runtime_context) = external_fixture(200);
+              let operation_id = operation("operation:verified-use:final-expiry");
+              let payload_sha256 = Sha256Digest::for_bytes(b"payload");
+              let expected_revision = revision(1);
+              let verifier = TestPhysicalVerifier::allowing(expected_revision, 180);
+              let clock = TestClock::at(110);
+              let store = InMemoryClaimStore::default();
+              let token = issue(
+                  &capability,
+                  &runtime_context,
+                  &operation_id,
+                  &payload_sha256,
+                  PhysicalCapabilityKind::ExternalEffect,
+                  expected_revision,
+                  170,
+                  &verifier,
+                  &clock,
+              )
+              .unwrap_or_else(|error| panic!("token must issue: {error}"));
+              clock.set(170);
+              assert!(matches!(
+                  token.consume_at_boundary(
+                      final_check(
+                          PhysicalCapabilityKind::ExternalEffect,
+                          &operation_id,
+                          &payload_sha256,
+                          &runtime_context,
+                      ),
+                      &verifier,
+                      &clock,
+                      &store,
+                  ),
+                  Err(VerifiedUseError::TokenExpired {
+                      expires_at: 170,
+                      crossed_at: 170,
+                  })
+              ));
+              assert_eq!(store.calls.load(Ordering::SeqCst), 0);
+          }
+          '''
+          tests_source = TESTS.read_text(encoding="utf-8")
+          for marker in (
+              "kind_action_mismatch_is_rejected_before_any_verifier_call",
+              "local_broad_capability_cannot_cross_a_physical_write_boundary",
+              "broad_authority_context_drift_and_expiry_fail_before_physical_verification",
+              "requested_window_and_current_revocation_revision_are_fail_closed",
+              "verifier_denial_and_expired_verifier_window_are_distinct",
+              "final_operation_payload_context_kind_and_revision_drift_are_rejected",
+              "final_crossing_time_must_be_inside_the_verified_window",
+          ):
+              if marker in tests_source:
+                  raise SystemExit(f"test marker already exists before append: {marker}")
+          TESTS.write_text(tests_source.rstrip() + extra_tests + "\n", encoding="utf-8")
+
+          for part in range(6):
+              artifact = Path(f"scripts/.hepta-v5-b0-v3-materializer.part{part:02d}")
+              if not artifact.is_file():
+                  raise SystemExit(f"expected transient materializer is missing: {artifact}")
+              artifact.unlink()
+          PY
+
+          rustfmt --edition 2024 --config-path codex-rs/rustfmt.toml \
+            codex-rs/hepta-contracts/src/lib.rs \
+            codex-rs/hepta-contracts/src/verified_use_tests.rs
+          python3 -m py_compile scripts/verify-hepta-architecture-plan-v5.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          for relative in (
+              "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json",
+              "docs/architecture/HEPTA_CURRENT_PLAN.json",
+              "docs/architecture/HEPTA_QUALIFICATION_STATUS_V4.json",
+          ):
+              json.loads(Path(relative).read_text(encoding="utf-8"))
+          PY
+          if git grep -n "f69e5a4a5068a2657f1470da43c26b1410d53c6f" -- .; then
+            echo "stale P0.7a commit remains" >&2
+            exit 1
+          fi
+          if git grep -n "532307507d2b02a479d3c76042d42cc948b499df" -- .; then
+            echo "stale P0.7a tree remains" >&2
+            exit 1
+          fi
+          if git grep -n "codex/hepta-architecture-v5-b0-verified-use-kernel-20260830" -- .; then
+            echo "stale B0 source branch remains" >&2
+            exit 1
+          fi
+          git diff --check
+
+      - name: Verify selected plan and B0 source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-selected-architecture-plan.py
+          python3 scripts/verify-hepta-architecture-plan-v5.py
+          python3 scripts/verify-hepta-v5-b0-format.py --check
+
+      - name: Run focused and complete B0 package tests
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --locked --no-deps --format-version 1 >/dev/null
+          just test -p codex-hepta-contracts verified_use
+          just test -p codex-hepta-contracts
+
+      - name: Run locked check and strict Clippy
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets -p codex-hepta-contracts
+          cargo clippy --locked --all-targets -p codex-hepta-contracts -- -D warnings
+
+      - name: Verify committed locks
+        shell: bash
+        run: |
+          set -euo pipefail
+          just bazel-lock-check
+          git diff --check
+
+      - name: Commit qualified repair and self-delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/codex/hepta-architecture-v5-b0-exact-restack-20260831 | cut -f1)" = "$GITHUB_SHA"
+          rm .github/workflows/hepta-v5-b0-source-integrity-repair-once.yml
+          python3 - <<'PY'
+          import subprocess
+
+          expected = sorted([
+              ".github/workflows/hepta-v5-b0-source-integrity-repair-once.yml",
+              "codex-rs/hepta-contracts/src/lib.rs",
+              "codex-rs/hepta-contracts/src/verified_use_tests.rs",
+              "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md",
+              "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json",
+              "docs/architecture/HEPTA_CURRENT_PLAN.json",
+              "docs/architecture/HEPTA_QUALIFICATION_STATUS_V4.json",
+              "scripts/.hepta-v5-b0-v3-materializer.part00",
+              "scripts/.hepta-v5-b0-v3-materializer.part01",
+              "scripts/.hepta-v5-b0-v3-materializer.part02",
+              "scripts/.hepta-v5-b0-v3-materializer.part03",
+              "scripts/.hepta-v5-b0-v3-materializer.part04",
+              "scripts/.hepta-v5-b0-v3-materializer.part05",
+              "scripts/verify-hepta-architecture-plan-v5.py",
+          ])
+          changed = sorted(subprocess.check_output(
+              ["git", "diff", "--name-only"], text=True
+          ).splitlines())
+          if changed != expected:
+              raise SystemExit(f"unexpected repair set: expected={expected!r}, observed={changed!r}")
+          PY
+          git diff --check
+          git config user.name "hepta-closure-bot"
+          git config user.email "hepta-closure-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(hepta): close B0 source-integrity blockers"
+          printf 'qualified_commit=%s\nqualified_tree=%s\n' \
+            "$(git rev-parse HEAD)" \
+            "$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_STEP_SUMMARY"
+          git push origin HEAD:refs/heads/codex/hepta-architecture-v5-b0-exact-restack-20260831
