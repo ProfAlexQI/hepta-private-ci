@@ -1,0 +1,97 @@
+{
+  "schema": "hepta.evidence-dag.v1",
+  "schemaVersion": 1,
+  "documentClass": "canonical_registry",
+  "authorityScope": "evidence_dependency_only",
+  "nodes": [
+    "source_identity",
+    "source_inventory",
+    "static_verification",
+    "exact_head_execution",
+    "merge_candidate_execution",
+    "semantic_review",
+    "fault_evidence",
+    "performance_evidence",
+    "physical_or_real_provider_evidence",
+    "independent_review",
+    "operator_acceptance",
+    "promotion_decision",
+    "release_decision"
+  ],
+  "edges": [
+    {
+      "from": "source_identity",
+      "to": "source_inventory"
+    },
+    {
+      "from": "source_inventory",
+      "to": "static_verification"
+    },
+    {
+      "from": "static_verification",
+      "to": "exact_head_execution"
+    },
+    {
+      "from": "exact_head_execution",
+      "to": "merge_candidate_execution"
+    },
+    {
+      "from": "merge_candidate_execution",
+      "to": "semantic_review"
+    },
+    {
+      "from": "semantic_review",
+      "to": "independent_review"
+    },
+    {
+      "from": "fault_evidence",
+      "to": "independent_review"
+    },
+    {
+      "from": "performance_evidence",
+      "to": "independent_review"
+    },
+    {
+      "from": "physical_or_real_provider_evidence",
+      "to": "operator_acceptance"
+    },
+    {
+      "from": "independent_review",
+      "to": "operator_acceptance"
+    },
+    {
+      "from": "operator_acceptance",
+      "to": "promotion_decision"
+    },
+    {
+      "from": "promotion_decision",
+      "to": "release_decision"
+    }
+  ],
+  "nonSubstitutionRules": [
+    "source_inventory != executable qualification",
+    "queued workflow != runner execution",
+    "green tests != semantic completeness",
+    "merge-candidate qualification != operator acceptance",
+    "operator acceptance != promotion",
+    "promotion != release"
+  ],
+  "acyclicRequired": true,
+  "authorityFlags": {
+    "runtimeAuthority": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalFilesystemMutation": false,
+    "secretOperation": false,
+    "matrixSend": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

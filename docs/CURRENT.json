@@ -1,0 +1,372 @@
+{
+  "schema": "hepta.repository-current.v2",
+  "schemaVersion": 2,
+  "documentClass": "observed_state",
+  "authorityScope": "discovery_only",
+  "observedAt": "2026-08-31T10:34:01Z",
+  "staleAfterSeconds": 86400,
+  "repository": {
+    "id": 1320694176,
+    "fullName": "TrillionniumFoundation/hepta-private-ci",
+    "defaultBranch": "integration/vnext-main-20260811",
+    "observedHead": "b621768b70a09d56626bb8a2c331e3dc424e6a4d",
+    "observedTree": "f2e82fd525d337efae355adf6f19398812d4180c"
+  },
+  "developmentDocumentSet": {
+    "planId": "HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN",
+    "version": "6.0.0",
+    "path": "docs/DEVELOPMENT.md",
+    "documentSystem": "docs/governance/DOCUMENT_SYSTEM.json",
+    "state": "active_on_candidate_tree_when_present",
+    "sourceCommit": "resolved_by_exact_head_ci",
+    "sourceTree": "resolved_by_exact_head_ci",
+    "replaces": [
+      "HEPTA-ARCHITECTURE-CONVERGENCE-V1 through V5",
+      "all module development-plan/status/tranche documents",
+      "all in-tree Dropbox development snapshots"
+    ],
+    "runtimeAuthorityGranted": false
+  },
+  "currentWorkPackage": "DOC-1-DEFAULT-BRANCH-SELECTION",
+  "activeCandidates": [
+    {
+      "id": "DOCS-CANONICAL-BASELINE-V1",
+      "pullRequest": 278,
+      "branch": "codex/hepta-canonical-baseline-v1-20260831",
+      "head": "944da7638a48b6db60aa95c44dde3b5a9a5503f0",
+      "tree": "9b6ef3a415c079297baef3a815508935caf79152",
+      "purpose": "default-branch discovery baseline proposed for supersession by this consolidated V6 document set",
+      "qualification": {
+        "source": "source_implemented",
+        "staticVerification": "source_verified",
+        "exactHeadExecution": "not_proven",
+        "mergeCandidateExecution": "not_proven",
+        "semanticReview": "not_reviewed",
+        "integration": "supersession_proposed",
+        "runtimeActivation": "not_allowed",
+        "physicalEvidence": "not_issued",
+        "independentReview": "not_issued",
+        "operatorAcceptance": "not_issued",
+        "promotion": "not_issued",
+        "release": "not_issued"
+      }
+    },
+    {
+      "id": "ARCH-P0.7A-RUNTIME-BOOTSTRAP",
+      "pullRequest": 83,
+      "branch": "codex/hepta-architecture-v4-p0-7a-executable-closure-20260830",
+      "head": "92d22e241972fd02f2a3a0bf69849b0b4c7a8b7f",
+      "tree": "c711d50d642e628848290059367ab25399563cac",
+      "purpose": "deterministic executable qualification repair for signed runtime bootstrap",
+      "qualification": {
+        "source": "source_implemented",
+        "staticVerification": "source_verified",
+        "exactHeadExecution": "not_proven",
+        "mergeCandidateExecution": "not_proven",
+        "semanticReview": "not_reviewed",
+        "integration": "not_selected",
+        "runtimeActivation": "not_allowed",
+        "physicalEvidence": "not_issued",
+        "independentReview": "not_issued",
+        "operatorAcceptance": "not_issued",
+        "promotion": "not_issued",
+        "release": "not_issued"
+      }
+    },
+    {
+      "id": "ARCH-P0.7B-B0",
+      "pullRequest": 272,
+      "branch": "codex/hepta-architecture-v5-b0-exact-restack-20260831",
+      "head": "ad7845a8d67390299f86e931bab11d8b0ec13115",
+      "tree": "81a07047a20d107aafad1670f670a904effcf514",
+      "purpose": "common verified-use kernel",
+      "qualification": {
+        "source": "source_implemented",
+        "staticVerification": "source_verified",
+        "exactHeadExecution": "cancelled_or_pending",
+        "mergeCandidateExecution": "not_proven",
+        "semanticReview": "not_reviewed",
+        "integration": "not_selected",
+        "runtimeActivation": "not_allowed",
+        "physicalEvidence": "not_issued",
+        "independentReview": "not_issued",
+        "operatorAcceptance": "not_issued",
+        "promotion": "not_issued",
+        "release": "not_issued"
+      }
+    },
+    {
+      "id": "ARCH-P0.7B-B1A",
+      "pullRequest": 273,
+      "branch": "codex/hepta-architecture-v5-b1a-restack-eb8adb-20260831",
+      "head": "537394a0067d204b215db8bee3de533494535481",
+      "tree": "fd0f84d73504507078cecfcc1043490ca0856187",
+      "purpose": "provider verified-use boundary with no raw escape",
+      "qualification": {
+        "source": "source_implemented",
+        "staticVerification": "source_verified",
+        "exactHeadExecution": "not_proven",
+        "mergeCandidateExecution": "not_proven",
+        "semanticReview": "not_reviewed",
+        "integration": "not_selected",
+        "runtimeActivation": "not_allowed",
+        "physicalEvidence": "not_issued",
+        "independentReview": "not_issued",
+        "operatorAcceptance": "not_issued",
+        "promotion": "not_issued",
+        "release": "not_issued"
+      }
+    },
+    {
+      "id": "ARCH-P0.7B-B1B",
+      "pullRequest": 280,
+      "branch": "codex/hepta-architecture-v5-b1b-model-invocation-20260831",
+      "head": "cd6823c94b3fbd1c3845a398206f526b8e4bc85e",
+      "tree": "fb9af24eaea3283ede58611d639ea8ab1176f2c4",
+      "purpose": "model invocation verified-use boundary with private raw adapter and bounded indeterminate outcome",
+      "qualification": {
+        "source": "source_implemented",
+        "staticVerification": "source_verifier_present",
+        "exactHeadExecution": "not_proven",
+        "mergeCandidateExecution": "not_proven",
+        "semanticReview": "not_reviewed",
+        "integration": "not_selected",
+        "runtimeActivation": "not_allowed",
+        "physicalEvidence": "not_issued",
+        "independentReview": "not_issued",
+        "operatorAcceptance": "not_issued",
+        "promotion": "not_issued",
+        "release": "not_issued"
+      }
+    },
+    {
+      "id": "ARCH-P0.7B-B2",
+      "pullRequest": 281,
+      "branch": "codex/hepta-architecture-v5-b2-external-boundaries-gpt56-20260831",
+      "head": "24a2c1b733cc1d0f1288b39ffd42057dc6ade8ba",
+      "tree": "7ed08fb76eb8f0a30f3be926b66ff0d81fa46336",
+      "purpose": "tool-process, outbound-network and external-filesystem verified-use boundaries",
+      "qualification": {
+        "source": "source_implemented",
+        "staticVerification": "source_verifier_present",
+        "exactHeadExecution": "not_proven",
+        "mergeCandidateExecution": "not_proven",
+        "semanticReview": "not_reviewed",
+        "integration": "not_selected",
+        "runtimeActivation": "not_allowed",
+        "physicalEvidence": "not_issued",
+        "independentReview": "not_issued",
+        "operatorAcceptance": "not_issued",
+        "promotion": "not_issued",
+        "release": "not_issued"
+      }
+    },
+    {
+      "id": "ARCH-P0.7B-B3",
+      "pullRequest": 282,
+      "branch": "codex/hepta-architecture-v5-b3-governed-boundaries-gpt56-20260831",
+      "head": "44d4200a0c4721fd277b4a9063eae4c1e675a86b",
+      "tree": "1a5dab5f756c33cce0e50c013d7a5f93e501f6e7",
+      "purpose": "secret, Matrix, fleet, operator-acceptance and release-promotion verified-use boundaries",
+      "qualification": {
+        "source": "source_implemented",
+        "staticVerification": "source_verifier_present",
+        "exactHeadExecution": "not_proven",
+        "mergeCandidateExecution": "not_proven",
+        "semanticReview": "not_reviewed",
+        "integration": "not_selected",
+        "runtimeActivation": "not_allowed",
+        "physicalEvidence": "not_issued",
+        "independentReview": "not_issued",
+        "operatorAcceptance": "not_issued",
+        "promotion": "not_issued",
+        "release": "not_issued"
+      }
+    },
+    {
+      "id": "AUTHBUS-P1.3-V12",
+      "pullRequest": 279,
+      "branch": "codex/authbus-p1-3-semantic-closure-v12-gpt56-20260831",
+      "head": "d279192c1b44385ccc3320cbcabd7ba715cbb344",
+      "tree": "f9c4e7564e95446079fb22d5eeba9bc95b1f8e85",
+      "purpose": "quota window, context, conservation and transition-digest semantic closure",
+      "qualification": {
+        "source": "source_implemented",
+        "staticVerification": "source_verifier_present",
+        "exactHeadExecution": "not_proven",
+        "mergeCandidateExecution": "not_proven",
+        "semanticReview": "independent_semantic_review_pending",
+        "integration": "not_selected",
+        "runtimeActivation": "not_allowed",
+        "physicalEvidence": "not_issued",
+        "independentReview": "not_issued",
+        "operatorAcceptance": "not_issued",
+        "promotion": "not_issued",
+        "release": "not_issued"
+      }
+    },
+    {
+      "id": "INTELLIGENCE-A0-Q0.63",
+      "pullRequest": 277,
+      "branch": "integration/hepta-intelligence-a0-q0-63-compose-20260831",
+      "head": "99b7f15721519e0a6fb683a4aa4d9df6ed98dc9e",
+      "tree": "23f43bacd6be656dd984f3de32e6f17172bcba54",
+      "purpose": "A0 plus selected Q0.63 admission/config-graph closure",
+      "qualification": {
+        "source": "source_implemented",
+        "staticVerification": "source_verified",
+        "exactHeadExecution": "not_proven",
+        "mergeCandidateExecution": "not_proven",
+        "semanticReview": "not_reviewed",
+        "integration": "not_selected",
+        "runtimeActivation": "not_allowed",
+        "physicalEvidence": "not_issued",
+        "independentReview": "not_issued",
+        "operatorAcceptance": "not_issued",
+        "promotion": "not_issued",
+        "release": "not_issued"
+      }
+    },
+    {
+      "id": "INFERENCE-V4.1",
+      "pullRequest": 87,
+      "branch": "codex/hepta-inference-v4-closure-20260830",
+      "head": "ddc3d60e8871eacd2571fa6b2b1a518c4e5ae08c",
+      "tree": "resolved_by_exact_head_ci",
+      "purpose": "private inference runtime T0 with T1-T5 remaining",
+      "qualification": {
+        "source": "source_partially_implemented",
+        "staticVerification": "source_gate_present",
+        "exactHeadExecution": "not_proven",
+        "mergeCandidateExecution": "not_proven",
+        "semanticReview": "not_reviewed",
+        "integration": "not_selected",
+        "runtimeActivation": "not_allowed",
+        "physicalEvidence": "not_issued",
+        "independentReview": "not_issued",
+        "operatorAcceptance": "not_issued",
+        "promotion": "not_issued",
+        "release": "not_issued"
+      }
+    },
+    {
+      "id": "UI-V5",
+      "pullRequest": 78,
+      "branch": "codex/ui-v5-plan-and-repo-gap-closure-20260829",
+      "head": "3e9268d6e4d60e5e61b26dc1b6de28b095d54674",
+      "tree": "resolved_by_exact_head_ci",
+      "purpose": "repository-controlled UI V5 qualification blockers",
+      "qualification": {
+        "source": "source_implemented",
+        "staticVerification": "source_verified",
+        "exactHeadExecution": "queued_not_evidence",
+        "mergeCandidateExecution": "not_proven",
+        "semanticReview": "human_visual_review_pending",
+        "integration": "not_selected",
+        "runtimeActivation": "not_allowed",
+        "physicalEvidence": "not_issued",
+        "independentReview": "not_issued",
+        "operatorAcceptance": "not_issued",
+        "promotion": "not_issued",
+        "release": "not_issued"
+      }
+    },
+    {
+      "id": "BROWSER-WEB-C1",
+      "pullRequest": 1,
+      "branch": "codex/hepta-vnext-plan-browser-c0-c3-20260827",
+      "head": "4cd128aab3220d2c20b43574c2b404a75a59ff6f",
+      "tree": "resolved_by_exact_head_ci",
+      "purpose": "reviewed Servo source acceptance and immutable startup lane",
+      "observationNote": "PR metadata head differs from the head named in the PR body; metadata wins and qualification fails closed until reconciled.",
+      "bodyDeclaredHead": "0eb7c19f3a36eb94f6d32333c19b966f86bfc121",
+      "qualification": {
+        "source": "source_identity_conflict",
+        "staticVerification": "not_current",
+        "exactHeadExecution": "runnerless_or_queued",
+        "mergeCandidateExecution": "not_proven",
+        "semanticReview": "not_reviewed",
+        "integration": "not_selected",
+        "runtimeActivation": "not_allowed",
+        "physicalEvidence": "not_issued",
+        "independentReview": "not_issued",
+        "operatorAcceptance": "not_issued",
+        "promotion": "not_issued",
+        "release": "not_issued"
+      }
+    }
+  ],
+  "stateVocabularies": {
+    "source": [
+      "not_started",
+      "source_in_progress",
+      "source_partially_implemented",
+      "source_implemented",
+      "source_identity_conflict"
+    ],
+    "execution": [
+      "not_run",
+      "queued",
+      "running",
+      "passed",
+      "failed",
+      "blocked",
+      "cancelled",
+      "timed_out",
+      "skipped",
+      "neutral",
+      "action_required",
+      "stale",
+      "superseded",
+      "not_proven"
+    ],
+    "review": [
+      "not_reviewed",
+      "pending",
+      "accepted",
+      "rejected",
+      "blocked_external"
+    ]
+  },
+  "evidenceRules": {
+    "queuedCanPass": false,
+    "cancelledCanPass": false,
+    "runnerZeroCanPass": false,
+    "emptyStepsCanPass": false,
+    "sourceVerifierCanReplaceExecutableQualification": false,
+    "generatedProjectionCanGrantAuthority": false,
+    "pullRequestBodyCanOverrideGitMetadata": false,
+    "sourceCanSelfIssueIndependentReview": false,
+    "sourceCanSelfIssueOperatorAcceptance": false,
+    "sourceCanSelfIssuePromotion": false,
+    "sourceCanSelfIssueRelease": false
+  },
+  "externalGates": {
+    "repositoryRulesetEnforcement": "not_issued",
+    "independentExactCandidateReview": "not_issued",
+    "physicalPlatformEvidence": "not_issued",
+    "realModelProviderCorpusEvidence": "not_issued",
+    "humanAccessibilityVisualAcceptance": "not_issued",
+    "candidateBoundOperatorAcceptance": "not_issued",
+    "productionTrustRootCeremony": "not_issued",
+    "promotionDecision": "not_issued",
+    "releaseDecision": "not_issued"
+  },
+  "authorityFlags": {
+    "runtimeAuthority": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalFilesystemMutation": false,
+    "secretOperation": false,
+    "matrixSend": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

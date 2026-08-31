@@ -1,0 +1,228 @@
+{
+  "schema": "hepta.architecture-model.v3",
+  "schemaVersion": 3,
+  "documentClass": "canonical_registry",
+  "authorityScope": "product_architecture_requirements_only",
+  "planId": "HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN",
+  "planVersion": "6.0.0",
+  "repository": {
+    "id": 1320694176,
+    "fullName": "TrillionniumFoundation/hepta-private-ci",
+    "defaultBranch": "integration/vnext-main-20260811",
+    "observedHead": "b621768b70a09d56626bb8a2c331e3dc424e6a4d",
+    "observedTree": "f2e82fd525d337efae355adf6f19398812d4180c"
+  },
+  "canonicalReferences": {
+    "development": "docs/DEVELOPMENT.md",
+    "modules": "docs/modules/MODULES.json",
+    "workPackages": "docs/delivery/WORK_PACKAGES.json",
+    "objectives": "docs/control-plane/OBJECTIVES.json",
+    "evidence": "docs/evidence/INDEX.json"
+  },
+  "planes": [
+    {
+      "id": "execution",
+      "purpose": "session, turn, model-call and tool-execution spine",
+      "authorityIssuer": false
+    },
+    {
+      "id": "domain",
+      "purpose": "single-writer product bounded contexts",
+      "authorityIssuer": false
+    },
+    {
+      "id": "adapter",
+      "purpose": "checked physical and channel boundaries",
+      "authorityIssuer": false
+    },
+    {
+      "id": "control",
+      "purpose": "resource, lifecycle and global-plan selection",
+      "authorityIssuer": false
+    },
+    {
+      "id": "qualification",
+      "purpose": "read-only evidence and shadow evaluation",
+      "authorityIssuer": false
+    },
+    {
+      "id": "engineering",
+      "purpose": "work-package and integration scheduling",
+      "authorityIssuer": false
+    },
+    {
+      "id": "external_control",
+      "purpose": "independently governed secrets/operator/promotion/release decisions",
+      "authorityIssuer": "separate_designated_actor"
+    }
+  ],
+  "nonNegotiableInvariants": [
+    "Codex App Server remains the sole session, thread, turn, model-call and tool-execution spine.",
+    "Agentd is a thin composition and lifecycle host and owns no product-domain durable fact.",
+    "Every durable fact has exactly one schema owner and one authoritative writer.",
+    "Cross-owner mutation uses local transaction, durable intent, outbox, destination dedupe/apply, acknowledgement and reconciliation.",
+    "A queue or dispatch acknowledgement is never terminal external-effect success.",
+    "Indeterminate remains open until a current-fence reconciler records ReconciledApplied, ReconciledNotApplied or Quarantined.",
+    "Every irreversible boundary consumes a final-payload-bound, operation-bound, short-lived, revocation-revision-bound VerifiedUseToken.",
+    "No boundary adapter may mint the capability or verified-use token it consumes.",
+    "Qualification fixtures, signers and test verifiers cannot link into production artifacts.",
+    "Feature presence, registration, executable qualification, operator acceptance, promotion and release are distinct states.",
+    "Central optimizers select plans but do not issue physical capabilities or execute effects.",
+    "A module exposes a bounded Pareto candidate set; no local module may unilaterally claim global optimality."
+  ],
+  "dependencyLayers": [
+    "platform.types",
+    "platform.wire",
+    "kernel contracts and domain ports",
+    "domain modules",
+    "checked adapters",
+    "composition daemons and presentation"
+  ],
+  "forbiddenDependencyRules": [
+    "codex implementation crates -> Hepta implementation crates",
+    "wire crates -> SQL/domain/runtime/daemon crates",
+    "domain crates -> Agentd/Matrixd/UI binaries",
+    "qualification code -> production writer",
+    "boundary adapter -> its own authority issuer",
+    "runtime control optimizer -> physical effect adapter",
+    "engineering control plane -> runtime authority kernel"
+  ],
+  "crossOwnerProtocol": {
+    "transport": "transactional_outbox",
+    "delivery": "at_least_once",
+    "destinationRequirement": "idempotent_digest_bound_commit",
+    "blindRetryAfterBoundary": false,
+    "requiredBindings": [
+      "operation_id",
+      "idempotency_key",
+      "payload_sha256",
+      "authority_epoch",
+      "owner_epoch",
+      "generation",
+      "fencing_token_sha256",
+      "policy_revision"
+    ]
+  },
+  "controlPlanes": {
+    "runtime": {
+      "inputs": [
+        "global_state_snapshot",
+        "module_pareto_candidates",
+        "hard_constraints",
+        "objective_registry"
+      ],
+      "outputs": [
+        "selected_plan",
+        "resource_allocation",
+        "execution_grant_request",
+        "decision_receipt",
+        "fallback_plan"
+      ],
+      "forbidden": [
+        "capability_minting",
+        "direct_model_call",
+        "direct_tool_call",
+        "direct_secret_read",
+        "direct_external_effect"
+      ]
+    },
+    "engineering": {
+      "inputs": [
+        "work_package_dag",
+        "team_capacity",
+        "ci_capacity",
+        "conflict_graph",
+        "risk_and_value"
+      ],
+      "outputs": [
+        "bounded_work_envelope",
+        "integration_order",
+        "merge_queue_proposal",
+        "engineering_decision_receipt"
+      ],
+      "forbidden": [
+        "self_approval",
+        "self_merge",
+        "runtime_authority",
+        "operator_acceptance",
+        "release"
+      ]
+    }
+  },
+  "runtimeProfiles": [
+    {
+      "id": "snapshot_read_only",
+      "required": [
+        "runtime.supervisor",
+        "cognitive.store",
+        "cognitive.read"
+      ],
+      "optional": [],
+      "disabled": [
+        "runtime.agentd",
+        "inference.worker",
+        "channel.matrix",
+        "browser.servo"
+      ]
+    },
+    {
+      "id": "agent_local",
+      "required": [
+        "runtime.supervisor",
+        "runtime.agentd",
+        "runtime.codex"
+      ],
+      "optional": [
+        "memory.retrieval",
+        "automation.taskflow",
+        "channel.matrix",
+        "ui.control",
+        "ui.native"
+      ],
+      "disabledByDefault": [
+        "inference.worker",
+        "browser.servo",
+        "secrets.heptabao"
+      ]
+    },
+    {
+      "id": "qualification",
+      "required": [
+        "kernel.evidence"
+      ],
+      "optional": [
+        "learning.shadow",
+        "intelligence.control"
+      ],
+      "productionAuthority": false
+    }
+  ],
+  "recoveryOrder": [
+    "immutable release identity",
+    "supervisor registry, generation and owner fence",
+    "authoritative store integrity and schema migration",
+    "operation/outbox reconciliation",
+    "Agentd composition",
+    "Codex execution spine",
+    "domain read attachments",
+    "channel and physical adapters",
+    "readiness graph"
+  ],
+  "authorityFlags": {
+    "runtimeAuthority": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalFilesystemMutation": false,
+    "secretOperation": false,
+    "matrixSend": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

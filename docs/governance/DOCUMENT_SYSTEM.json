@@ -1,0 +1,189 @@
+{
+  "schema": "hepta.document-system.v2",
+  "schemaVersion": 2,
+  "documentId": "HEPTA-DEVELOPMENT-DOCUMENT-SYSTEM",
+  "version": "2.0.0",
+  "documentClass": "canonical_registry",
+  "authorityScope": "documentation_governance_only",
+  "repository": {
+    "id": 1320694176,
+    "fullName": "TrillionniumFoundation/hepta-private-ci",
+    "defaultBranch": "integration/vnext-main-20260811",
+    "observedHead": "b621768b70a09d56626bb8a2c331e3dc424e6a4d",
+    "observedTree": "f2e82fd525d337efae355adf6f19398812d4180c"
+  },
+  "canonicalHumanDevelopmentDocument": "docs/DEVELOPMENT.md",
+  "canonicalMachineSources": {
+    "currentState": "docs/CURRENT.json",
+    "architecture": "docs/architecture/ARCHITECTURE.json",
+    "moduleRegistry": "docs/modules/MODULES.json",
+    "workPackages": "docs/delivery/WORK_PACKAGES.json",
+    "developmentDag": "docs/delivery/DEVELOPMENT_DAG.json",
+    "activationDag": "docs/delivery/ACTIVATION_DAG.json",
+    "evidenceDag": "docs/delivery/EVIDENCE_DAG.json",
+    "globalObjectives": "docs/control-plane/OBJECTIVES.json",
+    "evidenceIndex": "docs/evidence/INDEX.json"
+  },
+  "generatedProjections": {
+    "docs/STATUS.md": {
+      "generator": "python3 scripts/hepta-docs.py generate-status",
+      "handEditingAllowed": false
+    }
+  },
+  "resolutionOrder": [
+    "exact Git commit/tree and clean worktree",
+    "docs/CURRENT.json time-bounded observations",
+    "docs/DEVELOPMENT.md normative development requirements",
+    "canonical machine registries",
+    "exact-head and merge-candidate executable evidence",
+    "independently issued review/operator/promotion/release decisions"
+  ],
+  "documentClasses": {
+    "normative_development_source": "Human-readable requirements and delivery policy. It grants no runtime authority.",
+    "canonical_registry": "Editable machine source for one bounded fact domain.",
+    "generated_projection": "Deterministically generated and never hand edited.",
+    "observed_state": "Time-bounded external observation, never an authority grant.",
+    "implementation_contract": "Code-consumed API, wire, schema, policy, migration or fault contract.",
+    "qualification_evidence": "Immutable exact-candidate execution evidence.",
+    "external_decision": "Independently issued review, operator, promotion or release decision."
+  },
+  "singleSourceRules": [
+    "Only docs/DEVELOPMENT.md may define global development policy in prose.",
+    "A fact has exactly one editable machine owner; every other representation is generated or referential.",
+    "Stable paths are updated in place. Version numbers live inside documents, not in filenames.",
+    "Historical development documents are retained by Git history or immutable release evidence, never by an in-tree archive.",
+    "PR bodies, labels, comments, queued workflows and source-only receipts are non-authoritative."
+  ],
+  "workingTreeHistoryPolicy": {
+    "inTreeArchiveAllowed": false,
+    "gitHistoryIsHistoricalRecord": true,
+    "immutableReleaseEvidenceAllowed": true,
+    "dropboxSnapshotDirectoriesAllowed": false,
+    "sideBySideDevelopmentPlanVersionsAllowed": false
+  },
+  "allowedDevelopmentPaths": [
+    "README.md",
+    "docs/DEVELOPMENT.md",
+    "docs/CURRENT.json",
+    "docs/STATUS.md",
+    "docs/governance/DOCUMENT_SYSTEM.json",
+    "docs/architecture/ARCHITECTURE.json",
+    "docs/modules/MODULES.json",
+    "docs/delivery/WORK_PACKAGES.json",
+    "docs/delivery/DEVELOPMENT_DAG.json",
+    "docs/delivery/ACTIVATION_DAG.json",
+    "docs/delivery/EVIDENCE_DAG.json",
+    "docs/control-plane/OBJECTIVES.json",
+    "docs/evidence/INDEX.json"
+  ],
+  "forbiddenLegacyPathRules": [
+    {
+      "id": "dropbox-tree",
+      "regex": "^docs/hepta-vnext/dropbox-current-"
+    },
+    {
+      "id": "in-tree-development-archive",
+      "regex": "^docs/(?:hepta[^/]*/)?archive/"
+    },
+    {
+      "id": "root-architecture-projection",
+      "regex": "^ARCHITECTURE\\.md$"
+    },
+    {
+      "id": "architecture-discovery-readme",
+      "regex": "^docs/architecture/README\\.md$"
+    },
+    {
+      "id": "versioned-architecture-document",
+      "regex": "^docs/architecture/(?:HEPTA_)?[^/]+_V[0-9]+(?:_[0-9]+)*\\.(?:md|json|ya?ml)$"
+    },
+    {
+      "id": "architecture-human-projection",
+      "regex": "^docs/architecture/(?:ARCHITECTURE|DATA_AUTHORITY_MAP)\\.md$"
+    },
+    {
+      "id": "global-convergence-plan",
+      "regex": "(^|/)HEPTA_.*CONVERGENCE_PLAN_V[0-9]+"
+    },
+    {
+      "id": "development-plan",
+      "regex": "(^|/)[^/]*(?:DEVELOPMENT_PLAN|MASTER_PLAN|IMPLEMENTATION_PLAN|DELIVERY_PLAN|UPGRADE_PLAN)(?:_[^/]*)?\\.(?:md|json|ya?ml)$"
+    },
+    {
+      "id": "development-status",
+      "regex": "(^|/)[^/]*(?:IMPLEMENTATION_STATUS|DEVELOPMENT_STATUS|PROJECT_STATUS|CURRENT_TRUTH|NEXT_STEPS|REMAINING_(?:WORK|GAPS|BLOCKERS))(?:_[^/]*)?\\.(?:md|json|ya?ml)$"
+    },
+    {
+      "id": "roadmap-document",
+      "regex": "(^|/)[^/]*ROADMAP(?:_V[0-9]+(?:_[0-9]+)*)?(?:_[^/]*)?\\.(?:md|json|ya?ml)$"
+    },
+    {
+      "id": "tranche-document",
+      "regex": "(^|/).*_TRANCHE(?:_|\\.|$).*\\.(?:md|rst|txt)$"
+    },
+    {
+      "id": "gap-ledger",
+      "regex": "(^|/)(?:HEPTA_)?[^/]*GAP_LEDGER(?:_V[0-9]+)?[^/]*\\.(?:md|json|ya?ml)$"
+    },
+    {
+      "id": "qualification-status",
+      "regex": "(^|/)(?:HEPTA_)?[^/]*QUALIFICATION_STATUS(?:_V[0-9]+)?[^/]*\\.(?:md|json|ya?ml)$"
+    },
+    {
+      "id": "document-authority-index",
+      "regex": "(^|/)(?:HEPTA_)?[^/]*(?:DOCUMENT_AUTHORITY_INDEX|DOCUMENT_REGISTRY)(?:_V[0-9]+)?[^/]*\\.(?:md|json|ya?ml)$"
+    },
+    {
+      "id": "global-current-plan",
+      "regex": "(^|/)HEPTA_CURRENT_PLAN\\.json$"
+    },
+    {
+      "id": "module-current-pointer",
+      "regex": "(^|/)(?:HEPTA_[^/]*|[A-Z]+[0-9]*)_CURRENT_V[0-9]+(?:_[0-9]+)*\\.json$"
+    },
+    {
+      "id": "global-current-architecture",
+      "regex": "(^|/)HEPTA_CURRENT_ARCHITECTURE_V[0-9]+\\.json$"
+    },
+    {
+      "id": "old-global-plan-verifier",
+      "regex": "^scripts/(?:verify-hepta-architecture-plan-v[0-9]+|verify-hepta-selected-architecture-plan|verify-hepta-current-baseline|generate-hepta-architecture-projections)\\.py$"
+    },
+    {
+      "id": "old-global-plan-workflow",
+      "regex": "^\\.github/workflows/(?:hepta-architecture-plan-v[0-9]+|hepta-current-baseline)\\.ya?ml$"
+    }
+  ],
+  "implementationContractPolicy": {
+    "preservedDuringDevelopmentDocCleanup": true,
+    "mustNotClaimCurrentPlanAuthority": true,
+    "mustHaveOneOwner": true,
+    "mustBeReferencedByCodeOrCurrentWorkPackage": true,
+    "futureRelocationRequiresCompatibilityMigration": true
+  },
+  "cleanupPolicy": {
+    "defaultMode": "strict-development-document-cleanup",
+    "deleteHistoricalDevelopmentContent": true,
+    "retireObsoleteDocumentOnlyVerifiers": true,
+    "verifyNoDanglingReferences": true,
+    "failOnCodeConsumedLegacyJson": true,
+    "emitPreCommitInventory": true
+  },
+  "authorityFlags": {
+    "runtimeAuthority": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalFilesystemMutation": false,
+    "secretOperation": false,
+    "matrixSend": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

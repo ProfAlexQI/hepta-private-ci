@@ -1,0 +1,225 @@
+{
+  "schema": "hepta.development-dag.v1",
+  "schemaVersion": 1,
+  "documentClass": "canonical_registry",
+  "authorityScope": "ordering_only",
+  "purpose": "Source and contract work that may proceed in parallel.",
+  "nodes": [
+    "AUTHBUS-P1.3-V12",
+    "BROWSER-WEB-C1",
+    "DOC-0-CANONICAL-DOCUMENT-CONSOLIDATION",
+    "DOC-1-DEFAULT-BRANCH-SELECTION",
+    "ECP-1-ENGINEERING-CONTROL-PLANE",
+    "INFER-V4-T1",
+    "INFER-V4-T2",
+    "INFER-V4-T3",
+    "INFER-V4-T4",
+    "INFER-V4-T5",
+    "INTELLIGENCE-A0-Q0.63",
+    "MEM-0-TYPES",
+    "MEM-1-STORE",
+    "MEM-2-RETRIEVAL",
+    "MEM-3-FEDERATION",
+    "MEM-4-KG",
+    "MEM-5-COMPACT",
+    "MEM-6-TRAJECTORY",
+    "MEM-7-LEARNING-SHADOW",
+    "MEM-8-PRODUCTION-WRITER",
+    "P0.7A-RUNTIME-BOOTSTRAP",
+    "P0.7B-B0-VERIFIED-USE",
+    "P0.7B-B1A-PROVIDER-BOUNDARY",
+    "P0.7B-B1B-MODEL-BOUNDARY",
+    "P0.7B-B2-TOOL-NET-FS",
+    "P0.7B-B3-BOUNDARIES",
+    "P0.7B-B4-CALLSITE-PROOF",
+    "P0.7D-FAULT-MATRIX",
+    "P0.7E-DEPENDENCY-INVERSION",
+    "P0.8A-AST-RATCHET",
+    "P0.8B-READINESS",
+    "P0.8C-RESOURCE-BUDGETS",
+    "P0.8D-VERTICAL-SLICE",
+    "P0.9-EXTERNAL-GATES",
+    "RCP-1-RUNTIME-CONTROL-PLANE",
+    "UI-V5"
+  ],
+  "edges": [
+    {
+      "from": "DOC-0-CANONICAL-DOCUMENT-CONSOLIDATION",
+      "to": "AUTHBUS-P1.3-V12"
+    },
+    {
+      "from": "DOC-0-CANONICAL-DOCUMENT-CONSOLIDATION",
+      "to": "BROWSER-WEB-C1"
+    },
+    {
+      "from": "DOC-0-CANONICAL-DOCUMENT-CONSOLIDATION",
+      "to": "DOC-1-DEFAULT-BRANCH-SELECTION"
+    },
+    {
+      "from": "DOC-0-CANONICAL-DOCUMENT-CONSOLIDATION",
+      "to": "INTELLIGENCE-A0-Q0.63"
+    },
+    {
+      "from": "DOC-0-CANONICAL-DOCUMENT-CONSOLIDATION",
+      "to": "UI-V5"
+    },
+    {
+      "from": "DOC-1-DEFAULT-BRANCH-SELECTION",
+      "to": "ECP-1-ENGINEERING-CONTROL-PLANE"
+    },
+    {
+      "from": "DOC-1-DEFAULT-BRANCH-SELECTION",
+      "to": "MEM-0-TYPES"
+    },
+    {
+      "from": "DOC-1-DEFAULT-BRANCH-SELECTION",
+      "to": "RCP-1-RUNTIME-CONTROL-PLANE"
+    },
+    {
+      "from": "INFER-V4-T1",
+      "to": "INFER-V4-T2"
+    },
+    {
+      "from": "INFER-V4-T1",
+      "to": "INFER-V4-T4"
+    },
+    {
+      "from": "INFER-V4-T2",
+      "to": "INFER-V4-T3"
+    },
+    {
+      "from": "INFER-V4-T4",
+      "to": "INFER-V4-T5"
+    },
+    {
+      "from": "MEM-0-TYPES",
+      "to": "MEM-1-STORE"
+    },
+    {
+      "from": "MEM-0-TYPES",
+      "to": "MEM-2-RETRIEVAL"
+    },
+    {
+      "from": "MEM-0-TYPES",
+      "to": "MEM-3-FEDERATION"
+    },
+    {
+      "from": "MEM-0-TYPES",
+      "to": "MEM-4-KG"
+    },
+    {
+      "from": "MEM-0-TYPES",
+      "to": "MEM-5-COMPACT"
+    },
+    {
+      "from": "MEM-0-TYPES",
+      "to": "MEM-6-TRAJECTORY"
+    },
+    {
+      "from": "MEM-0-TYPES",
+      "to": "P0.7E-DEPENDENCY-INVERSION"
+    },
+    {
+      "from": "MEM-1-STORE",
+      "to": "MEM-8-PRODUCTION-WRITER"
+    },
+    {
+      "from": "MEM-1-STORE",
+      "to": "P0.7D-FAULT-MATRIX"
+    },
+    {
+      "from": "MEM-6-TRAJECTORY",
+      "to": "MEM-7-LEARNING-SHADOW"
+    },
+    {
+      "from": "P0.7A-RUNTIME-BOOTSTRAP",
+      "to": "P0.7B-B0-VERIFIED-USE"
+    },
+    {
+      "from": "P0.7B-B0-VERIFIED-USE",
+      "to": "INFER-V4-T1"
+    },
+    {
+      "from": "P0.7B-B0-VERIFIED-USE",
+      "to": "P0.7B-B1A-PROVIDER-BOUNDARY"
+    },
+    {
+      "from": "P0.7B-B0-VERIFIED-USE",
+      "to": "P0.7B-B1B-MODEL-BOUNDARY"
+    },
+    {
+      "from": "P0.7B-B0-VERIFIED-USE",
+      "to": "P0.7B-B2-TOOL-NET-FS"
+    },
+    {
+      "from": "P0.7B-B0-VERIFIED-USE",
+      "to": "P0.7B-B3-BOUNDARIES"
+    },
+    {
+      "from": "P0.7B-B1A-PROVIDER-BOUNDARY",
+      "to": "P0.7B-B4-CALLSITE-PROOF"
+    },
+    {
+      "from": "P0.7B-B1B-MODEL-BOUNDARY",
+      "to": "P0.7B-B4-CALLSITE-PROOF"
+    },
+    {
+      "from": "P0.7B-B2-TOOL-NET-FS",
+      "to": "P0.7B-B4-CALLSITE-PROOF"
+    },
+    {
+      "from": "P0.7B-B3-BOUNDARIES",
+      "to": "P0.7B-B4-CALLSITE-PROOF"
+    },
+    {
+      "from": "P0.7B-B4-CALLSITE-PROOF",
+      "to": "P0.7E-DEPENDENCY-INVERSION"
+    },
+    {
+      "from": "P0.7D-FAULT-MATRIX",
+      "to": "P0.8D-VERTICAL-SLICE"
+    },
+    {
+      "from": "P0.7E-DEPENDENCY-INVERSION",
+      "to": "P0.8A-AST-RATCHET"
+    },
+    {
+      "from": "P0.8A-AST-RATCHET",
+      "to": "P0.8B-READINESS"
+    },
+    {
+      "from": "P0.8B-READINESS",
+      "to": "P0.8C-RESOURCE-BUDGETS"
+    },
+    {
+      "from": "P0.8C-RESOURCE-BUDGETS",
+      "to": "P0.8D-VERTICAL-SLICE"
+    },
+    {
+      "from": "P0.8C-RESOURCE-BUDGETS",
+      "to": "RCP-1-RUNTIME-CONTROL-PLANE"
+    },
+    {
+      "from": "P0.8D-VERTICAL-SLICE",
+      "to": "P0.9-EXTERNAL-GATES"
+    }
+  ],
+  "acyclicRequired": true,
+  "authorityFlags": {
+    "runtimeAuthority": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalFilesystemMutation": false,
+    "secretOperation": false,
+    "matrixSend": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

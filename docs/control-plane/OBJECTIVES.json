@@ -1,0 +1,198 @@
+{
+  "schema": "hepta.global-objective-registry.v1",
+  "schemaVersion": 1,
+  "documentClass": "canonical_registry",
+  "authorityScope": "optimizer_objectives_and_constraints_only",
+  "hardConstraints": [
+    {
+      "id": "authority_safety",
+      "scope": "all",
+      "violationPolicy": "reject_plan"
+    },
+    {
+      "id": "single_writer",
+      "scope": "runtime",
+      "violationPolicy": "reject_plan"
+    },
+    {
+      "id": "current_fence",
+      "scope": "runtime",
+      "violationPolicy": "reject_plan"
+    },
+    {
+      "id": "resource_capacity",
+      "scope": "runtime",
+      "violationPolicy": "reject_plan"
+    },
+    {
+      "id": "deadline_bound",
+      "scope": "runtime",
+      "violationPolicy": "reject_plan"
+    },
+    {
+      "id": "version_compatibility",
+      "scope": "runtime",
+      "violationPolicy": "reject_plan"
+    },
+    {
+      "id": "rollback_available",
+      "scope": "all",
+      "violationPolicy": "reject_plan"
+    },
+    {
+      "id": "bounded_work_envelope",
+      "scope": "engineering",
+      "violationPolicy": "reject_assignment"
+    },
+    {
+      "id": "independent_gate_separation",
+      "scope": "all",
+      "violationPolicy": "reject_plan"
+    }
+  ],
+  "objectiveSets": [
+    {
+      "id": "runtime.default.v1",
+      "scope": "runtime",
+      "normalization": "baseline_ratio_with_confidence",
+      "objectives": [
+        {
+          "id": "task_success",
+          "direction": "maximize",
+          "weight": 0.3
+        },
+        {
+          "id": "quality",
+          "direction": "maximize",
+          "weight": 0.2
+        },
+        {
+          "id": "latency_p95",
+          "direction": "minimize",
+          "weight": 0.15
+        },
+        {
+          "id": "resource_and_provider_cost",
+          "direction": "minimize",
+          "weight": 0.1
+        },
+        {
+          "id": "fairness",
+          "direction": "maximize",
+          "weight": 0.1
+        },
+        {
+          "id": "recovery_risk",
+          "direction": "minimize",
+          "weight": 0.1
+        },
+        {
+          "id": "plan_churn",
+          "direction": "minimize",
+          "weight": 0.05
+        }
+      ]
+    },
+    {
+      "id": "engineering.default.v1",
+      "scope": "engineering",
+      "normalization": "bounded_score_with_confidence",
+      "objectives": [
+        {
+          "id": "critical_path_reduction",
+          "direction": "maximize",
+          "weight": 0.25
+        },
+        {
+          "id": "delivered_value",
+          "direction": "maximize",
+          "weight": 0.2
+        },
+        {
+          "id": "merge_conflict_risk",
+          "direction": "minimize",
+          "weight": 0.15
+        },
+        {
+          "id": "ci_capacity_pressure",
+          "direction": "minimize",
+          "weight": 0.1
+        },
+        {
+          "id": "architecture_debt",
+          "direction": "minimize",
+          "weight": 0.1
+        },
+        {
+          "id": "rollback_cost",
+          "direction": "minimize",
+          "weight": 0.1
+        },
+        {
+          "id": "review_load_imbalance",
+          "direction": "minimize",
+          "weight": 0.1
+        }
+      ]
+    }
+  ],
+  "proposalProtocol": {
+    "moduleOutput": "bounded_pareto_candidate_set",
+    "requiredCandidateFields": [
+      "candidate_id",
+      "input_snapshot_digest",
+      "expected_utility",
+      "resource_vector",
+      "risk",
+      "confidence",
+      "compatibility",
+      "rollback",
+      "valid_until"
+    ],
+    "singleLocalOptimumAccepted": false,
+    "globalDecisionReceiptRequired": true
+  },
+  "decisionReceiptFields": [
+    "decision_id",
+    "state_snapshot_digest",
+    "objective_registry_version",
+    "constraint_set_digest",
+    "candidate_set_digest",
+    "solver_id",
+    "solver_version",
+    "planning_horizon",
+    "solver_time_budget",
+    "selected_plan",
+    "rejected_candidates",
+    "hard_constraint_vetoes",
+    "expected_utility",
+    "optimality_gap_or_bound",
+    "fallback_plan",
+    "policy_digest",
+    "grant_refs"
+  ],
+  "optimizerAuthority": {
+    "maySelectPlan": true,
+    "mayIssueCapability": false,
+    "mayExecutePhysicalEffect": false,
+    "maySelfAccept": false,
+    "mayPromoteOrRelease": false
+  },
+  "authorityFlags": {
+    "runtimeAuthority": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalFilesystemMutation": false,
+    "secretOperation": false,
+    "matrixSend": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
