@@ -1,0 +1,59 @@
+name: Hepta V5 B3 exact source export
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - automation/hepta-v5-b3-source-export-20260831
+    paths:
+      - .github/workflows/hepta-v5-b3-source-export.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-v5-b3-source-export-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    name: Export exact B3 source tree
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind and archive exact identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          out="$RUNNER_TEMP/hepta-v5-b3-source"
+          mkdir -p "$out"
+          git archive --format=tar.gz --prefix=hepta-private-ci/ \
+            --output="$out/hepta-private-ci-${GITHUB_SHA}.tar.gz" HEAD
+          {
+            echo "repository=$GITHUB_REPOSITORY"
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            sha256sum "$out/hepta-private-ci-${GITHUB_SHA}.tar.gz"
+            echo "runtime_authority=false"
+            echo "production_authority=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release=false"
+          } | tee "$out/IDENTITY.txt"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Upload exact source archive
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-v5-b3-source-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-v5-b3-source
+          if-no-files-found: error
+          retention-days: 3
