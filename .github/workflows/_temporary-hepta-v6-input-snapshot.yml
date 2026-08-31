@@ -23,7 +23,6 @@ jobs:
     env:
       BRANCH: codex/hepta-development-docs-v6-final-20260831
       BASE_SHA: b621768b70a09d56626bb8a2c331e3dc424e6a4d
-      PAYLOAD_SHA256: 11155f0f7429aa9c83d0e74159c79c37107b94dbf2f7a489d3302bb0e05b47e0
       AUTHBUS_HEAD: e082ea504ac9c34e13851e183b8adf972ee7fb93
       AUTHBUS_TREE: 7b8520c60fe32a66dedd99f5765aa297a0d4ef7c
       AUTHBUS_UPDATED_AT: 2026-08-31T15:42:33Z
@@ -35,7 +34,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Reconstruct and verify staged hardening payload
+      - name: Reconstruct and structurally verify staged hardening payload
         shell: bash
         run: |
           set -euo pipefail
@@ -44,13 +43,70 @@ jobs:
           test -f .github/hepta-v6-final-payload/part-00
           test -f .github/hepta-v6-final-payload/part-01
           test -f .github/hepta-v6-final-payload/part-02
-          cat .github/hepta-v6-final-payload/part-* | base64 --decode > "$RUNNER_TEMP/hepta-v6-hardening-payload.tar.xz"
-          echo "$PAYLOAD_SHA256  $RUNNER_TEMP/hepta-v6-hardening-payload.tar.xz" | sha256sum --check --strict
-          tar -tJf "$RUNNER_TEMP/hepta-v6-hardening-payload.tar.xz" > "$RUNNER_TEMP/payload-files.txt"
-          test "$(wc -l < "$RUNNER_TEMP/payload-files.txt")" -eq 26
-          grep -Fx '.github/workflows/hepta-development-docs.yml' "$RUNNER_TEMP/payload-files.txt"
-          grep -Fx 'docs/governance/LEGACY_DELETION_MANIFEST.json' "$RUNNER_TEMP/payload-files.txt"
-          grep -Fx 'scripts/test-hepta-docs.py' "$RUNNER_TEMP/payload-files.txt"
+          archive="$RUNNER_TEMP/hepta-v6-hardening-payload.tar.xz"
+          cat .github/hepta-v6-final-payload/part-* | base64 --decode > "$archive"
+          echo "staged_payload_sha256=$(sha256sum "$archive" | awk '{print $1}')"
+          xz --test "$archive"
+          python3 - "$archive" <<'PY'
+          from __future__ import annotations
+          from pathlib import PurePosixPath
+          import sys
+          import tarfile
+
+          expected = {
+              ".github/workflows/hepta-development-docs.yml",
+              "README.md",
+              "docs/CURRENT.json",
+              "docs/DEVELOPMENT.md",
+              "docs/STATUS.md",
+              "docs/architecture/ARCHITECTURE.json",
+              "docs/control-plane/OBJECTIVES.json",
+              "docs/delivery/ACTIVATION_DAG.json",
+              "docs/delivery/DEVELOPMENT_DAG.json",
+              "docs/delivery/EVIDENCE_DAG.json",
+              "docs/delivery/WORK_PACKAGES.json",
+              "docs/evidence/INDEX.json",
+              "docs/governance/DOCUMENT_SYSTEM.json",
+              "docs/governance/LEGACY_DELETION_MANIFEST.json",
+              "docs/governance/schemas/architecture.schema.json",
+              "docs/governance/schemas/dag.schema.json",
+              "docs/governance/schemas/document-system.schema.json",
+              "docs/governance/schemas/evidence-index.schema.json",
+              "docs/governance/schemas/legacy-deletion-manifest.schema.json",
+              "docs/governance/schemas/module-registry.schema.json",
+              "docs/governance/schemas/objectives.schema.json",
+              "docs/governance/schemas/repository-current.schema.json",
+              "docs/governance/schemas/work-package-registry.schema.json",
+              "docs/modules/MODULES.json",
+              "scripts/hepta-docs.py",
+              "scripts/test-hepta-docs.py",
+          }
+          archive = sys.argv[1]
+          with tarfile.open(archive, "r:xz") as handle:
+              members = handle.getmembers()
+          names: list[str] = []
+          for member in members:
+              name = member.name
+              path = PurePosixPath(name)
+              if path.is_absolute() or ".." in path.parts or name != path.as_posix():
+                  raise SystemExit(f"unsafe payload path: {name!r}")
+              if not member.isfile():
+                  raise SystemExit(f"non-regular payload member: {name!r}")
+              if name in names:
+                  raise SystemExit(f"duplicate payload member: {name!r}")
+              if name not in expected:
+                  raise SystemExit(f"unexpected payload member: {name!r}")
+              names.append(name)
+          actual = set(names)
+          if actual != expected or len(names) != len(expected):
+              raise SystemExit(
+                  f"payload manifest drift: missing={sorted(expected - actual)} "
+                  f"extra={sorted(actual - expected)} count={len(names)}"
+              )
+          print(f"verified_payload_regular_files={len(names)}")
+          for name in sorted(names):
+              print(name)
+          PY
 
       - name: Apply payload and refresh exact observed bindings
         shell: bash
