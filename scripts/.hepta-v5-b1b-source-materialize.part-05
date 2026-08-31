@@ -1,0 +1,45 @@
+ata["packages"]:
+        if package["id"] != "P0.7b/B1_model_provider_boundaries":
+            continue
+        package["state"] = "source_in_progress"
+        package["blockedBy"] = ["P0.7b/B0_verified_use_kernel.qualified_exact"]
+        package["sourceSubpackages"] = {
+            "B1a": {
+                "id": "provider_verified_use_boundary",
+                "implemented": True,
+                "qualified": False,
+                "branch": "codex/hepta-architecture-v5-b1a-restack-eb8adb-20260831",
+                "head": EXPECTED_PARENT,
+            },
+            "B1b": {
+                "id": "model_invocation_verified_use_boundary",
+                "implemented": True,
+                "qualified": False,
+                "branch": EXPECTED_BRANCH,
+                "head": "resolved_by_exact_source_head_workflow",
+            },
+        }
+        package["remainingSourceGaps"] = [
+            "P0.7d_F07_after_claim_before_send_recovery",
+            "P0.7d_F08_after_claim_before_send_quarantine_adoption",
+            "model_HTTP_WebSocket_local_callsite_integration",
+            "B4_compiler_AST_no_bypass_inventory",
+        ]
+        break
+    else:
+        raise SystemExit("B1 package missing from gap ledger")
+    data["allGapsClosed"] = False
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def main() -> int:
+    write_files()
+    patch_lib()
+    patch_current_plan()
+    patch_gap_ledger()
+    print("PASS_HEPTA_V5_B1B_SOURCE_MATERIALIZED")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
