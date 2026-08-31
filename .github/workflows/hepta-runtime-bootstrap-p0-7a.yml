@@ -33,13 +33,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: hepta-p0-7a-${{ github.event.pull_request.number || github.ref }}
+  group: hepta-p0-7a-bootstrap-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   source-qualification:
     name: P0.7a source qualification
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     defaults:
       run:
@@ -119,7 +119,7 @@ jobs:
 
   lock-coherence:
     name: P0.7a committed lock coherence
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - name: Checkout exact event identity
@@ -160,7 +160,7 @@ jobs:
     needs:
       - source-qualification
       - lock-coherence
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     steps:
       - name: Require successful P0.7a dependencies
         env:
