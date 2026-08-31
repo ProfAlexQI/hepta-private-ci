@@ -13,7 +13,7 @@ V12 does not relabel that earlier evidence. It adds a separate qualification-onl
 
 ## Source design
 
-`WindowedQuotaLedger` separates the six canonical dimensions by lifecycle:
+`WindowedQuotaLedger` uses window-keyed accounting and separates the six canonical dimensions by lifecycle:
 
 | Dimension | Lifecycle in V12 |
 |---|---|
