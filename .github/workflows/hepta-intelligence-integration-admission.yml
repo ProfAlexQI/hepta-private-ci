@@ -68,6 +68,28 @@ jobs:
               scripts/test-hepta-intelligence-integration-admission-boundaries.py \
               scripts/test-hepta-intelligence-integration-admission-http-boundaries.py
 
+      - name: Normalize exact inert actions/checkout config residue
+        shell: bash
+        run: |
+          set -euo pipefail
+          clean_home="$RUNNER_TEMP/hepta-intelligence-admission-home"
+          python_cache="$RUNNER_TEMP/hepta-intelligence-python-cache"
+          mkdir -p "$clean_home" "$python_cache"
+          env -i \
+            PATH=/usr/bin:/bin \
+            HOME="$clean_home" \
+            LANG=C \
+            LC_ALL=C \
+            PYTHONHASHSEED=0 \
+            PYTHONPYCACHEPREFIX="$python_cache" \
+            PYTHONDONTWRITEBYTECODE=1 \
+            PYTHONNOUSERSITE=1 \
+            GITHUB_ACTIONS=true \
+            RUNNER_OS=Linux \
+            /usr/bin/python3 \
+              scripts/hepta_q060_config_graph.py \
+              --normalize-actions-checkout-residue
+
       - name: Exercise trusted-Git and fail-closed admission fixtures
         run: |
           set -euo pipefail
