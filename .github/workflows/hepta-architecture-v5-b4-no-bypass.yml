@@ -1,0 +1,214 @@
+name: Hepta V5 B4 global no-bypass proof
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/hepta-architecture-v5-b4-no-bypass-gpt56-20260831
+    paths:
+      - "codex-rs/**/*.rs"
+      - "codex-rs/**/Cargo.toml"
+      - "codex-rs/Cargo.lock"
+      - "docs/architecture/HEPTA_CURRENT_PLAN.json"
+      - "docs/architecture/HEPTA_P0_7B_B4_*"
+      - "docs/architecture/HEPTA_V5_B4_GLOBAL_CALLSITE_INVENTORY.json"
+      - "scripts/verify-hepta-v5-b4-no-bypass.py"
+      - ".github/workflows/hepta-architecture-v5-b4-no-bypass.yml"
+  pull_request:
+    paths:
+      - "codex-rs/**/*.rs"
+      - "codex-rs/**/Cargo.toml"
+      - "codex-rs/Cargo.lock"
+      - "docs/architecture/HEPTA_CURRENT_PLAN.json"
+      - "docs/architecture/HEPTA_P0_7B_B4_*"
+      - "docs/architecture/HEPTA_V5_B4_GLOBAL_CALLSITE_INVENTORY.json"
+      - "scripts/verify-hepta-v5-b4-no-bypass.py"
+      - ".github/workflows/hepta-architecture-v5-b4-no-bypass.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-v5-b4-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  qualification:
+    name: Hepta V5 B4 required
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact event identity
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Initialize exact-candidate evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-v5-b4"
+          mkdir -p "$evidence_dir"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          {
+            echo "event=$GITHUB_EVENT_NAME"
+            echo "github_sha=$GITHUB_SHA"
+            echo "checked_out_commit=$(git rev-parse HEAD)"
+            echo "checked_out_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "package=P0.7b/B4_global_no_bypass_proof"
+            echo "runtime_registered=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release=false"
+          } > "$evidence_dir/posture.txt"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Compile and self-test B4 verifier
+        id: verifier
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/verify-hepta-v5-b4-no-bypass.py
+          python3 scripts/verify-hepta-v5-b4-no-bypass.py --self-test \
+            2>&1 | tee "$RUNNER_TEMP/hepta-v5-b4/verifier-self-test.log"
+          rm -rf scripts/__pycache__
+
+      - name: Capture locked Cargo target graph
+        id: metadata
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --manifest-path codex-rs/Cargo.toml --locked --no-deps \
+            --format-version 1 > "$RUNNER_TEMP/hepta-v5-b4/cargo-metadata.json"
+
+      - name: Audit every irreversible-boundary occurrence
+        id: audit
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-v5-b4-no-bypass.py \
+            --repo-root . \
+            --metadata "$RUNNER_TEMP/hepta-v5-b4/cargo-metadata.json" \
+            --inventory docs/architecture/HEPTA_V5_B4_GLOBAL_CALLSITE_INVENTORY.json \
+            --output "$RUNNER_TEMP/hepta-v5-b4/no-bypass-report.json" \
+            2>&1 | tee "$RUNNER_TEMP/hepta-v5-b4/no-bypass.log"
+
+      - name: Re-run B0 through B3 source contracts
+        id: prior_contracts
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-v5-b1a-provider-boundary.py
+          python3 scripts/verify-hepta-v5-b1b-model-boundary.py
+          python3 scripts/verify-hepta-v5-b2-external-boundaries.py
+          python3 scripts/verify-hepta-v5-b3-governed-boundaries.py
+          git diff --check
+
+      - name: Rust 1.95 format
+        id: format
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-contracts -- --check \
+            2>&1 | tee "$RUNNER_TEMP/hepta-v5-b4/rustfmt.log"
+
+      - name: Complete contracts tests
+        id: tests
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-contracts \
+            2>&1 | tee "$RUNNER_TEMP/hepta-v5-b4/contracts-tests.log"
+
+      - name: All-target check
+        id: check
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked -p codex-hepta-contracts --all-targets \
+            2>&1 | tee "$RUNNER_TEMP/hepta-v5-b4/check.log"
+
+      - name: Strict Clippy
+        id: clippy
+        continue-on-error: true
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked -p codex-hepta-contracts --all-targets -- -D warnings \
+            2>&1 | tee "$RUNNER_TEMP/hepta-v5-b4/clippy.log"
+
+      - name: Bazel lock
+        id: bazel_lock
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          just bazel-lock-check 2>&1 | tee "$RUNNER_TEMP/hepta-v5-b4/bazel-lock.log"
+
+      - name: Require every B4 diagnostic
+        if: always() && !cancelled()
+        env:
+          VERIFIER: ${{ steps.verifier.outcome }}
+          METADATA: ${{ steps.metadata.outcome }}
+          AUDIT: ${{ steps.audit.outcome }}
+          PRIOR_CONTRACTS: ${{ steps.prior_contracts.outcome }}
+          FORMAT: ${{ steps.format.outcome }}
+          TESTS: ${{ steps.tests.outcome }}
+          CHECK: ${{ steps.check.outcome }}
+          CLIPPY: ${{ steps.clippy.outcome }}
+          BAZEL_LOCK: ${{ steps.bazel_lock.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            "verifier=$VERIFIER" "metadata=$METADATA" "audit=$AUDIT" \
+            "prior_contracts=$PRIOR_CONTRACTS" "format=$FORMAT" \
+            "tests=$TESTS" "check=$CHECK" "clippy=$CLIPPY" \
+            "bazel_lock=$BAZEL_LOCK" | tee -a "$RUNNER_TEMP/hepta-v5-b4/posture.txt"
+          test "$VERIFIER" = success
+          test "$METADATA" = success
+          test "$AUDIT" = success
+          test "$PRIOR_CONTRACTS" = success
+          test "$FORMAT" = success
+          test "$TESTS" = success
+          test "$CHECK" = success
+          test "$CLIPPY" = success
+          test "$BAZEL_LOCK" = success
+
+      - name: Upload exact-candidate evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-v5-b4-${{ github.event_name }}-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-v5-b4
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
