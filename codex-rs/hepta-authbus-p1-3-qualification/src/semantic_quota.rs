@@ -247,7 +247,10 @@ impl SemanticReservationRequest {
     fn binding_digest(&self) -> Result<Sha256Digest, SemanticQuotaError> {
         let hold = self.validate()?;
         let mut bytes = Vec::new();
-        push_text(&mut bytes, "hepta.authbus.p1.3.semantic-reservation-request.v1");
+        push_text(
+            &mut bytes,
+            "hepta.authbus.p1.3.semantic-reservation-request.v1",
+        );
         push_text(&mut bytes, &self.reservation_id);
         push_text(&mut bytes, &self.idempotency_key);
         push_text(&mut bytes, &self.quota_domain);
@@ -294,7 +297,10 @@ impl SemanticReservationState {
     }
 
     const fn is_active(self) -> bool {
-        matches!(self, Self::Held | Self::DispatchAttempted | Self::Indeterminate)
+        matches!(
+            self,
+            Self::Held | Self::DispatchAttempted | Self::Indeterminate
+        )
     }
 }
 
@@ -372,8 +378,7 @@ impl SemanticReservationRecord {
                     return Err(SemanticQuotaError::UsageOverrun);
                 }
             }
-            SemanticReservationState::Released
-            | SemanticReservationState::ExpiredPreDispatch => {
+            SemanticReservationState::Released | SemanticReservationState::ExpiredPreDispatch => {
                 if !self.consumed.is_zero() || self.remaining != self.held {
                     return Err(SemanticQuotaError::ConservationViolation);
                 }
@@ -419,7 +424,8 @@ impl SemanticTransitionReceipt {
         push_text(&mut bytes, &self.reservation_id);
         push_text(
             &mut bytes,
-            self.from_state.map_or("none", SemanticReservationState::as_str),
+            self.from_state
+                .map_or("none", SemanticReservationState::as_str),
         );
         push_text(&mut bytes, self.to_state.as_str());
         bytes.extend_from_slice(&self.revision.to_be_bytes());
@@ -736,8 +742,7 @@ impl WindowedQuotaLedger {
                     .checked_sub(actual)
                     .ok_or(SemanticQuotaError::ConservationViolation)?;
             }
-            SemanticReservationState::Released
-            | SemanticReservationState::ExpiredPreDispatch => {
+            SemanticReservationState::Released | SemanticReservationState::ExpiredPreDispatch => {
                 if actual.is_some() {
                     return Err(SemanticQuotaError::InvalidRequest);
                 }
@@ -995,9 +1000,7 @@ impl WindowedQuotaLedger {
                 .idempotency
                 .get(&record.idempotency_key)
                 .ok_or(SemanticQuotaError::CorruptState)?;
-            if idempotency.0 != record.request_sha256
-                || idempotency.1 != record.reservation_id
-            {
+            if idempotency.0 != record.request_sha256 || idempotency.1 != record.reservation_id {
                 return Err(SemanticQuotaError::BindingConflict);
             }
             if record.state.is_active() {
@@ -1012,12 +1015,7 @@ impl WindowedQuotaLedger {
                 request_used = request_used
                     .checked_add(record.consumed.request_count)
                     .ok_or(SemanticQuotaError::CorruptState)?;
-                accumulate_window_vector(
-                    &mut windows,
-                    &record.windows,
-                    record.consumed,
-                    false,
-                )?;
+                accumulate_window_vector(&mut windows, &record.windows, record.consumed, false)?;
             }
         }
         if request_used != self.lifetime_request_count_used
@@ -1027,8 +1025,7 @@ impl WindowedQuotaLedger {
         {
             return Err(SemanticQuotaError::CorruptState);
         }
-        if checked_total(request_used, request_held, 0)?
-            > known_limit(self.limits.request_count)?
+        if checked_total(request_used, request_held, 0)? > known_limit(self.limits.request_count)?
             || concurrency_held > known_limit(self.limits.concurrency)?
         {
             return Err(SemanticQuotaError::QuotaExceeded);
