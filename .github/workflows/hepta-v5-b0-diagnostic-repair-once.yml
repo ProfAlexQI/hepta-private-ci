@@ -34,14 +34,14 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "5d699d2cc581195f9b3448543cd761b3dbbb8ac1"
+          test "$(git rev-parse HEAD^)" = "0414253e17be27a5f467892dc3b5d6c16a9e2250"
           test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = \
             ".github/workflows/hepta-v5-b0-diagnostic-repair-once.yml"
           test "$(git ls-remote origin refs/heads/codex/hepta-architecture-v5-b0-exact-restack-20260831 | cut -f1)" = "$GITHUB_SHA"
           git diff --exit-code
           git diff --cached --exit-code
 
-      - name: Apply deterministic verifier and workflow repair
+      - name: Apply deterministic verifier workflow and format repair
         shell: bash
         run: |
           set -euo pipefail
@@ -156,6 +156,7 @@ jobs:
             scripts/verify-hepta-selected-architecture-plan.py \
             scripts/verify-hepta-architecture-plan-v5.py \
             scripts/verify-hepta-v5-b0-format.py
+          python3 scripts/verify-hepta-v5-b0-format.py
           python3 scripts/verify-hepta-selected-architecture-plan.py
           python3 scripts/verify-hepta-v5-b0-format.py --check
           git diff --check
@@ -169,7 +170,11 @@ jobs:
           git rm .github/workflows/hepta-v5-b0-diagnostic-repair-once.yml
           git add \
             scripts/verify-hepta-architecture-plan-v5.py \
-            .github/workflows/hepta-architecture-v5-b0-verified-use.yml
+            .github/workflows/hepta-architecture-v5-b0-verified-use.yml \
+            codex-rs/hepta-contracts/src/lib.rs \
+            codex-rs/hepta-contracts/src/verified_use.rs \
+            codex-rs/hepta-contracts/src/verified_use_tests.rs \
+            codex-rs/hepta-contracts/tests/verified_use_negative.rs
           git diff --cached --check
           git commit -m "ci(hepta): execute complete B0 diagnostics on available lane"
           new_head="$(git rev-parse HEAD)"
