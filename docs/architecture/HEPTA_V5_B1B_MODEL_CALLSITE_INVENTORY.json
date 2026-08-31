@@ -1,0 +1,41 @@
+{
+  "schema": "hepta.v5.b1b.model-callsite-inventory.v1",
+  "schemaVersion": 1,
+  "repository": "TrillionniumFoundation/hepta-private-ci",
+  "package": "P0.7b/B1b_model_invocation_verified_use_boundary",
+  "inventoryState": "checked_boundary_source_only",
+  "checkedBoundary": {
+    "file": "codex-rs/hepta-contracts/src/checked_model_invocation.rs",
+    "symbol": "CheckedModelInvocation::invoke_once",
+    "capability": "Authorized<ModelInvocationCapability>",
+    "physicalKind": "model_invocation",
+    "finalPayloadBuilder": "ModelInvocationIntent::physical_payload_sha256",
+    "claimOwner": "caller_supplied_durable_claim_store",
+    "witnessOwner": "caller_supplied_durable_witness_transaction",
+    "adapterVisibility": "private_field_no_accessor"
+  },
+  "productCallsitesRegistered": false,
+  "knownProductCallsites": [],
+  "rawModelAdapterConstructorsAllowed": [],
+  "b4GlobalInventoryRequired": true,
+  "b4RequiredFields": [
+    "file",
+    "symbol",
+    "capability_kind",
+    "issuer",
+    "consumer",
+    "final_payload_builder",
+    "claim_store_owner",
+    "witness_store_owner",
+    "reconciliation_owner"
+  ],
+  "authority": {
+    "runtimeRegistered": false,
+    "modelInvocation": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "externalEffect": false,
+    "promotion": false,
+    "release": false
+  }
+}

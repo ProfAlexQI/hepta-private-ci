@@ -1,0 +1,54 @@
+{
+  "schema": "hepta.p0-7b-b1b-model-status.v1",
+  "schemaVersion": 1,
+  "package": "P0.7b/B1b_model_invocation_verified_use_boundary",
+  "state": "source_implemented_executable_qualification_pending",
+  "repository": "TrillionniumFoundation/hepta-private-ci",
+  "parentCommit": "537394a0067d204b215db8bee3de533494535481",
+  "parentTree": "fd0f84d73504507078cecfcc1043490ca0856187",
+  "sourceBranch": "codex/hepta-architecture-v5-b1b-model-invocation-20260831",
+  "sourceCommit": "resolved_by_exact_source_head_workflow",
+  "sourceTree": "resolved_by_exact_source_head_workflow",
+  "implementedFacts": [
+    "distinct_model_invocation_capability",
+    "secret_free_provider_model_and_endpoint_identity",
+    "exact_wire_payload_digest_and_byte_count",
+    "response_and_tool_contract_binding",
+    "final_physical_payload_digest",
+    "current_revocation_reverification",
+    "trusted_clock_at_issuance_and_boundary",
+    "durable_single_use_claim_before_adapter",
+    "witness_persistence_before_adapter",
+    "transport_failure_becomes_indeterminate",
+    "no_blind_retry_api",
+    "no_raw_adapter_accessor",
+    "no_product_callsite_registered"
+  ],
+  "activationBlockers": [
+    "P0.7a_signed_runtime_bootstrap_closure.qualified_exact",
+    "P0.7b/B0_verified_use_kernel.qualified_exact",
+    "P0.7b/B1a_provider_verified_use_boundary.qualified_exact",
+    "B1b_exact_head_nonempty_qualification",
+    "B1b_merge_candidate_nonempty_qualification",
+    "independent_exact_candidate_review",
+    "B4_global_model_callsite_inventory"
+  ],
+  "evidence": {
+    "sourceVerifier": "scripts/verify-hepta-v5-b1b-model-boundary.py",
+    "workflow": ".github/workflows/hepta-architecture-v5-b1b-model-boundary.yml",
+    "exactHeadRun": null,
+    "mergeCandidateRun": null,
+    "independentReviewReceipt": null
+  },
+  "authority": {
+    "runtimeRegistered": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "externalEffect": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
