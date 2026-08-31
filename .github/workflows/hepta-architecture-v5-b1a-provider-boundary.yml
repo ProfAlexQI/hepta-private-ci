@@ -1,0 +1,128 @@
+name: Hepta V5 B1a provider verified-use boundary
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/hepta-architecture-v5-b1a-restack-eb8adb-20260831
+    paths:
+      - "codex-rs/hepta-contracts/src/checked_provider_operation.rs"
+      - "codex-rs/hepta-contracts/src/checked_provider_operation_parts/**"
+      - "codex-rs/hepta-contracts/tests/provider_verified_use_boundary.rs"
+      - "codex-rs/hepta-contracts/tests/provider_verified_use_boundary_parts/**"
+      - "docs/architecture/HEPTA_P0_7B_B1A_*"
+      - "docs/architecture/HEPTA_V5_B1A_PROVIDER_CALLSITE_INVENTORY.json"
+      - "scripts/verify-hepta-v5-b1a-*.py"
+      - ".github/workflows/hepta-architecture-v5-b1a-provider-boundary.yml"
+  pull_request:
+    paths:
+      - "codex-rs/hepta-contracts/src/checked_provider_operation.rs"
+      - "codex-rs/hepta-contracts/src/checked_provider_operation_parts/**"
+      - "codex-rs/hepta-contracts/tests/provider_verified_use_boundary.rs"
+      - "codex-rs/hepta-contracts/tests/provider_verified_use_boundary_parts/**"
+      - "docs/architecture/HEPTA_P0_7B_B1A_*"
+      - "docs/architecture/HEPTA_V5_B1A_PROVIDER_CALLSITE_INVENTORY.json"
+      - "scripts/verify-hepta-v5-b1a-*.py"
+      - ".github/workflows/hepta-architecture-v5-b1a-provider-boundary.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-v5-b1a-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  source-head:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - name: Verify exact direct-parent source
+        run: python3 scripts/verify-hepta-v5-b1a-provider-boundary.py --require-direct-parent
+      - name: Verify bounded source formatting
+        run: python3 scripts/verify-hepta-v5-b1a-format.py --check
+      - name: Rust format
+        working-directory: codex-rs
+        run: cargo fmt -p codex-hepta-contracts -- --check
+      - name: Locked metadata
+        working-directory: codex-rs
+        run: cargo metadata --locked --no-deps --format-version 1 >/dev/null
+      - name: Focused provider boundary tests
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-contracts --test provider_verified_use_boundary -- --nocapture
+      - name: Complete contracts tests
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-contracts
+      - name: All-target check
+        working-directory: codex-rs
+        run: cargo check --locked -p codex-hepta-contracts --all-targets
+      - name: Strict Clippy
+        working-directory: codex-rs
+        run: cargo clippy --locked -p codex-hepta-contracts --all-targets -- -D warnings
+      - name: Bazel lock
+        run: just bazel-lock-check
+      - uses: ./.github/actions/check-clean-worktree
+
+  merge-candidate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          components: rustfmt, clippy
+      - name: Verify merge candidate source
+        run: python3 scripts/verify-hepta-v5-b1a-provider-boundary.py
+      - name: Verify bounded source formatting
+        run: python3 scripts/verify-hepta-v5-b1a-format.py --check
+      - name: Rust and lock gates
+        working-directory: codex-rs
+        run: |
+          cargo fmt -p codex-hepta-contracts -- --check
+          cargo metadata --locked --no-deps --format-version 1 >/dev/null
+          cargo test --locked -p codex-hepta-contracts --test provider_verified_use_boundary -- --nocapture
+          cargo test --locked -p codex-hepta-contracts
+          cargo check --locked -p codex-hepta-contracts --all-targets
+          cargo clippy --locked -p codex-hepta-contracts --all-targets -- -D warnings
+      - name: Bazel lock
+        run: just bazel-lock-check
+      - uses: ./.github/actions/check-clean-worktree
+
+  required:
+    if: always()
+    needs: [source-head, merge-candidate]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require event-appropriate executable job
+        env:
+          EVENT: ${{ github.event_name }}
+          SOURCE: ${{ needs.source-head.result }}
+          MERGE: ${{ needs.merge-candidate.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == "pull_request" ]]; then
+            test "$MERGE" = success
+            test "$SOURCE" = skipped
+          else
+            test "$SOURCE" = success
+            test "$MERGE" = skipped
+          fi
