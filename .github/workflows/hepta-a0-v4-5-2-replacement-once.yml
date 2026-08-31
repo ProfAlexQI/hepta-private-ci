@@ -1,18 +1,314 @@
-name: Retired Hepta A0 V4.5.2 source publisher
+name: Temporary Hepta A0 V4.5.2 exact-Q0 publisher
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - "automation/hepta-a0-v4-5-2-replacement-20260830"
 
 permissions:
-  contents: read
+  contents: write
+  issues: read
+
+concurrency:
+  group: hepta-a0-v4-5-2-exact-q0-publisher
+  cancel-in-progress: false
 
 jobs:
-  retired:
+  publish:
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      Q0_HEAD: c768bcbeb4c1168088d2499828c24da521a2a73a
+      Q0_TREE: ca455a9ef797cd95164c880c7b8faba80b305589
+      TARGET_BRANCH: codex/hepta-intelligence-a0-authority-gap-closure-20260829
+      EXPECTED_OLD_HEAD: 73a636867dbebc2dd4bdf957c9c6ff3eb0ea9358
+      PAYLOAD_ISSUE: "89"
+      PAYLOAD_SHA256: 7406efe4d89d7693a752bbbecd49c5be045b97b67be3c03a57c2b71a7c6a9832
+      PAYLOAD_BYTES: "51712"
+      PAYLOAD_ENCODED_CHARS: "68952"
+      GIT_NO_REPLACE_OBJECTS: "1"
     steps:
-      - name: Fail closed
+      - name: Checkout governed publisher branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct, validate, and publish one exact-Q0 child
         shell: bash
         run: |
-          echo 'RETIRED_HEPTA_A0_V4_5_2_SOURCE_PUBLISHER'
-          echo 'The governed payload was revoked after the publisher remained runner-zero.'
-          exit 1
+          set -euo pipefail
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import base64
+          import hashlib
+          import io
+          import json
+          import lzma
+          import os
+          import pathlib
+          import re
+          import shutil
+          import subprocess
+          import sys
+          import tarfile
+          import urllib.request
+
+          ROOT = pathlib.Path.cwd().resolve()
+          REPOSITORY = "ProfHepta/hepta-private-ci"
+          PUBLISHER_BRANCH = "automation/hepta-a0-v4-5-2-replacement-20260830"
+          q0 = os.environ["Q0_HEAD"]
+          q0_tree = os.environ["Q0_TREE"]
+          target_branch = os.environ["TARGET_BRANCH"]
+          old_head = os.environ["EXPECTED_OLD_HEAD"]
+          api = os.environ["GITHUB_API_URL"]
+          token = os.environ["GH_TOKEN"]
+          issue = os.environ["PAYLOAD_ISSUE"]
+          expected_payload_sha = os.environ["PAYLOAD_SHA256"]
+          expected_payload_bytes = int(os.environ["PAYLOAD_BYTES"])
+          expected_encoded_chars = int(os.environ["PAYLOAD_ENCODED_CHARS"])
+
+          paths = [
+              ".github/workflows/hepta-intelligence-a0-authority.yml",
+              ".github/workflows/hepta-intelligence-execution-spec.yml",
+              ".github/workflows/hepta-intelligence-master-plan.yml",
+              "plans/hepta-intelligence/AGENTS.md",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CAPABILITY_REGISTRY_V1.json",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CONTROLLED_GAP_CLOSURE_EXECUTION_SPEC_V1.md",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_INTEGRATION_CANDIDATE_V1.json",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PR_STACK_REGISTRY_V1.json",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_Q0_QUALIFICATION_RECEIPT_2026-08-29.json",
+              "scripts/hepta-intelligence-current-truth.py",
+              "scripts/verify-hepta-intelligence-a0-authority.py",
+              "scripts/verify-hepta-intelligence-document-authority.py",
+              "scripts/verify-hepta-intelligence-master-plan.py",
+          ]
+          executable = {
+              "scripts/hepta-intelligence-current-truth.py",
+              "scripts/verify-hepta-intelligence-a0-authority.py",
+              "scripts/verify-hepta-intelligence-document-authority.py",
+              "scripts/verify-hepta-intelligence-master-plan.py",
+          }
+          comments = {
+              1: (5474213382, "3c87b793c350d29e616000dcc9dc9694701b65d28801876a4f6930c06d47e40b"),
+              2: (5474221791, "46eadb2c926a4d19ff8709b701faa4ddfacdb30ae1e1b49997dba9e54786096c"),
+              3: (5474230508, "b8eb3fcd38d8f90d0aa7473504519f76c6c69fac4ed5abfd6bfa9b92e476c8c7"),
+              4: (5474240615, "ffbd03382699717378772c45345e57269ae41e2fd60955894771620380b0e51f"),
+              5: (5474249483, "dcee182248b02bc3e77b8a50d8b0113cf9e37679854888e46fed581019199280"),
+              6: (5474256392, "46f5d18af2ecda382e17b50ef152b3da79742f78d2e027e07b725aea0ba6e7bb"),
+              7: (5474263147, "9ef6683bab5ceb70cad941f003120c930467d53472c5e22cf67119a4575cf0ea"),
+              8: (5474269182, "394d36ae4fdacb85689d022abc259140fad517b56607695da8872655e3e36364"),
+              9: (5474277168, "538aec3fe17bb6d0ba3d0fd55ce0db65dec9fa128c798762ff6cd706eb78ccb1"),
+              10: (5474295649, "00e80d6964cc00bc9466c773ace206945baaca1db31e00ddd9852565c39d59b6"),
+          }
+
+          def run(*args: str, env: dict[str, str] | None = None) -> None:
+              print("+", " ".join(args), flush=True)
+              subprocess.run(args, cwd=ROOT, env=env, check=True)
+
+          def capture(*args: str) -> str:
+              return subprocess.check_output(args, cwd=ROOT, text=True).strip()
+
+          assert os.environ["GITHUB_REPOSITORY"] == REPOSITORY
+          assert os.environ["GITHUB_REF_NAME"] == PUBLISHER_BRANCH
+          assert capture("git", "rev-parse", "HEAD") == os.environ["GITHUB_SHA"]
+          assert capture("git", "replace", "-l") == ""
+          assert capture("git", "rev-parse", "--is-shallow-repository") == "false"
+          git_dir = pathlib.Path(capture("git", "rev-parse", "--absolute-git-dir"))
+          common_dir = pathlib.Path(
+              capture("git", "rev-parse", "--path-format=absolute", "--git-common-dir")
+          )
+          for forbidden in {
+              git_dir / "info/grafts",
+              common_dir / "info/grafts",
+              git_dir / "objects/info/alternates",
+              common_dir / "objects/info/alternates",
+          }:
+              assert not forbidden.exists(), forbidden
+          run("git", "cat-file", "-e", f"{q0}^{{commit}}")
+          assert capture("git", "rev-parse", f"{q0}^{{tree}}") == q0_tree
+          run(
+              "git",
+              "fetch",
+              "--no-tags",
+              "origin",
+              f"+refs/heads/{target_branch}:refs/remotes/origin/{target_branch}",
+          )
+          assert capture("git", "rev-parse", f"refs/remotes/origin/{target_branch}") == old_head
+
+          chunks: list[str] = []
+          for index, (comment_id, expected_chunk_sha) in comments.items():
+              request = urllib.request.Request(
+                  f"{api}/repos/{REPOSITORY}/issues/comments/{comment_id}",
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "User-Agent": "hepta-a0-v4.5.2-exact-q0-publisher",
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  comment = json.load(response)
+              assert comment["id"] == comment_id
+              assert comment["issue_url"] == f"{api}/repos/{REPOSITORY}/issues/{issue}"
+              assert comment["user"]["login"] == "ProfHepta"
+              assert comment["author_association"] == "OWNER"
+              app = comment.get("performed_via_github_app") or {}
+              assert app.get("slug") == "chatgpt-codex-connector"
+              match = re.fullmatch(
+                  rf"HEPTA_A0_V452_LATEST_PAYLOAD_CHUNK {index:02d}/10\n```text\n([A-Za-z0-9+/=]+)\n```",
+                  comment["body"],
+              )
+              assert match is not None, comment_id
+              chunk = match.group(1)
+              assert hashlib.sha256(chunk.encode("ascii")).hexdigest() == expected_chunk_sha
+              chunks.append(chunk)
+
+          encoded = "".join(chunks)
+          assert len(encoded) == expected_encoded_chars
+          compressed = base64.b64decode(encoded, validate=True)
+          assert len(compressed) == expected_payload_bytes
+          assert hashlib.sha256(compressed).hexdigest() == expected_payload_sha
+          tar_bytes = lzma.decompress(compressed)
+          assert len(tar_bytes) <= 1024 * 1024
+
+          payload = pathlib.Path("/tmp/hepta-a0-v452-latest-payload")
+          if payload.exists():
+              shutil.rmtree(payload)
+          payload.mkdir(parents=True)
+          with tarfile.open(fileobj=io.BytesIO(tar_bytes), mode="r:") as archive:
+              members = archive.getmembers()
+              names = [member.name for member in members]
+              assert names == paths, names
+              assert len(names) == len(set(names)) == 17
+              for member in members:
+                  pure = pathlib.PurePosixPath(member.name)
+                  assert member.isfile()
+                  assert not pure.is_absolute()
+                  assert ".." not in pure.parts
+                  assert "\x00" not in member.name
+                  source = archive.extractfile(member)
+                  assert source is not None
+                  data = source.read()
+                  assert len(data) == member.size
+                  destination = payload / member.name
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  destination.write_bytes(data)
+                  destination.chmod(0o755 if member.name in executable else 0o644)
+
+          run("git", "checkout", "--detach", q0)
+          assert capture("git", "rev-parse", "HEAD") == q0
+          assert capture("git", "rev-parse", "HEAD^{tree}") == q0_tree
+          assert capture("git", "status", "--porcelain") == ""
+          for relative in paths:
+              source = payload / relative
+              destination = ROOT / relative
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              assert destination.parent.resolve().is_relative_to(ROOT)
+              assert not destination.is_symlink()
+              shutil.copyfile(source, destination)
+              destination.chmod(source.stat().st_mode & 0o777)
+
+          run(
+              sys.executable,
+              "-m",
+              "py_compile",
+              "scripts/hepta-intelligence-current-truth.py",
+              "scripts/verify-hepta-intelligence-a0-authority.py",
+              "scripts/verify-hepta-intelligence-document-authority.py",
+              "scripts/verify-hepta-intelligence-master-plan.py",
+          )
+          run(sys.executable, "scripts/verify-hepta-intelligence-master-plan.py")
+          run(sys.executable, "scripts/verify-hepta-intelligence-document-authority.py")
+          run(sys.executable, "scripts/hepta-intelligence-current-truth.py", "--verify")
+          for tranche in ("P0.2", "P0.3", "P0.4a", "P0.4b", "P0.4c"):
+              run(sys.executable, "scripts/hepta-intelligence-status-compat.py", tranche, "--check-only")
+
+          run("git", "add", "--", *paths)
+          for relative in sorted(executable):
+              run("git", "update-index", "--chmod=+x", relative)
+          run("git", "diff", "--cached", "--check")
+          changed = capture(
+              "git", "diff", "--cached", "--name-only", "--no-renames", q0
+          ).splitlines()
+          assert changed == paths, changed
+          assert capture("git", "diff", "--name-only") == ""
+          assert capture("git", "ls-files", "--others", "--exclude-standard") == ""
+
+          run("git", "config", "user.name", "github-actions[bot]")
+          run(
+              "git",
+              "config",
+              "user.email",
+              "41898282+github-actions[bot]@users.noreply.github.com",
+          )
+          run(
+              "git",
+              "-c",
+              "commit.gpgsign=false",
+              "commit",
+              "-m",
+              "docs(intelligence): publish A0 V4.5.2 exact-Q0 replacement",
+          )
+
+          new_head = capture("git", "rev-parse", "HEAD")
+          new_tree = capture("git", "rev-parse", "HEAD^{tree}")
+          assert capture("git", "show", "-s", "--format=%P", new_head) == q0
+          assert capture("git", "rev-list", "--count", f"{q0}..{new_head}") == "1"
+          assert capture(
+              "git", "diff", "--name-only", "--no-renames", q0, new_head
+          ).splitlines() == paths
+          run("git", "diff", "--check", q0, new_head)
+
+          receipt_env = os.environ.copy()
+          receipt_env["GITHUB_SHA"] = new_head
+          receipt_env["GITHUB_HEAD_REF"] = target_branch
+          receipt_env["GITHUB_REF_NAME"] = target_branch
+          run(
+              sys.executable,
+              "scripts/verify-hepta-intelligence-a0-authority.py",
+              env=receipt_env,
+          )
+          run(
+              "git",
+              "push",
+              f"--force-with-lease=refs/heads/{target_branch}:{old_head}",
+              "origin",
+              f"HEAD:refs/heads/{target_branch}",
+          )
+          remote = capture(
+              "git", "ls-remote", "--heads", "origin", f"refs/heads/{target_branch}"
+          ).split()[0]
+          assert remote == new_head
+
+          result = {
+              "status": "PASS_HEPTA_A0_V4_5_2_EXACT_Q0_PUBLISHED",
+              "repository": REPOSITORY,
+              "branch": target_branch,
+              "head": new_head,
+              "tree": new_tree,
+              "parent": q0,
+              "changed_paths": 17,
+              "payload_sha256": expected_payload_sha,
+              "a0_candidate_qualified": False,
+              "independent_review": False,
+              "selected": False,
+              "runtime_wired": False,
+              "production_authority": False,
+              "promotion": False,
+              "release_authority": False,
+          }
+          print(json.dumps(result, indent=2, sort_keys=True))
+          with pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"]).open(
+              "a", encoding="utf-8"
+          ) as handle:
+              handle.write("## Hepta A0 V4.5.2 exact-Q0 publication\n\n")
+              for key, value in result.items():
+                  handle.write(f"- {key}: `{value}`\n")
+          PY
