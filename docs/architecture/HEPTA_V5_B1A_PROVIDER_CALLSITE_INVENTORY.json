@@ -1,0 +1,61 @@
+{
+  "schema": "hepta.architecture-v5.b1a-provider-callsite-inventory.v1",
+  "schemaVersion": 1,
+  "repository": "ProfHepta/hepta-private-ci",
+  "rawPrimitive": {
+    "path": "codex-rs/hepta-contracts/src/provider_operation.rs",
+    "visibility": "crate_private_module",
+    "productUseAllowed": false
+  },
+  "rawProviderCoordinator": {
+    "path": "codex-rs/hepta-contracts/src/provider_effect.rs",
+    "rootExported": false,
+    "visibility": "crate_private_reexport",
+    "productUseAllowed": false
+  },
+  "checkedBoundary": {
+    "path": "codex-rs/hepta-contracts/src/checked_provider_operation.rs",
+    "rootExport": "ProviderOperationCoordinator",
+    "publicNoPayloadDispatch": false,
+    "publicRawProviderEscape": false,
+    "requiresProviderDispatchCapability": true,
+    "requiresExternalEffectCapability": true,
+    "requiresTrustedClock": true,
+    "requiresDurableClaimCallback": true,
+    "requiresWitnessPairPersistence": true,
+    "implementationParts": [
+      "codex-rs/hepta-contracts/src/checked_provider_operation_parts/impl_construction.rs",
+      "codex-rs/hepta-contracts/src/checked_provider_operation_parts/impl_dispatch.rs",
+      "codex-rs/hepta-contracts/src/checked_provider_operation_parts/impl_reconcile.rs",
+      "codex-rs/hepta-contracts/src/checked_provider_operation_parts/helpers.rs",
+      "codex-rs/hepta-contracts/src/checked_provider_operation_parts/tests.rs"
+    ]
+  },
+  "allowedRustReferences": [
+    "codex-rs/hepta-contracts/src/lib.rs",
+    "codex-rs/hepta-contracts/src/checked_provider_operation.rs",
+    "codex-rs/hepta-contracts/src/checked_provider_operation_parts/impl_construction.rs",
+    "codex-rs/hepta-contracts/src/checked_provider_operation_parts/impl_dispatch.rs",
+    "codex-rs/hepta-contracts/src/checked_provider_operation_parts/impl_reconcile.rs",
+    "codex-rs/hepta-contracts/src/checked_provider_operation_parts/helpers.rs",
+    "codex-rs/hepta-contracts/src/checked_provider_operation_parts/tests.rs",
+    "codex-rs/hepta-contracts/tests/provider_verified_use_boundary.rs",
+    "codex-rs/hepta-contracts/tests/provider_verified_use_boundary_parts/support1.rs",
+    "codex-rs/hepta-contracts/tests/provider_verified_use_boundary_parts/support2.rs",
+    "codex-rs/hepta-contracts/tests/provider_verified_use_boundary_parts/tests1.rs",
+    "codex-rs/hepta-contracts/tests/provider_verified_use_boundary_parts/tests2.rs"
+  ],
+  "productCallsites": [],
+  "runtimeRegistered": false,
+  "qualified": false,
+  "authority": {
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "externalEffect": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

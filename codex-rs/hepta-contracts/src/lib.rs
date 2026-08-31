@@ -216,7 +216,7 @@ pub use provider_effect::ProviderEffectAckStatus;
 pub use provider_effect::ProviderEffectAdapter;
 pub use provider_effect::ProviderEffectAppendDisposition;
 pub use provider_effect::ProviderEffectBindingError;
-pub use provider_effect::ProviderEffectCoordinator;
+pub(crate) use provider_effect::ProviderEffectCoordinator;
 pub use provider_effect::ProviderEffectCoordinatorError;
 pub use provider_effect::ProviderEffectDispatch;
 pub use provider_effect::ProviderEffectDispatchReceipt;
