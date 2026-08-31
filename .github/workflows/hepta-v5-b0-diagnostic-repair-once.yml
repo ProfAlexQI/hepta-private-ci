@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "b0392302d71b4eb158d628a279e4e3b2078e7d35"
+          test "$(git rev-parse HEAD^)" = "3d0f2c4c0a4fd6444def8db6b6d0af5e0add9b84"
           test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = \
             ".github/workflows/hepta-v5-b0-diagnostic-repair-once.yml"
           test "$(git ls-remote origin refs/heads/codex/hepta-architecture-v5-b0-exact-restack-20260831 | cut -f1)" = "$GITHUB_SHA"
@@ -117,48 +117,34 @@ jobs:
               )
 
           def gh(expression: str) -> str:
-              return "${" + "{ " + expression + " }}"
+              return "$" + "{{ " + expression + " }}"
 
-          aggregate = f'''      - name: Require all B0 diagnostics
-                  if: always() && !cancelled()
-                  working-directory: .
-                  shell: bash
-                  env:
-                    SOURCE_OUTCOME: {gh("steps.source_contract.outcome")}
-                    METADATA_OUTCOME: {gh("steps.metadata.outcome")}
-                    FORMAT_OUTCOME: {gh("steps.format.outcome")}
-                    FOCUSED_OUTCOME: {gh("steps.focused.outcome")}
-                    PACKAGE_OUTCOME: {gh("steps.package.outcome")}
-                    CHECK_OUTCOME: {gh("steps.check.outcome")}
-                    CLIPPY_OUTCOME: {gh("steps.clippy.outcome")}
-                    BAZEL_LOCK_OUTCOME: {gh("steps.bazel_lock.outcome")}
-                  run: |
-                    set -euo pipefail
-                    failures=()
-                    for item in \\
-                      "source=$SOURCE_OUTCOME" \\
-                      "metadata=$METADATA_OUTCOME" \\
-                      "format=$FORMAT_OUTCOME" \\
-                      "focused=$FOCUSED_OUTCOME" \\
-                      "package=$PACKAGE_OUTCOME" \\
-                      "check=$CHECK_OUTCOME" \\
-                      "clippy=$CLIPPY_OUTCOME" \\
-                      "bazel_lock=$BAZEL_LOCK_OUTCOME"
-                    do
-                      name="${{item%%=*}}"
-                      outcome="${{item#*=}}"
-                      if [[ "$outcome" != success ]]; then
-                        failures+=("$name=$outcome")
-                      fi
-                    done
-                    if (( ${{#failures[@]}} > 0 )); then
-                      printf 'B0 diagnostic failures:\n' >&2
-                      printf ' - %s\n' "${{failures[@]}}" >&2
-                      exit 1
-                    fi
-                    echo "All B0 diagnostics passed."
-
-          '''
+          aggregate = (
+              "      - name: Require all B0 diagnostics\n"
+              "        if: always() && !cancelled()\n"
+              "        working-directory: .\n"
+              "        shell: bash\n"
+              "        env:\n"
+              "          SOURCE_OUTCOME: " + gh("steps.source_contract.outcome") + "\n"
+              "          METADATA_OUTCOME: " + gh("steps.metadata.outcome") + "\n"
+              "          FORMAT_OUTCOME: " + gh("steps.format.outcome") + "\n"
+              "          FOCUSED_OUTCOME: " + gh("steps.focused.outcome") + "\n"
+              "          PACKAGE_OUTCOME: " + gh("steps.package.outcome") + "\n"
+              "          CHECK_OUTCOME: " + gh("steps.check.outcome") + "\n"
+              "          CLIPPY_OUTCOME: " + gh("steps.clippy.outcome") + "\n"
+              "          BAZEL_LOCK_OUTCOME: " + gh("steps.bazel_lock.outcome") + "\n"
+              "        run: |\n"
+              "          set -euo pipefail\n"
+              "          test \"$SOURCE_OUTCOME\" = success\n"
+              "          test \"$METADATA_OUTCOME\" = success\n"
+              "          test \"$FORMAT_OUTCOME\" = success\n"
+              "          test \"$FOCUSED_OUTCOME\" = success\n"
+              "          test \"$PACKAGE_OUTCOME\" = success\n"
+              "          test \"$CHECK_OUTCOME\" = success\n"
+              "          test \"$CLIPPY_OUTCOME\" = success\n"
+              "          test \"$BAZEL_LOCK_OUTCOME\" = success\n"
+              "          echo \"All B0 diagnostics passed.\"\n\n"
+          )
           replace_exact(
               workflow,
               "      - name: Record job result\n",
