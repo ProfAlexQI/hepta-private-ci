@@ -1,0 +1,139 @@
+name: Hepta V6 document migration preview
+
+on:
+  push:
+    branches:
+      - codex/hepta-development-docs-v6-consolidation-20260831
+    paths:
+      - ".hepta-v6-bootstrap/**"
+      - ".github/workflows/hepta-v6-migration-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-v6-document-migration-preview-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BASE_COMMIT: b621768b70a09d56626bb8a2c331e3dc424e6a4d
+  PAYLOAD_SHA256: 02fd9e992ad31ae40df2b346a502b7105ce4df918e23cd236c7097de11548214
+
+jobs:
+  migrate-and-package:
+    name: Clean legacy development docs and package exact tree delta
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact bootstrap head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact branch and clean bootstrap input
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "codex/hepta-development-docs-v6-consolidation-20260831"
+          test "$(git rev-parse "$BASE_COMMIT^{commit}")" = "$BASE_COMMIT"
+          test -z "$(git status --porcelain)"
+          git rev-parse HEAD
+          git rev-parse 'HEAD^{tree}'
+
+      - name: Reconstruct and verify V6 migration payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$RUNNER_TEMP/hepta-v6-bootstrap.tar.xz"
+          kit="$RUNNER_TEMP/hepta-v6-kit"
+          cat .hepta-v6-bootstrap/part-*.b64 | base64 --decode > "$payload"
+          echo "$PAYLOAD_SHA256  $payload" | sha256sum --check --strict
+          mkdir -p "$kit"
+          tar -xJf "$payload" -C "$kit"
+          test -f "$kit/migration/clean_legacy.py"
+          test -f "$kit/overlay/docs/DEVELOPMENT.md"
+          test -f "$kit/overlay/scripts/hepta-docs.py"
+
+      - name: Inventory and apply fail-closed legacy cleanup
+        id: cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          kit="$RUNNER_TEMP/hepta-v6-kit"
+          report="$RUNNER_TEMP/hepta-v6-cleanup-report.json"
+          python3 "$kit/migration/clean_legacy.py" \
+            --repo "$GITHUB_WORKSPACE" \
+            --apply \
+            --report "$report" \
+            > "$RUNNER_TEMP/hepta-v6-cleanup.log"
+          python3 - "$report" <<'PY'
+          import json, pathlib, sys
+          report = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          assert report["blockers"] == [], report["blockers"]
+          print(f"legacy_documents={len(report['legacyDocuments'])}")
+          print(f"obsolete_support={len(report['obsoleteSupportFiles'])}")
+          print(f"safe_rewrites={len(report['safeRewrites'])}")
+          PY
+
+      - name: Install canonical V6 document system
+        shell: bash
+        run: |
+          set -euo pipefail
+          kit="$RUNNER_TEMP/hepta-v6-kit"
+          cp -a "$kit/overlay/." "$GITHUB_WORKSPACE/"
+          rm -rf scripts/__pycache__ .hepta-v6-bootstrap
+          rm -f .github/workflows/hepta-v6-migration-preview.yml
+          chmod 0755 scripts/hepta-docs.py
+          python3 scripts/hepta-docs.py generate-status
+          git add -A
+
+      - name: Verify canonical documents, DAGs, ownership and anti-legacy rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-docs.py verify
+          python3 scripts/hepta-docs.py inventory-legacy \
+            > "$RUNNER_TEMP/hepta-v6-post-cleanup-inventory.json"
+          git diff --cached --check
+          test -z "$(git status --porcelain --untracked-files=all | grep '^??' || true)"
+
+      - name: Package exact staged delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/hepta-v6-migration-result"
+          mkdir -p "$artifact"
+          cp "$RUNNER_TEMP/hepta-v6-cleanup-report.json" "$artifact/cleanup-report.json"
+          cp "$RUNNER_TEMP/hepta-v6-cleanup.log" "$artifact/cleanup.log"
+          cp "$RUNNER_TEMP/hepta-v6-post-cleanup-inventory.json" "$artifact/post-cleanup-inventory.json"
+          git diff --cached --no-renames --name-status "$BASE_COMMIT" > "$artifact/name-status.txt"
+          git diff --cached --no-renames --name-only --diff-filter=D "$BASE_COMMIT" > "$artifact/deleted-paths.txt"
+          git ls-files -s > "$artifact/full-index.txt"
+          git diff --cached --binary --no-renames "$BASE_COMMIT" > "$artifact/delta.patch"
+          git diff --cached --no-renames --name-only --diff-filter=AM -z "$BASE_COMMIT" \
+            | tar --null --files-from=- -czf "$artifact/changed-files.tar.gz"
+          {
+            echo "base_commit=$BASE_COMMIT"
+            echo "bootstrap_head=$(git rev-parse HEAD)"
+            echo "result_tree=$(git write-tree)"
+            echo "changed_paths=$(git diff --cached --no-renames --name-only "$BASE_COMMIT" | wc -l | tr -d ' ')"
+            echo "deleted_paths=$(wc -l < "$artifact/deleted-paths.txt" | tr -d ' ')"
+            echo "authority_runtime=false"
+            echo "authority_production=false"
+            echo "authority_effect=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release=false"
+          } > "$artifact/posture.txt"
+          sha256sum "$artifact"/* > "$artifact/SHA256SUMS"
+
+      - name: Upload exact migration result
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-v6-document-migration-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-v6-migration-result
+          if-no-files-found: error
+          retention-days: 14
