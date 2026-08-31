@@ -1,0 +1,219 @@
+name: Hepta Intelligence integration admission identity
+
+on:
+  pull_request:
+    branches:
+      - codex/hepta-intelligence-a0-authority-gap-closure-20260829
+  workflow_dispatch:
+    inputs:
+      expected_head:
+        description: Exact two-parent integration head to verify
+        required: true
+        type: string
+      expected_base:
+        description: Exact canonical A0 first parent
+        required: true
+        type: string
+      expected_base_branch:
+        description: Canonical A0 base branch
+        required: true
+        type: string
+      expected_head_branch:
+        description: Integration admission branch
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hi-admission-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-integration-identity:
+    name: Signed A0-first integration identity
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.head_ref, 'integration/hepta-intelligence-a0-q0-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || inputs.expected_head }}
+      EXPECTED_BASE: ${{ github.event.pull_request.base.sha || inputs.expected_base }}
+      EXPECTED_BASE_BRANCH: ${{ github.base_ref || inputs.expected_base_branch }}
+      EXPECTED_HEAD_BRANCH: ${{ github.head_ref || inputs.expected_head_branch }}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONNOUSERSITE: "1"
+    steps:
+      - name: Checkout exact integration candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.EXPECTED_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compile bounded admission verifier, runner, and fixtures
+        run: |
+          set -euo pipefail
+          PYTHONPYCACHEPREFIX="$RUNNER_TEMP/hepta-intelligence-python-cache" \
+            python3 -m py_compile \
+              scripts/hepta_q046_git_context.py \
+              scripts/hepta_q059_object_graph.py \
+              scripts/hepta_q060_config_graph.py \
+              scripts/verify-hepta-intelligence-integration-admission.py \
+              scripts/verify-hepta-intelligence-integration-admission-api-v2.py \
+              scripts/run-hepta-intelligence-integration-admission.py \
+              scripts/test-hepta-intelligence-integration-admission.py \
+              scripts/test-hepta-intelligence-integration-admission-boundaries.py \
+              scripts/test-hepta-intelligence-integration-admission-http-boundaries.py
+
+      - name: Normalize exact inert actions/checkout config residue
+        shell: bash
+        run: |
+          set -euo pipefail
+          clean_home="$RUNNER_TEMP/hepta-intelligence-admission-home"
+          python_cache="$RUNNER_TEMP/hepta-intelligence-python-cache"
+          mkdir -p "$clean_home" "$python_cache"
+          env -i \
+            PATH=/usr/bin:/bin \
+            HOME="$clean_home" \
+            LANG=C \
+            LC_ALL=C \
+            PYTHONHASHSEED=0 \
+            PYTHONPYCACHEPREFIX="$python_cache" \
+            PYTHONDONTWRITEBYTECODE=1 \
+            PYTHONNOUSERSITE=1 \
+            GITHUB_ACTIONS=true \
+            RUNNER_OS=Linux \
+            /usr/bin/python3 \
+              scripts/hepta_q060_config_graph.py \
+              --normalize-actions-checkout-residue
+
+      - name: Exercise trusted-Git and fail-closed admission fixtures
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/hepta-intelligence-integration-admission"
+          mkdir -p "$artifact_dir"
+          python3 scripts/hepta_q046_git_context.py \
+            | tee "$artifact_dir/trusted-git-context-fixtures.txt"
+          python3 scripts/hepta_q059_object_graph.py --self-test \
+            | tee "$artifact_dir/object-graph-fixtures.txt"
+          python3 scripts/hepta_q060_config_graph.py --self-test \
+            | tee "$artifact_dir/config-graph-fixtures.txt"
+          python3 scripts/run-hepta-intelligence-integration-admission.py \
+            --self-test \
+            | tee "$artifact_dir/admission-runner-fixtures.txt"
+          python3 scripts/test-hepta-intelligence-integration-admission.py \
+            | tee "$artifact_dir/admission-negative-fixtures.txt"
+          python3 scripts/test-hepta-intelligence-integration-admission-boundaries.py \
+            | tee "$artifact_dir/admission-boundary-fixtures.txt"
+          python3 \
+            scripts/test-hepta-intelligence-integration-admission-http-boundaries.py \
+            | tee "$artifact_dir/admission-http-boundary-fixtures.txt"
+
+      - name: Verify bounded signed composition twice through bound Git
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/hepta-intelligence-integration-admission"
+          python_cache="$RUNNER_TEMP/hepta-intelligence-python-cache"
+          mkdir -p "$artifact_dir" "$python_cache"
+
+          clean_home="$RUNNER_TEMP/hepta-intelligence-admission-home"
+          mkdir -p "$clean_home"
+          check_object_graph() {
+            env -i \
+              PATH=/usr/bin:/bin \
+              HOME="$clean_home" \
+              LANG=C \
+              LC_ALL=C \
+              PYTHONHASHSEED=0 \
+              PYTHONPYCACHEPREFIX="$python_cache" \
+              PYTHONDONTWRITEBYTECODE=1 \
+              PYTHONNOUSERSITE=1 \
+              GITHUB_ACTIONS=true \
+              RUNNER_OS=Linux \
+              /usr/bin/python3 \
+              scripts/hepta_q059_object_graph.py --check
+            env -i \
+              PATH=/usr/bin:/bin \
+              HOME="$clean_home" \
+              LANG=C \
+              LC_ALL=C \
+              PYTHONHASHSEED=0 \
+              PYTHONPYCACHEPREFIX="$python_cache" \
+              PYTHONDONTWRITEBYTECODE=1 \
+              PYTHONNOUSERSITE=1 \
+              GITHUB_ACTIONS=true \
+              RUNNER_OS=Linux \
+              /usr/bin/python3 \
+              scripts/hepta_q060_config_graph.py --check
+          }
+          check_object_graph
+          for suffix in a b; do
+            env -i \
+              PATH=/usr/bin:/bin \
+              HOME="$clean_home" \
+              LANG=C \
+              LC_ALL=C \
+              PYTHONHASHSEED=0 \
+              PYTHONPYCACHEPREFIX="$python_cache" \
+              PYTHONDONTWRITEBYTECODE=1 \
+              PYTHONNOUSERSITE=1 \
+              GITHUB_ACTIONS=true \
+              RUNNER_OS=Linux \
+              GH_TOKEN="$GH_TOKEN" \
+              /usr/bin/python3 \
+              scripts/run-hepta-intelligence-integration-admission.py \
+                --repository "$GITHUB_REPOSITORY" \
+                --expected-head "$EXPECTED_HEAD" \
+                --expected-base "$EXPECTED_BASE" \
+                --expected-base-branch "$EXPECTED_BASE_BRANCH" \
+                --expected-head-branch "$EXPECTED_HEAD_BRANCH" \
+                --token-env GH_TOKEN \
+                --output "$artifact_dir/identity-$suffix.json"
+            check_object_graph
+          done
+          cmp "$artifact_dir/identity-a.json" "$artifact_dir/identity-b.json"
+          cp "$artifact_dir/identity-a.json" "$artifact_dir/identity.json"
+          sha256sum "$artifact_dir/identity.json" \
+            > "$artifact_dir/identity.json.sha256"
+
+      - name: Require clean candidate worktree through bound Git
+        run: |
+          set -euo pipefail
+          clean_home="$RUNNER_TEMP/hepta-intelligence-admission-home"
+          python_cache="$RUNNER_TEMP/hepta-intelligence-python-cache"
+          mkdir -p "$clean_home" "$python_cache"
+          run_bound_check() {
+            env -i \
+              PATH=/usr/bin:/bin \
+              HOME="$clean_home" \
+              LANG=C \
+              LC_ALL=C \
+              PYTHONHASHSEED=0 \
+              PYTHONPYCACHEPREFIX="$python_cache" \
+              PYTHONDONTWRITEBYTECODE=1 \
+              PYTHONNOUSERSITE=1 \
+              GITHUB_ACTIONS=true \
+              RUNNER_OS=Linux \
+              /usr/bin/python3 "$@"
+          }
+          run_bound_check scripts/hepta_q059_object_graph.py --check
+          run_bound_check scripts/hepta_q060_config_graph.py --check
+          run_bound_check \
+            scripts/run-hepta-intelligence-integration-admission.py \
+            --check-clean
+          run_bound_check scripts/hepta_q060_config_graph.py --check
+          run_bound_check scripts/hepta_q059_object_graph.py --check
+
+      - name: Upload exact admission identity receipt
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-intelligence-integration-admission-${{ env.EXPECTED_HEAD }}
+          path: ${{ runner.temp }}/hepta-intelligence-integration-admission
+          if-no-files-found: error
+          retention-days: 30
