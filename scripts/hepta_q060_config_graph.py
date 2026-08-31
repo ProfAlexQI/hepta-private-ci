@@ -15,6 +15,14 @@ PARTIAL_CLONE_KEY = re.compile(
     r"^(?:extensions\.partialClone|remote\..+\.(?:promisor|partialclonefilter))$",
     re.IGNORECASE,
 )
+ACTIONS_CHECKOUT_RESIDUE_VALUES = MappingProxyType(
+    {
+        "core.sparsecheckout": "false",
+        "core.sparsecheckoutcone": "false",
+        "index.sparse": "false",
+    }
+)
+MAX_ACTIONS_CHECKOUT_RESIDUE_BYTES = 1024
 
 
 class ConfigGraphError(RuntimeError):
@@ -110,6 +118,19 @@ def file_fingerprint(path: Path) -> tuple[int, int, int, int, int, int]:
     )
 
 
+def fsync_directory(path: Path) -> None:
+    if os.name == "nt":
+        return
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    descriptor = os.open(path, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def validate_local_config_names(names: list[str]) -> None:
     invalid: list[str] = []
     for name in names:
@@ -141,6 +162,120 @@ def validate_expanded_partial_clone_config(raw: str) -> None:
         not invalid,
         f"expanded partial-clone or promisor configuration is forbidden: {invalid}",
     )
+
+
+def validate_actions_checkout_residue_names(names: list[str]) -> list[str]:
+    require(
+        all(name != "" and "\x00" not in name for name in names),
+        "invalid actions/checkout residue config key",
+    )
+    folded = [name.casefold() for name in names]
+    require(
+        len(folded) == len(set(folded)),
+        "duplicate actions/checkout residue config key",
+    )
+    require(
+        set(folded) == set(ACTIONS_CHECKOUT_RESIDUE_VALUES),
+        "actions/checkout residue contains a noncanonical config key set: "
+        f"{sorted(folded)!r}",
+    )
+    return folded
+
+
+def validate_actions_checkout_residue_value(
+    name: str,
+    values: list[str],
+) -> None:
+    expected = ACTIONS_CHECKOUT_RESIDUE_VALUES.get(name.casefold())
+    require(expected is not None, f"unexpected actions/checkout residue key: {name}")
+    require(
+        values == [expected],
+        "actions/checkout residue value drifted: "
+        f"{name}={values!r}, expected={[expected]!r}",
+    )
+
+
+def normalize_actions_checkout_residue(
+    context: q046_git.GitContext,
+) -> bool:
+    """Remove only the exact inert split-config residue left by checkout v6.
+
+    `git sparse-checkout disable` enables per-worktree configuration and writes
+    three explicit `false` values before actions/checkout removes the enabling
+    key from the main local config.  The ignored file must not survive the
+    admission boundary, but it is safe to remove only after its file identity,
+    complete key set, values, and disabled extension have all been verified.
+    """
+
+    config = canonical_regular_file(context.git_dir / "config", "local Git config")
+    config_worktree = context.git_dir / "config.worktree"
+    if not path_exists_or_is_link(config_worktree):
+        return False
+
+    residue = canonical_regular_file(
+        config_worktree,
+        "actions/checkout split-config residue",
+    )
+    require(
+        residue.stat().st_size <= MAX_ACTIONS_CHECKOUT_RESIDUE_BYTES,
+        "actions/checkout split-config residue is too large",
+    )
+    config_before = file_fingerprint(config)
+    residue_before = file_fingerprint(residue)
+
+    extension = run_git(
+        context,
+        "config",
+        "--local",
+        "--get-all",
+        "extensions.worktreeConfig",
+        allowed_returncodes=frozenset({0, 1}),
+    )
+    require(
+        extension.returncode == 1 and extension.stdout == "",
+        "extensions.worktreeConfig is still enabled or ambiguous",
+    )
+
+    names = run_git(
+        context,
+        "config",
+        "--file",
+        str(residue),
+        "--name-only",
+        "--list",
+    ).stdout.splitlines()
+    folded_names = validate_actions_checkout_residue_names(names)
+    for name in folded_names:
+        values = run_git(
+            context,
+            "config",
+            "--file",
+            str(residue),
+            "--get-all",
+            name,
+        ).stdout.splitlines()
+        validate_actions_checkout_residue_value(name, values)
+
+    require(
+        file_fingerprint(config) == config_before,
+        "local Git config changed while inspecting checkout residue",
+    )
+    require(
+        file_fingerprint(residue) == residue_before,
+        "checkout residue changed while it was being inspected",
+    )
+
+    residue.unlink()
+    fsync_directory(context.git_dir)
+    require(
+        not path_exists_or_is_link(config_worktree),
+        "checkout residue remained after verified normalization",
+    )
+    require(
+        file_fingerprint(config) == config_before,
+        "local Git config changed during checkout residue normalization",
+    )
+    return True
 
 
 def require_closed_config_graph(context: q046_git.GitContext) -> None:
@@ -185,6 +320,12 @@ def require_closed_config_graph(context: q046_git.GitContext) -> None:
 def self_test() -> None:
     validate_local_config_names(["core.repositoryformatversion", "remote.origin.url"])
     validate_expanded_partial_clone_config("")
+    validate_actions_checkout_residue_names(
+        ["core.sparsecheckout", "core.sparsecheckoutcone", "index.sparse"]
+    )
+    for name, expected in ACTIONS_CHECKOUT_RESIDUE_VALUES.items():
+        validate_actions_checkout_residue_value(name, [expected])
+
     rejected_names = (
         ["include.path"],
         ["Include.Path"],
@@ -201,6 +342,7 @@ def self_test() -> None:
             raise ConfigGraphError(
                 f"local config fixture unexpectedly passed: {names!r}"
             )
+
     for raw in (
         "extensions.partialClone origin\n",
         "remote.origin.promisor true\n",
@@ -214,15 +356,67 @@ def self_test() -> None:
             raise ConfigGraphError(
                 f"expanded config fixture unexpectedly passed: {raw!r}"
             )
+
+    invalid_residue_names = (
+        ["core.sparsecheckout", "core.sparsecheckoutcone"],
+        [
+            "core.sparsecheckout",
+            "core.sparsecheckoutcone",
+            "index.sparse",
+            "include.path",
+        ],
+        ["core.sparsecheckout", "core.sparsecheckout", "index.sparse"],
+    )
+    for names in invalid_residue_names:
+        try:
+            validate_actions_checkout_residue_names(names)
+        except ConfigGraphError:
+            pass
+        else:
+            raise ConfigGraphError(
+                f"checkout residue key fixture unexpectedly passed: {names!r}"
+            )
+
+    for name, values in (
+        ("core.sparsecheckout", ["true"]),
+        ("core.sparsecheckoutcone", ["false", "false"]),
+        ("index.sparse", []),
+        ("include.path", ["false"]),
+    ):
+        try:
+            validate_actions_checkout_residue_value(name, values)
+        except ConfigGraphError:
+            pass
+        else:
+            raise ConfigGraphError(
+                "checkout residue value fixture unexpectedly passed: "
+                f"{name}={values!r}"
+            )
+
     print("PASS_HEPTA_INTELLIGENCE_Q0_60_CONFIG_GRAPH_FIXTURES")
 
 
 def main() -> int:
     try:
-        if sys.argv[1:] == ["--self-test"]:
+        arguments = sys.argv[1:]
+        if arguments == ["--self-test"]:
             self_test()
             return 0
-        require(sys.argv[1:] == ["--check"], "expected --check or --self-test")
+        if arguments == ["--normalize-actions-checkout-residue"]:
+            context = trusted_context()
+            removed = normalize_actions_checkout_residue(context)
+            require_closed_config_graph(context)
+            disposition = "REMOVED" if removed else "ABSENT"
+            print(
+                "PASS_HEPTA_INTELLIGENCE_Q0_63_ACTIONS_CHECKOUT_CONFIG_"
+                f"{disposition}"
+            )
+            return 0
+        require(
+            arguments == ["--check"],
+            "expected --check, --self-test, or "
+            "--normalize-actions-checkout-residue",
+        )
         context = trusted_context()
         require_closed_config_graph(context)
         print("PASS_HEPTA_INTELLIGENCE_Q0_60_CLOSED_CONFIG_GRAPH")
