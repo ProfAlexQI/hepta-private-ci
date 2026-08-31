@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: temporary-authbus-p1-3-expiry-repair-macos-v3-${{ github.ref }}
+  group: temporary-authbus-p1-3-expiry-repair-macos-v4-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -24,6 +24,8 @@ jobs:
       BRANCH: codex/authbus-p1-3-semantic-closure-v12-gpt56-20260831
       MANIFEST: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
       SOURCE_BOOTSTRAP: .github/workflows/_temporary-authbus-p1-3-expiry-repair.yml
+      COMPRESSED_SHA256: cb46ac9d61cfcd27c0ebcd28a52e6c887aa5474678c7e101663a1cbddc2b066d
+      PAYLOAD_SHA256: 9cfb84ef0043528c56e7ce296930cc384a27e3ffbc730a71a1588791048c41f9
     steps:
       - name: Checkout exact branch with one-shot credentials
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -38,7 +40,7 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt, clippy
 
-      - name: Recover bounded repair payload and apply it
+      - name: Recover, bind, repair, and apply bounded payload
         shell: bash
         run: |
           set -euo pipefail
@@ -49,6 +51,8 @@ jobs:
           from __future__ import annotations
           import base64
           import gzip
+          import hashlib
+          import os
           from pathlib import Path
           import re
           import sys
@@ -57,9 +61,18 @@ jobs:
           match = re.search(r'^\s*REPAIR_GZIP_B64:\s*"([A-Za-z0-9+/=]+)"\s*$', source, re.MULTILINE)
           if match is None:
               raise SystemExit("bounded repair payload missing")
-          payload = gzip.decompress(base64.b64decode(match.group(1), validate=True))
-          if not payload.startswith(b"#!/usr/bin/env python3\n") or len(payload) > 64_000:
+          compressed = base64.b64decode(match.group(1), validate=True)
+          if hashlib.sha256(compressed).hexdigest() != os.environ["COMPRESSED_SHA256"]:
+              raise SystemExit("compressed repair payload digest mismatch")
+          payload = gzip.decompress(compressed)
+          if hashlib.sha256(payload).hexdigest() != os.environ["PAYLOAD_SHA256"]:
+              raise SystemExit("repair payload digest mismatch")
+          if not payload.startswith(b"from __future__ import annotations\n") or len(payload) > 64_000:
               raise SystemExit("bounded repair payload identity invalid")
+          anchor = b"from pathlib import Path\n"
+          if payload.count(anchor) != 1 or b"from textwrap import dedent\n" in payload:
+              raise SystemExit("repair-wrapper import anchor drift")
+          payload = payload.replace(anchor, anchor + b"from textwrap import dedent\n", 1)
           Path(sys.argv[2]).write_bytes(payload)
           print(f"repair_payload_bytes={len(payload)}")
           PY
