@@ -1,0 +1,113 @@
+{
+  "as_of_utc": "2026-08-29T14:20:00Z",
+  "authority": {
+    "callers_ratchet": false,
+    "default_open_wired": false,
+    "external_effects": false,
+    "learning_write_authority": false,
+    "memory_write_authority": false,
+    "model_runtime_authority": false,
+    "operator_acceptance": false,
+    "outbox_dispatch_authority": false,
+    "product_module_registered": false,
+    "production_authority": false,
+    "projection_write_authority": false,
+    "promotion": false,
+    "provider_dispatch_authority": false,
+    "release_authority": false,
+    "runtime_wired": false,
+    "tool_registered": false
+  },
+  "classification": "IMMUTABLE_EXTERNAL_EXECUTABLE_EVIDENCE_SUMMARY",
+  "conclusion": {
+    "full_repository_merge_green": false,
+    "independent_architectures": true,
+    "independent_jobs": true,
+    "q0_executable_evidence_complete": true,
+    "q0_executable_qualified": true,
+    "qualified_candidate": true,
+    "runtime_capability_qualified": false
+  },
+  "current_plan_authority": false,
+  "evidence_observation": {
+    "artifacts": [
+      {
+        "artifact_id": 9715334789,
+        "class": "E1_LOCAL_EXECUTABLE",
+        "digest": "sha256:e2356966e107c4cd5f00cc59d04520883f7fdf9a78b0b4c6cf6e83ce70c3b24b",
+        "expired": false,
+        "name": "q0-e1-c768bcbeb4c1168088d2499828c24da521a2a73a"
+      },
+      {
+        "artifact_id": 9715221566,
+        "class": "E2_INDEPENDENT_RUNNER",
+        "digest": "sha256:8c794d42726746e80ee71bbd938866bb1a2e7202d8ca1a22636aa1529c16dde3",
+        "expired": false,
+        "name": "q0-e2-c768bcbeb4c1168088d2499828c24da521a2a73a"
+      },
+      {
+        "artifact_id": 9715623771,
+        "class": "EVIDENCE_PAIR",
+        "digest": "sha256:3d225febc5931759cca61729fff492e9e45596c36cd2463524054afd4e21d606",
+        "expired": false,
+        "name": "q0-pair-c768bcbeb4c1168088d2499828c24da521a2a73a"
+      }
+    ],
+    "branch": "codex/hepta-intelligence-plan-v3-20260828",
+    "head": "c768bcbeb4c1168088d2499828c24da521a2a73a",
+    "jobs": [
+      {
+        "architecture": "x86_64",
+        "class": "E1_LOCAL_EXECUTABLE",
+        "conclusion": "success",
+        "job_id": 99101597686,
+        "runner_id": 1000037745,
+        "runner_label": "ubuntu-24.04",
+        "steps_non_empty": true
+      },
+      {
+        "architecture": "aarch64",
+        "class": "E2_INDEPENDENT_RUNNER",
+        "conclusion": "success",
+        "job_id": 99101597800,
+        "runner_id": 1000037696,
+        "runner_label": "ubuntu-24.04-arm",
+        "steps_non_empty": true
+      },
+      {
+        "architecture": "x86_64",
+        "class": "EVIDENCE_PAIR",
+        "conclusion": "success",
+        "job_id": 99105393694,
+        "runner_id": 1000037821,
+        "runner_label": "ubuntu-24.04",
+        "steps_non_empty": true
+      }
+    ],
+    "parent": "aeb8ac0bfb30d570a16c4914b6e4b31ce035dd62",
+    "repository": {
+      "full_name": "ProfHepta/hepta-private-ci",
+      "owner_id": 102159240,
+      "repository_id": 1320694176
+    },
+    "run_attempt": 1,
+    "run_id": 33252922404,
+    "tree": "ca455a9ef797cd95164c880c7b8faba80b305589",
+    "workflow": ".github/workflows/hepta-intelligence-q0-paired-candidate-v10.yml"
+  },
+  "raw_artifact_receipts_embedded": false,
+  "raw_artifact_receipts_location": "GitHub Actions artifacts bound by artifact IDs and digests",
+  "receipt_binding_sha256": "277e9c67fdf29226cafb47289f70f4a60a8ad3c579c63c8ab9da5374ef4b7b4a",
+  "receipt_id": "HEPTA_INTELLIGENCE_Q0_QUALIFICATION_2026-08-29",
+  "schema": "hepta_intelligence_q0_external_evidence_summary_v1",
+  "source_writeback": false,
+  "verifier_contract": {
+    "adversarial_pair_matrix_executed": true,
+    "pair_sets_q0_executable_qualified": true,
+    "pair_sets_qualified_candidate": true,
+    "pair_success_status": "PASS_Q0_E1_E2_EVIDENCE_PAIR",
+    "repository_identity_verified": true,
+    "single_runner_receipts_require_qualified_candidate_false": true,
+    "workflow_consolidation_verified": true
+  }
+}
