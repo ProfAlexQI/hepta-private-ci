@@ -1,0 +1,131 @@
+name: Hepta Intelligence Q0.61 delegated verifier rebind
+
+on:
+  push:
+    branches:
+      - automation/hepta-intelligence-q061-verifier-rebind-gpt56-20260831
+    paths:
+      - .github/workflows/hepta-intelligence-q061-verifier-rebind.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-q061-verifier-rebind
+  cancel-in-progress: false
+
+env:
+  TARGET_BRANCH: codex/hepta-intelligence-q0-61-selected-source-binding-20260831
+  EXPECTED_TARGET_HEAD: 770a52ed0c8306e9a6f8acb7c2138e92475fa975
+  V1_PATH: scripts/verify-hepta-intelligence-integration-admission.py
+  V2_PATH: scripts/verify-hepta-intelligence-integration-admission-api-v2.py
+  OLD_V1_SHA256: 86ad5a7cf238711f7c944be85bfc1369a8a6dcb7527f325b61ec91bafe6be413
+  EXPECTED_V1_SHA256: a9f9c1e9db6a106884843aa994558ade5ae7b83083d6aa7cfac4f378732b5776
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONNOUSERSITE: "1"
+
+jobs:
+  rebind:
+    name: Rebind delegated verifier digest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact Q0.61 source head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_TARGET_HEAD"
+          test "$(git branch --show-current)" = "$TARGET_BRANCH"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Rebind API v2 to exact delegated verifier bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import os
+
+          v1 = Path(os.environ["V1_PATH"])
+          v2 = Path(os.environ["V2_PATH"])
+          old = os.environ["OLD_V1_SHA256"]
+          expected = os.environ["EXPECTED_V1_SHA256"]
+          actual = hashlib.sha256(v1.read_bytes()).hexdigest()
+          if actual != expected:
+              raise SystemExit(
+                  f"delegated verifier changed before repair: expected={expected} actual={actual}"
+              )
+          text = v2.read_text(encoding="utf-8")
+          needle = f'V1_SHA256 = "{old}"'
+          replacement = f'V1_SHA256 = "{expected}"'
+          if text.count(needle) != 1:
+              raise SystemExit(
+                  f"expected exactly one stale delegated digest, found {text.count(needle)}"
+              )
+          v2.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+          PY
+          test "$(git diff --name-only | LC_ALL=C sort)" = "$V2_PATH"
+          git diff --check
+
+      - name: Execute focused fail-closed qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_dir="$RUNNER_TEMP/hepta-q061-verifier-rebind-cache"
+          mkdir -p "$cache_dir"
+          PYTHONPYCACHEPREFIX="$cache_dir" python3 -m py_compile \
+            "$V1_PATH" \
+            "$V2_PATH" \
+            scripts/hepta_q046_git_context.py \
+            scripts/hepta_q059_object_graph.py \
+            scripts/hepta_q060_config_graph.py \
+            scripts/hepta_q061_selected_source.py \
+            scripts/run-hepta-intelligence-integration-admission.py \
+            scripts/test-hepta-intelligence-integration-admission.py \
+            scripts/test-hepta-intelligence-integration-admission-boundaries.py \
+            scripts/test-hepta-intelligence-integration-admission-http-boundaries.py
+          python3 scripts/hepta_q061_selected_source.py --self-test
+          python3 scripts/test-hepta-intelligence-integration-admission.py
+          python3 scripts/test-hepta-intelligence-integration-admission-boundaries.py
+          python3 scripts/test-hepta-intelligence-integration-admission-http-boundaries.py
+          python3 - <<'PY'
+          import importlib.util
+          import pathlib
+          import sys
+
+          path = pathlib.Path("scripts/verify-hepta-intelligence-integration-admission-api-v2.py")
+          spec = importlib.util.spec_from_file_location("hepta_admission_api_v2_rebind", path)
+          if spec is None or spec.loader is None:
+              raise SystemExit("cannot load repaired API v2")
+          module = importlib.util.module_from_spec(spec)
+          sys.modules[spec.name] = module
+          spec.loader.exec_module(module)
+          print("PASS_HEPTA_INTELLIGENCE_Q0_61_DELEGATED_VERIFIER_REBIND")
+          PY
+          git diff --check
+          test "$(git diff --name-only | LC_ALL=C sort)" = "$V2_PATH"
+
+      - name: Commit and publish source-controlled repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Qian QI"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git add "$V2_PATH"
+          test "$(git diff --cached --name-only | LC_ALL=C sort)" = "$V2_PATH"
+          git diff --cached --check
+          git commit -m "fix(intelligence): rebind delegated admission verifier digest"
+          new_head="$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_TARGET_HEAD"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          printf '%s\n' "$new_head" | tee "$RUNNER_TEMP/q061-repaired-head.txt"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
