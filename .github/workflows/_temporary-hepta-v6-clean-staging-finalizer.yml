@@ -1,0 +1,296 @@
+name: Temporary Hepta V6 clean staging finalizer
+
+on:
+  push:
+    branches:
+      - codex/hepta-v6-hardening-finalizer-staging-20260901
+    paths:
+      - ".github/workflows/_temporary-hepta-v6-clean-staging-finalizer.yml"
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: temporary-hepta-v6-clean-staging-finalizer-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    name: Build clean single-parent V6.0.1 candidate
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    env:
+      STAGING_BRANCH: codex/hepta-v6-hardening-finalizer-staging-20260901
+      TARGET_BRANCH: codex/hepta-development-docs-v6-final-20260831
+      BASE_SHA: b621768b70a09d56626bb8a2c331e3dc424e6a4d
+      BASE_TREE: f2e82fd525d337efae355adf6f19398812d4180c
+      AUTHBUS_BRANCH: codex/authbus-p1-3-semantic-closure-v12-gpt56-20260831
+      AUTHBUS_BASE: 8572f3d2182541b14e0719b229ccd8754494f134
+      PART_00_SHA: 62916339aa010c60cf8f77aebd673292215dfb65
+      PART_01_SHA: 6eaae2348279174cc45a99426340c3ddfc2268d9
+      PART_02_SHA: cd96be60553828d486287827b529af7355a10f54
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout exact isolated staging head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.STAGING_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Bind carrier blobs and require clean AuthBus prerequisite
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          test "$(git hash-object .github/hepta-v6-final-payload/part-00)" = "$PART_00_SHA"
+          test "$(git hash-object .github/hepta-v6-final-payload/part-01)" = "$PART_01_SHA"
+          test "$(git hash-object .github/hepta-v6-final-payload/part-02)" = "$PART_02_SHA"
+
+          git fetch --force origin "$AUTHBUS_BRANCH:refs/remotes/origin/authbus-final"
+          authbus_head="$(git rev-parse refs/remotes/origin/authbus-final)"
+          test "$(git rev-parse "$authbus_head^")" = "$AUTHBUS_BASE"
+          test "$(git rev-list --parents -n 1 "$authbus_head" | wc -w | tr -d ' ')" -eq 2
+          test "$(git diff --name-only "$AUTHBUS_BASE" "$authbus_head" | wc -l | tr -d ' ')" -eq 7
+          test -z "$(git ls-tree -r --name-only "$authbus_head" | grep -E '^\.github/workflows/_temporary-authbus-p1-3-' || true)"
+          echo "AUTHBUS_HEAD=$authbus_head" >> "$GITHUB_ENV"
+          echo "AUTHBUS_TREE=$(git rev-parse "$authbus_head^{tree}")" >> "$GITHUB_ENV"
+
+      - name: Reconstruct and strictly extract reviewed ordinary source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/hepta-v6-final-payload/part-* | base64 --decode > "$RUNNER_TEMP/hepta-v6-hardening.tar.xz"
+          python3 - "$RUNNER_TEMP/hepta-v6-hardening.tar.xz" <<'PY'
+          from __future__ import annotations
+          from pathlib import Path, PurePosixPath
+          import shutil
+          import sys
+          import tarfile
+
+          expected = {
+              ".github/workflows/hepta-development-docs.yml",
+              "README.md",
+              "docs/CURRENT.json",
+              "docs/DEVELOPMENT.md",
+              "docs/STATUS.md",
+              "docs/architecture/ARCHITECTURE.json",
+              "docs/control-plane/OBJECTIVES.json",
+              "docs/delivery/ACTIVATION_DAG.json",
+              "docs/delivery/DEVELOPMENT_DAG.json",
+              "docs/delivery/EVIDENCE_DAG.json",
+              "docs/delivery/WORK_PACKAGES.json",
+              "docs/evidence/INDEX.json",
+              "docs/governance/DOCUMENT_SYSTEM.json",
+              "docs/governance/LEGACY_DELETION_MANIFEST.json",
+              "docs/governance/schemas/architecture.schema.json",
+              "docs/governance/schemas/dag.schema.json",
+              "docs/governance/schemas/document-system.schema.json",
+              "docs/governance/schemas/evidence-index.schema.json",
+              "docs/governance/schemas/legacy-deletion-manifest.schema.json",
+              "docs/governance/schemas/module-registry.schema.json",
+              "docs/governance/schemas/objectives.schema.json",
+              "docs/governance/schemas/repository-current.schema.json",
+              "docs/governance/schemas/work-package-registry.schema.json",
+              "docs/modules/MODULES.json",
+              "scripts/hepta-docs.py",
+              "scripts/test-hepta-docs.py",
+          }
+          root = Path.cwd().resolve()
+          seen: set[str] = set()
+          with tarfile.open(sys.argv[1], "r:xz") as archive:
+              members = archive.getmembers()
+              for member in members:
+                  raw = member.name
+                  path = PurePosixPath(raw)
+                  if path.is_absolute() or ".." in path.parts or raw != path.as_posix():
+                      raise SystemExit(f"unsafe payload path: {raw!r}")
+                  if not member.isfile() or raw not in expected or raw in seen:
+                      raise SystemExit(f"invalid payload member: {raw!r}")
+                  seen.add(raw)
+              if seen != expected or len(members) != len(expected):
+                  raise SystemExit(
+                      f"payload manifest drift: missing={sorted(expected-seen)} "
+                      f"extra={sorted(seen-expected)} count={len(members)}"
+                  )
+              for member in members:
+                  source = archive.extractfile(member)
+                  if source is None:
+                      raise SystemExit(f"cannot extract payload member: {member.name}")
+                  target = root / member.name
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  with source, target.open("wb") as output:
+                      shutil.copyfileobj(source, output)
+                  target.chmod(member.mode & 0o777)
+          print(f"extracted_reviewed_regular_files={len(seen)}")
+          PY
+
+      - name: Refresh time-bounded live bindings conservatively
+        shell: bash
+        run: |
+          set -euo pipefail
+          observed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          export observed_at
+          python3 - <<'PY'
+          from __future__ import annotations
+          from datetime import datetime, timezone
+          import json
+          import os
+          from pathlib import Path
+          import urllib.request
+
+          root = Path('.')
+          repo = 'TrillionniumFoundation/hepta-private-ci'
+          token = os.environ['GH_TOKEN']
+          observed_at = os.environ['observed_at']
+
+          def api(path: str):
+              request = urllib.request.Request(
+                  f'https://api.github.com/repos/{repo}/{path}',
+                  headers={
+                      'Accept': 'application/vnd.github+json',
+                      'Authorization': f'Bearer {token}',
+                      'X-GitHub-Api-Version': '2022-11-28',
+                      'User-Agent': 'hepta-v6-clean-finalizer',
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  return json.load(response)
+
+          def load(path: str):
+              return json.loads((root / path).read_text(encoding='utf-8'))
+
+          def dump(path: str, value):
+              (root / path).write_text(
+                  json.dumps(value, indent=2, ensure_ascii=False) + '\n',
+                  encoding='utf-8',
+              )
+
+          current = load('docs/CURRENT.json')
+          evidence = load('docs/evidence/INDEX.json')
+          current['observedAt'] = observed_at
+          evidence['observedAt'] = observed_at
+
+          by_pr: dict[int, dict] = {}
+          requested = {
+              int(item['pullRequest'])
+              for item in current.get('activeCandidates', [])
+              if item.get('pullRequest')
+          } | {
+              int(item['pullRequest'])
+              for item in evidence.get('observations', [])
+              if item.get('pullRequest')
+          }
+          for number in sorted(requested):
+              pr = api(f'pulls/{number}')
+              commit = api(f"git/commits/{pr['head']['sha']}")
+              by_pr[number] = {
+                  'sourceHead': pr['head']['sha'],
+                  'sourceTree': commit['tree']['sha'],
+                  'headRef': pr['head']['ref'],
+                  'baseRef': pr['base']['ref'],
+                  'baseSha': pr['base']['sha'],
+                  'updatedAt': pr['updated_at'],
+              }
+
+          def refresh(item: dict) -> None:
+              item['observedAt'] = observed_at
+              number = item.get('pullRequest')
+              if not number:
+                  return
+              live = by_pr[int(number)]
+              for key, value in live.items():
+                  if key in item or key in {'sourceHead', 'sourceTree', 'updatedAt'}:
+                      item[key] = value
+
+          for item in current.get('activeCandidates', []):
+              refresh(item)
+              qualification = item.get('qualification', {})
+              if item.get('pullRequest') == 279:
+                  qualification['staticVerification'] = 'source_verifier_present'
+                  qualification['exactHeadExecution'] = 'not_proven'
+                  qualification['mergeCandidateExecution'] = 'not_proven'
+                  qualification['semanticReview'] = 'independent_semantic_review_pending'
+                  qualification['physicalEvidence'] = 'not_issued'
+              if item.get('pullRequest') == 285:
+                  item['updatedAt'] = observed_at
+
+          for item in evidence.get('observations', []):
+              refresh(item)
+              item['terminalExecutablePass'] = False
+              item['semanticQualificationAccepted'] = False
+              item['operatorAccepted'] = False
+              item['promoted'] = False
+              item['released'] = False
+              item['receipts'] = []
+              if item.get('pullRequest') == 279:
+                  item['note'] = (
+                      'Dispatch-expiry candidate identity refreshed; exact source-head and merge-candidate '
+                      'execution must be reissued on this final head before any PASS claim.'
+                  )
+
+          candidate = current.get('normativePlanCandidate')
+          if isinstance(candidate, dict):
+              candidate['observedAt'] = observed_at
+              candidate['updatedAt'] = observed_at
+          current.get('repository', {}).pop('observedAt', None)
+          dump('docs/CURRENT.json', current)
+          dump('docs/evidence/INDEX.json', evidence)
+          PY
+          python3 scripts/hepta-docs.py generate-status
+
+      - name: Remove every carrier and source-writing bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .github/hepta-v6-final-payload
+          rm -f \
+            .github/workflows/_temporary-hepta-v6-input-snapshot.yml \
+            .github/workflows/_temporary-hepta-v6-clean-staging-finalizer.yml
+          test ! -e .github/hepta-v6-final-payload
+          test ! -e .github/workflows/_temporary-hepta-v6-input-snapshot.yml
+          test ! -e .github/workflows/_temporary-hepta-v6-clean-staging-finalizer.yml
+          git diff --check
+
+      - name: Construct clean direct-base candidate commit
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'hepta-closure-bot'
+          git config user.email 'hepta-closure-bot@users.noreply.github.com'
+          git add -A
+          tree="$(git write-tree)"
+          commit="$(printf '%s\n' 'docs(hepta): land fail-closed V6.0.1 development system' | git commit-tree "$tree" -p "$BASE_SHA")"
+          git reset --hard "$commit"
+          test "$(git rev-parse HEAD^)" = "$BASE_SHA"
+          test "$(git rev-list --parents -n 1 HEAD | wc -w | tr -d ' ')" -eq 2
+          test "$(git rev-parse "$BASE_SHA^{tree}")" = "$BASE_TREE"
+          test -z "$(git ls-tree -r --name-only HEAD | grep -E '^\.github/(hepta-v6-final-payload|workflows/_temporary-hepta-v6)' || true)"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+
+      - name: Execute full source, fixture, deletion, and live-binding gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/hepta-docs.py scripts/test-hepta-docs.py
+          python3 scripts/test-hepta-docs.py
+          python3 scripts/hepta-docs.py inventory-legacy | tee "$RUNNER_TEMP/legacy-inventory.json"
+          python3 scripts/hepta-docs.py verify | tee "$RUNNER_TEMP/verification.json"
+          python3 scripts/hepta-docs.py verify-changeset --base "$BASE_SHA" --head HEAD | tee "$RUNNER_TEMP/changeset-verification.json"
+          git diff --exit-code
+          git diff --cached --exit-code
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Atomically publish clean candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          final="$(git rev-parse HEAD)"
+          git push --force origin \
+            "$final:refs/heads/$TARGET_BRANCH" \
+            "$final:refs/heads/$STAGING_BRANCH"
