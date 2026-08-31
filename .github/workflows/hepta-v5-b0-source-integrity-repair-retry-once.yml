@@ -1,0 +1,185 @@
+name: Hepta V5 B0 source integrity repair retry (one shot)
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-v5-b0-exact-restack-20260831
+    paths:
+      - .github/workflows/hepta-v5-b0-source-integrity-repair-retry-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-v5-b0-source-integrity-repair-once
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    name: Retry exact B0 source-integrity closure
+    if: >-
+      github.repository == 'ProfHepta/hepta-private-ci' &&
+      github.ref == 'refs/heads/codex/hepta-architecture-v5-b0-exact-restack-20260831'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact retry input
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          fetch-depth: 2
+
+      - name: Verify exact parent and single-file retry trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "4c6bef4fc0187ead2348c382459eed28025256e3"
+          test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = \
+            ".github/workflows/hepta-v5-b0-source-integrity-repair-retry-once.yml"
+          test "$(git ls-remote origin refs/heads/codex/hepta-architecture-v5-b0-exact-restack-20260831 | cut -f1)" = "$GITHUB_SHA"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: nextest@0.9.143
+
+      - name: Execute the committed deterministic repair program
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/hepta-v5-b0-source-integrity-repair-once.yml")
+          lines = workflow.read_text(encoding="utf-8").splitlines()
+          marker = "          python3 - <<'PY'"
+          try:
+              start = lines.index(marker) + 1
+              end = lines.index("          PY", start)
+          except ValueError as error:
+              raise SystemExit(f"cannot locate committed repair program: {error}") from error
+          program_lines = lines[start:end]
+          if not program_lines or any(
+              line and not line.startswith("          ") for line in program_lines
+          ):
+              raise SystemExit("committed repair program has unexpected indentation")
+          program = "\n".join(
+              line[10:] if line else "" for line in program_lines
+          ) + "\n"
+          namespace = {"__name__": "__main__", "__file__": str(workflow)}
+          exec(compile(program, str(workflow), "exec"), namespace, namespace)
+          PY
+
+          rustfmt --edition 2024 --config-path codex-rs/rustfmt.toml \
+            codex-rs/hepta-contracts/src/lib.rs \
+            codex-rs/hepta-contracts/src/verified_use_tests.rs
+          python3 -m py_compile scripts/verify-hepta-architecture-plan-v5.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          for relative in (
+              "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json",
+              "docs/architecture/HEPTA_CURRENT_PLAN.json",
+              "docs/architecture/HEPTA_QUALIFICATION_STATUS_V4.json",
+          ):
+              json.loads(Path(relative).read_text(encoding="utf-8"))
+          PY
+          if git grep -n "f69e5a4a5068a2657f1470da43c26b1410d53c6f" -- .; then
+            echo "stale P0.7a commit remains" >&2
+            exit 1
+          fi
+          if git grep -n "532307507d2b02a479d3c76042d42cc948b499df" -- .; then
+            echo "stale P0.7a tree remains" >&2
+            exit 1
+          fi
+          if git grep -n "codex/hepta-architecture-v5-b0-verified-use-kernel-20260830" -- .; then
+            echo "stale B0 source branch remains" >&2
+            exit 1
+          fi
+          git diff --check
+
+      - name: Verify selected plan and B0 source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-selected-architecture-plan.py
+          python3 scripts/verify-hepta-architecture-plan-v5.py
+          python3 scripts/verify-hepta-v5-b0-format.py --check
+
+      - name: Run focused and complete B0 package tests
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --locked --no-deps --format-version 1 >/dev/null
+          just test -p codex-hepta-contracts verified_use
+          just test -p codex-hepta-contracts
+
+      - name: Run locked check and strict Clippy
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets -p codex-hepta-contracts
+          cargo clippy --locked --all-targets -p codex-hepta-contracts -- -D warnings
+
+      - name: Verify committed locks
+        shell: bash
+        run: |
+          set -euo pipefail
+          just bazel-lock-check
+          git diff --check
+
+      - name: Commit qualified repair and remove both one-shot workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/codex/hepta-architecture-v5-b0-exact-restack-20260831 | cut -f1)" = "$GITHUB_SHA"
+          rm .github/workflows/hepta-v5-b0-source-integrity-repair-once.yml
+          rm .github/workflows/hepta-v5-b0-source-integrity-repair-retry-once.yml
+          python3 - <<'PY'
+          import subprocess
+
+          expected = sorted([
+              ".github/workflows/hepta-v5-b0-source-integrity-repair-once.yml",
+              ".github/workflows/hepta-v5-b0-source-integrity-repair-retry-once.yml",
+              "codex-rs/hepta-contracts/src/lib.rs",
+              "codex-rs/hepta-contracts/src/verified_use_tests.rs",
+              "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_PLAN_V5.md",
+              "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json",
+              "docs/architecture/HEPTA_CURRENT_PLAN.json",
+              "docs/architecture/HEPTA_QUALIFICATION_STATUS_V4.json",
+              "scripts/.hepta-v5-b0-v3-materializer.part00",
+              "scripts/.hepta-v5-b0-v3-materializer.part01",
+              "scripts/.hepta-v5-b0-v3-materializer.part02",
+              "scripts/.hepta-v5-b0-v3-materializer.part03",
+              "scripts/.hepta-v5-b0-v3-materializer.part04",
+              "scripts/.hepta-v5-b0-v3-materializer.part05",
+              "scripts/verify-hepta-architecture-plan-v5.py",
+          ])
+          changed = sorted(subprocess.check_output(
+              ["git", "diff", "--name-only"], text=True
+          ).splitlines())
+          if changed != expected:
+              raise SystemExit(f"unexpected repair set: expected={expected!r}, observed={changed!r}")
+          PY
+          git diff --check
+          git config user.name "hepta-closure-bot"
+          git config user.email "hepta-closure-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(hepta): close B0 source-integrity blockers"
+          printf 'qualified_commit=%s\nqualified_tree=%s\n' \
+            "$(git rev-parse HEAD)" \
+            "$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_STEP_SUMMARY"
+          git push origin HEAD:refs/heads/codex/hepta-architecture-v5-b0-exact-restack-20260831
