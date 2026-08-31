@@ -32,11 +32,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: hepta-p0-7a-direct-arm-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  qualify:
-    name: P0.7a exact candidate direct qualification
+  preflight:
+    name: P0.7a ARM identity, locks and format
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 90
+    timeout-minutes: 20
     steps:
       - name: Checkout exact event identity
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -50,11 +54,6 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
-        with:
-          tool: nextest@0.9.143
-
       - name: Verify exact identity and clean input
         shell: bash
         run: |
@@ -62,9 +61,10 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git diff --exit-code
           git diff --cached --exit-code
-          printf 'commit=%s\ntree=%s\n' \
+          printf 'commit=%s\ntree=%s\narchitecture=arm64\n' \
             "$(git rev-parse HEAD)" \
             "$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_STEP_SUMMARY"
+          test "$(uname -m)" = "aarch64"
 
       - name: Verify committed locks and package format
         shell: bash
@@ -74,137 +74,224 @@ jobs:
           python3 scripts/verify-hepta-p0-7a-format.py --check
           just bazel-lock-check
 
-      - name: Run hepta-contracts tests
-        id: test_contracts
-        continue-on-error: true
-        working-directory: codex-rs
+      - name: Require clean preflight output
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
+
+  package-tests:
+    name: P0.7a ARM tests (${{ matrix.slug }})
+    needs: preflight
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - package: codex-hepta-contracts
+            slug: hepta-contracts
+          - package: codex-hepta-fleet
+            slug: hepta-fleet
+          - package: codex-hepta-supervisor
+            slug: hepta-supervisor
+          - package: codex-hepta-agentd
+            slug: hepta-agentd
+    steps:
+      - name: Checkout exact event identity
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+        with:
+          tool: nextest@0.9.143
+
+      - name: Verify exact ARM identity
         shell: bash
         run: |
-          set -uo pipefail
-          evidence_dir="$RUNNER_TEMP/p0-7a-package-tests"
-          mkdir -p "$evidence_dir"
-          rm -f junit.xml
-          set +e
-          just test -p codex-hepta-contracts 2>&1 | tee "$evidence_dir/hepta-contracts.log"
-          status=${PIPESTATUS[0]}
-          set -e
-          if [[ -f junit.xml ]]; then
-            mv junit.xml "$evidence_dir/hepta-contracts-junit.xml"
-          fi
-          exit "$status"
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(uname -m)" = "aarch64"
+          cargo metadata --manifest-path codex-rs/Cargo.toml --locked --no-deps --format-version 1 >/dev/null
 
-      - name: Run hepta-fleet tests
-        id: test_fleet
-        continue-on-error: true
-        working-directory: codex-rs
-        shell: bash
-        run: |
-          set -uo pipefail
-          evidence_dir="$RUNNER_TEMP/p0-7a-package-tests"
-          mkdir -p "$evidence_dir"
-          rm -f junit.xml
-          set +e
-          just test -p codex-hepta-fleet 2>&1 | tee "$evidence_dir/hepta-fleet.log"
-          status=${PIPESTATUS[0]}
-          set -e
-          if [[ -f junit.xml ]]; then
-            mv junit.xml "$evidence_dir/hepta-fleet-junit.xml"
-          fi
-          exit "$status"
-
-      - name: Run hepta-supervisor tests
-        id: test_supervisor
-        continue-on-error: true
-        working-directory: codex-rs
-        shell: bash
-        run: |
-          set -uo pipefail
-          evidence_dir="$RUNNER_TEMP/p0-7a-package-tests"
-          mkdir -p "$evidence_dir"
-          rm -f junit.xml
-          set +e
-          just test -p codex-hepta-supervisor 2>&1 | tee "$evidence_dir/hepta-supervisor.log"
-          status=${PIPESTATUS[0]}
-          set -e
-          if [[ -f junit.xml ]]; then
-            mv junit.xml "$evidence_dir/hepta-supervisor-junit.xml"
-          fi
-          exit "$status"
-
-      - name: Run hepta-agentd tests
-        id: test_agentd
-        continue-on-error: true
-        working-directory: codex-rs
-        shell: bash
-        run: |
-          set -uo pipefail
-          evidence_dir="$RUNNER_TEMP/p0-7a-package-tests"
-          mkdir -p "$evidence_dir"
-          rm -f junit.xml
-          set +e
-          just test -p codex-hepta-agentd 2>&1 | tee "$evidence_dir/hepta-agentd.log"
-          status=${PIPESTATUS[0]}
-          set -e
-          if [[ -f junit.xml ]]; then
-            mv junit.xml "$evidence_dir/hepta-agentd-junit.xml"
-          fi
-          exit "$status"
-
-      - name: Check all P0.7a targets
+      - name: Run ${{ matrix.package }} tests
         working-directory: codex-rs
         shell: bash
         run: |
           set -euo pipefail
-          cargo check --locked --all-targets \
-            -p codex-hepta-contracts \
-            -p codex-hepta-fleet \
-            -p codex-hepta-supervisor \
-            -p codex-hepta-agentd
+          evidence_dir="$RUNNER_TEMP/p0-7a-${{ matrix.slug }}"
+          mkdir -p "$evidence_dir"
+          rm -f junit.xml
+          just test -p "${{ matrix.package }}" 2>&1 | tee "$evidence_dir/test.log"
+          if [[ -f junit.xml ]]; then
+            mv junit.xml "$evidence_dir/junit.xml"
+          fi
+          {
+            echo "package=${{ matrix.package }}"
+            echo "commit=$GITHUB_SHA"
+            echo "architecture=$(uname -m)"
+          } > "$evidence_dir/IDENTITY.txt"
 
-      - name: Run strict P0.7a Clippy
-        working-directory: codex-rs
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo clippy --locked --all-targets \
-            -p codex-hepta-contracts \
-            -p codex-hepta-fleet \
-            -p codex-hepta-supervisor \
-            -p codex-hepta-agentd \
-            -- -D warnings
-
-      - name: Verify V4 source truth
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/verify-hepta-architecture-plan-v4.py
-          git diff --check
-
-      - name: Upload P0.7a package-test diagnostics
+      - name: Upload exact package-test evidence
         if: always() && !cancelled()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: p0-7a-package-tests-${{ github.sha }}
-          path: ${{ runner.temp }}/p0-7a-package-tests
+          name: p0-7a-arm-${{ matrix.slug }}-${{ github.sha }}
+          path: ${{ runner.temp }}/p0-7a-${{ matrix.slug }}
           if-no-files-found: error
+          retention-days: 7
 
-      - name: Require every P0.7a package test to pass
+      - name: Require clean package-test output
         if: always() && !cancelled()
-        env:
-          CONTRACTS: ${{ steps.test_contracts.outcome }}
-          FLEET: ${{ steps.test_fleet.outcome }}
-          SUPERVISOR: ${{ steps.test_supervisor.outcome }}
-          AGENTD: ${{ steps.test_agentd.outcome }}
+        uses: ./.github/actions/check-clean-worktree
+
+  package-check:
+    name: P0.7a ARM check (${{ matrix.slug }})
+    needs: preflight
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - package: codex-hepta-contracts
+            slug: hepta-contracts
+          - package: codex-hepta-fleet
+            slug: hepta-fleet
+          - package: codex-hepta-supervisor
+            slug: hepta-supervisor
+          - package: codex-hepta-agentd
+            slug: hepta-agentd
+    steps:
+      - name: Checkout exact event identity
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+
+      - name: Check ${{ matrix.package }} on ARM
+        working-directory: codex-rs
         shell: bash
         run: |
           set -euo pipefail
-          printf 'contracts=%s\nfleet=%s\nsupervisor=%s\nagentd=%s\n' \
-            "$CONTRACTS" "$FLEET" "$SUPERVISOR" "$AGENTD"
-          test "$CONTRACTS" = success
-          test "$FLEET" = success
-          test "$SUPERVISOR" = success
-          test "$AGENTD" = success
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(uname -m)" = "aarch64"
+          cargo check --locked --all-targets -p "${{ matrix.package }}"
 
-      - name: Require clean output
+      - name: Require clean check output
         if: always() && !cancelled()
         uses: ./.github/actions/check-clean-worktree
+
+  package-clippy:
+    name: P0.7a ARM Clippy (${{ matrix.slug }})
+    needs: preflight
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - package: codex-hepta-contracts
+            slug: hepta-contracts
+          - package: codex-hepta-fleet
+            slug: hepta-fleet
+          - package: codex-hepta-supervisor
+            slug: hepta-supervisor
+          - package: codex-hepta-agentd
+            slug: hepta-agentd
+    steps:
+      - name: Checkout exact event identity
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: clippy
+
+      - name: Clippy ${{ matrix.package }} on ARM
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(uname -m)" = "aarch64"
+          cargo clippy --locked --all-targets -p "${{ matrix.package }}" -- -D warnings
+
+      - name: Require clean Clippy output
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
+
+  source-truth:
+    name: P0.7a ARM source-truth gate
+    needs: preflight
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact event identity
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+
+      - name: Verify V4 source truth on ARM
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(uname -m)" = "aarch64"
+          python3 scripts/verify-hepta-architecture-plan-v4.py
+          git diff --check
+
+      - name: Require clean source-truth output
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
+
+  required:
+    name: Hepta P0.7a direct ARM required
+    if: ${{ always() }}
+    needs:
+      - preflight
+      - package-tests
+      - package-check
+      - package-clippy
+      - source-truth
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Require every ARM qualification partition
+        env:
+          PREFLIGHT: ${{ needs.preflight.result }}
+          TESTS: ${{ needs.package-tests.result }}
+          CHECK: ${{ needs.package-check.result }}
+          CLIPPY: ${{ needs.package-clippy.result }}
+          SOURCE_TRUTH: ${{ needs.source-truth.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'preflight=%s\ntests=%s\ncheck=%s\nclippy=%s\nsource_truth=%s\n' \
+            "$PREFLIGHT" "$TESTS" "$CHECK" "$CLIPPY" "$SOURCE_TRUTH"
+          test "$PREFLIGHT" = success
+          test "$TESTS" = success
+          test "$CHECK" = success
+          test "$CLIPPY" = success
+          test "$SOURCE_TRUTH" = success
