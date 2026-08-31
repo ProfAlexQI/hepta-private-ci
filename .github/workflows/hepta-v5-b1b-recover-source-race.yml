@@ -31,11 +31,22 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - name: Checkout exact recovery head
+      - name: Enable Windows long paths before checkout
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global core.longpaths true
+
+      - name: Checkout exact recovery head with bounded paths
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
           persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/
+            /codex-rs/hepta-contracts/
+            /docs/architecture/
+            /scripts/
 
       - name: Recover source from checksum-damaged envelope
         shell: bash
@@ -79,22 +90,53 @@ jobs:
               'scripts/verify-hepta-v5-b1b-format.py',
               'scripts/verify-hepta-v5-b1b-model-boundary.py',
           }
-          changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          changed = set(
+              subprocess.check_output(
+                  ['git', 'ls-files', '--modified', '--others', '--exclude-standard'],
+                  text=True,
+              ).splitlines()
+          )
           if changed != expected:
               raise SystemExit(f'delta mismatch: missing={sorted(expected-changed)} extra={sorted(changed-expected)}')
           print('PASS_EXACT_B1B_RECOVERED_SOURCE_DELTA')
           PY
+          git add -N -- \
+            .github/workflows/hepta-architecture-v5-b1b-model-boundary.yml \
+            codex-rs/hepta-contracts/src/checked_model_invocation.rs \
+            codex-rs/hepta-contracts/src/checked_model_invocation_tests.rs \
+            codex-rs/hepta-contracts/src/lib.rs \
+            codex-rs/hepta-contracts/tests/model_verified_use_boundary.rs \
+            docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json \
+            docs/architecture/HEPTA_CURRENT_PLAN.json \
+            docs/architecture/HEPTA_P0_7B_B1B_MODEL_INVOCATION_CONTRACT_V1.md \
+            docs/architecture/HEPTA_P0_7B_B1B_STATUS.json \
+            docs/architecture/HEPTA_V5_B1B_MODEL_CALLSITE_INVENTORY.json \
+            scripts/verify-hepta-v5-b1b-format.py \
+            scripts/verify-hepta-v5-b1b-model-boundary.py
           git diff --check
           python3 -m py_compile scripts/verify-hepta-v5-b1b-model-boundary.py scripts/verify-hepta-v5-b1b-format.py
           python3 scripts/verify-hepta-v5-b1b-model-boundary.py
 
-      - name: Stage recovered source
+      - name: Stage recovered source artifact
         shell: bash
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/hepta-v5-b1b-recovery/source"
           mkdir -p "$out"
-          git diff --name-only | while IFS= read -r path; do
+          for path in \
+            .github/workflows/hepta-architecture-v5-b1b-model-boundary.yml \
+            codex-rs/hepta-contracts/src/checked_model_invocation.rs \
+            codex-rs/hepta-contracts/src/checked_model_invocation_tests.rs \
+            codex-rs/hepta-contracts/src/lib.rs \
+            codex-rs/hepta-contracts/tests/model_verified_use_boundary.rs \
+            docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json \
+            docs/architecture/HEPTA_CURRENT_PLAN.json \
+            docs/architecture/HEPTA_P0_7B_B1B_MODEL_INVOCATION_CONTRACT_V1.md \
+            docs/architecture/HEPTA_P0_7B_B1B_STATUS.json \
+            docs/architecture/HEPTA_V5_B1B_MODEL_CALLSITE_INVENTORY.json \
+            scripts/verify-hepta-v5-b1b-format.py \
+            scripts/verify-hepta-v5-b1b-model-boundary.py
+          do
             mkdir -p "$out/$(dirname "$path")"
             cp "$path" "$out/$path"
           done
