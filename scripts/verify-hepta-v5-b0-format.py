@@ -29,6 +29,8 @@ def main() -> int:
         "2024",
         "--config-path",
         str(ROOT / "codex-rs/rustfmt.toml"),
+        "--config",
+        "skip_children=true",
     ]
     if check:
         command.append("--check")
