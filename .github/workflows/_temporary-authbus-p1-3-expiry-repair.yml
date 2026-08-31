@@ -1,0 +1,83 @@
+name: Temporary AuthBus P1.3 expiry repair
+
+on:
+  push:
+    branches:
+      - codex/authbus-p1-3-semantic-closure-v12-gpt56-20260831
+    paths:
+      - ".github/workflows/_temporary-authbus-p1-3-expiry-repair.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-authbus-p1-3-expiry-repair-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    name: Close dispatch-expiry semantics and self-delete
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      BRANCH: codex/authbus-p1-3-semantic-closure-v12-gpt56-20260831
+      MANIFEST: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
+      REPAIR_GZIP_B64: "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"
+    steps:
+      - name: Checkout exact branch with one-shot credentials
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Apply fail-closed dispatch-time repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          printf '%s' "$REPAIR_GZIP_B64" | base64 --decode | gzip --decompress > "$RUNNER_TEMP/authbus-expiry-repair.py"
+          python3 -m py_compile "$RUNNER_TEMP/authbus-expiry-repair.py"
+          python3 "$RUNNER_TEMP/authbus-expiry-repair.py"
+          cargo +1.95.0 fmt --manifest-path "$MANIFEST" --all
+          git rm -- .github/workflows/_temporary-authbus-p1-3-expiry-repair.yml
+          git diff --check
+
+      - name: Commit final seven-path candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'hepta-closure-bot'
+          git config user.email 'hepta-closure-bot@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(authbus): bind dispatch to expiry and admission window'
+
+      - name: Execute complete fail-closed qualification locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/verify-authbus-p1-3-semantic-v12.py
+          python3 scripts/verify-authbus-p1-3-semantic-v12.py --check-git-delta
+          cargo +1.95.0 fmt --manifest-path "$MANIFEST" -- --check
+          cargo +1.95.0 test --locked --manifest-path "$MANIFEST" --no-default-features
+          cargo +1.95.0 test --locked --manifest-path "$MANIFEST" --features p1-3-qualification --test p1_3_semantic -- --nocapture
+          cargo +1.95.0 test --locked --manifest-path "$MANIFEST" --features p1-3-qualification --tests -- --nocapture
+          cargo +1.95.0 check --locked --manifest-path "$MANIFEST" --features p1-3-qualification --all-targets
+          cargo +1.95.0 clippy --locked --manifest-path "$MANIFEST" --features p1-3-qualification --all-targets -- -D warnings
+          git diff --exit-code
+          git diff --cached --exit-code
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Push repaired candidate and retire this writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:$BRANCH"
