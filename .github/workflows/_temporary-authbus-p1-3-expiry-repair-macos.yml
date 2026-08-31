@@ -1,0 +1,105 @@
+name: Temporary AuthBus P1.3 expiry repair macOS
+
+on:
+  push:
+    branches:
+      - codex/authbus-p1-3-semantic-closure-v12-gpt56-20260831
+    paths:
+      - ".github/workflows/_temporary-authbus-p1-3-expiry-repair-macos.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-authbus-p1-3-expiry-repair-macos-v3-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    name: Close dispatch-expiry semantics on macOS and self-delete
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      BRANCH: codex/authbus-p1-3-semantic-closure-v12-gpt56-20260831
+      MANIFEST: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
+      SOURCE_BOOTSTRAP: .github/workflows/_temporary-authbus-p1-3-expiry-repair.yml
+    steps:
+      - name: Checkout exact branch with one-shot credentials
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Recover bounded repair payload and apply it
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          test -f "$SOURCE_BOOTSTRAP"
+          python3 - "$SOURCE_BOOTSTRAP" "$RUNNER_TEMP/authbus-expiry-repair.py" <<'PY'
+          from __future__ import annotations
+          import base64
+          import gzip
+          from pathlib import Path
+          import re
+          import sys
+
+          source = Path(sys.argv[1]).read_text(encoding="utf-8")
+          match = re.search(r'^\s*REPAIR_GZIP_B64:\s*"([A-Za-z0-9+/=]+)"\s*$', source, re.MULTILINE)
+          if match is None:
+              raise SystemExit("bounded repair payload missing")
+          payload = gzip.decompress(base64.b64decode(match.group(1), validate=True))
+          if not payload.startswith(b"#!/usr/bin/env python3\n") or len(payload) > 64_000:
+              raise SystemExit("bounded repair payload identity invalid")
+          Path(sys.argv[2]).write_bytes(payload)
+          print(f"repair_payload_bytes={len(payload)}")
+          PY
+          python3 -m py_compile "$RUNNER_TEMP/authbus-expiry-repair.py"
+          python3 "$RUNNER_TEMP/authbus-expiry-repair.py"
+          cargo +1.95.0 fmt --manifest-path "$MANIFEST" --all
+          git rm -- \
+            .github/workflows/_temporary-authbus-p1-3-expiry-repair.yml \
+            .github/workflows/_temporary-authbus-p1-3-expiry-repair-arm.yml \
+            .github/workflows/_temporary-authbus-p1-3-expiry-repair-macos.yml
+          git diff --check
+
+      - name: Commit final seven-path candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'hepta-closure-bot'
+          git config user.email 'hepta-closure-bot@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(authbus): bind dispatch to expiry and admission window'
+          test "$(git diff --name-only 8572f3d2182541b14e0719b229ccd8754494f134 HEAD | wc -l | tr -d ' ')" -eq 7
+
+      - name: Execute complete fail-closed qualification locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/verify-authbus-p1-3-semantic-v12.py
+          python3 scripts/verify-authbus-p1-3-semantic-v12.py --check-git-delta
+          cargo +1.95.0 fmt --manifest-path "$MANIFEST" -- --check
+          cargo +1.95.0 test --locked --manifest-path "$MANIFEST" --no-default-features
+          cargo +1.95.0 test --locked --manifest-path "$MANIFEST" --features p1-3-qualification --test p1_3_semantic -- --nocapture
+          cargo +1.95.0 test --locked --manifest-path "$MANIFEST" --features p1-3-qualification --tests -- --nocapture
+          cargo +1.95.0 check --locked --manifest-path "$MANIFEST" --features p1-3-qualification --all-targets
+          cargo +1.95.0 clippy --locked --manifest-path "$MANIFEST" --features p1-3-qualification --all-targets -- -D warnings
+          git diff --exit-code
+          git diff --cached --exit-code
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Push repaired candidate and retire every writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:$BRANCH"
