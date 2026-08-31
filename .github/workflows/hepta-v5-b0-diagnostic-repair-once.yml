@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: hepta-v5-b0-diagnostic-repair-once
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   repair:
@@ -20,7 +20,7 @@ jobs:
     if: >-
       github.repository == 'ProfHepta/hepta-private-ci' &&
       github.ref == 'refs/heads/codex/hepta-architecture-v5-b0-exact-restack-20260831'
-    runs-on: macos-15-xlarge
+    runs-on: macos-latest
     timeout-minutes: 90
     steps:
       - name: Checkout exact repair input
@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "3d0f2c4c0a4fd6444def8db6b6d0af5e0add9b84"
+          test "$(git rev-parse HEAD^)" = "fb2bbd1aa5c4ac7054a4f3cb257e8782866ce44c"
           test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = \
             ".github/workflows/hepta-v5-b0-diagnostic-repair-once.yml"
           test "$(git ls-remote origin refs/heads/codex/hepta-architecture-v5-b0-exact-restack-20260831 | cut -f1)" = "$GITHUB_SHA"
@@ -95,7 +95,7 @@ jobs:
           replace_exact(
               workflow,
               "    runs-on: ubuntu-24.04",
-              "    runs-on: macos-15-xlarge",
+              "    runs-on: macos-latest",
               expected=2,
           )
 
