@@ -1,0 +1,91 @@
+name: Temporary Hepta V6 exact input snapshot
+
+on:
+  push:
+    branches:
+      - codex/hepta-development-docs-v6-final-20260831
+    paths:
+      - ".github/workflows/_temporary-hepta-v6-input-snapshot.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temporary-hepta-v6-input-snapshot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  snapshot:
+    name: Export exact read-only V6 inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Export exact current inputs and Git identity
+        shell: bash
+        env:
+          BASE_SHA: b621768b70a09d56626bb8a2c331e3dc424e6a4d
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/hepta-v6-exact-inputs"
+          mkdir -p "$out/repository"
+          paths=(
+            README.md
+            docs/CURRENT.json
+            docs/DEVELOPMENT.md
+            docs/STATUS.md
+            docs/architecture/ARCHITECTURE.json
+            docs/control-plane/OBJECTIVES.json
+            docs/delivery/ACTIVATION_DAG.json
+            docs/delivery/DEVELOPMENT_DAG.json
+            docs/delivery/EVIDENCE_DAG.json
+            docs/delivery/WORK_PACKAGES.json
+            docs/evidence/INDEX.json
+            docs/governance/DOCUMENT_SYSTEM.json
+            docs/modules/MODULES.json
+            scripts/hepta-docs.py
+            .github/workflows/hepta-development-docs.yml
+          )
+          for path in "${paths[@]}"; do
+            test -f "$path"
+            mkdir -p "$out/repository/$(dirname "$path")"
+            cp -- "$path" "$out/repository/$path"
+          done
+          git ls-files -z > "$out/tracked-files.z"
+          git ls-tree -r --full-tree HEAD > "$out/head-tree.txt"
+          git ls-tree -r --full-tree "$BASE_SHA" > "$out/base-tree.txt"
+          git diff --name-status "$BASE_SHA" HEAD > "$out/base-to-head-name-status.txt"
+          git diff --raw "$BASE_SHA" HEAD > "$out/base-to-head-raw.txt"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "base=$BASE_SHA"
+            echo "base_tree=$(git rev-parse "$BASE_SHA^{tree}")"
+            echo "runner_name=$RUNNER_NAME"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "snapshot_only=true"
+            echo "source_modified=false"
+            echo "runtime_authority=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release=false"
+          } > "$out/identity.txt"
+          git status --porcelain=v1 --untracked-files=all > "$out/worktree-status.txt"
+          test ! -s "$out/worktree-status.txt"
+
+      - name: Upload exact read-only inputs
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-v6-exact-inputs-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-v6-exact-inputs
+          if-no-files-found: error
+          retention-days: 3
