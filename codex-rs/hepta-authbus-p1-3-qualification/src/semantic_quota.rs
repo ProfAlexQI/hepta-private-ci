@@ -106,7 +106,7 @@ impl QuotaWindowKey {
             return Err(SemanticQuotaError::InvalidWindow);
         }
         let duration = self.kind.duration_seconds();
-        if self.starts_at_s % duration != 0
+        if !self.starts_at_s.is_multiple_of(duration)
             || self.starts_at_s.checked_add(duration) != Some(self.ends_at_s)
             || observed_at_s < self.starts_at_s
             || observed_at_s >= self.ends_at_s
