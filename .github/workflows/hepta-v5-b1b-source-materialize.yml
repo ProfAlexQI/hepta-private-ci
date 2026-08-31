@@ -1,0 +1,139 @@
+name: Hepta V5 B1b source materializer
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-v5-b1b-model-invocation-20260831
+    paths:
+      - "scripts/.hepta-v5-b1b-source-materialize.part-*"
+      - ".github/workflows/hepta-v5-b1b-source-materialize.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-v5-b1b-source-materializer
+  cancel-in-progress: false
+
+env:
+  STACK_PARENT: 537394a0067d204b215db8bee3de533494535481
+  TARGET_BRANCH: codex/hepta-architecture-v5-b1b-model-invocation-20260831
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  materialize:
+    name: Materialize exact-parent B1b source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout bootstrap commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Guard bootstrap identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "$TARGET_BRANCH"
+          git merge-base --is-ancestor "$STACK_PARENT" HEAD
+          test -z "$(git status --porcelain)"
+          actual="$(git diff --name-only "$STACK_PARENT" HEAD | LC_ALL=C sort)"
+          expected="$(cat <<'EOF' | LC_ALL=C sort
+          .github/workflows/hepta-v5-b1b-source-materialize.yml
+          scripts/.hepta-v5-b1b-source-materialize.part-00
+          scripts/.hepta-v5-b1b-source-materialize.part-01
+          scripts/.hepta-v5-b1b-source-materialize.part-02
+          scripts/.hepta-v5-b1b-source-materialize.part-03
+          scripts/.hepta-v5-b1b-source-materialize.part-04
+          scripts/.hepta-v5-b1b-source-materialize.part-05
+          EOF
+          )"
+          test "$actual" = "$expected"
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Materialize source-controlled B1b slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat scripts/.hepta-v5-b1b-source-materialize.part-* > "$RUNNER_TEMP/hepta-v5-b1b-source-materialize.py"
+          python3 -m py_compile "$RUNNER_TEMP/hepta-v5-b1b-source-materialize.py"
+          python3 "$RUNNER_TEMP/hepta-v5-b1b-source-materialize.py"
+          python3 -m py_compile \
+            scripts/verify-hepta-v5-b1b-model-boundary.py \
+            scripts/verify-hepta-v5-b1b-format.py
+          python3 scripts/verify-hepta-v5-b1b-model-boundary.py
+          python3 scripts/verify-hepta-v5-b1b-format.py --check
+          git diff --check
+
+      - name: Format and execute owned Rust gates
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt -p codex-hepta-contracts
+          cargo metadata --locked --no-deps --format-version 1 > "$RUNNER_TEMP/b1b-metadata.json"
+          cargo test --locked -p codex-hepta-contracts \
+            --test model_verified_use_boundary -- --nocapture
+          cargo test --locked -p codex-hepta-contracts
+          cargo check --locked -p codex-hepta-contracts --all-targets
+          cargo clippy --locked -p codex-hepta-contracts --all-targets -- -D warnings
+
+      - name: Execute repository gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-v5-b1b-model-boundary.py
+          python3 scripts/verify-hepta-v5-b1b-format.py --check
+          just bazel-lock-check
+          git diff --check
+
+      - name: Replace bootstrap with one exact-parent source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm \
+            scripts/.hepta-v5-b1b-source-materialize.part-* \
+            .github/workflows/hepta-v5-b1b-source-materialize.yml
+          git reset --soft "$STACK_PARENT"
+          git add -A
+          actual="$(git diff --cached --name-only | LC_ALL=C sort)"
+          expected="$(cat <<'EOF' | LC_ALL=C sort
+          .github/workflows/hepta-architecture-v5-b1b-model-boundary.yml
+          codex-rs/hepta-contracts/src/checked_model_invocation.rs
+          codex-rs/hepta-contracts/src/checked_model_invocation_tests.rs
+          codex-rs/hepta-contracts/src/lib.rs
+          codex-rs/hepta-contracts/tests/model_verified_use_boundary.rs
+          docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V5.json
+          docs/architecture/HEPTA_CURRENT_PLAN.json
+          docs/architecture/HEPTA_P0_7B_B1B_MODEL_INVOCATION_CONTRACT_V1.md
+          docs/architecture/HEPTA_P0_7B_B1B_STATUS.json
+          docs/architecture/HEPTA_V5_B1B_MODEL_CALLSITE_INVENTORY.json
+          scripts/verify-hepta-v5-b1b-format.py
+          scripts/verify-hepta-v5-b1b-model-boundary.py
+          EOF
+          )"
+          test "$actual" = "$expected"
+          git diff --cached --check
+          git config user.name "Hepta governed source publisher"
+          git config user.email "hepta-source-publisher@users.noreply.github.com"
+          git commit -m "feat(architecture): add verified model invocation boundary"
+          test "$(git rev-parse HEAD^)" = "$STACK_PARENT"
+          test "$(git rev-list --count "$STACK_PARENT"..HEAD)" = 1
+          python3 scripts/verify-hepta-v5-b1b-model-boundary.py --require-direct-parent
+          python3 scripts/verify-hepta-v5-b1b-format.py --check
+          test -z "$(git status --porcelain)"
+
+      - name: Publish exact source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push --force-with-lease origin "HEAD:refs/heads/$TARGET_BRANCH"
