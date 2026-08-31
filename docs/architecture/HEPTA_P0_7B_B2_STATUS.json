@@ -1,0 +1,57 @@
+{
+  "schema": "hepta.p0-7b-b2-external-boundaries-status.v1",
+  "schemaVersion": 1,
+  "package": "P0.7b/B2_tool_network_filesystem_boundaries",
+  "state": "source_implemented_executable_qualification_pending",
+  "repository": "TrillionniumFoundation/hepta-private-ci",
+  "parentCommit": "cd6823c94b3fbd1c3845a398206f526b8e4bc85e",
+  "parentTree": "fb9af24eaea3283ede58611d639ea8ab1176f2c4",
+  "sourceBranch": "codex/hepta-architecture-v5-b2-external-boundaries-gpt56-20260831",
+  "sourceCommit": "resolved_by_exact_source_head_workflow",
+  "sourceTree": "resolved_by_exact_source_head_workflow",
+  "implementedFacts": [
+    "explicit_tool_process_intent",
+    "executable_argv_cwd_environment_sandbox_and_approval_binding",
+    "explicit_outbound_network_intent",
+    "protocol_destination_dns_ip_proxy_tls_headers_and_request_binding",
+    "explicit_external_filesystem_mutation_intent",
+    "canonical_target_device_mount_no_follow_mutation_and_prior_state_binding",
+    "exact_final_payload_digest_and_byte_count",
+    "current_revocation_and_runtime_context_reverification",
+    "durable_single_use_claim_before_adapter",
+    "caller_owned_witness_persistence_before_adapter",
+    "post_crossing_transport_failure_is_indeterminate",
+    "no_blind_retry_api",
+    "no_raw_adapter_accessor",
+    "no_product_callsite_registered"
+  ],
+  "activationBlockers": [
+    "P0.7a_signed_runtime_bootstrap_closure.qualified_exact",
+    "P0.7b/B0_verified_use_kernel.qualified_exact",
+    "P0.7b/B1a_provider_verified_use_boundary.qualified_exact",
+    "P0.7b/B1b_model_invocation_verified_use_boundary.qualified_exact",
+    "B2_exact_head_nonempty_qualification",
+    "B2_merge_candidate_nonempty_qualification",
+    "independent_exact_candidate_review",
+    "P0.7b/B4_negative_callsite_proof"
+  ],
+  "evidence": {
+    "sourceVerifier": "scripts/verify-hepta-v5-b2-external-boundaries.py",
+    "workflow": ".github/workflows/hepta-architecture-v5-b2-external-boundaries.yml",
+    "exactHeadRun": null,
+    "mergeCandidateRun": null,
+    "independentReviewReceipt": null
+  },
+  "authority": {
+    "runtimeRegistered": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalFilesystemMutation": false,
+    "externalEffect": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

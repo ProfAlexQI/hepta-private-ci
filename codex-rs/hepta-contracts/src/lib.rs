@@ -20,6 +20,7 @@ mod checked_provider_operation;
 mod identity;
 mod memory;
 mod operation;
+pub mod physical_boundaries;
 mod product_graph;
 mod provider;
 mod provider_effect;

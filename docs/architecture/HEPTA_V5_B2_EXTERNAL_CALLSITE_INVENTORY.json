@@ -1,0 +1,52 @@
+{
+  "schema": "hepta.v5.b2.external-callsite-inventory.v1",
+  "schemaVersion": 1,
+  "repository": "TrillionniumFoundation/hepta-private-ci",
+  "package": "P0.7b/B2_tool_network_filesystem_boundaries",
+  "inventoryState": "checked_boundaries_source_only",
+  "checkedBoundary": {
+    "file": "codex-rs/hepta-contracts/src/physical_boundaries/external.rs",
+    "symbol": "CheckedExternalBoundary::cross_once",
+    "broadCapability": "Authorized<ExternalEffectCapability>",
+    "physicalKinds": [
+      "tool_process_spawn",
+      "outbound_network_connect",
+      "external_filesystem_mutation"
+    ],
+    "finalPayloadBuilders": [
+      "ToolProcessIntent::physical_payload_sha256",
+      "OutboundNetworkIntent::physical_payload_sha256",
+      "ExternalFilesystemMutationIntent::physical_payload_sha256"
+    ],
+    "claimOwner": "caller_supplied_durable_claim_store",
+    "witnessOwner": "caller_supplied_durable_witness_transaction",
+    "adapterVisibility": "private_field_no_accessor"
+  },
+  "productCallsitesRegistered": false,
+  "knownProductCallsites": [],
+  "rawBoundaryAdapterConstructorsAllowed": [],
+  "b4GlobalInventoryRequired": true,
+  "b4RequiredFields": [
+    "file",
+    "symbol",
+    "physical_kind",
+    "issuer",
+    "consumer",
+    "final_payload_builder",
+    "claim_store_owner",
+    "witness_store_owner",
+    "reconciliation_owner"
+  ],
+  "authority": {
+    "runtimeRegistered": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalFilesystemMutation": false,
+    "externalEffect": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
