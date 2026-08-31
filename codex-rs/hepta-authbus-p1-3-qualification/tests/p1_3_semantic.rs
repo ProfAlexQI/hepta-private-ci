@@ -102,8 +102,8 @@ fn one_request(context: u64, day_budget: u64) -> CanonicalQuotaVector {
 
 #[test]
 fn rpm_and_tpm_are_isolated_by_exact_minute_window() {
-    let mut ledger = WindowedQuotaLedger::open(limits(100, 1, 100, 4, 1_000, 8_192))
-        .expect("known limits");
+    let mut ledger =
+        WindowedQuotaLedger::open(limits(100, 1, 100, 4, 1_000, 8_192)).expect("known limits");
     let first = inserted(
         ledger
             .reserve(request(&ledger, "r1", 120, one_request(1_024, 10)))
@@ -142,8 +142,8 @@ fn rpm_and_tpm_are_isolated_by_exact_minute_window() {
 
 #[test]
 fn daily_budget_rolls_only_at_exact_utc_day_boundary() {
-    let mut ledger = WindowedQuotaLedger::open(limits(100, 100, 10_000, 4, 10, 8_192))
-        .expect("known limits");
+    let mut ledger =
+        WindowedQuotaLedger::open(limits(100, 100, 10_000, 4, 10, 8_192)).expect("known limits");
     let first = inserted(
         ledger
             .reserve(request(&ledger, "day-1", 86_410, one_request(512, 10)))
@@ -161,22 +161,12 @@ fn daily_budget_rolls_only_at_exact_utc_day_boundary() {
         .expect("day budget consumed");
 
     assert_eq!(
-        ledger.reserve(request(
-            &ledger,
-            "same-day",
-            86_500,
-            one_request(512, 1),
-        )),
+        ledger.reserve(request(&ledger, "same-day", 86_500, one_request(512, 1),)),
         Err(SemanticQuotaError::QuotaExceeded)
     );
     inserted(
         ledger
-            .reserve(request(
-                &ledger,
-                "next-day",
-                172_810,
-                one_request(512, 10),
-            ))
+            .reserve(request(&ledger, "next-day", 172_810, one_request(512, 10)))
             .expect("next UTC day has an independent daily counter"),
     );
     ledger.verify_invariants().expect("consistent ledger");
@@ -394,8 +384,8 @@ fn transition_chain_detects_digest_tampering() {
 
 #[test]
 fn request_count_is_cumulative_across_window_rollover() {
-    let mut ledger = WindowedQuotaLedger::open(limits(2, 100, 100_000, 4, 10_000, 4_096))
-        .expect("known limits");
+    let mut ledger =
+        WindowedQuotaLedger::open(limits(2, 100, 100_000, 4, 10_000, 4_096)).expect("known limits");
     for (id, at) in [("count-1", 1_200), ("count-2", 87_600)] {
         let held = inserted(
             ledger
@@ -414,12 +404,7 @@ fn request_count_is_cumulative_across_window_rollover() {
             .expect("terminal usage");
     }
     assert_eq!(
-        ledger.reserve(request(
-            &ledger,
-            "count-3",
-            174_000,
-            one_request(512, 1),
-        )),
+        ledger.reserve(request(&ledger, "count-3", 174_000, one_request(512, 1),)),
         Err(SemanticQuotaError::QuotaExceeded)
     );
 }
