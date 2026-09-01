@@ -5,12 +5,12 @@ use codex_hepta_contracts::Sha256Digest;
 use tempfile::TempDir;
 
 use crate::CognitiveStore;
+use crate::LocalLeaseState;
 use crate::LogicalTurnAttemptRequest;
+use crate::LogicalTurnInspectionDisposition;
 use crate::LogicalTurnRegistryError;
 use crate::LogicalTurnRequest;
 use crate::LogicalTurnReservation;
-use crate::LogicalTurnInspectionDisposition;
-use crate::LocalLeaseState;
 use crate::cognitive_test_support::agent_id;
 use crate::cognitive_test_support::layout;
 
@@ -102,11 +102,10 @@ async fn logical_turn_inspection_missing_is_read_only() {
     let temp = TempDir::new().expect("temp dir");
     let store = opened_store(&temp, 191).await;
     let request = logical_request();
-    let before_identities: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turns")
-            .fetch_one(&store.pool)
-            .await
-            .expect("identity count before");
+    let before_identities: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turns")
+        .fetch_one(&store.pool)
+        .await
+        .expect("identity count before");
     let before_attempts: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turn_attempts")
             .fetch_one(&store.pool)
@@ -123,11 +122,10 @@ async fn logical_turn_inspection_missing_is_read_only() {
     assert!(inspection.head.is_none());
     assert!(inspection.lease_head.is_none());
     assert!(inspection.evidence.is_empty());
-    let after_identities: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turns")
-            .fetch_one(&store.pool)
-            .await
-            .expect("identity count after");
+    let after_identities: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turns")
+        .fetch_one(&store.pool)
+        .await
+        .expect("identity count after");
     let after_attempts: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turn_attempts")
             .fetch_one(&store.pool)
@@ -164,7 +162,11 @@ async fn logical_turn_inspection_classifies_active_and_expired_evidence() {
         active.attempt_id
     );
     assert_eq!(
-        active_inspection.lease_head.as_ref().expect("lease head").state,
+        active_inspection
+            .lease_head
+            .as_ref()
+            .expect("lease head")
+            .state,
         LocalLeaseState::Active
     );
     assert!(active_inspection.evidence.is_empty());
@@ -237,7 +239,10 @@ async fn logical_turn_inspection_reports_conflict_and_terminal_lease() {
         conflict.disposition,
         LogicalTurnInspectionDisposition::Conflict
     );
-    assert_eq!(conflict.stored_scope_key.as_deref(), Some(request.scope_key.as_str()));
+    assert_eq!(
+        conflict.stored_scope_key.as_deref(),
+        Some(request.scope_key.as_str())
+    );
     assert!(conflict.stored_binding_sha256.is_some());
     assert!(conflict.head.is_none());
 
@@ -288,10 +293,7 @@ async fn logical_turn_inspection_reports_conflict_and_terminal_lease() {
         .expect("successor lease")
         .into_handle();
     let drift = store.inspect_logical_turn(terminal.request).await;
-    assert!(matches!(
-        drift,
-        Err(LogicalTurnRegistryError::Corrupt(_))
-    ));
+    assert!(matches!(drift, Err(LogicalTurnRegistryError::Corrupt(_))));
     successor.release().await.expect("release successor lease");
     let terminal_drift = store.inspect_logical_turn(logical_request()).await;
     assert!(matches!(
@@ -329,11 +331,11 @@ async fn logical_turn_inspection_observes_fresh_head_after_takeover() {
         .await
         .expect("new inspection");
     assert_eq!(after.disposition, LogicalTurnInspectionDisposition::Active);
-    assert_eq!(after.head.expect("new head").attempt_id, successor.attempt_id);
     assert_eq!(
-        before.head.expect("old head").attempt_id,
-        old.attempt_id
+        after.head.expect("new head").attempt_id,
+        successor.attempt_id
     );
+    assert_eq!(before.head.expect("old head").attempt_id, old.attempt_id);
 }
 
 #[tokio::test]
@@ -387,11 +389,10 @@ async fn physical_attempt_identity_cannot_alias_another_logical_turn() {
         .await
         .expect("alias result");
     assert!(matches!(result, LogicalTurnReservation::Conflict { .. }));
-    let identity_rows: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turns")
-            .fetch_one(&store.pool)
-            .await
-            .expect("identity rows");
+    let identity_rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turns")
+        .fetch_one(&store.pool)
+        .await
+        .expect("identity rows");
     let attempt_rows: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turn_attempts")
             .fetch_one(&store.pool)
@@ -458,11 +459,10 @@ async fn expired_takeover_rejects_regressing_owner_epoch() {
         .await
         .expect("epoch conflict");
     assert!(matches!(result, LogicalTurnReservation::Conflict { .. }));
-    let attempts: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turn_attempts")
-            .fetch_one(&store.pool)
-            .await
-            .expect("attempt count");
+    let attempts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turn_attempts")
+        .fetch_one(&store.pool)
+        .await
+        .expect("attempt count");
     assert_eq!(attempts, 1);
 }
 
@@ -476,8 +476,7 @@ async fn takeover_reopens_with_historical_witness_and_fences_old_handle() {
         .reserve_or_replay_logical_turn(request.clone(), expired.clone())
         .await
         .expect("expired reservation");
-    let successor =
-        attempt_with_owner_epoch("reopen-new", "reopen-new", 2, 1, now() + 3_600);
+    let successor = attempt_with_owner_epoch("reopen-new", "reopen-new", 2, 1, now() + 3_600);
     let takeover = store
         .reserve_or_replay_logical_turn(request.clone(), successor.clone())
         .await

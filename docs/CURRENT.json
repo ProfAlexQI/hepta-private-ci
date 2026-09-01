@@ -13,12 +13,12 @@
     "exactBaseTree": "f2e82fd525d337efae355adf6f19398812d4180c"
   },
   "candidate": {
-    "pullRequest": 286,
+    "pullRequest": 0,
     "targetBranch": "main",
-    "sourceHead": "resolved_by_exact_main_default_mirror_receipt",
-    "sourceTree": "resolved_by_exact_main_default_mirror_receipt",
-    "mergeCandidate": "not_applicable_after_ancestry_consolidation",
-    "relationship": "main_and_current_default_same_tip_pending_repository_admin_switch"
+    "sourceHead": "external_exact_candidate_receipt_only",
+    "sourceTree": "external_exact_candidate_receipt_only",
+    "mergeCandidate": "external_exact_candidate_receipt_only",
+    "relationship": "live_candidate_identity_is_not_cached_in_the_canonical_registry"
   },
   "currentWorkPackage": "DOC-2-DEFAULT-BRANCH-SELECTION",
   "baselineClaims": {

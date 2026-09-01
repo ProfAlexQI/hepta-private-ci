@@ -22,29 +22,29 @@ Dynamic Git, CI, review, operator, selection, promotion and release facts are ex
 
 ## Work-package states
 
-| State | Count |
-|---|---:|
-| `blocked_external` | 2 |
-| `open` | 7 |
-| `planned` | 56 |
-| `source_implemented` | 6 |
-| `source_implemented_execution_pending` | 8 |
-| `source_implemented_semantic_review_pending` | 1 |
+| State                                        | Count |
+| -------------------------------------------- | ----: |
+| `blocked_external`                           |     2 |
+| `open`                                       |     7 |
+| `planned`                                    |    56 |
+| `source_implemented`                         |     6 |
+| `source_implemented_execution_pending`       |     8 |
+| `source_implemented_semantic_review_pending` |     1 |
 
 ## Baseline claims
 
-| Claim | Current level |
-|---|---|
-| `systemLearning` | `L0_STATIC` |
-| `ndu` | `D0_SPECIFIED_ONLY` |
-| `neuron` | `N0_METAPHORICAL` |
-| `intuition` | `I0_DETERMINISTIC` |
-| `promptIntervention` | `P0_STATIC_CONTEXT` |
-| `operatorLearning` | `O0_NONE` |
-| `artifactLifecycle` | `A0_PROPOSED` |
-| `structuralPlasticity` | `S0_FIXED` |
-| `selfIteration` | `SI0_NONE` |
-| `globalOptimization` | `G0_STATIC_HEURISTIC` |
+| Claim                  | Current level         |
+| ---------------------- | --------------------- |
+| `systemLearning`       | `L0_STATIC`           |
+| `ndu`                  | `D0_SPECIFIED_ONLY`   |
+| `neuron`               | `N0_METAPHORICAL`     |
+| `intuition`            | `I0_DETERMINISTIC`    |
+| `promptIntervention`   | `P0_STATIC_CONTEXT`   |
+| `operatorLearning`     | `O0_NONE`             |
+| `artifactLifecycle`    | `A0_PROPOSED`         |
+| `structuralPlasticity` | `S0_FIXED`            |
+| `selfIteration`        | `SI0_NONE`            |
+| `globalOptimization`   | `G0_STATIC_HEURISTIC` |
 
 ## Authority posture
 
