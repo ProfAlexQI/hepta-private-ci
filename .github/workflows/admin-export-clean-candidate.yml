@@ -15,34 +15,39 @@ jobs:
     timeout-minutes: 10
     env:
       CANDIDATE_BRANCH: admin/materialized-adaptive-doc-closure-output-20260902
-      CANDIDATE_COMMIT: f784ece19bfee9851336b8ecd226e6d7edc8b343
+      BASE_COMMIT: 70ef65a90a031ce0cc08b77b5596eb0d99edaa11
       CANDIDATE_TREE: 7b0a2ae192903ee01fb32095af67938bda1d2e64
     steps:
-      - name: Check out exact clean candidate branch
+      - name: Check out current clean candidate branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ env.CANDIDATE_BRANCH }}
           persist-credentials: false
           fetch-depth: 2
 
-      - name: Verify and archive exact clean candidate
+      - name: Verify and archive stable clean candidate tree
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_COMMIT"
+          CANDIDATE_COMMIT="$(git rev-parse HEAD)"
           test "$(git rev-parse HEAD^{tree})" = "$CANDIDATE_TREE"
-          test "$(git rev-list --parents -n 1 HEAD)" = "$CANDIDATE_COMMIT 70ef65a90a031ce0cc08b77b5596eb0d99edaa11"
+          test "$(git rev-list --parents -n 1 HEAD)" = "$CANDIDATE_COMMIT $BASE_COMMIT"
+          test "$(git rev-list --count "$BASE_COMMIT..HEAD")" -eq 1
           git archive --format=tar.gz \
-            --output clean-adaptive-candidate-f784ece19.tar.gz \
+            --output clean-adaptive-candidate.tar.gz \
             HEAD
-          sha256sum clean-adaptive-candidate-f784ece19.tar.gz | tee clean-adaptive-candidate-f784ece19.sha256
+          sha256sum clean-adaptive-candidate.tar.gz | tee clean-adaptive-candidate.sha256
+          printf 'commit=%s\ntree=%s\nparent=%s\n' \
+            "$CANDIDATE_COMMIT" "$CANDIDATE_TREE" "$BASE_COMMIT" \
+            | tee clean-adaptive-candidate.identity
 
       - name: Retain exact clean candidate archive
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: clean-adaptive-candidate-f784ece19-${{ github.sha }}
+          name: clean-adaptive-candidate-${{ github.sha }}
           path: |
-            clean-adaptive-candidate-f784ece19.tar.gz
-            clean-adaptive-candidate-f784ece19.sha256
+            clean-adaptive-candidate.tar.gz
+            clean-adaptive-candidate.sha256
+            clean-adaptive-candidate.identity
           if-no-files-found: error
           retention-days: 7
