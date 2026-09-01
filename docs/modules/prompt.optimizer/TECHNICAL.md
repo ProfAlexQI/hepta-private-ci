@@ -326,3 +326,69 @@ For `prompt.optimizer`, this document grants no runtime, production, model, prov
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+<!-- BEGIN GENERATED EXACT REGISTRY PROJECTION -->
+### Exact closed-world registry projection
+
+This generated projection binds `prompt.optimizer` to the current canonical contract, protocol, data, delivery and threat registries. The registries remain authoritative; this block is a digest-checked documentation projection.
+
+**Produced contracts:**
+- `ModulePort::prompt.optimizer::context.compiler`
+- `ModulePort::prompt.optimizer::intelligence.control`
+- `PromptCandidateSetReceiptV1`
+- `PromptExerciseDecisionV1`
+- `PromptPortfolioReceiptV1`
+- `PromptPricingReceiptV1`
+
+**Consumed contracts:**
+- `CandidateSetCompletenessReceiptV1`
+- `DomainRead::learning_artifact_registryV1`
+- `DomainRead::ndu_preference_projectionV1`
+- `DomainRead::ndu_utility_projectionV1`
+- `DomainRead::operator_sensor_core_registryV1`
+- `DomainRead::prompt_factor_lifecycleV1`
+- `DomainRead::prompt_factor_registryV1`
+- `DomainRead::prompt_realization_registryV1`
+- `ModulePort::learning.artifacts::prompt.optimizer`
+- `ModulePort::memory.retrieval::prompt.optimizer`
+- `ModulePort::platform.types::prompt.optimizer`
+- `ModulePort::prompt.registry::prompt.optimizer`
+- `ModulePort::utility.ndu::prompt.optimizer`
+- `NduPreferenceStateV1`
+- `ObjectiveFunctionV1`
+- `PromptFactorV1`
+- `PromptRealizationV1`
+
+**Typed protocols:**
+- `CandidateSetCompletenessReceiptV1`
+- `NduPreferenceStateV1`
+- `ObjectiveFunctionV1`
+- `PromptCandidateSetReceiptV1`
+- `PromptExerciseDecisionV1`
+- `PromptFactorV1`
+- `PromptPortfolioReceiptV1`
+- `PromptPricingReceiptV1`
+- `PromptRealizationV1`
+
+**Owned data domains:**
+- None.
+
+**Read data domains:**
+- `candidate_set_completeness_receipt_v1`
+- `learning_artifact_registry`
+- `ndu_preference_projection`
+- `ndu_utility_projection`
+- `operator_sensor_core_registry`
+- `prompt_factor_lifecycle`
+- `prompt_factor_registry`
+- `prompt_realization_registry`
+
+**Work packages:**
+- `PIM-0-PROMPT-INTERVENTION-CONTRACTS`
+- `PIM-2-PROMPT-PRICING-PORTFOLIO-SHADOW`
+- `PIM-3-FACTOR-EVOLUTION`
+
+**Owned threats:**
+- `prompt_candidate_selection_bias`
+- `prompt_factor_interference`
+
+<!-- END GENERATED EXACT REGISTRY PROJECTION -->

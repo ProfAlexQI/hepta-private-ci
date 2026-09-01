@@ -1,0 +1,417 @@
+{
+  "schema": "hepta.paper-traceability.v1",
+  "schemaVersion": 1,
+  "documentClass": "canonical_registry",
+  "authorityScope": "paper_identity_claim_scope_assumption_mapping_nonclaim_and_hepta_extension_source",
+  "planId": "HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN",
+  "planVersion": "8.0.0",
+  "papers": [
+    {
+      "id": "PAPER-NDU-FOUNDATIONS-2024",
+      "title": "Neural Foundations",
+      "author": "Qian Qi",
+      "dateWritten": "2024-12-25",
+      "publication": "SSRN 5072524",
+      "canonicalUrl": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5072524",
+      "sourceClass": "working_paper",
+      "claimsUsed": [
+        "resource_constrained_subject",
+        "endogenous_preference_state",
+        "recursive_utility_framing",
+        "neural_parameterization_motivation"
+      ],
+      "nonClaims": [
+        "no_hepta_hierarchy_proof",
+        "no_causal_policy_efficacy_proof",
+        "no_biological_mechanism_proof",
+        "no_autonomous_software_iteration_proof"
+      ],
+      "doi": "10.2139/ssrn.5072524",
+      "sourceLock": {
+        "doi": "10.2139/ssrn.5072524",
+        "pageCount": 173,
+        "postedDate": "2025-02-18",
+        "identityClass": "publisher_identifier_and_metadata",
+        "publisher": "SSRN",
+        "recordId": "5072524",
+        "contentDigestAlgorithm": null,
+        "contentDigest": null,
+        "contentDigestStatus": "not_required_for_abstract_scoped_claims",
+        "claimScope": "publisher_abstract_and_metadata_only",
+        "canonicalUrl": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5072524",
+        "verifiedTitle": "Neural Foundations",
+        "verifiedAuthor": "Qian Qi",
+        "verifiedDateWritten": "2024-12-25",
+        "verificationStatus": "verified"
+      },
+      "claimAnchors": [
+        {
+          "claim": "resource_constrained_subject",
+          "sourceSection": "publisher_abstract",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "endogenous_preference_state",
+          "sourceSection": "publisher_abstract",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "recursive_utility_framing",
+          "sourceSection": "publisher_abstract",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "neural_parameterization_motivation",
+          "sourceSection": "publisher_abstract",
+          "verificationStatus": "verified"
+        }
+      ],
+      "nonClaimAnchors": [
+        {
+          "nonClaim": "no_hepta_hierarchy_proof",
+          "basis": "explicit_engineering_non_substitution_boundary"
+        },
+        {
+          "nonClaim": "no_causal_policy_efficacy_proof",
+          "basis": "explicit_engineering_non_substitution_boundary"
+        },
+        {
+          "nonClaim": "no_biological_mechanism_proof",
+          "basis": "explicit_engineering_non_substitution_boundary"
+        },
+        {
+          "nonClaim": "no_autonomous_software_iteration_proof",
+          "basis": "explicit_engineering_non_substitution_boundary"
+        }
+      ]
+    },
+    {
+      "id": "PAPER-NDU-UPA-2025",
+      "title": "Universal Preference Approximation",
+      "author": "Qian Qi",
+      "dateWritten": "2025-01-20",
+      "publication": "SSRN 5125219",
+      "canonicalUrl": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5125219",
+      "sourceClass": "working_paper",
+      "claimsUsed": [
+        "continuous_time_fbsde_preference_process",
+        "continuous_time_resnet_preference_parameterization",
+        "resnet_aggregator_approximation",
+        "weakly_compact_admissible_process_scope"
+      ],
+      "nonClaims": [
+        "no_identifiability_from_hepta_telemetry",
+        "no_hierarchical_coupling_stability_proof",
+        "no_production_learning_efficacy_proof",
+        "no_authority_safety_proof"
+      ],
+      "doi": "10.2139/ssrn.5125219",
+      "sourceLock": {
+        "doi": "10.2139/ssrn.5125219",
+        "pageCount": 73,
+        "postedDate": "2025-02-24",
+        "identityClass": "publisher_identifier_and_metadata",
+        "publisher": "SSRN",
+        "recordId": "5125219",
+        "contentDigestAlgorithm": null,
+        "contentDigest": null,
+        "contentDigestStatus": "not_required_for_abstract_scoped_claims",
+        "claimScope": "publisher_abstract_and_metadata_only",
+        "canonicalUrl": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5125219",
+        "verifiedTitle": "Universal Preference Approximation",
+        "verifiedAuthor": "Qian Qi",
+        "verifiedDateWritten": "2025-01-20",
+        "verificationStatus": "verified"
+      },
+      "claimAnchors": [
+        {
+          "claim": "continuous_time_fbsde_preference_process",
+          "sourceSection": "publisher_abstract",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "continuous_time_resnet_preference_parameterization",
+          "sourceSection": "publisher_abstract",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "resnet_aggregator_approximation",
+          "sourceSection": "publisher_abstract",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "weakly_compact_admissible_process_scope",
+          "sourceSection": "publisher_abstract",
+          "verificationStatus": "verified"
+        }
+      ],
+      "nonClaimAnchors": [
+        {
+          "nonClaim": "no_identifiability_from_hepta_telemetry",
+          "basis": "explicit_engineering_non_substitution_boundary"
+        },
+        {
+          "nonClaim": "no_hierarchical_coupling_stability_proof",
+          "basis": "explicit_engineering_non_substitution_boundary"
+        },
+        {
+          "nonClaim": "no_production_learning_efficacy_proof",
+          "basis": "explicit_engineering_non_substitution_boundary"
+        },
+        {
+          "nonClaim": "no_authority_safety_proof",
+          "basis": "explicit_engineering_non_substitution_boundary"
+        }
+      ]
+    },
+    {
+      "id": "PAPER-NDU-EU-2025",
+      "title": "Existence and Uniqueness of Neural Differential Utility",
+      "author": "Qian Qi",
+      "dateWritten": "2025-04-25",
+      "publication": "SSRN 5267854",
+      "canonicalUrl": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5267854",
+      "sourceClass": "working_paper",
+      "claimsUsed": [
+        "general_multidimensional_square_integrable_martingale",
+        "distinct_forward_and_backward_driver_components",
+        "forward_preference_state",
+        "backward_utility_aggregator",
+        "existence_and_uniqueness_require_explicit_conditions",
+        "optimal_control_requires_regularity_growth_concavity_and_weak_to_strong_continuity"
+      ],
+      "nonClaims": [
+        "no_hepta_event_discretization_error_bound",
+        "no_hepta_latent_state_identifiability_proof",
+        "no_hepta_hierarchy_stability_proof",
+        "no_longitudinal_causal_efficacy_proof"
+      ],
+      "doi": "10.2139/ssrn.5267854",
+      "sourceLock": {
+        "doi": "10.2139/ssrn.5267854",
+        "pageCount": 43,
+        "postedDate": "2025-05-28",
+        "identityClass": "publisher_identifier_and_metadata",
+        "publisher": "SSRN",
+        "recordId": "5267854",
+        "contentDigestAlgorithm": null,
+        "contentDigest": null,
+        "contentDigestStatus": "not_required_for_abstract_scoped_claims",
+        "claimScope": "publisher_abstract_and_metadata_only",
+        "canonicalUrl": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5267854",
+        "verifiedTitle": "Existence and Uniqueness of Neural Differential Utility",
+        "verifiedAuthor": "Qian Qi",
+        "verifiedDateWritten": "2025-04-25",
+        "verificationStatus": "verified"
+      },
+      "claimAnchors": [
+        {
+          "claim": "general_multidimensional_square_integrable_martingale",
+          "sourceSection": "publisher_abstract",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "distinct_forward_and_backward_driver_components",
+          "sourceSection": "publisher_abstract",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "forward_preference_state",
+          "sourceSection": "publisher_abstract",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "backward_utility_aggregator",
+          "sourceSection": "publisher_abstract",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "existence_and_uniqueness_require_explicit_conditions",
+          "sourceSection": "publisher_abstract",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "optimal_control_requires_regularity_growth_concavity_and_weak_to_strong_continuity",
+          "sourceSection": "publisher_abstract",
+          "verificationStatus": "verified"
+        }
+      ],
+      "nonClaimAnchors": [
+        {
+          "nonClaim": "no_hepta_event_discretization_error_bound",
+          "basis": "explicit_engineering_non_substitution_boundary"
+        },
+        {
+          "nonClaim": "no_hepta_latent_state_identifiability_proof",
+          "basis": "explicit_engineering_non_substitution_boundary"
+        },
+        {
+          "nonClaim": "no_hepta_hierarchy_stability_proof",
+          "basis": "explicit_engineering_non_substitution_boundary"
+        },
+        {
+          "nonClaim": "no_longitudinal_causal_efficacy_proof",
+          "basis": "explicit_engineering_non_substitution_boundary"
+        }
+      ]
+    },
+    {
+      "id": "PAPER-HOLDER-Q-2026",
+      "title": "Deep Q-Learning on Hölder Spaces",
+      "author": "Qian Qi",
+      "dateWritten": "2026-06-15",
+      "publication": "Proceedings of Machine Learning Research 336, COLT 2026",
+      "canonicalUrl": "https://proceedings.mlr.press/v336/qi26a.html",
+      "fullTextUrl": "https://arxiv.org/pdf/2606.16846",
+      "sourceClass": "peer_reviewed_conference_paper",
+      "claimsUsed": [
+        "continuous_state_continuous_action_controlled_diffusion",
+        "uniform_ellipticity",
+        "holder_regular_coefficients",
+        "state_smoothing_action_lipschitz_anisotropy",
+        "tensor_product_deeponet",
+        "stiffness_complexity_tradeoff",
+        "quasi_uniform_sensor_geometry",
+        "monotone_positive_reconstruction",
+        "near_greedy_residual_scope"
+      ],
+      "nonClaims": [
+        "no_full_sampled_dqn_convergence_theorem",
+        "no_exploration_replay_sgd_convergence_proof",
+        "no_discrete_jump_axis_regularization_proof",
+        "no_hepta_policy_efficacy_proof"
+      ],
+      "doi": null,
+      "sourceLock": {
+        "doi": null,
+        "pageCount": 2,
+        "postedDate": "2026-06-29",
+        "identityClass": "publisher_pdf_sha256",
+        "publisher": "Proceedings of Machine Learning Research",
+        "recordId": "pmlr-v336-qi26a",
+        "contentDigestAlgorithm": "sha256",
+        "contentDigest": "19892c98ba43ba1c01e0d4d01859f0d1e3bce601808414543f182b630338f60a",
+        "contentLengthBytes": 98363,
+        "contentDigestStatus": "verified",
+        "claimScope": "publisher_abstract_and_paper",
+        "officialPdfUrl": "https://raw.githubusercontent.com/mlresearch/v336/main/assets/qi26a/qi26a.pdf",
+        "canonicalUrl": "https://proceedings.mlr.press/v336/qi26a.html",
+        "verifiedTitle": "Deep Q-Learning on Hölder Spaces",
+        "verifiedAuthor": "Qian Qi",
+        "verifiedDateWritten": "2026-06-15",
+        "verificationStatus": "verified"
+      },
+      "claimAnchors": [
+        {
+          "claim": "continuous_state_continuous_action_controlled_diffusion",
+          "sourceSection": "publisher_abstract_or_paper",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "uniform_ellipticity",
+          "sourceSection": "publisher_abstract_or_paper",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "holder_regular_coefficients",
+          "sourceSection": "publisher_abstract_or_paper",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "state_smoothing_action_lipschitz_anisotropy",
+          "sourceSection": "publisher_abstract_or_paper",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "tensor_product_deeponet",
+          "sourceSection": "publisher_abstract_or_paper",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "stiffness_complexity_tradeoff",
+          "sourceSection": "publisher_abstract_or_paper",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "quasi_uniform_sensor_geometry",
+          "sourceSection": "publisher_abstract_or_paper",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "monotone_positive_reconstruction",
+          "sourceSection": "publisher_abstract_or_paper",
+          "verificationStatus": "verified"
+        },
+        {
+          "claim": "near_greedy_residual_scope",
+          "sourceSection": "publisher_abstract_or_paper",
+          "verificationStatus": "verified"
+        }
+      ],
+      "nonClaimAnchors": [
+        {
+          "nonClaim": "no_full_sampled_dqn_convergence_theorem",
+          "basis": "explicit_engineering_non_substitution_boundary"
+        },
+        {
+          "nonClaim": "no_exploration_replay_sgd_convergence_proof",
+          "basis": "explicit_engineering_non_substitution_boundary"
+        },
+        {
+          "nonClaim": "no_discrete_jump_axis_regularization_proof",
+          "basis": "explicit_engineering_non_substitution_boundary"
+        },
+        {
+          "nonClaim": "no_hepta_policy_efficacy_proof",
+          "basis": "explicit_engineering_non_substitution_boundary"
+        }
+      ]
+    }
+  ],
+  "heptaExtensions": [
+    "system_domain_agent_episode_hierarchy",
+    "event_sourced_discretization",
+    "deterministic_authority_truth_and_deletion_axes",
+    "smooth_jump_hard_state_partition",
+    "causal_propensity_and_independent_outcome_ledger",
+    "next_snapshot_only_artifacts",
+    "functional_biomimicry_hypotheses",
+    "governed_self_iteration_and_role_separation",
+    "unlearning_non_resurrection"
+  ],
+  "rules": {
+    "paperClaimRequiresApplicabilityOrWellPosednessCertificate": true,
+    "paperNonClaimsMustRemainExplicit": true,
+    "heptaExtensionsMayBeAttributedToPaper": false,
+    "paperReferenceMayAdvanceRuntimeClaim": false,
+    "documentationMayAdvanceCapabilityClaim": false
+  },
+  "authorityFlags": {
+    "runtimeAuthority": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalFilesystemMutation": false,
+    "secretOperation": false,
+    "matrixSend": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "canonicalSelection": false,
+    "merge": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  },
+  "sourceLockPolicy": {
+    "publisherIdentityRequired": true,
+    "publisherIdentifierAndMetadataMayLockAbstractScopedWorkingPaperClaims": true,
+    "contentDigestRequiredForPeerReviewedPdfClaims": true,
+    "htmlChallengeOrAccessDeniedBodyMaySatisfyPdfDigest": false,
+    "retrievalFailureMayAdvanceClaim": false,
+    "claimAnchorRequiredForEveryUsedClaim": true,
+    "paperReferenceMayAdvanceRuntimeClaim": false
+  }
+}

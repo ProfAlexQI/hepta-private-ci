@@ -87,7 +87,19 @@
     "docs/modules/ui.control/TECHNICAL.md",
     "docs/modules/ui.native/TECHNICAL.md",
     "docs/modules/control.runtime/TECHNICAL.md",
-    "docs/modules/control.engineering/TECHNICAL.md"
+    "docs/modules/control.engineering/TECHNICAL.md",
+    "docs/learning/README.md",
+    "docs/learning/ALGORITHM_SPECS.json",
+    "docs/learning/PAPER_TRACEABILITY.json",
+    "docs/learning/ALGORITHM_STATUS.md",
+    "docs/learning/NDU_FBSDE_SPEC.md",
+    "docs/learning/HOLDER_BELLMAN_SPEC.md",
+    "docs/learning/CAUSAL_LONGITUDINAL_SPEC.md",
+    "docs/learning/NEURAL_BIOMIMICRY_SPEC.md",
+    "docs/learning/SELF_ITERATION_SPEC.md",
+    "docs/learning/REFERENCE_CONFORMANCE_SPEC.md",
+    "scripts/hepta-algorithm-docs.py",
+    ".github/workflows/hepta-algorithm-docs.yml"
   ],
   "singleSourceRules": [
     "only DEVELOPMENT.md defines global policy in prose",
@@ -137,6 +149,10 @@
     {
       "id": "versioned-development-plan",
       "regex": "(^|/)[^/]*(?:DEVELOPMENT_PLAN|MASTER_PLAN|IMPLEMENTATION_PLAN|UPGRADE_PLAN|ROADMAP|CURRENT_TRUTH|GAP_LEDGER|QUALIFICATION_STATUS)(?:_[^/]*)?\\.(?:md|json|ya?ml)$"
+    },
+    {
+      "id": "temporary-adaptive-document-installer",
+      "regex": "^(?:\\.github/hepta-doc-closure\\.part[0-9]+|\\.github/workflows/paper-fingerprint-discovery\\.yml)$"
     }
   ],
   "preservePolicy": {
@@ -148,6 +164,10 @@
   "generatedProjections": {
     "docs/STATUS.md": {
       "generator": "python3 scripts/hepta-docs.py generate-status",
+      "handEditingAllowed": false
+    },
+    "docs/learning/ALGORITHM_STATUS.md": {
+      "generator": "python3 scripts/hepta-algorithm-docs.py generate-status",
       "handEditingAllowed": false
     }
   },
@@ -530,9 +550,13 @@
         "functionalBiomimicry",
         "plasticity",
         "selfIteration",
-        "authorityFlags"
+        "authorityFlags",
+        "canonicalProtocolIds",
+        "ledgerStateMachine",
+        "deterministicBaselines",
+        "statisticalQualificationProfile"
       ],
-      "recursiveShapeSha256": "c83860ac5bbd48fd321db3733ad8ad3c556fe56c13d3298ee4e212e9e163f9c4"
+      "recursiveShapeSha256": "09c226c3e9b966b35d00cd45940a96b40adef085fb879d2ac880a1307c294164"
     },
     {
       "path": "docs/learning/EXPERIMENTS.json",
@@ -545,9 +569,10 @@
         "planVersion",
         "families",
         "requirements",
-        "authorityFlags"
+        "authorityFlags",
+        "quantitativeProfiles"
       ],
-      "recursiveShapeSha256": "ae983cd680d46149c7e2e47117187289c16fd83215365f370f255750972ceab5"
+      "recursiveShapeSha256": "e57542444daf32a69eeb50cb2c663d9a4148d3a7bb3147ed20a5732cff920e8e"
     },
     {
       "path": "docs/learning/ARTIFACTS.json",
@@ -563,9 +588,10 @@
         "loadPolicy",
         "lineage",
         "authority",
-        "authorityFlags"
+        "authorityFlags",
+        "lifecycleStateMachine"
       ],
-      "recursiveShapeSha256": "1fae7ec0ded19ad4affea37841dc69ed11623601c520d320786a050a2b3116ae"
+      "recursiveShapeSha256": "ea2c8e5e3c70b695ed9c77fb5109f04b004e2552b37cc3f28e7350739b777153"
     },
     {
       "path": "docs/evidence/CLAIMS.json",
@@ -626,6 +652,48 @@
         "authorityFlags"
       ],
       "recursiveShapeSha256": "63d3f915c5d818e94843e6fb0a37427ea1528ab1c7ade0e0be49ad9201930f97"
+    },
+    {
+      "path": "docs/learning/ALGORITHM_SPECS.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "documentationGapState",
+        "capabilityClaimState",
+        "paperTraceabilityPath",
+        "paperTraceabilityBlobSha",
+        "requiredSectionProfile",
+        "criticalModules",
+        "closureGates",
+        "documents",
+        "rules",
+        "authorityFlags",
+        "globalClosure",
+        "requiredProtocols",
+        "requiredDataDomains"
+      ],
+      "recursiveShapeSha256": "452ffedbd9ee64e3b6f5cb809bc5be4e313a20f28d9f3f6eb8cd45437af1da4e"
+    },
+    {
+      "path": "docs/learning/PAPER_TRACEABILITY.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "papers",
+        "heptaExtensions",
+        "rules",
+        "authorityFlags",
+        "sourceLockPolicy"
+      ],
+      "recursiveShapeSha256": "ba9ad35ea0c87e49b27f2dd0a418f071a5514c0ed93c97719eecb135d027d9db"
     }
   ],
   "moduleDocumentationPolicy": {
