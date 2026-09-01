@@ -76,85 +76,93 @@ jobs:
 
           path = Path("scripts/hepta-docs.py")
           source = path.read_text(encoding="utf-8")
+          had_trailing_newline = source.endswith("\n")
+          lines = source.splitlines()
 
-          helper_anchor = "def acyclic(nodes, edges, label):\n"
-          helper = "\n".join(
-              [
-                  "def deleted_path_reference_present(text: str, deleted_path: str) -> bool:",
-                  "    if deleted_path in text:",
-                  "        return True",
-                  "    basename = re.escape(Path(deleted_path).name)",
-                  "    return re.search(",
-                  '        rf"(?<![A-Za-z0-9_.-]){basename}(?![A-Za-z0-9_.-])",',
-                  "        text,",
-                  "    ) is not None",
-                  "",
-                  "",
-              ]
-          )
-          if source.count(helper_anchor) != 1:
-              raise SystemExit("could not locate helper insertion anchor")
-          source = source.replace(helper_anchor, helper + helper_anchor, 1)
+          needle = "terms = (old_path, Path(old_path).name)"
+          matches = [index for index, line in enumerate(lines) if line.strip() == needle]
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected one deleted JSON consumer scan, found {len(matches)}"
+              )
 
-          old_consumer_scan = "\n".join(
-              [
-                  "        terms = (old_path, Path(old_path).name)",
-                  "        for path, text in retained:",
-                  "            if any(term in text for term in terms):",
-                  '                consumer_hits.append({"retainedPath": path, "deletedJson": old_path})',
-              ]
-          )
-          new_consumer_scan = "\n".join(
-              [
-                  "        for path, text in retained:",
-                  "            if deleted_path_reference_present(text, old_path):",
-                  '                consumer_hits.append({"retainedPath": path, "deletedJson": old_path})',
-              ]
-          )
-          if source.count(old_consumer_scan) != 1:
-              raise SystemExit("could not locate deleted JSON consumer scan")
-          source = source.replace(old_consumer_scan, new_consumer_scan, 1)
+          index = matches[0]
+          expected = [
+              needle,
+              "for path, text in retained:",
+              "if any(term in text for term in terms):",
+              'consumer_hits.append({"retainedPath": path, "deletedJson": old_path})',
+          ]
+          actual = [line.strip() for line in lines[index : index + len(expected)]]
+          if actual != expected:
+              raise SystemExit(
+                  "deleted JSON consumer scan shape changed: " + repr(actual)
+              )
 
-          self_test_anchor = "def self_test():\n    cases = []\n"
-          self_test_prefix = "\n".join(
-              [
-                  "def self_test():",
-                  "    cases = []",
-                  "    need(",
-                  "        not deleted_path_reference_present(",
-                  '            "https://bcr.bazel.build/bazel_registry.json",',
-                  '            "docs/historical/registry.json",',
-                  "        ),",
-                  '        "deleted JSON basename boundary false positive",',
-                  "    )",
-                  "    need(",
-                  "        deleted_path_reference_present(",
-                  '            \'consumer = "registry.json"\',',
-                  '            "docs/historical/registry.json",',
-                  "        ),",
-                  '        "deleted JSON basename boundary false negative",',
-                  "    )",
-                  '    cases.append("deleted_json_consumer_boundary")',
-                  "",
-              ]
-          )
-          if source.count(self_test_anchor) != 1:
-              raise SystemExit("could not locate self-test insertion anchor")
-          source = source.replace(self_test_anchor, self_test_prefix, 1)
-          path.write_text(source, encoding="utf-8")
+          indent = lines[index][: len(lines[index]) - len(lines[index].lstrip())]
+          replacement = [
+              indent + "basename = re.escape(Path(old_path).name)",
+              indent + "basename_pattern = re.compile(",
+              indent
+              + '    rf"(?<![A-Za-z0-9_.-]){basename}(?![A-Za-z0-9_.-])"',
+              indent + ")",
+              indent + "for path, text in retained:",
+              indent + "    if old_path in text or basename_pattern.search(text):",
+              indent
+              + '        consumer_hits.append({"retainedPath": path, "deletedJson": old_path})',
+          ]
+          lines[index : index + len(expected)] = replacement
+
+          self_test_matches = [
+              index for index, line in enumerate(lines) if line.strip() == "def self_test():"
+          ]
+          if len(self_test_matches) != 1:
+              raise SystemExit(
+                  f"expected one self_test definition, found {len(self_test_matches)}"
+              )
+          self_test_index = self_test_matches[0]
+          if lines[self_test_index + 1].strip() != "cases = []":
+              raise SystemExit("self_test initialization shape changed")
+
+          test_lines = [
+              '    deleted_json_basename = re.escape(Path("docs/historical/registry.json").name)',
+              "    deleted_json_basename_pattern = re.compile(",
+              '        rf"(?<![A-Za-z0-9_.-]){deleted_json_basename}(?![A-Za-z0-9_.-])"',
+              "    )",
+              "    need(",
+              "        deleted_json_basename_pattern.search(",
+              '            "https://bcr.bazel.build/bazel_registry.json"',
+              "        )",
+              "        is None,",
+              '        "deleted JSON basename boundary false positive",',
+              "    )",
+              "    need(",
+              "        deleted_json_basename_pattern.search(",
+              '            \'consumer = "registry.json"\'',
+              "        )",
+              "        is not None,",
+              '        "deleted JSON basename boundary false negative",',
+              "    )",
+              '    cases.append("deleted_json_consumer_boundary")',
+          ]
+          lines[self_test_index + 2 : self_test_index + 2] = test_lines
+
+          updated = "\n".join(lines)
+          if had_trailing_newline:
+              updated += "\n"
+          path.write_text(updated, encoding="utf-8")
           PY
 
       - name: Format with repository-locked Ruff
         run: uv run --frozen --project scripts ruff format scripts/hepta-docs.py
 
-      - name: Refresh canonical generated artifacts
+      - name: Refresh canonical generated status
         shell: bash
         run: |
           set -euo pipefail
-          just bazel-lock-update
           stale_path='docs/hepta-vnext/dropbox-current-2026-08-27/historical/qualification/hepta-tree-hygiene-20260827-r25/registry.json'
           if grep -Fq "${stale_path}" MODULE.bazel.lock; then
-            echo "MODULE.bazel.lock still contains the exact deleted JSON path" >&2
+            echo "MODULE.bazel.lock contains the exact deleted JSON path" >&2
             exit 1
           fi
           python3 scripts/hepta-docs.py generate-status
@@ -203,7 +211,7 @@ jobs:
               path="${line:3}"
               path="${path##* -> }"
               case "${path}" in
-                MODULE.bazel.lock | docs/STATUS.md | scripts/hepta-docs.py | \
+                docs/STATUS.md | scripts/hepta-docs.py | \
                   .github/workflows/hepta-one-shot-docs-patch.yml | \
                   scripts/.hepta-docs-payload/*)
                   ;;
@@ -222,7 +230,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A -- \
-            MODULE.bazel.lock \
             docs/STATUS.md \
             scripts/hepta-docs.py \
             .github/workflows/hepta-one-shot-docs-patch.yml \
