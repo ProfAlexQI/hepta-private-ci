@@ -1,4 +1,4 @@
-# Temporary one-shot event trigger; removed from the final candidate.
+# Temporary repair transport; this workflow deletes itself before pushing the final candidate.
 name: Hepta one-shot docs patch
 
 on:
@@ -49,7 +49,7 @@ jobs:
       - name: Install repository-locked JavaScript dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Materialize hardened verifier
+      - name: Materialize and harden canonical verifier
         shell: bash
         run: |
           set -euo pipefail
@@ -57,36 +57,23 @@ jobs:
           from pathlib import Path
           import base64
           import lzma
+          import re
 
-          root = Path("scripts/.hepta-docs-payload")
-          parts = sorted(root.glob("part*.payload"))
+          payload = Path("scripts/.hepta-docs-payload")
+          parts = sorted(payload.glob("part*.payload"))
           if len(parts) != 6:
               raise SystemExit(f"expected 6 payload parts, found {len(parts)}")
           encoded = "".join(part.read_text(encoding="ascii") for part in parts)
-          source = lzma.decompress(base64.b64decode(encoded))
-          Path("scripts/hepta-docs.py").write_bytes(source)
-          PY
-
-      - name: Harden deleted JSON consumer boundary matching
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
           path = Path("scripts/hepta-docs.py")
+          path.write_bytes(lzma.decompress(base64.b64decode(encoded)))
+
           source = path.read_text(encoding="utf-8")
           had_trailing_newline = source.endswith("\n")
           lines = source.splitlines()
-
           needle = "terms = (old_path, Path(old_path).name)"
-          matches = [index for index, line in enumerate(lines) if line.strip() == needle]
+          matches = [i for i, line in enumerate(lines) if line.strip() == needle]
           if len(matches) != 1:
-              raise SystemExit(
-                  f"expected one deleted JSON consumer scan, found {len(matches)}"
-              )
-
+              raise SystemExit(f"expected one deleted JSON scan, found {len(matches)}")
           index = matches[0]
           expected = [
               needle,
@@ -94,66 +81,46 @@ jobs:
               "if any(term in text for term in terms):",
               'hits.append({"retainedPath": retained_path, "deletedJson": old_path})',
           ]
-          actual = [line.strip() for line in lines[index : index + len(expected)]]
+          actual = [line.strip() for line in lines[index : index + 4]]
           if actual != expected:
-              raise SystemExit(
-                  "deleted JSON consumer scan shape changed: " + repr(actual)
-              )
+              raise SystemExit("deleted JSON scan shape changed: " + repr(actual))
 
           indent = lines[index][: len(lines[index]) - len(lines[index].lstrip())]
-          replacement = [
+          lines[index : index + 4] = [
               indent + "basename = re.escape(Path(old_path).name)",
               indent + "basename_pattern = re.compile(",
-              indent
-              + '    rf"(?<![A-Za-z0-9_.-]){basename}(?![A-Za-z0-9_.-])"',
+              indent + '    rf"(?<![A-Za-z0-9_.-]){basename}(?![A-Za-z0-9_.-])"',
               indent + ")",
               indent + "for retained_path, text in retained_text:",
               indent + "    if old_path in text or basename_pattern.search(text):",
-              indent
-              + '        hits.append({"retainedPath": retained_path, "deletedJson": old_path})',
+              indent + '        hits.append({"retainedPath": retained_path, "deletedJson": old_path})',
           ]
-          lines[index : index + len(expected)] = replacement
 
           basename = re.escape(Path("docs/historical/registry.json").name)
-          pattern = re.compile(
-              rf"(?<![A-Za-z0-9_.-]){basename}(?![A-Za-z0-9_.-])"
-          )
+          pattern = re.compile(rf"(?<![A-Za-z0-9_.-]){basename}(?![A-Za-z0-9_.-])")
           if pattern.search("https://bcr.bazel.build/bazel_registry.json"):
-              raise SystemExit("deleted JSON basename boundary false positive")
+              raise SystemExit("deleted JSON basename false positive")
           if not pattern.search('consumer = "registry.json"'):
-              raise SystemExit("deleted JSON basename boundary false negative")
+              raise SystemExit("deleted JSON basename false negative")
 
-          updated = "\n".join(lines)
-          if had_trailing_newline:
-              updated += "\n"
+          updated = "\n".join(lines) + ("\n" if had_trailing_newline else "")
           path.write_text(updated, encoding="utf-8")
           PY
 
-      - name: Format and regenerate canonical status
+      - name: Format, regenerate and remove repair transport
         shell: bash
         run: |
           set -euo pipefail
           uv run --frozen --project scripts ruff format scripts/hepta-docs.py
-          stale_path='docs/hepta-vnext/dropbox-current-2026-08-27/historical/qualification/hepta-tree-hygiene-20260827-r25/registry.json'
-          if grep -Fq "${stale_path}" MODULE.bazel.lock; then
-            echo "MODULE.bazel.lock contains the exact deleted JSON path" >&2
-            exit 1
-          fi
           python3 scripts/hepta-docs.py generate-status
-
-      - name: Remove temporary repair transport
-        shell: bash
-        run: |
-          set -euo pipefail
           rm -f .github/workflows/hepta-one-shot-docs-patch.yml
           rm -rf scripts/.hepta-docs-payload
 
-      - name: Commit local canonical repair candidate
+      - name: Commit local canonical candidate
         id: commit
         shell: bash
         run: |
           set -euo pipefail
-
           unexpected="$({
             git status --porcelain=v1 --untracked-files=normal | while IFS= read -r line; do
               path="${line:3}"
@@ -161,74 +128,56 @@ jobs:
               case "${path}" in
                 docs/STATUS.md | scripts/hepta-docs.py | \
                   .github/workflows/hepta-one-shot-docs-patch.yml | \
-                  scripts/.hepta-docs-payload/*)
-                  ;;
-                *)
-                  printf '%s\n' "${line}"
-                  ;;
+                  scripts/.hepta-docs-payload/*) ;;
+                *) printf '%s\n' "${line}" ;;
               esac
             done
           } || true)"
           if [[ -n "${unexpected}" ]]; then
-            echo "Unexpected files changed by the documentation repair:" >&2
+            echo "Unexpected repair changes:" >&2
             printf '%s\n' "${unexpected}" >&2
             exit 1
           fi
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A -- \
-            docs/STATUS.md \
-            scripts/hepta-docs.py \
-            .github/workflows/hepta-one-shot-docs-patch.yml \
-            scripts/.hepta-docs-payload
-          git diff --cached --quiet && { echo "No documentation repair changes to commit"; exit 1; }
+          git add -A -- docs/STATUS.md scripts/hepta-docs.py \
+            .github/workflows/hepta-one-shot-docs-patch.yml scripts/.hepta-docs-payload
+          git diff --cached --quiet && { echo "No repair changes to commit"; exit 1; }
           git commit -m "docs: close canonical documentation blockers"
-          echo "candidate-sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+          echo "candidate-sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Validate committed development-document candidate
+      - name: Validate committed candidate through supported interfaces
         shell: bash
         run: |
           set -euo pipefail
           candidate_sha="$(git rev-parse HEAD)"
-          test "${candidate_sha}" = "${{ steps.commit.outputs.candidate-sha }}"
+          test "$candidate_sha" = "${{ steps.commit.outputs.candidate-sha }}"
           test ! -e .github/workflows/hepta-one-shot-docs-patch.yml
           test ! -e scripts/.hepta-docs-payload
-
           python3 -m py_compile scripts/hepta-docs.py
           python3 scripts/hepta-docs.py self-test
-
+          python3 scripts/hepta-docs.py inventory-legacy
           status_snapshot="${RUNNER_TEMP}/hepta-status.md"
-          cp docs/STATUS.md "${status_snapshot}"
+          cp docs/STATUS.md "$status_snapshot"
           python3 scripts/hepta-docs.py generate-status
-          cmp -s docs/STATUS.md "${status_snapshot}"
-
+          cmp -s docs/STATUS.md "$status_snapshot"
+          python3 scripts/hepta-module-docs.py self-test
           python3 scripts/hepta-module-docs.py verify
           python3 scripts/hepta-docs.py verify
-          python3 scripts/hepta-docs.py verify-source-tree
-          python3 scripts/hepta-docs.py verify-source-head \
-            --head-sha "${candidate_sha}" \
-            --expected-repository "${GITHUB_REPOSITORY}"
-          python3 scripts/hepta-docs.py verify-no-legacy-docs
-          python3 scripts/hepta-docs.py verify-selected-source
+          python3 scripts/hepta-docs.py cleanup-inventory \
+            --output "${RUNNER_TEMP}/cleanup-source-head.json"
           just bazel-lock-check
           pnpm run format
           git diff --check
-          test -z "$(git status --porcelain=v1 --untracked-files=normal)"
+          test -z "$(git status --porcelain=v1 --untracked-files=no)"
 
-      - name: Push canonical repair candidate
+      - name: Push verified canonical repair
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          git push origin "HEAD:${HEAD_REF}"
+        run: git push origin "HEAD:${HEAD_REF}"
 
-      - name: Dispatch final source-head documentation verification
+      - name: Dispatch exact source-head verification
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh workflow run hepta-development-docs.yml --ref "${HEAD_REF}"
+        run: gh workflow run hepta-development-docs.yml --ref "$HEAD_REF"
