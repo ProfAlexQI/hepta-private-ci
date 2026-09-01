@@ -1,7 +1,7 @@
 use crate::{
-    ppm, validate_keys, validate_text, ContractError, CrossModalBinding, Digest32, EpisodeId,
-    EventId, MemoryScope, ModalityKind, ModalitySpanRef, TimeInterval, MAX_BINDINGS,
-    MAX_MODALITY_SPANS, MAX_PROVENANCE,
+    ContractError, CrossModalBinding, Digest32, EpisodeId, EventId, MAX_BINDINGS,
+    MAX_MODALITY_SPANS, MAX_PROVENANCE, MemoryScope, ModalityKind, ModalitySpanRef, TimeInterval,
+    ppm, validate_keys, validate_text,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -17,9 +17,7 @@ impl ProvenanceRef {
     fn validate(&self) -> Result<(), ContractError> {
         validate_text(&self.source_id, 256, "source id")?;
         if self.source_revision == 0 {
-            return Err(ContractError::Invalid(
-                "source revision must be non-zero",
-            ));
+            return Err(ContractError::Invalid("source revision must be non-zero"));
         }
         Ok(())
     }
@@ -28,21 +26,15 @@ impl ProvenanceRef {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MemoryLifecycle {
     Active,
-    Superseded {
-        by_event_id: EventId,
-    },
-    Tombstoned {
-        reason_sha256: Digest32,
-    },
+    Superseded { by_event_id: EventId },
+    Tombstoned { reason_sha256: Digest32 },
 }
 
 impl MemoryLifecycle {
     fn validate_for(&self, event_id: EventId) -> Result<(), ContractError> {
         match self {
             Self::Active | Self::Tombstoned { .. } => Ok(()),
-            Self::Superseded { by_event_id }
-                if *by_event_id != 0 && *by_event_id != event_id =>
-            {
+            Self::Superseded { by_event_id } if *by_event_id != 0 && *by_event_id != event_id => {
                 Ok(())
             }
             Self::Superseded { .. } => Err(ContractError::Invalid(

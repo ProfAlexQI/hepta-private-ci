@@ -1,6 +1,6 @@
 use crate::{
-    increasing, ppm, validate_bounded, validate_text, BindingId, ContractError, Digest32,
-    EventId, ModalityKind, PrivacyClass, SpanId, MAX_BINDING_SPANS,
+    BindingId, ContractError, Digest32, EventId, MAX_BINDING_SPANS, ModalityKind, PrivacyClass,
+    SpanId, increasing, ppm, validate_bounded, validate_text,
 };
 use std::collections::{BTreeMap, BTreeSet};
 

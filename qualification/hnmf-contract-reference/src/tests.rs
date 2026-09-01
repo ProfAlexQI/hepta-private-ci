@@ -66,25 +66,29 @@ fn digest_is_exact_lowercase_sha256_shape() {
 
 #[test]
 fn modality_range_must_match_modality() {
-    assert!(span(
-        1,
-        ModalityKind::Image,
-        SpanRange::ByteRange { start: 0, end: 4 }
-    )
-    .validate()
-    .is_err());
-    assert!(span(
-        1,
-        ModalityKind::Image,
-        SpanRange::PixelRect {
-            x: 0,
-            y: 0,
-            width: 8,
-            height: 8,
-        }
-    )
-    .validate()
-    .is_ok());
+    assert!(
+        span(
+            1,
+            ModalityKind::Image,
+            SpanRange::ByteRange { start: 0, end: 4 }
+        )
+        .validate()
+        .is_err()
+    );
+    assert!(
+        span(
+            1,
+            ModalityKind::Image,
+            SpanRange::PixelRect {
+                x: 0,
+                y: 0,
+                width: 8,
+                height: 8,
+            }
+        )
+        .validate()
+        .is_ok()
+    );
 }
 
 #[test]
@@ -194,15 +198,17 @@ fn graph_bounds_fail_closed() {
     let mut ledger = ContractLedger::default();
     ledger.append_event(event(1, 'a', "door")).unwrap();
     ledger.bind_node(10, BTreeSet::from([1])).unwrap();
-    assert!(ledger
-        .expand_associative_subgraph(
-            &BTreeSet::from([10]),
-            &principal(),
-            10,
-            MAX_GRAPH_HOPS + 1,
-            16,
-        )
-        .is_err());
+    assert!(
+        ledger
+            .expand_associative_subgraph(
+                &BTreeSet::from([10]),
+                &principal(),
+                10,
+                MAX_GRAPH_HOPS + 1,
+                16,
+            )
+            .is_err()
+    );
 }
 
 #[test]

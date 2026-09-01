@@ -1,6 +1,6 @@
 use crate::{
-    ContractError, Digest32, EventId, MemoryEvent, NodeId, PrincipalScope, MAX_CUE_SEEDS,
-    MAX_GRAPH_HOPS, MAX_SUBGRAPH_NODES,
+    ContractError, Digest32, EventId, MAX_CUE_SEEDS, MAX_GRAPH_HOPS, MAX_SUBGRAPH_NODES,
+    MemoryEvent, NodeId, PrincipalScope,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -100,9 +100,9 @@ impl ContractLedger {
         principal: &PrincipalScope,
         now_unix_ms: i64,
     ) -> Option<&MemoryEvent> {
-        self.events.get(&event_id).filter(|event| {
-            event.is_readable(principal, now_unix_ms, &self.revoked_sources)
-        })
+        self.events
+            .get(&event_id)
+            .filter(|event| event.is_readable(principal, now_unix_ms, &self.revoked_sources))
     }
 
     pub fn expand_associative_subgraph(

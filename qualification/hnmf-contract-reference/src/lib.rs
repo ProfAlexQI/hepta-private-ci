@@ -151,8 +151,7 @@ impl TimeInterval {
     }
 
     pub fn contains(self, now_unix_ms: i64) -> bool {
-        self.start_unix_ms <= now_unix_ms
-            && self.end_unix_ms.is_none_or(|end| now_unix_ms < end)
+        self.start_unix_ms <= now_unix_ms && self.end_unix_ms.is_none_or(|end| now_unix_ms < end)
     }
 }
 
@@ -208,9 +207,7 @@ pub(crate) fn validate_text(
     maximum_bytes: usize,
     name: &'static str,
 ) -> Result<(), ContractError> {
-    if value.trim().is_empty()
-        || value.len() > maximum_bytes
-        || value.chars().any(char::is_control)
+    if value.trim().is_empty() || value.len() > maximum_bytes || value.chars().any(char::is_control)
     {
         return Err(ContractError::Invalid(name));
     }
@@ -228,11 +225,7 @@ pub(crate) fn validate_bounded(
     Ok(())
 }
 
-pub(crate) fn increasing(
-    start: u64,
-    end: u64,
-    name: &'static str,
-) -> Result<(), ContractError> {
+pub(crate) fn increasing(start: u64, end: u64, name: &'static str) -> Result<(), ContractError> {
     if end <= start {
         return Err(ContractError::Invalid(name));
     }
