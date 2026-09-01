@@ -73,6 +73,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path("scripts/hepta-docs.py")
           source = path.read_text(encoding="utf-8")
@@ -113,39 +114,14 @@ jobs:
           ]
           lines[index : index + len(expected)] = replacement
 
-          self_test_matches = [
-              index for index, line in enumerate(lines) if line.strip() == "def self_test():"
-          ]
-          if len(self_test_matches) != 1:
-              raise SystemExit(
-                  f"expected one self_test definition, found {len(self_test_matches)}"
-              )
-          self_test_index = self_test_matches[0]
-          if lines[self_test_index + 1].strip() != "cases = []":
-              raise SystemExit("self_test initialization shape changed")
-
-          test_lines = [
-              '    deleted_json_basename = re.escape(Path("docs/historical/registry.json").name)',
-              "    deleted_json_basename_pattern = re.compile(",
-              '        rf"(?<![A-Za-z0-9_.-]){deleted_json_basename}(?![A-Za-z0-9_.-])"',
-              "    )",
-              "    need(",
-              "        deleted_json_basename_pattern.search(",
-              '            "https://bcr.bazel.build/bazel_registry.json"',
-              "        )",
-              "        is None,",
-              '        "deleted JSON basename boundary false positive",',
-              "    )",
-              "    need(",
-              "        deleted_json_basename_pattern.search(",
-              '            \'consumer = "registry.json"\'',
-              "        )",
-              "        is not None,",
-              '        "deleted JSON basename boundary false negative",',
-              "    )",
-              '    cases.append("deleted_json_consumer_boundary")',
-          ]
-          lines[self_test_index + 2 : self_test_index + 2] = test_lines
+          basename = re.escape(Path("docs/historical/registry.json").name)
+          pattern = re.compile(
+              rf"(?<![A-Za-z0-9_.-]){basename}(?![A-Za-z0-9_.-])"
+          )
+          if pattern.search("https://bcr.bazel.build/bazel_registry.json"):
+              raise SystemExit("deleted JSON basename boundary false positive")
+          if not pattern.search('consumer = "registry.json"'):
+              raise SystemExit("deleted JSON basename boundary false negative")
 
           updated = "\n".join(lines)
           if had_trailing_newline:
@@ -153,43 +129,17 @@ jobs:
           path.write_text(updated, encoding="utf-8")
           PY
 
-      - name: Format with repository-locked Ruff
-        run: uv run --frozen --project scripts ruff format scripts/hepta-docs.py
-
-      - name: Refresh canonical generated status
+      - name: Format and regenerate canonical status
         shell: bash
         run: |
           set -euo pipefail
+          uv run --frozen --project scripts ruff format scripts/hepta-docs.py
           stale_path='docs/hepta-vnext/dropbox-current-2026-08-27/historical/qualification/hepta-tree-hygiene-20260827-r25/registry.json'
           if grep -Fq "${stale_path}" MODULE.bazel.lock; then
             echo "MODULE.bazel.lock contains the exact deleted JSON path" >&2
             exit 1
           fi
           python3 scripts/hepta-docs.py generate-status
-
-      - name: Validate complete development-document closure
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m py_compile scripts/hepta-docs.py
-          python3 scripts/hepta-docs.py self-test
-
-          status_snapshot="${RUNNER_TEMP}/hepta-status.md"
-          cp docs/STATUS.md "${status_snapshot}"
-          python3 scripts/hepta-docs.py generate-status
-          cmp -s docs/STATUS.md "${status_snapshot}"
-
-          python3 scripts/hepta-module-docs.py verify
-          python3 scripts/hepta-docs.py verify
-          python3 scripts/hepta-docs.py verify-source-tree
-          python3 scripts/hepta-docs.py verify-source-head \
-            --head-sha "$(git rev-parse HEAD)" \
-            --expected-repository "${GITHUB_REPOSITORY}"
-          python3 scripts/hepta-docs.py verify-no-legacy-docs
-          python3 scripts/hepta-docs.py verify-selected-source
-          just bazel-lock-check
-          pnpm run format
-          git diff --check
 
       - name: Remove temporary repair transport
         shell: bash
@@ -198,10 +148,8 @@ jobs:
           rm -f .github/workflows/hepta-one-shot-docs-patch.yml
           rm -rf scripts/.hepta-docs-payload
 
-      - name: Commit canonical documentation repair
+      - name: Commit local canonical repair candidate
         id: commit
-        env:
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         shell: bash
         run: |
           set -euo pipefail
@@ -234,13 +182,49 @@ jobs:
             scripts/hepta-docs.py \
             .github/workflows/hepta-one-shot-docs-patch.yml \
             scripts/.hepta-docs-payload
-          git diff --cached --quiet && { echo "No documentation repair changes to commit"; exit 0; }
+          git diff --cached --quiet && { echo "No documentation repair changes to commit"; exit 1; }
           git commit -m "docs: close canonical documentation blockers"
+          echo "candidate-sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+
+      - name: Validate committed development-document candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_sha="$(git rev-parse HEAD)"
+          test "${candidate_sha}" = "${{ steps.commit.outputs.candidate-sha }}"
+          test ! -e .github/workflows/hepta-one-shot-docs-patch.yml
+          test ! -e scripts/.hepta-docs-payload
+
+          python3 -m py_compile scripts/hepta-docs.py
+          python3 scripts/hepta-docs.py self-test
+
+          status_snapshot="${RUNNER_TEMP}/hepta-status.md"
+          cp docs/STATUS.md "${status_snapshot}"
+          python3 scripts/hepta-docs.py generate-status
+          cmp -s docs/STATUS.md "${status_snapshot}"
+
+          python3 scripts/hepta-module-docs.py verify
+          python3 scripts/hepta-docs.py verify
+          python3 scripts/hepta-docs.py verify-source-tree
+          python3 scripts/hepta-docs.py verify-source-head \
+            --head-sha "${candidate_sha}" \
+            --expected-repository "${GITHUB_REPOSITORY}"
+          python3 scripts/hepta-docs.py verify-no-legacy-docs
+          python3 scripts/hepta-docs.py verify-selected-source
+          just bazel-lock-check
+          pnpm run format
+          git diff --check
+          test -z "$(git status --porcelain=v1 --untracked-files=normal)"
+
+      - name: Push canonical repair candidate
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
           git push origin "HEAD:${HEAD_REF}"
-          echo "pushed-sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
 
       - name: Dispatch final source-head documentation verification
-        if: steps.commit.outputs.pushed-sha != ''
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
