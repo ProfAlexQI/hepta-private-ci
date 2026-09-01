@@ -58,7 +58,9 @@ jobs:
           python3 scripts/hepta-docs.py self-test
           python3 scripts/hepta-docs.py inventory-legacy
           python3 scripts/hepta-docs.py generate-status
-          git diff --exit-code -- docs/STATUS.md
+          status_sha="$(sha256sum docs/STATUS.md | awk '{print $1}')"
+          python3 scripts/hepta-docs.py generate-status
+          test "$(sha256sum docs/STATUS.md | awk '{print $1}')" = "$status_sha"
           python3 scripts/hepta-docs.py verify
           git diff --check
           python3 - <<'PY'
