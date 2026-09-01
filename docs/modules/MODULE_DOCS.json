@@ -1,0 +1,2439 @@
+{
+  "schema": "hepta.module-document-index.v1",
+  "schemaVersion": 1,
+  "documentClass": "canonical_registry",
+  "authorityScope": "one_stable_technical_guide_and_exact_registry_projection_per_module",
+  "planId": "HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN",
+  "planVersion": "8.0.0",
+  "requiredDocumentCount": 40,
+  "requiredDocumentPattern": "docs/modules/<module-id>/TECHNICAL.md",
+  "validator": "python3 scripts/hepta-module-docs.py verify",
+  "modules": [
+    {
+      "module": "platform.types",
+      "path": "docs/modules/platform.types/TECHNICAL.md",
+      "sourceStatus": "existing_legacy_aggregate",
+      "bootstrapWorkPackage": "PLATFORM-0-TYPE-BOUNDARY",
+      "sha256": "cd5d013d5db1c456f29cd54f762584c5d341428cdf34f487a4ef9e276e532d65",
+      "bytes": 21036,
+      "words": 2006,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "ModulePort::platform.types::cognitive.types",
+        "ModulePort::platform.types::context.compiler",
+        "ModulePort::platform.types::intuition.policy",
+        "ModulePort::platform.types::kernel.authority",
+        "ModulePort::platform.types::kernel.evidence",
+        "ModulePort::platform.types::kernel.operations",
+        "ModulePort::platform.types::learning.artifacts",
+        "ModulePort::platform.types::learning.ledger",
+        "ModulePort::platform.types::learning.operator",
+        "ModulePort::platform.types::neuron.runtime",
+        "ModulePort::platform.types::objective.compiler",
+        "ModulePort::platform.types::platform.wire",
+        "ModulePort::platform.types::prompt.optimizer",
+        "ModulePort::platform.types::prompt.registry",
+        "ModulePort::platform.types::utility.ndu"
+      ],
+      "consumedContracts": [],
+      "protocols": [],
+      "ownedDomains": [],
+      "readDomains": [],
+      "workPackages": [
+        "BIO-0-NEURON-INTUITION-CONTRACTS",
+        "HBO-0-BELLMAN-OPERATOR-CONTRACTS",
+        "LRN-0-CAUSAL-LEARNING-CONTRACTS",
+        "NDU-0-PREFERENCE-UTILITY-CONTRACTS",
+        "OBJ-0-OBJECTIVE-CONTRACTS",
+        "P0.7E-DEPENDENCY-INVERSION",
+        "PIM-0-PROMPT-INTERVENTION-CONTRACTS",
+        "PLATFORM-0-TYPE-BOUNDARY"
+      ],
+      "threats": []
+    },
+    {
+      "module": "platform.wire",
+      "path": "docs/modules/platform.wire/TECHNICAL.md",
+      "sourceStatus": "existing_legacy_aggregate",
+      "bootstrapWorkPackage": "P0.7E-DEPENDENCY-INVERSION",
+      "sha256": "4476db9b7c4c9466256c7befa02dbdb742e7439ac7d8887ab603c71783443133",
+      "bytes": 13992,
+      "words": 1629,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "ModulePort::platform.wire::context.compiler",
+        "ModulePort::platform.wire::runtime.codex"
+      ],
+      "consumedContracts": [
+        "ModulePort::platform.types::platform.wire"
+      ],
+      "protocols": [],
+      "ownedDomains": [],
+      "readDomains": [],
+      "workPackages": [
+        "P0.7E-DEPENDENCY-INVERSION"
+      ],
+      "threats": []
+    },
+    {
+      "module": "kernel.authority",
+      "path": "docs/modules/kernel.authority/TECHNICAL.md",
+      "sourceStatus": "existing_bound",
+      "bootstrapWorkPackage": "P0.7B-B0-VERIFIED-USE",
+      "sha256": "f1cdf2b3445d62ad11bc1b4d6b84ab6193b01b347a3cad223f2d6c4f323c9ecb",
+      "bytes": 17747,
+      "words": 1839,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::authority_leaseV1",
+        "DomainRead::capability_revocationV1",
+        "ModulePort::kernel.authority::auth.authbus",
+        "ModulePort::kernel.authority::browser.servo",
+        "ModulePort::kernel.authority::channel.matrix",
+        "ModulePort::kernel.authority::inference.control",
+        "ModulePort::kernel.authority::inference.worker",
+        "ModulePort::kernel.authority::memory.federation",
+        "ModulePort::kernel.authority::runtime.codex",
+        "ModulePort::kernel.authority::runtime.fleet",
+        "ModulePort::kernel.authority::runtime.supervisor",
+        "ModulePort::kernel.authority::secrets.heptabao",
+        "VerifiedUseTokenWitnessV1"
+      ],
+      "consumedContracts": [
+        "ModulePort::platform.types::kernel.authority"
+      ],
+      "protocols": [],
+      "ownedDomains": [
+        "authority_lease",
+        "capability_revocation"
+      ],
+      "readDomains": [],
+      "workPackages": [
+        "P0.7B-B0-VERIFIED-USE",
+        "P0.7B-B2-TOOL-NET-FS",
+        "P0.7B-B3-BOUNDARIES",
+        "P0.7B-B4-CALLSITE-PROOF",
+        "P0.8A-AST-RATCHET"
+      ],
+      "threats": [
+        "capability_self_mint"
+      ]
+    },
+    {
+      "module": "kernel.operations",
+      "path": "docs/modules/kernel.operations/TECHNICAL.md",
+      "sourceStatus": "existing_legacy_aggregate",
+      "bootstrapWorkPackage": "P0.7D-FAULT-MATRIX",
+      "sha256": "ebb98166e18ad1cbd6059fb2d688b2e343e506c14c85ebb3ae51a292866e5322",
+      "bytes": 15469,
+      "words": 1703,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::cross_owner_outboxV1",
+        "DomainRead::operation_ledgerV1",
+        "ModulePort::kernel.operations::auth.authbus",
+        "ModulePort::kernel.operations::automation.taskflow",
+        "ModulePort::kernel.operations::channel.matrix",
+        "ModulePort::kernel.operations::cognitive.store",
+        "ModulePort::kernel.operations::compact.engine",
+        "ModulePort::kernel.operations::inference.control",
+        "ModulePort::kernel.operations::learning.artifacts",
+        "ModulePort::kernel.operations::learning.ledger",
+        "ModulePort::kernel.operations::prompt.registry",
+        "ModulePort::kernel.operations::runtime.supervisor",
+        "OperationIntentV1",
+        "OutboxReceiptV1",
+        "ReconciliationReceiptV1"
+      ],
+      "consumedContracts": [
+        "ModulePort::platform.types::kernel.operations",
+        "VerifiedUseTokenWitnessV1"
+      ],
+      "protocols": [],
+      "ownedDomains": [
+        "cross_owner_outbox",
+        "operation_ledger"
+      ],
+      "readDomains": [],
+      "workPackages": [
+        "P0.7B-B2-TOOL-NET-FS",
+        "P0.7D-FAULT-MATRIX"
+      ],
+      "threats": [
+        "blind_retry_after_unknown_effect",
+        "cross_owner_direct_write"
+      ]
+    },
+    {
+      "module": "kernel.evidence",
+      "path": "docs/modules/kernel.evidence/TECHNICAL.md",
+      "sourceStatus": "existing_bound",
+      "bootstrapWorkPackage": "P0.9-EXTERNAL-GATES",
+      "sha256": "be5e06fcb61922e976ce1e8b847bd0f6f1aa9fe94fc8dc49ffa9183ee84c3c5e",
+      "bytes": 14707,
+      "words": 1658,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::qualification_evidenceV1",
+        "ModulePort::kernel.evidence::control.engineering",
+        "ModulePort::kernel.evidence::control.runtime",
+        "ModulePort::kernel.evidence::learning.eval",
+        "ModulePort::kernel.evidence::learning.operator",
+        "ModulePort::kernel.evidence::learning.plasticity"
+      ],
+      "consumedContracts": [
+        "DomainRead::automation_occurrenceV1",
+        "DomainRead::automation_scheduleV1",
+        "DomainRead::browser_profile_stateV1",
+        "DomainRead::compact_checkpointV1",
+        "DomainRead::global_state_snapshotV1",
+        "DomainRead::integration_decisionV1",
+        "DomainRead::matrix_dispatch_ledgerV1",
+        "DomainRead::matrix_ingress_projectionV1",
+        "DomainRead::optimization_decisionV1",
+        "DomainRead::plasticity_proposal_registryV1",
+        "DomainRead::secret_leaseV1",
+        "DomainRead::secret_metadataV1",
+        "DomainRead::work_assignment_projectionV1",
+        "EvaluationReceiptV1",
+        "LocalModelRuntimeReceiptV1",
+        "LongitudinalEvaluationReceiptV1",
+        "ModulePort::platform.types::kernel.evidence",
+        "OutboxReceiptV1",
+        "ReconciliationReceiptV1",
+        "UnlearningComplianceReceiptV1"
+      ],
+      "protocols": [
+        "EvaluationReceiptV1",
+        "LocalModelRuntimeReceiptV1",
+        "LongitudinalEvaluationReceiptV1",
+        "UnlearningComplianceReceiptV1"
+      ],
+      "ownedDomains": [
+        "qualification_evidence"
+      ],
+      "readDomains": [],
+      "workPackages": [
+        "P0.9-EXTERNAL-GATES"
+      ],
+      "threats": []
+    },
+    {
+      "module": "runtime.supervisor",
+      "path": "docs/modules/runtime.supervisor/TECHNICAL.md",
+      "sourceStatus": "existing_bound",
+      "bootstrapWorkPackage": "P0.7A-RUNTIME-BOOTSTRAP",
+      "sha256": "0d83b02f0fb571204961a04ad38e68856f1cd37265601a130ff4e31be2c083c3",
+      "bytes": 16014,
+      "words": 1745,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::agent_lifecycleV1",
+        "DomainRead::fleet_registryV1",
+        "DomainRead::release_selectionV1",
+        "DomainRead::runtime_instance_projectionV1",
+        "ModulePort::runtime.supervisor::runtime.agentd",
+        "ModulePort::runtime.supervisor::runtime.fleet"
+      ],
+      "consumedContracts": [
+        "DomainRead::authority_leaseV1",
+        "DomainRead::capability_revocationV1",
+        "DomainRead::cross_owner_outboxV1",
+        "DomainRead::operation_ledgerV1",
+        "ModulePort::kernel.authority::runtime.supervisor",
+        "ModulePort::kernel.operations::runtime.supervisor",
+        "OutboxReceiptV1",
+        "ReconciliationReceiptV1"
+      ],
+      "protocols": [],
+      "ownedDomains": [
+        "agent_lifecycle",
+        "fleet_registry",
+        "release_selection",
+        "runtime_instance_projection"
+      ],
+      "readDomains": [
+        "authority_lease",
+        "capability_revocation",
+        "cross_owner_outbox",
+        "operation_ledger"
+      ],
+      "workPackages": [
+        "P0.7A-RUNTIME-BOOTSTRAP",
+        "P0.8B-READINESS",
+        "P0.8C-RESOURCE-BUDGETS"
+      ],
+      "threats": [
+        "stale_generation_callback"
+      ]
+    },
+    {
+      "module": "runtime.fleet",
+      "path": "docs/modules/runtime.fleet/TECHNICAL.md",
+      "sourceStatus": "existing_bound",
+      "bootstrapWorkPackage": "FLEET-1-ALLOCATION-CONTRACT",
+      "sha256": "7500ceaa5df3ca6c90547dbc43dd472ced748d323525b142e299a6852adc305d",
+      "bytes": 13943,
+      "words": 1627,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::fleet_allocation_grantV1",
+        "ModulePort::runtime.fleet::control.runtime"
+      ],
+      "consumedContracts": [
+        "DomainRead::agent_lifecycleV1",
+        "DomainRead::authority_leaseV1",
+        "DomainRead::capability_revocationV1",
+        "DomainRead::fleet_registryV1",
+        "DomainRead::release_selectionV1",
+        "DomainRead::runtime_instance_projectionV1",
+        "ModulePort::kernel.authority::runtime.fleet",
+        "ModulePort::runtime.supervisor::runtime.fleet"
+      ],
+      "protocols": [],
+      "ownedDomains": [
+        "fleet_allocation_grant"
+      ],
+      "readDomains": [
+        "agent_lifecycle",
+        "authority_lease",
+        "capability_revocation",
+        "fleet_registry",
+        "release_selection",
+        "runtime_instance_projection"
+      ],
+      "workPackages": [
+        "FLEET-1-ALLOCATION-CONTRACT"
+      ],
+      "threats": []
+    },
+    {
+      "module": "runtime.agentd",
+      "path": "docs/modules/runtime.agentd/TECHNICAL.md",
+      "sourceStatus": "existing_bound",
+      "bootstrapWorkPackage": "P0.8B-READINESS",
+      "sha256": "8c2a8f4aa9d23a8802473e93c2268985bccb8305c00ea175448104a4ea291939",
+      "bytes": 15087,
+      "words": 1699,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "CodexContextAttachmentV1",
+        "DomainRead::runtime_health_observationV1",
+        "ModulePort::runtime.agentd::browser.servo",
+        "ModulePort::runtime.agentd::channel.matrix",
+        "ModulePort::runtime.agentd::ui.control",
+        "ModulePort::runtime.agentd::ui.native"
+      ],
+      "consumedContracts": [
+        "DomainRead::agent_lifecycleV1",
+        "DomainRead::fleet_registryV1",
+        "DomainRead::release_selectionV1",
+        "DomainRead::runtime_instance_projectionV1",
+        "DomainRead::thread_sessionV1",
+        "IntelligenceHostEnvelopeV1",
+        "ModulePort::runtime.codex::runtime.agentd",
+        "ModulePort::runtime.supervisor::runtime.agentd"
+      ],
+      "protocols": [],
+      "ownedDomains": [
+        "runtime_health_observation"
+      ],
+      "readDomains": [
+        "agent_lifecycle",
+        "fleet_registry",
+        "release_selection",
+        "runtime_instance_projection",
+        "thread_session"
+      ],
+      "workPackages": [
+        "P0.8B-READINESS",
+        "P0.8D-VERTICAL-SLICE"
+      ],
+      "threats": []
+    },
+    {
+      "module": "runtime.codex",
+      "path": "docs/modules/runtime.codex/TECHNICAL.md",
+      "sourceStatus": "existing_legacy_aggregate",
+      "bootstrapWorkPackage": "P0.7B-B1B-MODEL-BOUNDARY",
+      "sha256": "ab83a2540271f904c78fea77f39f3fec50279968af960052a84c22623ebfd69c",
+      "bytes": 14275,
+      "words": 1642,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::thread_sessionV1",
+        "ModulePort::runtime.codex::automation.taskflow",
+        "ModulePort::runtime.codex::runtime.agentd",
+        "PromptDeliveryObservationV1"
+      ],
+      "consumedContracts": [
+        "CodexContextAttachmentV1",
+        "ContextCompilationReceiptV1",
+        "DomainRead::authority_leaseV1",
+        "DomainRead::capability_revocationV1",
+        "ModulePort::kernel.authority::runtime.codex",
+        "ModulePort::platform.wire::runtime.codex",
+        "VerifiedUseTokenWitnessV1"
+      ],
+      "protocols": [
+        "ContextCompilationReceiptV1",
+        "PromptDeliveryObservationV1"
+      ],
+      "ownedDomains": [
+        "thread_session"
+      ],
+      "readDomains": [
+        "authority_lease",
+        "capability_revocation"
+      ],
+      "workPackages": [
+        "P0.7B-B1B-MODEL-BOUNDARY"
+      ],
+      "threats": []
+    },
+    {
+      "module": "auth.authbus",
+      "path": "docs/modules/auth.authbus/TECHNICAL.md",
+      "sourceStatus": "existing_legacy_aggregate",
+      "bootstrapWorkPackage": "AUTHBUS-P1.3-V12",
+      "sha256": "196f3448d3ca637312b080ccfff144b2980db37db15c40c0d0498b63291a7818",
+      "bytes": 14344,
+      "words": 1648,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::auth_policyV1",
+        "DomainRead::quota_registryV1",
+        "DomainRead::quota_reservationV1",
+        "ModulePort::auth.authbus::secrets.heptabao"
+      ],
+      "consumedContracts": [
+        "DomainRead::authority_leaseV1",
+        "DomainRead::capability_revocationV1",
+        "DomainRead::cross_owner_outboxV1",
+        "DomainRead::operation_ledgerV1",
+        "ModulePort::kernel.authority::auth.authbus",
+        "ModulePort::kernel.operations::auth.authbus"
+      ],
+      "protocols": [],
+      "ownedDomains": [
+        "auth_policy",
+        "quota_registry",
+        "quota_reservation"
+      ],
+      "readDomains": [
+        "authority_lease",
+        "capability_revocation",
+        "cross_owner_outbox",
+        "operation_ledger"
+      ],
+      "workPackages": [
+        "AUTHBUS-P1.3-V12"
+      ],
+      "threats": []
+    },
+    {
+      "module": "secrets.heptabao",
+      "path": "docs/modules/secrets.heptabao/TECHNICAL.md",
+      "sourceStatus": "external_with_adapter_target",
+      "bootstrapWorkPackage": "HEPTABAO-1-SECRET-BOUNDARY",
+      "sha256": "28a2b755bd5d2ddef2fb78645a6747fb7ec62ec90bfe1c2f714206906883bc21",
+      "bytes": 14098,
+      "words": 1637,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::secret_leaseV1",
+        "DomainRead::secret_metadataV1"
+      ],
+      "consumedContracts": [
+        "DomainRead::auth_policyV1",
+        "DomainRead::authority_leaseV1",
+        "DomainRead::capability_revocationV1",
+        "DomainRead::quota_registryV1",
+        "DomainRead::quota_reservationV1",
+        "ModulePort::auth.authbus::secrets.heptabao",
+        "ModulePort::kernel.authority::secrets.heptabao"
+      ],
+      "protocols": [],
+      "ownedDomains": [
+        "secret_lease",
+        "secret_metadata"
+      ],
+      "readDomains": [
+        "auth_policy",
+        "authority_lease",
+        "capability_revocation",
+        "quota_registry",
+        "quota_reservation"
+      ],
+      "workPackages": [
+        "HEPTABAO-1-SECRET-BOUNDARY"
+      ],
+      "threats": [
+        "secret_value_in_receipt"
+      ]
+    },
+    {
+      "module": "inference.control",
+      "path": "docs/modules/inference.control/TECHNICAL.md",
+      "sourceStatus": "existing_legacy_aggregate",
+      "bootstrapWorkPackage": "P0.7B-B1A-PROVIDER-BOUNDARY",
+      "sha256": "c63ff8c18e76163988bd51fa88a12a68f28a9a7b14ddc15a19bb8e787b00e558",
+      "bytes": 16811,
+      "words": 1791,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::inference_receiptV1",
+        "DomainRead::inference_requestV1",
+        "DomainRead::inference_reservationV1",
+        "ModulePort::inference.control::inference.worker",
+        "ModulePort::inference.control::neuron.runtime"
+      ],
+      "consumedContracts": [
+        "DomainRead::authority_leaseV1",
+        "DomainRead::capability_revocationV1",
+        "DomainRead::cross_owner_outboxV1",
+        "DomainRead::operation_ledgerV1",
+        "ModulePort::kernel.authority::inference.control",
+        "ModulePort::kernel.operations::inference.control",
+        "OperationIntentV1",
+        "VerifiedUseTokenWitnessV1"
+      ],
+      "protocols": [],
+      "ownedDomains": [
+        "inference_receipt",
+        "inference_request",
+        "inference_reservation"
+      ],
+      "readDomains": [
+        "authority_lease",
+        "capability_revocation",
+        "cross_owner_outbox",
+        "operation_ledger"
+      ],
+      "workPackages": [
+        "INFER-V4-T1",
+        "INFER-V4-T2",
+        "INFER-V4-T3",
+        "P0.7B-B1A-PROVIDER-BOUNDARY"
+      ],
+      "threats": [
+        "provider_raw_escape"
+      ]
+    },
+    {
+      "module": "inference.worker",
+      "path": "docs/modules/inference.worker/TECHNICAL.md",
+      "sourceStatus": "target_unmaterialized",
+      "bootstrapWorkPackage": "INFER-V4-T4",
+      "sha256": "15e4374525f2268b1d1c15449aff652821c2fcfc1b460a795f65c296d51b48eb",
+      "bytes": 15539,
+      "words": 1723,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [],
+      "consumedContracts": [
+        "DomainRead::authority_leaseV1",
+        "DomainRead::capability_revocationV1",
+        "DomainRead::inference_receiptV1",
+        "DomainRead::inference_requestV1",
+        "DomainRead::inference_reservationV1",
+        "ModulePort::inference.control::inference.worker",
+        "ModulePort::kernel.authority::inference.worker"
+      ],
+      "protocols": [],
+      "ownedDomains": [],
+      "readDomains": [
+        "authority_lease",
+        "capability_revocation",
+        "inference_receipt",
+        "inference_request",
+        "inference_reservation"
+      ],
+      "workPackages": [
+        "INFER-V4-T4",
+        "INFER-V4-T5",
+        "NEU-1-LOCAL-MODEL-BAKEOFF"
+      ],
+      "threats": []
+    },
+    {
+      "module": "objective.compiler",
+      "path": "docs/modules/objective.compiler/TECHNICAL.md",
+      "sourceStatus": "target_unmaterialized",
+      "bootstrapWorkPackage": "OBJ-0-OBJECTIVE-CONTRACTS",
+      "sha256": "704db4643973a93cfed9da05ce4d39d0cd205dcafbdac8bb91a809a329aa7dcc",
+      "bytes": 14732,
+      "words": 1668,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "ModulePort::objective.compiler::intelligence.control",
+        "ObjectiveFunctionV1",
+        "RunStartSnapshotV1"
+      ],
+      "consumedContracts": [
+        "ModulePort::cognitive.read::objective.compiler",
+        "ModulePort::platform.types::objective.compiler"
+      ],
+      "protocols": [
+        "ObjectiveFunctionV1",
+        "RunStartSnapshotV1"
+      ],
+      "ownedDomains": [],
+      "readDomains": [],
+      "workPackages": [
+        "OBJ-0-OBJECTIVE-CONTRACTS",
+        "OBJ-1-OBJECTIVE-COMPILER"
+      ],
+      "threats": [
+        "objective_substitution",
+        "success_predicate_downgrade"
+      ]
+    },
+    {
+      "module": "utility.ndu",
+      "path": "docs/modules/utility.ndu/TECHNICAL.md",
+      "sourceStatus": "target_unmaterialized",
+      "bootstrapWorkPackage": "NDU-0-PREFERENCE-UTILITY-CONTRACTS",
+      "sha256": "c8b15c1e963c9395af9a9c4f78afbe8c110b75079240f776d0d79f2ff231405d",
+      "bytes": 17214,
+      "words": 1773,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::ndu_preference_projectionV1",
+        "DomainRead::ndu_utility_projectionV1",
+        "ModulePort::utility.ndu::control.runtime",
+        "ModulePort::utility.ndu::intelligence.control",
+        "ModulePort::utility.ndu::intuition.policy",
+        "ModulePort::utility.ndu::prompt.optimizer",
+        "NduBoundaryConditionV1",
+        "NduPreferenceStateV1",
+        "NduSummaryReceiptV1"
+      ],
+      "consumedContracts": [
+        "DomainRead::learning_artifact_registryV1",
+        "DomainRead::learning_credit_ledgerV1",
+        "DomainRead::learning_episode_ledgerV1",
+        "DomainRead::learning_unlearning_lineageV1",
+        "DomainRead::operator_sensor_core_registryV1",
+        "ModulePort::cognitive.read::utility.ndu",
+        "ModulePort::learning.artifacts::utility.ndu",
+        "ModulePort::learning.ledger::utility.ndu",
+        "ModulePort::platform.types::utility.ndu",
+        "NduBoundaryConditionV1",
+        "ObjectiveFunctionV1",
+        "RunStartSnapshotV1"
+      ],
+      "protocols": [
+        "NduBoundaryConditionV1",
+        "NduPreferenceStateV1",
+        "NduSummaryReceiptV1",
+        "ObjectiveFunctionV1",
+        "RunStartSnapshotV1"
+      ],
+      "ownedDomains": [
+        "ndu_preference_projection",
+        "ndu_utility_projection"
+      ],
+      "readDomains": [
+        "learning_artifact_registry",
+        "learning_credit_ledger",
+        "learning_episode_ledger",
+        "learning_unlearning_lineage",
+        "operator_sensor_core_registry"
+      ],
+      "workPackages": [
+        "NDU-0-PREFERENCE-UTILITY-CONTRACTS",
+        "NDU-1-DETERMINISTIC-UTILITY-BASELINE",
+        "NDU-2-AGENT-DOMAIN-HIERARCHY"
+      ],
+      "threats": [
+        "parent_child_NDU_oscillation",
+        "preference_state_goal_drift",
+        "recursive_utility_instability"
+      ]
+    },
+    {
+      "module": "neuron.runtime",
+      "path": "docs/modules/neuron.runtime/TECHNICAL.md",
+      "sourceStatus": "target_unmaterialized",
+      "bootstrapWorkPackage": "BIO-0-NEURON-INTUITION-CONTRACTS",
+      "sha256": "1b88ba5b851f6741fc4ef8090ea50e6180738bebd1f343f68df4c5a7452cdd82",
+      "bytes": 17868,
+      "words": 1817,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::eligibility_trace_checkpointV1",
+        "DomainRead::neuron_state_checkpointV1",
+        "LocalModelRuntimeReceiptV1",
+        "ModulePort::neuron.runtime::intelligence.control",
+        "ModulePort::neuron.runtime::intuition.policy",
+        "NeuronSignalReceiptV1"
+      ],
+      "consumedContracts": [
+        "DomainRead::inference_receiptV1",
+        "DomainRead::inference_requestV1",
+        "DomainRead::inference_reservationV1",
+        "DomainRead::learning_artifact_registryV1",
+        "DomainRead::operator_sensor_core_registryV1",
+        "ModulePort::cognitive.read::neuron.runtime",
+        "ModulePort::inference.control::neuron.runtime",
+        "ModulePort::learning.artifacts::neuron.runtime",
+        "ModulePort::platform.types::neuron.runtime",
+        "RunStartSnapshotV1"
+      ],
+      "protocols": [
+        "LocalModelRuntimeReceiptV1",
+        "NeuronSignalReceiptV1",
+        "RunStartSnapshotV1"
+      ],
+      "ownedDomains": [
+        "eligibility_trace_checkpoint",
+        "neuron_state_checkpoint"
+      ],
+      "readDomains": [
+        "inference_receipt",
+        "inference_request",
+        "inference_reservation",
+        "learning_artifact_registry",
+        "operator_sensor_core_registry"
+      ],
+      "workPackages": [
+        "BIO-0-NEURON-INTUITION-CONTRACTS",
+        "BIO-1-ELIGIBILITY-HOMEOSTASIS",
+        "NEU-1-LOCAL-MODEL-BAKEOFF",
+        "NEU-2-TEMPORAL-SIGNAL-RUNTIME"
+      ],
+      "threats": [
+        "local_model_identity_drift",
+        "model_tokenizer_mismatch",
+        "neuron_state_collapse",
+        "neuron_state_explosion"
+      ]
+    },
+    {
+      "module": "intuition.policy",
+      "path": "docs/modules/intuition.policy/TECHNICAL.md",
+      "sourceStatus": "target_unmaterialized",
+      "bootstrapWorkPackage": "INT-1-CALIBRATED-INTUITION-POLICY",
+      "sha256": "2ae2e8174931340d84f6369c813decf724bc3dd4123f3b650313425c20a9f096",
+      "bytes": 15937,
+      "words": 1711,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "IntuitionDecisionReceiptV1",
+        "ModulePort::intuition.policy::context.compiler",
+        "ModulePort::intuition.policy::intelligence.control"
+      ],
+      "consumedContracts": [
+        "DomainRead::eligibility_trace_checkpointV1",
+        "DomainRead::learning_artifact_registryV1",
+        "DomainRead::ndu_preference_projectionV1",
+        "DomainRead::ndu_utility_projectionV1",
+        "DomainRead::neuron_state_checkpointV1",
+        "DomainRead::operator_sensor_core_registryV1",
+        "LegalActionCandidateSetV1",
+        "ModulePort::learning.artifacts::intuition.policy",
+        "ModulePort::neuron.runtime::intuition.policy",
+        "ModulePort::platform.types::intuition.policy",
+        "ModulePort::utility.ndu::intuition.policy",
+        "NduPreferenceStateV1",
+        "NeuronSignalReceiptV1",
+        "ObjectiveFunctionV1",
+        "RunStartSnapshotV1"
+      ],
+      "protocols": [
+        "IntuitionDecisionReceiptV1",
+        "LegalActionCandidateSetV1",
+        "NduPreferenceStateV1",
+        "NeuronSignalReceiptV1",
+        "ObjectiveFunctionV1",
+        "RunStartSnapshotV1"
+      ],
+      "ownedDomains": [],
+      "readDomains": [
+        "eligibility_trace_checkpoint",
+        "learning_artifact_registry",
+        "ndu_preference_projection",
+        "ndu_utility_projection",
+        "neuron_state_checkpoint",
+        "operator_sensor_core_registry"
+      ],
+      "workPackages": [
+        "BIO-0-NEURON-INTUITION-CONTRACTS",
+        "INT-1-CALIBRATED-INTUITION-POLICY"
+      ],
+      "threats": [
+        "intuition_propensity_omission",
+        "intuition_unsupported_action"
+      ]
+    },
+    {
+      "module": "prompt.registry",
+      "path": "docs/modules/prompt.registry/TECHNICAL.md",
+      "sourceStatus": "target_unmaterialized",
+      "bootstrapWorkPackage": "PIM-0-PROMPT-INTERVENTION-CONTRACTS",
+      "sha256": "e478e6b546926d17f62852f7851ae6dcbbc5d820026f13fd27c45c74410acad1",
+      "bytes": 16465,
+      "words": 1744,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::prompt_factor_lifecycleV1",
+        "DomainRead::prompt_factor_registryV1",
+        "DomainRead::prompt_realization_registryV1",
+        "ModulePort::prompt.registry::knowledge.graph",
+        "ModulePort::prompt.registry::prompt.optimizer",
+        "PromptFactorV1",
+        "PromptRealizationV1"
+      ],
+      "consumedContracts": [
+        "DomainRead::cross_owner_outboxV1",
+        "DomainRead::operation_ledgerV1",
+        "ModulePort::kernel.operations::prompt.registry",
+        "ModulePort::platform.types::prompt.registry"
+      ],
+      "protocols": [
+        "PromptFactorV1",
+        "PromptRealizationV1"
+      ],
+      "ownedDomains": [
+        "prompt_factor_lifecycle",
+        "prompt_factor_registry",
+        "prompt_realization_registry"
+      ],
+      "readDomains": [
+        "cross_owner_outbox",
+        "operation_ledger"
+      ],
+      "workPackages": [
+        "PIM-0-PROMPT-INTERVENTION-CONTRACTS",
+        "PIM-1-PROMPT-FACTOR-REGISTRY",
+        "PIM-3-FACTOR-EVOLUTION"
+      ],
+      "threats": [
+        "prompt_instruction_confusion"
+      ]
+    },
+    {
+      "module": "prompt.optimizer",
+      "path": "docs/modules/prompt.optimizer/TECHNICAL.md",
+      "sourceStatus": "target_unmaterialized",
+      "bootstrapWorkPackage": "PIM-2-PROMPT-PRICING-PORTFOLIO-SHADOW",
+      "sha256": "7da040c0b1ce3a6ed48076b1d37df22b7c0896282063b53f439ccab2a0050483",
+      "bytes": 17313,
+      "words": 1779,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "ModulePort::prompt.optimizer::context.compiler",
+        "ModulePort::prompt.optimizer::intelligence.control",
+        "PromptCandidateSetReceiptV1",
+        "PromptExerciseDecisionV1",
+        "PromptPortfolioReceiptV1",
+        "PromptPricingReceiptV1"
+      ],
+      "consumedContracts": [
+        "DomainRead::learning_artifact_registryV1",
+        "DomainRead::ndu_preference_projectionV1",
+        "DomainRead::ndu_utility_projectionV1",
+        "DomainRead::operator_sensor_core_registryV1",
+        "DomainRead::prompt_factor_lifecycleV1",
+        "DomainRead::prompt_factor_registryV1",
+        "DomainRead::prompt_realization_registryV1",
+        "ModulePort::learning.artifacts::prompt.optimizer",
+        "ModulePort::memory.retrieval::prompt.optimizer",
+        "ModulePort::platform.types::prompt.optimizer",
+        "ModulePort::prompt.registry::prompt.optimizer",
+        "ModulePort::utility.ndu::prompt.optimizer",
+        "NduPreferenceStateV1",
+        "ObjectiveFunctionV1",
+        "PromptFactorV1",
+        "PromptRealizationV1"
+      ],
+      "protocols": [
+        "NduPreferenceStateV1",
+        "ObjectiveFunctionV1",
+        "PromptCandidateSetReceiptV1",
+        "PromptExerciseDecisionV1",
+        "PromptFactorV1",
+        "PromptPortfolioReceiptV1",
+        "PromptPricingReceiptV1",
+        "PromptRealizationV1"
+      ],
+      "ownedDomains": [],
+      "readDomains": [
+        "learning_artifact_registry",
+        "ndu_preference_projection",
+        "ndu_utility_projection",
+        "operator_sensor_core_registry",
+        "prompt_factor_lifecycle",
+        "prompt_factor_registry",
+        "prompt_realization_registry"
+      ],
+      "workPackages": [
+        "PIM-0-PROMPT-INTERVENTION-CONTRACTS",
+        "PIM-2-PROMPT-PRICING-PORTFOLIO-SHADOW",
+        "PIM-3-FACTOR-EVOLUTION"
+      ],
+      "threats": [
+        "prompt_candidate_selection_bias",
+        "prompt_factor_interference"
+      ]
+    },
+    {
+      "module": "context.compiler",
+      "path": "docs/modules/context.compiler/TECHNICAL.md",
+      "sourceStatus": "target_partially_materialized",
+      "bootstrapWorkPackage": "CTX-1-CONTEXT-COMPILER",
+      "sha256": "bc0d279201c84509dad03d62b8ee59b4f5b6885c0a1edf8360b37a05a41f73ec",
+      "bytes": 14717,
+      "words": 1652,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "ContextCompilationReceiptV1",
+        "ModulePort::context.compiler::intelligence.control"
+      ],
+      "consumedContracts": [
+        "IntuitionDecisionReceiptV1",
+        "ModulePort::cognitive.read::context.compiler",
+        "ModulePort::intuition.policy::context.compiler",
+        "ModulePort::platform.types::context.compiler",
+        "ModulePort::platform.wire::context.compiler",
+        "ModulePort::prompt.optimizer::context.compiler",
+        "ObjectiveFunctionV1",
+        "PromptExerciseDecisionV1",
+        "PromptPortfolioReceiptV1",
+        "PromptPricingReceiptV1",
+        "PromptRealizationV1",
+        "RunStartSnapshotV1"
+      ],
+      "protocols": [
+        "ContextCompilationReceiptV1",
+        "IntuitionDecisionReceiptV1",
+        "ObjectiveFunctionV1",
+        "PromptExerciseDecisionV1",
+        "PromptPortfolioReceiptV1",
+        "PromptPricingReceiptV1",
+        "PromptRealizationV1",
+        "RunStartSnapshotV1"
+      ],
+      "ownedDomains": [],
+      "readDomains": [],
+      "workPackages": [
+        "CTX-1-CONTEXT-COMPILER"
+      ],
+      "threats": [
+        "context_secret_leak",
+        "prompt_position_truncation",
+        "untrusted_content_role_escalation"
+      ]
+    },
+    {
+      "module": "intelligence.control",
+      "path": "docs/modules/intelligence.control/TECHNICAL.md",
+      "sourceStatus": "target_partially_materialized",
+      "bootstrapWorkPackage": "INTELLIGENCE-A0-Q0.63",
+      "sha256": "d5bc64a6317045d2c1715bed4e4059f41f12dd7f2837602fa8429f725301ad1f",
+      "bytes": 16673,
+      "words": 1758,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "IntelligenceHostEnvelopeV1",
+        "LegalActionCandidateSetV1"
+      ],
+      "consumedContracts": [
+        "DomainRead::eligibility_trace_checkpointV1",
+        "DomainRead::ndu_preference_projectionV1",
+        "DomainRead::ndu_utility_projectionV1",
+        "DomainRead::neuron_state_checkpointV1",
+        "LearningArtifactManifestV1",
+        "ModulePort::context.compiler::intelligence.control",
+        "ModulePort::intuition.policy::intelligence.control",
+        "ModulePort::learning.eval::intelligence.control",
+        "ModulePort::neuron.runtime::intelligence.control",
+        "ModulePort::objective.compiler::intelligence.control",
+        "ModulePort::prompt.optimizer::intelligence.control",
+        "ModulePort::utility.ndu::intelligence.control"
+      ],
+      "protocols": [
+        "LearningArtifactManifestV1",
+        "LegalActionCandidateSetV1"
+      ],
+      "ownedDomains": [],
+      "readDomains": [
+        "eligibility_trace_checkpoint",
+        "ndu_preference_projection",
+        "ndu_utility_projection",
+        "neuron_state_checkpoint"
+      ],
+      "workPackages": [
+        "C1-PROMPTED-MEMORY-RETRIEVAL-RANK",
+        "INT-2-AGENTD-CODEX-COMPOSITION",
+        "INTELLIGENCE-A0-Q0.63"
+      ],
+      "threats": []
+    },
+    {
+      "module": "cognitive.types",
+      "path": "docs/modules/cognitive.types/TECHNICAL.md",
+      "sourceStatus": "target_partially_materialized",
+      "bootstrapWorkPackage": "MEM-0-TYPES",
+      "sha256": "1574c2f8364bb32be63bd1429cb0ead5526c3ccb221eadbd417e2b35d72f042c",
+      "bytes": 13713,
+      "words": 1622,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "ModulePort::cognitive.types::cognitive.read",
+        "ModulePort::cognitive.types::cognitive.store",
+        "ModulePort::cognitive.types::knowledge.graph",
+        "ModulePort::cognitive.types::learning.ledger"
+      ],
+      "consumedContracts": [
+        "ModulePort::platform.types::cognitive.types"
+      ],
+      "protocols": [],
+      "ownedDomains": [],
+      "readDomains": [],
+      "workPackages": [
+        "MEM-0-TYPES"
+      ],
+      "threats": []
+    },
+    {
+      "module": "cognitive.store",
+      "path": "docs/modules/cognitive.store/TECHNICAL.md",
+      "sourceStatus": "target_partially_materialized",
+      "bootstrapWorkPackage": "MEM-1-STORE",
+      "sha256": "0641c0407d8bbab4cdaed77c2e94f3113150d38362528c10e8c8ffd7282965e8",
+      "bytes": 14766,
+      "words": 1679,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::knowledge_fact_ledgerV1",
+        "DomainRead::memory_ledgerV1",
+        "ModulePort::cognitive.store::knowledge.graph"
+      ],
+      "consumedContracts": [
+        "DomainRead::cross_owner_outboxV1",
+        "DomainRead::operation_ledgerV1",
+        "ModulePort::cognitive.types::cognitive.store",
+        "ModulePort::kernel.operations::cognitive.store",
+        "OperationIntentV1"
+      ],
+      "protocols": [],
+      "ownedDomains": [
+        "knowledge_fact_ledger",
+        "memory_ledger"
+      ],
+      "readDomains": [
+        "cross_owner_outbox",
+        "operation_ledger"
+      ],
+      "workPackages": [
+        "MEM-1-STORE",
+        "MEM-8-PRODUCTION-WRITER"
+      ],
+      "threats": []
+    },
+    {
+      "module": "cognitive.read",
+      "path": "docs/modules/cognitive.read/TECHNICAL.md",
+      "sourceStatus": "target_partially_materialized",
+      "bootstrapWorkPackage": "MEM-READ-1-SNAPSHOT-PORT",
+      "sha256": "5c4788ef71fe8d54577f9ffab9a4e12a0e487a3a342935977ea647227e4fdb19",
+      "bytes": 13743,
+      "words": 1620,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "ModulePort::cognitive.read::compact.engine",
+        "ModulePort::cognitive.read::context.compiler",
+        "ModulePort::cognitive.read::memory.federation",
+        "ModulePort::cognitive.read::memory.retrieval",
+        "ModulePort::cognitive.read::neuron.runtime",
+        "ModulePort::cognitive.read::objective.compiler",
+        "ModulePort::cognitive.read::utility.ndu"
+      ],
+      "consumedContracts": [
+        "ModulePort::cognitive.types::cognitive.read"
+      ],
+      "protocols": [],
+      "ownedDomains": [],
+      "readDomains": [],
+      "workPackages": [
+        "MEM-READ-1-SNAPSHOT-PORT"
+      ],
+      "threats": []
+    },
+    {
+      "module": "memory.retrieval",
+      "path": "docs/modules/memory.retrieval/TECHNICAL.md",
+      "sourceStatus": "target_partially_materialized",
+      "bootstrapWorkPackage": "MEM-2-RETRIEVAL",
+      "sha256": "6395ccea14769ff880fd3899324e395d1b6873b5d1e456a6ab0442aa5980ed64",
+      "bytes": 13871,
+      "words": 1627,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "ModulePort::memory.retrieval::prompt.optimizer"
+      ],
+      "consumedContracts": [
+        "DomainRead::knowledge_graph_projectionV1",
+        "DomainRead::prompt_factor_graph_projectionV1",
+        "ModulePort::cognitive.read::memory.retrieval",
+        "ModulePort::knowledge.graph::memory.retrieval"
+      ],
+      "protocols": [],
+      "ownedDomains": [],
+      "readDomains": [
+        "knowledge_graph_projection",
+        "prompt_factor_graph_projection"
+      ],
+      "workPackages": [
+        "MEM-2-RETRIEVAL"
+      ],
+      "threats": []
+    },
+    {
+      "module": "memory.federation",
+      "path": "docs/modules/memory.federation/TECHNICAL.md",
+      "sourceStatus": "target_partially_materialized",
+      "bootstrapWorkPackage": "MEM-3-FEDERATION",
+      "sha256": "4f330c868259edcd81be3ca4d8cb9b605514005018e78c789af5be572668ba80",
+      "bytes": 13799,
+      "words": 1623,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [],
+      "consumedContracts": [
+        "DomainRead::authority_leaseV1",
+        "DomainRead::capability_revocationV1",
+        "ModulePort::cognitive.read::memory.federation",
+        "ModulePort::kernel.authority::memory.federation"
+      ],
+      "protocols": [],
+      "ownedDomains": [],
+      "readDomains": [
+        "authority_lease",
+        "capability_revocation"
+      ],
+      "workPackages": [
+        "MEM-3-FEDERATION"
+      ],
+      "threats": []
+    },
+    {
+      "module": "knowledge.graph",
+      "path": "docs/modules/knowledge.graph/TECHNICAL.md",
+      "sourceStatus": "target_partially_materialized",
+      "bootstrapWorkPackage": "MEM-4-KG",
+      "sha256": "9ac18d12434a9cfe1437458545ffb3b3a1090e5df4783e34125683792b59ba35",
+      "bytes": 14390,
+      "words": 1645,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::knowledge_graph_projectionV1",
+        "DomainRead::prompt_factor_graph_projectionV1",
+        "ModulePort::knowledge.graph::memory.retrieval"
+      ],
+      "consumedContracts": [
+        "DomainRead::knowledge_fact_ledgerV1",
+        "DomainRead::memory_ledgerV1",
+        "DomainRead::prompt_factor_lifecycleV1",
+        "DomainRead::prompt_factor_registryV1",
+        "DomainRead::prompt_realization_registryV1",
+        "ModulePort::cognitive.store::knowledge.graph",
+        "ModulePort::cognitive.types::knowledge.graph",
+        "ModulePort::prompt.registry::knowledge.graph",
+        "PromptFactorV1"
+      ],
+      "protocols": [
+        "PromptFactorV1"
+      ],
+      "ownedDomains": [
+        "knowledge_graph_projection",
+        "prompt_factor_graph_projection"
+      ],
+      "readDomains": [
+        "knowledge_fact_ledger",
+        "memory_ledger",
+        "prompt_factor_lifecycle",
+        "prompt_factor_registry",
+        "prompt_realization_registry"
+      ],
+      "workPackages": [
+        "MEM-4-KG"
+      ],
+      "threats": []
+    },
+    {
+      "module": "compact.engine",
+      "path": "docs/modules/compact.engine/TECHNICAL.md",
+      "sourceStatus": "target_partially_materialized",
+      "bootstrapWorkPackage": "MEM-5-COMPACT",
+      "sha256": "6e246601929dbdf71ce5e1d9a233efd3d22bb83d1666fb7d4c012723a1801e32",
+      "bytes": 13743,
+      "words": 1616,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::compact_checkpointV1"
+      ],
+      "consumedContracts": [
+        "DomainRead::cross_owner_outboxV1",
+        "DomainRead::operation_ledgerV1",
+        "ModulePort::cognitive.read::compact.engine",
+        "ModulePort::kernel.operations::compact.engine"
+      ],
+      "protocols": [],
+      "ownedDomains": [
+        "compact_checkpoint"
+      ],
+      "readDomains": [
+        "cross_owner_outbox",
+        "operation_ledger"
+      ],
+      "workPackages": [
+        "MEM-5-COMPACT"
+      ],
+      "threats": []
+    },
+    {
+      "module": "learning.ledger",
+      "path": "docs/modules/learning.ledger/TECHNICAL.md",
+      "sourceStatus": "target_unmaterialized",
+      "bootstrapWorkPackage": "LRN-0-CAUSAL-LEARNING-CONTRACTS",
+      "sha256": "40c82d5f87a9855bb8d10079f581b2d4a9719c2a68854342c16ee5ba1aecb143",
+      "bytes": 16376,
+      "words": 1731,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "CreditAssignmentReceiptV1",
+        "DatasetSnapshotV1",
+        "DomainRead::learning_credit_ledgerV1",
+        "DomainRead::learning_episode_ledgerV1",
+        "DomainRead::learning_unlearning_lineageV1",
+        "LearningDecisionV1",
+        "LearningEpisodeV1",
+        "ModulePort::learning.ledger::learning.eval",
+        "ModulePort::learning.ledger::learning.operator",
+        "ModulePort::learning.ledger::utility.ndu",
+        "OutcomeReceiptV1"
+      ],
+      "consumedContracts": [
+        "ContextCompilationReceiptV1",
+        "DomainRead::cross_owner_outboxV1",
+        "DomainRead::operation_ledgerV1",
+        "IntuitionDecisionReceiptV1",
+        "LegalActionCandidateSetV1",
+        "ModulePort::cognitive.types::learning.ledger",
+        "ModulePort::kernel.operations::learning.ledger",
+        "ModulePort::platform.types::learning.ledger",
+        "NduPreferenceStateV1",
+        "NduSummaryReceiptV1",
+        "NeuronSignalReceiptV1",
+        "ObjectiveFunctionV1",
+        "PromptCandidateSetReceiptV1",
+        "PromptDeliveryObservationV1",
+        "PromptExerciseDecisionV1",
+        "PromptPortfolioReceiptV1",
+        "PromptPricingReceiptV1",
+        "RunStartSnapshotV1"
+      ],
+      "protocols": [
+        "ContextCompilationReceiptV1",
+        "CreditAssignmentReceiptV1",
+        "DatasetSnapshotV1",
+        "IntuitionDecisionReceiptV1",
+        "LearningDecisionV1",
+        "LearningEpisodeV1",
+        "LegalActionCandidateSetV1",
+        "NduPreferenceStateV1",
+        "NduSummaryReceiptV1",
+        "NeuronSignalReceiptV1",
+        "ObjectiveFunctionV1",
+        "OutcomeReceiptV1",
+        "PromptCandidateSetReceiptV1",
+        "PromptDeliveryObservationV1",
+        "PromptExerciseDecisionV1",
+        "PromptPortfolioReceiptV1",
+        "PromptPricingReceiptV1",
+        "RunStartSnapshotV1"
+      ],
+      "ownedDomains": [
+        "learning_credit_ledger",
+        "learning_episode_ledger",
+        "learning_unlearning_lineage"
+      ],
+      "readDomains": [
+        "cross_owner_outbox",
+        "operation_ledger"
+      ],
+      "workPackages": [
+        "LRN-0-CAUSAL-LEARNING-CONTRACTS",
+        "LRN-1-DURABLE-EPISODE-LEDGER"
+      ],
+      "threats": [
+        "candidate_set_omission",
+        "credit_double_count",
+        "delayed_reward_misattribution",
+        "policy_self_labels_outcome",
+        "prompt_delivery_misattribution",
+        "propensity_falsification"
+      ]
+    },
+    {
+      "module": "learning.operator",
+      "path": "docs/modules/learning.operator/TECHNICAL.md",
+      "sourceStatus": "target_unmaterialized",
+      "bootstrapWorkPackage": "HBO-0-BELLMAN-OPERATOR-CONTRACTS",
+      "sha256": "fecef3d6281fb4ea99eee03981c8c7c5d542dc0c60df0e642112137e9bb44cf0",
+      "bytes": 18955,
+      "words": 1864,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "BellmanOperatorArtifactV1",
+        "RegularityProfileV1"
+      ],
+      "consumedContracts": [
+        "CreditAssignmentReceiptV1",
+        "DatasetSnapshotV1",
+        "DomainRead::learning_artifact_registryV1",
+        "DomainRead::learning_credit_ledgerV1",
+        "DomainRead::learning_episode_ledgerV1",
+        "DomainRead::learning_unlearning_lineageV1",
+        "DomainRead::operator_sensor_core_registryV1",
+        "DomainRead::qualification_evidenceV1",
+        "LearningDecisionV1",
+        "LearningEpisodeV1",
+        "ModulePort::kernel.evidence::learning.operator",
+        "ModulePort::learning.artifacts::learning.operator",
+        "ModulePort::learning.ledger::learning.operator",
+        "ModulePort::platform.types::learning.operator",
+        "OperatorSensorCoreManifestV1",
+        "OutcomeReceiptV1"
+      ],
+      "protocols": [
+        "CreditAssignmentReceiptV1",
+        "DatasetSnapshotV1",
+        "LearningDecisionV1",
+        "LearningEpisodeV1",
+        "OperatorSensorCoreManifestV1",
+        "OutcomeReceiptV1",
+        "RegularityProfileV1"
+      ],
+      "ownedDomains": [],
+      "readDomains": [
+        "learning_artifact_registry",
+        "learning_credit_ledger",
+        "learning_episode_ledger",
+        "learning_unlearning_lineage",
+        "operator_sensor_core_registry",
+        "qualification_evidence"
+      ],
+      "workPackages": [
+        "BIO-2-REPLAY-CONSOLIDATION",
+        "BIO-3-WORLD-MODEL-PREDICTION-ERROR",
+        "HBO-0-BELLMAN-OPERATOR-CONTRACTS",
+        "HBO-1-OPERATOR-SENSOR-CORE",
+        "HBO-2-BELLMAN-OPERATOR-SHADOW"
+      ],
+      "threats": [
+        "Bellman_error_amplification",
+        "off_policy_residual_blowup",
+        "replay_contamination"
+      ]
+    },
+    {
+      "module": "learning.eval",
+      "path": "docs/modules/learning.eval/TECHNICAL.md",
+      "sourceStatus": "target_unmaterialized",
+      "bootstrapWorkPackage": "LRN-2-CAUSAL-EVALUATION",
+      "sha256": "bd599a11ed3779240a84e2969faafd7010296e488545cd8070842a6251c767ed",
+      "bytes": 18186,
+      "words": 1829,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "EvaluationReceiptV1",
+        "LongitudinalEvaluationReceiptV1",
+        "ModulePort::learning.eval::intelligence.control",
+        "ModulePort::learning.eval::learning.plasticity",
+        "UnlearningComplianceReceiptV1"
+      ],
+      "consumedContracts": [
+        "BellmanOperatorArtifactV1",
+        "CreditAssignmentReceiptV1",
+        "DatasetSnapshotV1",
+        "DomainRead::learning_artifact_registryV1",
+        "DomainRead::learning_credit_ledgerV1",
+        "DomainRead::learning_episode_ledgerV1",
+        "DomainRead::learning_unlearning_lineageV1",
+        "DomainRead::operator_sensor_core_registryV1",
+        "DomainRead::qualification_evidenceV1",
+        "LearningArtifactManifestV1",
+        "LearningDecisionV1",
+        "LearningEpisodeV1",
+        "LocalModelRuntimeReceiptV1",
+        "ModulePort::kernel.evidence::learning.eval",
+        "ModulePort::learning.artifacts::learning.eval",
+        "ModulePort::learning.ledger::learning.eval",
+        "OperatorSensorCoreManifestV1",
+        "OutcomeReceiptV1",
+        "PlasticityProposalV1",
+        "PromptCandidateSetReceiptV1",
+        "PromptDeliveryObservationV1",
+        "RegularityProfileV1",
+        "TopologyProposalV1"
+      ],
+      "protocols": [
+        "CreditAssignmentReceiptV1",
+        "DatasetSnapshotV1",
+        "EvaluationReceiptV1",
+        "LearningArtifactManifestV1",
+        "LearningDecisionV1",
+        "LearningEpisodeV1",
+        "LocalModelRuntimeReceiptV1",
+        "LongitudinalEvaluationReceiptV1",
+        "OperatorSensorCoreManifestV1",
+        "OutcomeReceiptV1",
+        "PromptCandidateSetReceiptV1",
+        "PromptDeliveryObservationV1",
+        "RegularityProfileV1",
+        "TopologyProposalV1",
+        "UnlearningComplianceReceiptV1"
+      ],
+      "ownedDomains": [],
+      "readDomains": [
+        "learning_artifact_registry",
+        "learning_credit_ledger",
+        "learning_episode_ledger",
+        "learning_unlearning_lineage",
+        "operator_sensor_core_registry",
+        "qualification_evidence"
+      ],
+      "workPackages": [
+        "LONG-1-TEMPORAL-HOLDOUT",
+        "LONG-2-RETENTION-FORGETTING",
+        "LONG-3-UNLEARNING-NON-RESURRECTION",
+        "LRN-2-CAUSAL-EVALUATION"
+      ],
+      "threats": [
+        "catastrophic_forgetting",
+        "deleted_data_resurrection"
+      ]
+    },
+    {
+      "module": "learning.artifacts",
+      "path": "docs/modules/learning.artifacts/TECHNICAL.md",
+      "sourceStatus": "target_unmaterialized",
+      "bootstrapWorkPackage": "ART-1-LEARNING-ARTIFACT-REGISTRY",
+      "sha256": "87f8d384867167d5d44a1b7f133e6fe8b67aaf9d3fd380374e257cb6c6914916",
+      "bytes": 16931,
+      "words": 1765,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::learning_artifact_registryV1",
+        "DomainRead::operator_sensor_core_registryV1",
+        "LearningArtifactManifestV1",
+        "ModulePort::learning.artifacts::intuition.policy",
+        "ModulePort::learning.artifacts::learning.eval",
+        "ModulePort::learning.artifacts::learning.operator",
+        "ModulePort::learning.artifacts::learning.plasticity",
+        "ModulePort::learning.artifacts::neuron.runtime",
+        "ModulePort::learning.artifacts::prompt.optimizer",
+        "ModulePort::learning.artifacts::utility.ndu",
+        "OperatorSensorCoreManifestV1"
+      ],
+      "consumedContracts": [
+        "BellmanOperatorArtifactV1",
+        "DatasetSnapshotV1",
+        "DomainRead::cross_owner_outboxV1",
+        "DomainRead::operation_ledgerV1",
+        "EvaluationReceiptV1",
+        "LongitudinalEvaluationReceiptV1",
+        "ModulePort::kernel.operations::learning.artifacts",
+        "ModulePort::platform.types::learning.artifacts",
+        "PlasticityProposalV1",
+        "RegularityProfileV1",
+        "UnlearningComplianceReceiptV1"
+      ],
+      "protocols": [
+        "DatasetSnapshotV1",
+        "EvaluationReceiptV1",
+        "LearningArtifactManifestV1",
+        "LongitudinalEvaluationReceiptV1",
+        "OperatorSensorCoreManifestV1",
+        "RegularityProfileV1",
+        "UnlearningComplianceReceiptV1"
+      ],
+      "ownedDomains": [
+        "learning_artifact_registry",
+        "operator_sensor_core_registry"
+      ],
+      "readDomains": [
+        "cross_owner_outbox",
+        "operation_ledger"
+      ],
+      "workPackages": [
+        "ART-1-LEARNING-ARTIFACT-REGISTRY",
+        "ART-2-NEXT-SNAPSHOT-RELOAD-ROLLBACK",
+        "HBO-1-OPERATOR-SENSOR-CORE"
+      ],
+      "threats": [
+        "artifact_lineage_break",
+        "current_run_artifact_swap",
+        "operator_sensor_clustering"
+      ]
+    },
+    {
+      "module": "learning.plasticity",
+      "path": "docs/modules/learning.plasticity/TECHNICAL.md",
+      "sourceStatus": "target_unmaterialized",
+      "bootstrapWorkPackage": "PLS-1-PARAMETER-PLASTICITY",
+      "sha256": "befa18895ae069386ef76033812483d028f4287d96baeaabce410ac28427aa6c",
+      "bytes": 16398,
+      "words": 1743,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::plasticity_proposal_registryV1",
+        "PlasticityProposalV1",
+        "TopologyProposalV1"
+      ],
+      "consumedContracts": [
+        "DomainRead::learning_artifact_registryV1",
+        "DomainRead::operator_sensor_core_registryV1",
+        "DomainRead::qualification_evidenceV1",
+        "ModulePort::kernel.evidence::learning.plasticity",
+        "ModulePort::learning.artifacts::learning.plasticity",
+        "ModulePort::learning.eval::learning.plasticity"
+      ],
+      "protocols": [
+        "TopologyProposalV1"
+      ],
+      "ownedDomains": [
+        "plasticity_proposal_registry"
+      ],
+      "readDomains": [
+        "learning_artifact_registry",
+        "operator_sensor_core_registry",
+        "qualification_evidence"
+      ],
+      "workPackages": [
+        "PLS-1-PARAMETER-PLASTICITY",
+        "PLS-2-TOPOLOGY-PROPOSAL",
+        "PLS-3-BOUNDED-STRUCTURAL-CANARY"
+      ],
+      "threats": [
+        "topology_self_activation"
+      ]
+    },
+    {
+      "module": "automation.taskflow",
+      "path": "docs/modules/automation.taskflow/TECHNICAL.md",
+      "sourceStatus": "existing_bound",
+      "bootstrapWorkPackage": "TASKFLOW-1-EXECUTION-BOUNDARY",
+      "sha256": "a1dbb717196bf47982506eb6883477e97881581e533b69b44de724f6106adb0a",
+      "bytes": 13918,
+      "words": 1623,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::automation_occurrenceV1",
+        "DomainRead::automation_scheduleV1"
+      ],
+      "consumedContracts": [
+        "DomainRead::cross_owner_outboxV1",
+        "DomainRead::operation_ledgerV1",
+        "DomainRead::thread_sessionV1",
+        "ModulePort::kernel.operations::automation.taskflow",
+        "ModulePort::runtime.codex::automation.taskflow",
+        "OperationIntentV1"
+      ],
+      "protocols": [],
+      "ownedDomains": [
+        "automation_occurrence",
+        "automation_schedule"
+      ],
+      "readDomains": [
+        "cross_owner_outbox",
+        "operation_ledger",
+        "thread_session"
+      ],
+      "workPackages": [
+        "TASKFLOW-1-EXECUTION-BOUNDARY"
+      ],
+      "threats": []
+    },
+    {
+      "module": "channel.matrix",
+      "path": "docs/modules/channel.matrix/TECHNICAL.md",
+      "sourceStatus": "existing_bound",
+      "bootstrapWorkPackage": "MATRIX-1-CHANNEL-BOUNDARY",
+      "sha256": "01b66e27435d20d352bf9a88ee99fdc6c00115333f68b3e939819aa82d312b23",
+      "bytes": 14336,
+      "words": 1646,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::matrix_dispatch_ledgerV1",
+        "DomainRead::matrix_ingress_projectionV1"
+      ],
+      "consumedContracts": [
+        "DomainRead::authority_leaseV1",
+        "DomainRead::capability_revocationV1",
+        "DomainRead::cross_owner_outboxV1",
+        "DomainRead::operation_ledgerV1",
+        "DomainRead::runtime_health_observationV1",
+        "ModulePort::kernel.authority::channel.matrix",
+        "ModulePort::kernel.operations::channel.matrix",
+        "ModulePort::runtime.agentd::channel.matrix",
+        "OperationIntentV1",
+        "VerifiedUseTokenWitnessV1"
+      ],
+      "protocols": [],
+      "ownedDomains": [
+        "matrix_dispatch_ledger",
+        "matrix_ingress_projection"
+      ],
+      "readDomains": [
+        "authority_lease",
+        "capability_revocation",
+        "cross_owner_outbox",
+        "operation_ledger",
+        "runtime_health_observation"
+      ],
+      "workPackages": [
+        "MATRIX-1-CHANNEL-BOUNDARY"
+      ],
+      "threats": [
+        "matrix_self_issued_send"
+      ]
+    },
+    {
+      "module": "browser.servo",
+      "path": "docs/modules/browser.servo/TECHNICAL.md",
+      "sourceStatus": "existing_declared_unbound",
+      "bootstrapWorkPackage": "BROWSER-WEB-C1",
+      "sha256": "931f16afe4e537a9ac29415ceabb53926db419ead6d396c7f4824867d443f230",
+      "bytes": 14103,
+      "words": 1630,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::browser_profile_stateV1"
+      ],
+      "consumedContracts": [
+        "DomainRead::authority_leaseV1",
+        "DomainRead::capability_revocationV1",
+        "DomainRead::runtime_health_observationV1",
+        "ModulePort::kernel.authority::browser.servo",
+        "ModulePort::runtime.agentd::browser.servo",
+        "VerifiedUseTokenWitnessV1"
+      ],
+      "protocols": [],
+      "ownedDomains": [
+        "browser_profile_state"
+      ],
+      "readDomains": [
+        "authority_lease",
+        "capability_revocation",
+        "runtime_health_observation"
+      ],
+      "workPackages": [
+        "BROWSER-WEB-C1"
+      ],
+      "threats": [
+        "browser_ungranted_network"
+      ]
+    },
+    {
+      "module": "ui.control",
+      "path": "docs/modules/ui.control/TECHNICAL.md",
+      "sourceStatus": "target_unmaterialized",
+      "bootstrapWorkPackage": "UI-V5",
+      "sha256": "71a361f61957bd1c9bce1b8765f553fd47fcb9066e59b00bfd95d08cdbed7f60",
+      "bytes": 13543,
+      "words": 1613,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [],
+      "consumedContracts": [
+        "DomainRead::runtime_health_observationV1",
+        "ModulePort::runtime.agentd::ui.control"
+      ],
+      "protocols": [],
+      "ownedDomains": [],
+      "readDomains": [
+        "runtime_health_observation"
+      ],
+      "workPackages": [
+        "UI-V5"
+      ],
+      "threats": []
+    },
+    {
+      "module": "ui.native",
+      "path": "docs/modules/ui.native/TECHNICAL.md",
+      "sourceStatus": "target_partially_materialized",
+      "bootstrapWorkPackage": "UI-NATIVE-1-SHELL",
+      "sha256": "145c82e93d9fc99a49d1c7fbe767b509307954f01b10c91c2e49251cb7be3833",
+      "bytes": 14193,
+      "words": 1654,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [],
+      "consumedContracts": [
+        "DomainRead::runtime_health_observationV1",
+        "ModulePort::runtime.agentd::ui.native"
+      ],
+      "protocols": [],
+      "ownedDomains": [],
+      "readDomains": [
+        "runtime_health_observation"
+      ],
+      "workPackages": [
+        "UI-NATIVE-1-SHELL",
+        "UI-V5"
+      ],
+      "threats": []
+    },
+    {
+      "module": "control.runtime",
+      "path": "docs/modules/control.runtime/TECHNICAL.md",
+      "sourceStatus": "target_partially_materialized",
+      "bootstrapWorkPackage": "RCP-1-RUNTIME-CONTROL-PLANE",
+      "sha256": "c5e73dbd5a0f8eda6a9153be51c3ea697bb230682aacdcc663103bfefbaa81e3",
+      "bytes": 15674,
+      "words": 1701,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::global_state_snapshotV1",
+        "DomainRead::optimization_decisionV1"
+      ],
+      "consumedContracts": [
+        "DomainRead::fleet_allocation_grantV1",
+        "DomainRead::ndu_preference_projectionV1",
+        "DomainRead::ndu_utility_projectionV1",
+        "DomainRead::qualification_evidenceV1",
+        "ModulePort::kernel.evidence::control.runtime",
+        "ModulePort::runtime.fleet::control.runtime",
+        "ModulePort::utility.ndu::control.runtime",
+        "NduBoundaryConditionV1",
+        "NduSummaryReceiptV1"
+      ],
+      "protocols": [
+        "NduBoundaryConditionV1",
+        "NduSummaryReceiptV1"
+      ],
+      "ownedDomains": [
+        "global_state_snapshot",
+        "optimization_decision"
+      ],
+      "readDomains": [
+        "fleet_allocation_grant",
+        "ndu_preference_projection",
+        "ndu_utility_projection",
+        "qualification_evidence"
+      ],
+      "workPackages": [
+        "NDU-2-AGENT-DOMAIN-HIERARCHY",
+        "RCP-1-RUNTIME-CONTROL-PLANE"
+      ],
+      "threats": [
+        "central_RPC_hot_path_dependency",
+        "global_optimizer_local_optimum_claim"
+      ]
+    },
+    {
+      "module": "control.engineering",
+      "path": "docs/modules/control.engineering/TECHNICAL.md",
+      "sourceStatus": "target_unmaterialized",
+      "bootstrapWorkPackage": "ECP-1-ENGINEERING-CONTROL-PLANE",
+      "sha256": "073eaef1bb0cde8e58ec6e457485b761878015d9196e6f188fc50caeed4c3911",
+      "bytes": 20541,
+      "words": 1963,
+      "requiredSections": [
+        "## 1. Identity, mission and ownership",
+        "## 2. Source binding and implementation status",
+        "## 3. Boundary, responsibilities and non-goals",
+        "## 4. Internal architecture and component decomposition",
+        "## 5. Contracts, ports and compatibility",
+        "## 6. Data authority, persistence and migrations",
+        "## 7. Runtime, concurrency and transaction model",
+        "## 8. Failure semantics, recovery and rollback",
+        "## 9. Security, privacy and threat controls",
+        "## 10. Performance, capacity and hot-path policy",
+        "## 11. Observability and operations",
+        "## 12. Verification and qualification",
+        "## 13. Implementation sequence and work packages",
+        "## 14. Activation, compatibility and retirement",
+        "## 15. Definition of module completion"
+      ],
+      "producedContracts": [
+        "DomainRead::integration_decisionV1",
+        "DomainRead::work_assignment_projectionV1"
+      ],
+      "consumedContracts": [
+        "DomainRead::qualification_evidenceV1",
+        "ModulePort::kernel.evidence::control.engineering",
+        "TopologyProposalV1"
+      ],
+      "protocols": [
+        "TopologyProposalV1"
+      ],
+      "ownedDomains": [
+        "integration_decision",
+        "work_assignment_projection"
+      ],
+      "readDomains": [
+        "qualification_evidence"
+      ],
+      "workPackages": [
+        "DOC-0-CANONICAL-DOCUMENT-CONSOLIDATION",
+        "DOC-1-V8-SEMANTIC-UPGRADE",
+        "DOC-2-DEFAULT-BRANCH-SELECTION",
+        "DOC-3A-SOURCE-BINDING-RECONCILIATION",
+        "DOC-3B-MODULE-TECHNICAL-DOCUMENTS",
+        "DOC-3C-MODULE-DOC-CLOSED-WORLD",
+        "DOC-REGISTRY-CLOSED-WORLD",
+        "ECP-1-ENGINEERING-CONTROL-PLANE",
+        "SELF-1-CODE-CANDIDATE-PIPELINE"
+      ],
+      "threats": [
+        "self_review_or_self_merge"
+      ]
+    }
+  ],
+  "authorityFlags": {
+    "runtimeAuthority": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalFilesystemMutation": false,
+    "secretOperation": false,
+    "matrixSend": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "canonicalSelection": false,
+    "merge": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

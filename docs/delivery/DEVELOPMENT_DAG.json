@@ -83,7 +83,10 @@
     "MATRIX-1-CHANNEL-BOUNDARY",
     "UI-NATIVE-1-SHELL",
     "INT-2-AGENTD-CODEX-COMPOSITION",
-    "DOC-REGISTRY-CLOSED-WORLD"
+    "DOC-REGISTRY-CLOSED-WORLD",
+    "DOC-3A-SOURCE-BINDING-RECONCILIATION",
+    "DOC-3B-MODULE-TECHNICAL-DOCUMENTS",
+    "DOC-3C-MODULE-DOC-CLOSED-WORLD"
   ],
   "edges": [
     {
@@ -196,6 +199,10 @@
     },
     {
       "from": "DOC-1-V8-SEMANTIC-UPGRADE",
+      "to": "DOC-3A-SOURCE-BINDING-RECONCILIATION"
+    },
+    {
+      "from": "DOC-1-V8-SEMANTIC-UPGRADE",
       "to": "DOC-REGISTRY-CLOSED-WORLD"
     },
     {
@@ -233,6 +240,22 @@
     {
       "from": "DOC-2-DEFAULT-BRANCH-SELECTION",
       "to": "RCP-1-RUNTIME-CONTROL-PLANE"
+    },
+    {
+      "from": "DOC-3A-SOURCE-BINDING-RECONCILIATION",
+      "to": "DOC-3B-MODULE-TECHNICAL-DOCUMENTS"
+    },
+    {
+      "from": "DOC-3B-MODULE-TECHNICAL-DOCUMENTS",
+      "to": "DOC-3C-MODULE-DOC-CLOSED-WORLD"
+    },
+    {
+      "from": "DOC-3C-MODULE-DOC-CLOSED-WORLD",
+      "to": "DOC-2-DEFAULT-BRANCH-SELECTION"
+    },
+    {
+      "from": "DOC-REGISTRY-CLOSED-WORLD",
+      "to": "DOC-3A-SOURCE-BINDING-RECONCILIATION"
     },
     {
       "from": "ECP-1-ENGINEERING-CONTROL-PLANE",

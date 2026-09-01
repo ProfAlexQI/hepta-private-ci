@@ -16,7 +16,9 @@ Dynamic Git, CI, review, operator, selection, promotion and release facts are ex
 - Contracts: **178**
 - Critical protocols: **29**
 - Durable data domains: **47**
-- Work packages: **77**
+- Work packages: **80**
+- Module technical guides: **40**
+- Source bindings: **40**
 
 ## Work-package states
 
@@ -24,9 +26,8 @@ Dynamic Git, CI, review, operator, selection, promotion and release facts are ex
 |---|---:|
 | `blocked_external` | 2 |
 | `open` | 7 |
-| `planned` | 55 |
-| `source_identity_conflict` | 1 |
-| `source_implemented` | 3 |
+| `planned` | 56 |
+| `source_implemented` | 6 |
 | `source_implemented_execution_pending` | 8 |
 | `source_implemented_semantic_review_pending` | 1 |
 

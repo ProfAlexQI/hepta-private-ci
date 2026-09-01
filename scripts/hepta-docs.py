@@ -10,9 +10,10 @@ from typing import Any
 ROOT=Path(__file__).resolve().parents[1]
 PLAN_ID='HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN'; VERSION='8.0.0'
 REPO='TrillionniumFoundation/hepta-private-ci'; REPO_ID=1320694176; DEFAULT_BRANCH='integration/vnext-main-20260811'
+MODULE_VERIFIER='scripts/hepta-module-docs.py'
 AUTHORITY_KEYS=['runtimeAuthority','productionCaller','productionWriter','modelInvocation','providerDispatch','toolExecution','networkConnect','externalFilesystemMutation','secretOperation','matrixSend','externalEffect','fleetMutation','canonicalSelection','merge','operatorAcceptance','promotion','release']
-FILES={'current':'docs/CURRENT.json','system':'docs/governance/DOCUMENT_SYSTEM.json','architecture':'docs/architecture/ARCHITECTURE.json','modules':'docs/modules/MODULES.json','contracts':'docs/contracts/CONTRACTS.json','protocols':'docs/contracts/PROTOCOL_SCHEMAS.json','data':'docs/data/DATA_AUTHORITY.json','work':'docs/delivery/WORK_PACKAGES.json','development':'docs/delivery/DEVELOPMENT_DAG.json','activation':'docs/delivery/ACTIVATION_DAG.json','evidence_dag':'docs/delivery/EVIDENCE_DAG.json','paths':'docs/delivery/PATH_OWNERSHIP.json','objectives':'docs/control-plane/OBJECTIVES.json','ndu':'docs/control-plane/NDU.json','optimization':'docs/control-plane/OPTIMIZATION.json','prompt':'docs/intelligence/PROMPT_INTERVENTIONS.json','learning':'docs/learning/LEARNING_SYSTEM.json','experiments':'docs/learning/EXPERIMENTS.json','artifacts':'docs/learning/ARTIFACTS.json','claims':'docs/evidence/CLAIMS.json','qualification':'docs/evidence/QUALIFICATION.json','evidence':'docs/evidence/INDEX.json','threats':'docs/security/THREAT_MODEL.json'}
-SCHEMAS={'current':'hepta.selected-development-source.v2','system':'hepta.document-system.v4','architecture':'hepta.architecture-model.v5','modules':'hepta.module-registry.v5','contracts':'hepta.contract-registry.v2','protocols':'hepta.protocol-schema-registry.v2','data':'hepta.data-authority-registry.v2','work':'hepta.work-package-registry.v4','development':'hepta.development-dag.v3','activation':'hepta.activation-dag.v3','evidence_dag':'hepta.evidence-dag.v3','paths':'hepta.path-ownership.v2','objectives':'hepta.global-objective-registry.v2','ndu':'hepta.ndu-registry.v2','optimization':'hepta.optimization-registry.v1','prompt':'hepta.prompt-intervention-registry.v2','learning':'hepta.learning-system.v2','experiments':'hepta.experiment-registry.v1','artifacts':'hepta.learning-artifact-registry.v1','claims':'hepta.claim-registry.v1','qualification':'hepta.qualification-registry.v2','evidence':'hepta.evidence-index.v5','threats':'hepta.threat-model.v2'}
+FILES={'current':'docs/CURRENT.json','system':'docs/governance/DOCUMENT_SYSTEM.json','architecture':'docs/architecture/ARCHITECTURE.json','modules':'docs/modules/MODULES.json','contracts':'docs/contracts/CONTRACTS.json','protocols':'docs/contracts/PROTOCOL_SCHEMAS.json','data':'docs/data/DATA_AUTHORITY.json','work':'docs/delivery/WORK_PACKAGES.json','development':'docs/delivery/DEVELOPMENT_DAG.json','activation':'docs/delivery/ACTIVATION_DAG.json','evidence_dag':'docs/delivery/EVIDENCE_DAG.json','paths':'docs/delivery/PATH_OWNERSHIP.json','objectives':'docs/control-plane/OBJECTIVES.json','ndu':'docs/control-plane/NDU.json','optimization':'docs/control-plane/OPTIMIZATION.json','prompt':'docs/intelligence/PROMPT_INTERVENTIONS.json','learning':'docs/learning/LEARNING_SYSTEM.json','experiments':'docs/learning/EXPERIMENTS.json','artifacts':'docs/learning/ARTIFACTS.json','claims':'docs/evidence/CLAIMS.json','qualification':'docs/evidence/QUALIFICATION.json','evidence':'docs/evidence/INDEX.json','threats':'docs/security/THREAT_MODEL.json','module_docs':'docs/modules/MODULE_DOCS.json','source_bindings':'docs/modules/SOURCE_BINDINGS.json'}
+SCHEMAS={'current':'hepta.selected-development-source.v2','system':'hepta.document-system.v5','architecture':'hepta.architecture-model.v5','modules':'hepta.module-registry.v6','contracts':'hepta.contract-registry.v2','protocols':'hepta.protocol-schema-registry.v2','data':'hepta.data-authority-registry.v2','work':'hepta.work-package-registry.v4','development':'hepta.development-dag.v3','activation':'hepta.activation-dag.v3','evidence_dag':'hepta.evidence-dag.v3','paths':'hepta.path-ownership.v2','objectives':'hepta.global-objective-registry.v2','ndu':'hepta.ndu-registry.v2','optimization':'hepta.optimization-registry.v1','prompt':'hepta.prompt-intervention-registry.v2','learning':'hepta.learning-system.v2','experiments':'hepta.experiment-registry.v1','artifacts':'hepta.learning-artifact-registry.v1','claims':'hepta.claim-registry.v1','qualification':'hepta.qualification-registry.v2','evidence':'hepta.evidence-index.v5','threats':'hepta.threat-model.v2','module_docs':'hepta.module-document-index.v1','source_bindings':'hepta.module-source-binding.v1'}
 RECEIPT_SCHEMA='hepta.development-docs-execution-receipt.v5'
 
 class DuplicateKey(ValueError): pass
@@ -159,7 +160,9 @@ def status_text(d):
            f"- Contracts: **{len(d['contracts']['contracts'])}**",
            f"- Critical protocols: **{len(d['protocols']['protocols'])}**",
            f"- Durable data domains: **{len(d['data']['domains'])}**",
-           f"- Work packages: **{len(d['work']['packages'])}**",'',
+           f"- Work packages: **{len(d['work']['packages'])}**",
+           f"- Module technical guides: **{len(d['module_docs']['modules'])}**",
+           f"- Source bindings: **{len(d['source_bindings']['bindings'])}**",'',
            '## Work-package states','', '| State | Count |','|---|---:|']
     for k,v in sorted(states.items()): lines.append(f'| `{k}` | {v} |')
     lines+=['','## Baseline claims','', '| Claim | Current level |','|---|---|']
@@ -235,7 +238,9 @@ def verify_cleanup_base(system):
             'inventorySha256':hashlib.sha256(('\n'.join(expected)+'\n').encode()).hexdigest()}
 
 def verify()->int:
-    req=['README.md','docs/DEVELOPMENT.md','docs/STATUS.md','scripts/hepta-docs.py','.github/workflows/hepta-development-docs.yml',*FILES.values()]
+    module_index=load(FILES['module_docs'])
+    technical_paths=[x['path'] for x in module_index['modules']]
+    req=['README.md','docs/DEVELOPMENT.md','docs/STATUS.md','docs/modules/README.md','scripts/hepta-docs.py',MODULE_VERIFIER,'.github/workflows/hepta-development-docs.yml',*FILES.values(),*technical_paths]
     for rel in req: need((ROOT/rel).is_file(),'missing '+rel)
     d={k:load(v) for k,v in FILES.items()}
     for k,s in SCHEMAS.items(): need(d[k].get('schema')==s,'schema '+k)
@@ -338,10 +343,12 @@ def verify()->int:
     for t in d['threats']['threats']:
         need(t['owner'] in mids and t['prevent'] and t['detect'] and t['respond'],'threat '+t['id'])
     need((ROOT/'docs/STATUS.md').read_text()==status_text(d),'STATUS stale')
+    module_check=subprocess.run([sys.executable,str(ROOT/MODULE_VERIFIER),'verify'],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    need(module_check.returncode==0,'module docs verifier '+(module_check.stderr or module_check.stdout).strip())
     wf=(ROOT/'.github/workflows/hepta-development-docs.yml').read_text()
     for token in ['source-head:','merge-candidate:','github.event.pull_request.head.sha','github.event.pull_request.base.sha',
                   'git merge-tree --write-tree','git commit-tree','persist-credentials: false',
-                  'python3 scripts/hepta-docs.py verify','python3 scripts/hepta-docs.py inventory-legacy',
+                  'python3 scripts/hepta-docs.py verify','python3 scripts/hepta-module-docs.py verify','python3 scripts/hepta-docs.py inventory-legacy',
                   'python3 scripts/hepta-docs.py cleanup-inventory','python3 scripts/hepta-docs.py self-test',
                   'python3 scripts/hepta-docs.py receipt-verify','include-hidden-files: true',
                   'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02','contents: read']:
@@ -351,7 +358,7 @@ def verify()->int:
         need(token not in wf,'workflow mutation or stale identity '+token)
     print(json.dumps({'status':'PASS_HEPTA_DEVELOPMENT_DOCS_V8','planVersion':VERSION,'modules':len(mods),
                       'contracts':len(contracts),'protocols':len(protocols),'dataDomains':len(domains),
-                      'workPackages':len(packages),'legacyPaths':0,'unresolvedPathConflicts':0},sort_keys=True))
+                      'workPackages':len(packages),'moduleTechnicalDocuments':len(d['module_docs']['modules']),'sourceBindings':len(d['source_bindings']['bindings']),'legacyPaths':0,'unresolvedPathConflicts':0},sort_keys=True))
     return 0
 
 def generate():
@@ -415,6 +422,7 @@ def receipt(kind,expected_sha,output):
         'workflowPath':'.github/workflows/hepta-development-docs.yml',
         'workflowSha256':hashlib.sha256((ROOT/'.github/workflows/hepta-development-docs.yml').read_bytes()).hexdigest(),
         'verifierSha256':hashlib.sha256((ROOT/'scripts/hepta-docs.py').read_bytes()).hexdigest(),
+        'moduleVerifierSha256':hashlib.sha256((ROOT/MODULE_VERIFIER).read_bytes()).hexdigest(),
         'verifiedAt':verified_at,'timeEvidence':time_evidence,
         'maximumClockSkewSeconds':policy['maximumClockSkewSeconds'],
         'dynamicReceiptTtlSeconds':policy['dynamicReceiptTtlSeconds'],
@@ -441,6 +449,7 @@ def receipt_verify(input_path,kind,expected_sha):
     need(payload.get('workflowPath')=='.github/workflows/hepta-development-docs.yml','receipt workflow path')
     need(payload.get('workflowSha256')==hashlib.sha256((ROOT/'.github/workflows/hepta-development-docs.yml').read_bytes()).hexdigest(),'receipt workflow digest')
     need(payload.get('verifierSha256')==hashlib.sha256((ROOT/'scripts/hepta-docs.py').read_bytes()).hexdigest(),'receipt verifier digest')
+    need(payload.get('moduleVerifierSha256')==hashlib.sha256((ROOT/MODULE_VERIFIER).read_bytes()).hexdigest(),'receipt module verifier digest')
     policy=load(FILES['current'])['dynamicObservationPolicy']
     fresh=validate_observation(payload.get('verifiedAt'),policy)
     stored=payload.get('timeEvidence')

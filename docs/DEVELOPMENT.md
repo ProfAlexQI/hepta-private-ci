@@ -95,6 +95,12 @@ intelligence.control  # composition façade only
 
 Each module has a primary owner, deputy, exclusive roots, dependencies, data authority, forbidden authority and bounded work packages. One developer or agent receives a work envelope, not broad repository ownership. Cross-module changes require explicit co-ownership or a separate integration package.
 
+## 5A. Closed-world module implementation guides
+
+Every one of the forty registered modules has one stable implementation guide at `docs/modules/<module-id>/TECHNICAL.md`. `docs/modules/MODULE_DOCS.json` binds each guide to its exact digest, contracts, protocols, data domains, threats and work packages. `docs/modules/SOURCE_BINDINGS.json` separates declared target roots from existing implementation evidence, missing roots and the bootstrap package that must materialize each target.
+
+Source states are deliberately truthful: a module may be `existing_bound`, `existing_legacy_aggregate`, `existing_declared_unbound`, `target_partially_materialized`, `target_unmaterialized` or `external_with_adapter_target`. Documentation readiness never changes a source, activation, acceptance, promotion or release claim. `python3 scripts/hepta-module-docs.py verify` fails unless all forty guides, bindings and registry references are closed.
+
 ## 6. Objective compilation
 
 Each request is compiled into `ObjectiveFunctionV1` before adaptive logic runs. The receipt binds:

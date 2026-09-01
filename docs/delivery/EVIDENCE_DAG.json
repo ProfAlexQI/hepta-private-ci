@@ -83,88 +83,27 @@
     "MATRIX-1-CHANNEL-BOUNDARY",
     "UI-NATIVE-1-SHELL",
     "INT-2-AGENTD-CODEX-COMPOSITION",
-    "DOC-REGISTRY-CLOSED-WORLD"
+    "DOC-REGISTRY-CLOSED-WORLD",
+    "DOC-3A-SOURCE-BINDING-RECONCILIATION",
+    "DOC-3B-MODULE-TECHNICAL-DOCUMENTS",
+    "DOC-3C-MODULE-DOC-CLOSED-WORLD"
   ],
   "edges": [
     {
-      "from": "AUTHBUS-P1.3-V12",
-      "to": "HEPTABAO-1-SECRET-BOUNDARY"
-    },
-    {
-      "from": "BIO-0-NEURON-INTUITION-CONTRACTS",
-      "to": "PLATFORM-0-TYPE-BOUNDARY"
-    },
-    {
-      "from": "C1-PROMPTED-MEMORY-RETRIEVAL-RANK",
-      "to": "INT-2-AGENTD-CODEX-COMPOSITION"
-    },
-    {
-      "from": "CTX-1-CONTEXT-COMPILER",
-      "to": "INT-2-AGENTD-CODEX-COMPOSITION"
-    },
-    {
       "from": "DOC-0-CANONICAL-DOCUMENT-CONSOLIDATION",
       "to": "DOC-1-V8-SEMANTIC-UPGRADE"
-    },
-    {
-      "from": "DOC-0-CANONICAL-DOCUMENT-CONSOLIDATION",
-      "to": "DOC-REGISTRY-CLOSED-WORLD"
     },
     {
       "from": "DOC-1-V8-SEMANTIC-UPGRADE",
       "to": "DOC-2-DEFAULT-BRANCH-SELECTION"
     },
     {
-      "from": "DOC-1-V8-SEMANTIC-UPGRADE",
-      "to": "DOC-REGISTRY-CLOSED-WORLD"
-    },
-    {
-      "from": "DOC-1-V8-SEMANTIC-UPGRADE",
-      "to": "PLATFORM-0-TYPE-BOUNDARY"
-    },
-    {
-      "from": "DOC-2-DEFAULT-BRANCH-SELECTION",
-      "to": "BROWSER-WEB-C1"
-    },
-    {
-      "from": "DOC-2-DEFAULT-BRANCH-SELECTION",
-      "to": "INTELLIGENCE-A0-Q0.63"
+      "from": "DOC-3C-MODULE-DOC-CLOSED-WORLD",
+      "to": "DOC-2-DEFAULT-BRANCH-SELECTION"
     },
     {
       "from": "DOC-2-DEFAULT-BRANCH-SELECTION",
       "to": "P0.7A-RUNTIME-BOOTSTRAP"
-    },
-    {
-      "from": "DOC-2-DEFAULT-BRANCH-SELECTION",
-      "to": "UI-V5"
-    },
-    {
-      "from": "HBO-0-BELLMAN-OPERATOR-CONTRACTS",
-      "to": "PLATFORM-0-TYPE-BOUNDARY"
-    },
-    {
-      "from": "INT-1-CALIBRATED-INTUITION-POLICY",
-      "to": "INT-2-AGENTD-CODEX-COMPOSITION"
-    },
-    {
-      "from": "INTELLIGENCE-A0-Q0.63",
-      "to": "INT-2-AGENTD-CODEX-COMPOSITION"
-    },
-    {
-      "from": "LRN-0-CAUSAL-LEARNING-CONTRACTS",
-      "to": "PLATFORM-0-TYPE-BOUNDARY"
-    },
-    {
-      "from": "MEM-0-TYPES",
-      "to": "MEM-READ-1-SNAPSHOT-PORT"
-    },
-    {
-      "from": "NDU-0-PREFERENCE-UTILITY-CONTRACTS",
-      "to": "PLATFORM-0-TYPE-BOUNDARY"
-    },
-    {
-      "from": "OBJ-0-OBJECTIVE-CONTRACTS",
-      "to": "PLATFORM-0-TYPE-BOUNDARY"
     },
     {
       "from": "P0.7A-RUNTIME-BOOTSTRAP",
@@ -175,40 +114,120 @@
       "to": "AUTHBUS-P1.3-V12"
     },
     {
-      "from": "P0.7B-B0-VERIFIED-USE",
-      "to": "FLEET-1-ALLOCATION-CONTRACT"
+      "from": "DOC-2-DEFAULT-BRANCH-SELECTION",
+      "to": "INTELLIGENCE-A0-Q0.63"
     },
     {
-      "from": "P0.7B-B3-BOUNDARIES",
-      "to": "HEPTABAO-1-SECRET-BOUNDARY"
+      "from": "DOC-2-DEFAULT-BRANCH-SELECTION",
+      "to": "UI-V5"
     },
     {
-      "from": "P0.7B-B3-BOUNDARIES",
-      "to": "MATRIX-1-CHANNEL-BOUNDARY"
-    },
-    {
-      "from": "P0.7B-B4-CALLSITE-PROOF",
-      "to": "TASKFLOW-1-EXECUTION-BOUNDARY"
-    },
-    {
-      "from": "P0.7E-DEPENDENCY-INVERSION",
-      "to": "PLATFORM-0-TYPE-BOUNDARY"
-    },
-    {
-      "from": "P0.8B-READINESS",
-      "to": "UI-NATIVE-1-SHELL"
+      "from": "DOC-2-DEFAULT-BRANCH-SELECTION",
+      "to": "BROWSER-WEB-C1"
     },
     {
       "from": "P0.8D-VERTICAL-SLICE",
       "to": "P0.9-EXTERNAL-GATES"
     },
     {
+      "from": "DOC-1-V8-SEMANTIC-UPGRADE",
+      "to": "PLATFORM-0-TYPE-BOUNDARY"
+    },
+    {
+      "from": "OBJ-0-OBJECTIVE-CONTRACTS",
+      "to": "PLATFORM-0-TYPE-BOUNDARY"
+    },
+    {
+      "from": "LRN-0-CAUSAL-LEARNING-CONTRACTS",
+      "to": "PLATFORM-0-TYPE-BOUNDARY"
+    },
+    {
+      "from": "NDU-0-PREFERENCE-UTILITY-CONTRACTS",
+      "to": "PLATFORM-0-TYPE-BOUNDARY"
+    },
+    {
       "from": "PIM-0-PROMPT-INTERVENTION-CONTRACTS",
       "to": "PLATFORM-0-TYPE-BOUNDARY"
     },
     {
+      "from": "HBO-0-BELLMAN-OPERATOR-CONTRACTS",
+      "to": "PLATFORM-0-TYPE-BOUNDARY"
+    },
+    {
+      "from": "BIO-0-NEURON-INTUITION-CONTRACTS",
+      "to": "PLATFORM-0-TYPE-BOUNDARY"
+    },
+    {
+      "from": "P0.7E-DEPENDENCY-INVERSION",
+      "to": "PLATFORM-0-TYPE-BOUNDARY"
+    },
+    {
+      "from": "P0.7B-B0-VERIFIED-USE",
+      "to": "FLEET-1-ALLOCATION-CONTRACT"
+    },
+    {
+      "from": "AUTHBUS-P1.3-V12",
+      "to": "HEPTABAO-1-SECRET-BOUNDARY"
+    },
+    {
+      "from": "P0.7B-B3-BOUNDARIES",
+      "to": "HEPTABAO-1-SECRET-BOUNDARY"
+    },
+    {
+      "from": "MEM-0-TYPES",
+      "to": "MEM-READ-1-SNAPSHOT-PORT"
+    },
+    {
+      "from": "P0.7B-B4-CALLSITE-PROOF",
+      "to": "TASKFLOW-1-EXECUTION-BOUNDARY"
+    },
+    {
+      "from": "P0.7B-B3-BOUNDARIES",
+      "to": "MATRIX-1-CHANNEL-BOUNDARY"
+    },
+    {
+      "from": "P0.8B-READINESS",
+      "to": "UI-NATIVE-1-SHELL"
+    },
+    {
       "from": "UI-V5",
       "to": "UI-NATIVE-1-SHELL"
+    },
+    {
+      "from": "CTX-1-CONTEXT-COMPILER",
+      "to": "INT-2-AGENTD-CODEX-COMPOSITION"
+    },
+    {
+      "from": "INT-1-CALIBRATED-INTUITION-POLICY",
+      "to": "INT-2-AGENTD-CODEX-COMPOSITION"
+    },
+    {
+      "from": "C1-PROMPTED-MEMORY-RETRIEVAL-RANK",
+      "to": "INT-2-AGENTD-CODEX-COMPOSITION"
+    },
+    {
+      "from": "INTELLIGENCE-A0-Q0.63",
+      "to": "INT-2-AGENTD-CODEX-COMPOSITION"
+    },
+    {
+      "from": "DOC-1-V8-SEMANTIC-UPGRADE",
+      "to": "DOC-REGISTRY-CLOSED-WORLD"
+    },
+    {
+      "from": "DOC-0-CANONICAL-DOCUMENT-CONSOLIDATION",
+      "to": "DOC-REGISTRY-CLOSED-WORLD"
+    },
+    {
+      "from": "DOC-1-V8-SEMANTIC-UPGRADE",
+      "to": "DOC-3A-SOURCE-BINDING-RECONCILIATION"
+    },
+    {
+      "from": "DOC-3A-SOURCE-BINDING-RECONCILIATION",
+      "to": "DOC-3B-MODULE-TECHNICAL-DOCUMENTS"
+    },
+    {
+      "from": "DOC-3B-MODULE-TECHNICAL-DOCUMENTS",
+      "to": "DOC-3C-MODULE-DOC-CLOSED-WORLD"
     }
   ],
   "acyclicRequired": true,
