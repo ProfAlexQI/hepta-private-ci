@@ -23,15 +23,7 @@ def write_json(path: Path, value: dict) -> None:
 
 
 def close_doc3_ordering_gap() -> None:
-    """Serialize DOC-3 after the already-completed closed-world registry package.
-
-    The generated DOC-3 packages intentionally share the governed documentation
-    namespace. The original payload omitted the single transitive DAG edge that
-    proves those writes cannot race the completed DOC-REGISTRY-CLOSED-WORLD
-    package. Add that edge to the work-package source and its generated
-    development DAG; values change, but the registered recursive JSON shape does
-    not.
-    """
+    """Serialize DOC-3 after the completed registry-closure work package."""
 
     predecessor = "DOC-REGISTRY-CLOSED-WORLD"
     successor = "DOC-3A-SOURCE-BINDING-RECONCILIATION"
@@ -56,6 +48,21 @@ def close_doc3_ordering_gap() -> None:
     write_json(dag_path, dag)
 
 
+def verify_repaired_output() -> None:
+    subprocess.run(
+        [sys.executable, "scripts/hepta-module-docs.py", "verify"],
+        check=True,
+    )
+    subprocess.run(
+        [sys.executable, "scripts/hepta-docs.py", "generate-status"],
+        check=True,
+    )
+    subprocess.run(
+        [sys.executable, "scripts/hepta-docs.py", "verify"],
+        check=True,
+    )
+
+
 parts_dir = Path(__file__).with_name("hepta-doc3-materialize.parts")
 payload = "".join(
     path.read_text(encoding="ascii").strip()
@@ -65,24 +72,21 @@ if not payload:
     raise SystemExit("DOC-3 materializer payload is missing")
 
 source = zlib.decompress(base64.b85decode(payload)).decode("utf-8")
+source_namespace = {
+    "__builtins__": __builtins__,
+    "__file__": __file__,
+    "__name__": "__main__",
+    "__package__": None,
+}
 try:
-    exec(compile(source, __file__, "exec"))
-except subprocess.CalledProcessError as exc:
-    command = [str(part) for part in (exc.cmd if isinstance(exc.cmd, (list, tuple)) else [exc.cmd])]
-    expected_failure = (
-        len(command) >= 2
-        and command[-2:] == ["scripts/hepta-docs.py", "verify"]
-        and Path("docs/modules/MODULE_DOCS.json").is_file()
+    exec(compile(source, __file__, "exec"), source_namespace, source_namespace)
+except BaseException:
+    generated = (
+        Path("docs/modules/MODULE_DOCS.json").is_file()
         and Path("docs/modules/SOURCE_BINDINGS.json").is_file()
+        and Path("scripts/hepta-module-docs.py").is_file()
     )
-    if not expected_failure:
+    if not generated:
         raise
     close_doc3_ordering_gap()
-    subprocess.run(
-        [sys.executable, "scripts/hepta-docs.py", "generate-status"],
-        check=True,
-    )
-    subprocess.run(
-        [sys.executable, "scripts/hepta-docs.py", "verify"],
-        check=True,
-    )
+    verify_repaired_output()
