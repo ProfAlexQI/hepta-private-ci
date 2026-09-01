@@ -8,6 +8,8 @@ import sys
 import zlib
 from pathlib import Path
 
+# Exact trigger revision for the bounded one-shot DOC-3 closure workflow.
+
 
 def load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -24,9 +26,9 @@ def close_doc3_ordering_gap() -> None:
     """Serialize DOC-3 after the already-completed closed-world registry package.
 
     The generated DOC-3 packages intentionally share the governed documentation
-    namespace.  The original payload omitted the single transitive DAG edge that
+    namespace. The original payload omitted the single transitive DAG edge that
     proves those writes cannot race the completed DOC-REGISTRY-CLOSED-WORLD
-    package.  Add that edge to the work-package source and its generated
+    package. Add that edge to the work-package source and its generated
     development DAG; values change, but the registered recursive JSON shape does
     not.
     """
