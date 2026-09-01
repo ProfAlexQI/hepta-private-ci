@@ -1,3 +1,4 @@
+# Temporary one-shot event trigger; removed from the final candidate.
 name: Hepta one-shot docs patch
 
 on:
