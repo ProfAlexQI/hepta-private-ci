@@ -8,10 +8,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: hepta-doc3-module-closure
-  cancel-in-progress: true
-
 env:
   CURRENT_DEFAULT: integration/vnext-main-20260811
   FUTURE_DEFAULT: main
