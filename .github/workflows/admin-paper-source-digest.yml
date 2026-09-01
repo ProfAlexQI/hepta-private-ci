@@ -1,0 +1,67 @@
+name: Admin fingerprint exact paper sources
+
+on:
+  push:
+    branches:
+      - admin/materialize-adaptive-doc-closure-20260902
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fingerprint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Download immutable-version paper artifacts and emit manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p paper-sources
+          curl --fail --location --retry 5 --retry-all-errors \
+            --user-agent 'hepta-source-lock/1.0' \
+            https://arxiv.org/pdf/2606.16846v1 \
+            --output paper-sources/arxiv-2606.16846v1.pdf
+          test "$(head -c 4 paper-sources/arxiv-2606.16846v1.pdf)" = '%PDF'
+          curl --fail --location --retry 5 --retry-all-errors \
+            --user-agent 'hepta-source-lock/1.0' \
+            https://export.arxiv.org/e-print/2606.16846v1 \
+            --output paper-sources/arxiv-2606.16846v1-source.tar
+          curl --fail --location --retry 5 --retry-all-errors \
+            --user-agent 'hepta-source-lock/1.0' \
+            https://raw.githubusercontent.com/mlresearch/v336/main/assets/qi26a/qi26a.pdf \
+            --output paper-sources/pmlr-v336-qi26a.pdf
+          test "$(head -c 4 paper-sources/pmlr-v336-qi26a.pdf)" = '%PDF'
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          rows = []
+          for path in sorted(Path('paper-sources').iterdir()):
+              data = path.read_bytes()
+              rows.append({
+                  'file': path.name,
+                  'bytes': len(data),
+                  'sha256': hashlib.sha256(data).hexdigest(),
+                  'magicHex': data[:16].hex(),
+              })
+          manifest = {
+              'schema': 'hepta.paper-source-fingerprint.v1',
+              'artifacts': rows,
+              'authorityGranted': False,
+          }
+          Path('paper-sources/manifest.json').write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          print(json.dumps(manifest, sort_keys=True))
+          PY
+
+      - name: Retain exact source fingerprint manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: exact-paper-source-fingerprints-${{ github.sha }}
+          path: paper-sources/manifest.json
+          if-no-files-found: error
+          retention-days: 7
