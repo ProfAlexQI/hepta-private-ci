@@ -1,0 +1,518 @@
+name: Hepta one-shot branch consolidation
+
+on:
+  push:
+    branches:
+      - integration/vnext-main-20260811
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: hepta-one-shot-branch-consolidation
+  cancel-in-progress: false
+
+env:
+  REPOSITORY_FULL_NAME: TrillionniumFoundation/hepta-private-ci
+  OLD_DEFAULT: integration/vnext-main-20260811
+  FINAL_BRANCH: main
+  ONE_SHOT_WORKFLOW: .github/workflows/hepta-branch-consolidation.yml
+
+jobs:
+  consolidate:
+    if: github.repository == 'TrillionniumFoundation/hepta-private-ci'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact selected source with every branch object
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Bind source and prepare authenticated Git
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git config user.name "Hepta Repository Consolidation"
+          git config user.email "hepta-repository-consolidation@users.noreply.github.com"
+          git fetch --force --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          git checkout -B "$OLD_DEFAULT" "$GITHUB_SHA"
+
+      - name: Build and preflight the DOC-REGISTRY-CLOSED-WORLD patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import re
+          from pathlib import Path
+          from typing import Any
+
+          root = Path('.')
+          old_default = 'integration/vnext-main-20260811'
+          old_candidate = 'codex/hepta-development-docs-v7-1-final-20260901'
+
+          def replace_exact(value: Any) -> tuple[Any, bool]:
+              if isinstance(value, dict):
+                  changed = False
+                  result = {}
+                  for key, child in value.items():
+                      new_child, child_changed = replace_exact(child)
+                      result[key] = new_child
+                      changed = changed or child_changed
+                  return result, changed
+              if isinstance(value, list):
+                  changed = False
+                  result = []
+                  for child in value:
+                      new_child, child_changed = replace_exact(child)
+                      result.append(new_child)
+                      changed = changed or child_changed
+                  return result, changed
+              if isinstance(value, str) and value in {old_default, old_candidate}:
+                  return 'main', True
+              return value, False
+
+          for path in sorted((root / 'docs').rglob('*.json')):
+              data = json.loads(path.read_text(encoding='utf-8'))
+              data, changed = replace_exact(data)
+
+              if path.as_posix() == 'docs/CURRENT.json':
+                  data['repository']['defaultBranch'] = 'main'
+                  data['candidate'].update(
+                      {
+                          'pullRequest': 286,
+                          'targetBranch': 'main',
+                          'sourceHead': 'resolved_by_exact_default_branch_receipt',
+                          'sourceTree': 'resolved_by_exact_default_branch_receipt',
+                          'mergeCandidate': 'not_applicable_after_default_branch_selection',
+                          'relationship': 'selected_default_branch_tip_after_ancestry_consolidation',
+                      }
+                  )
+                  data['currentWorkPackage'] = 'P0.7A-RUNTIME-BOOTSTRAP'
+                  supersedes = data.setdefault('supersedes', [])
+                  marker = 'pre-consolidation multi-branch repository ref surface'
+                  if marker not in supersedes:
+                      supersedes.append(marker)
+                  changed = True
+
+              if path.as_posix() == 'docs/delivery/WORK_PACKAGES.json':
+                  data['currentPackage'] = 'P0.7A-RUNTIME-BOOTSTRAP'
+                  completed = {
+                      'DOC-0-CANONICAL-DOCUMENT-CONSOLIDATION',
+                      'DOC-1-V8-SEMANTIC-UPGRADE',
+                      'DOC-2-DEFAULT-BRANCH-SELECTION',
+                      'DOC-REGISTRY-CLOSED-WORLD',
+                  }
+                  for package in data['packages']:
+                      if package['id'] in completed:
+                          package['state'] = 'source_implemented'
+                  changed = True
+
+              if changed:
+                  path.write_text(
+                      json.dumps(data, ensure_ascii=False, indent=2) + '\n',
+                      encoding='utf-8',
+                  )
+
+          verifier = root / 'scripts/hepta-docs.py'
+          verifier_text = verifier.read_text(encoding='utf-8')
+          old_constant = "DEFAULT_BRANCH='integration/vnext-main-20260811'"
+          new_constant = "DEFAULT_BRANCH='main'"
+          if old_constant in verifier_text:
+              verifier_text = verifier_text.replace(old_constant, new_constant, 1)
+          elif new_constant not in verifier_text:
+              raise SystemExit('unable to rebind verifier default branch')
+          verifier.write_text(verifier_text, encoding='utf-8')
+
+          workflow = root / '.github/workflows/hepta-development-docs.yml'
+          workflow_text = workflow.read_text(encoding='utf-8')
+          old_trigger = "      - integration/vnext-main-20260811\n      - main"
+          if old_trigger in workflow_text:
+              workflow_text = workflow_text.replace(old_trigger, "      - main", 1)
+          elif old_default in workflow_text:
+              raise SystemExit('unexpected canonical workflow branch trigger')
+          workflow.write_text(workflow_text, encoding='utf-8')
+
+          development = root / 'docs/DEVELOPMENT.md'
+          development_text = development.read_text(encoding='utf-8')
+          development_text = re.sub(
+              r"\*\*Status:\*\*[^\n]*",
+              "**Status:** canonical development source selected on `main`; executable qualification, operator acceptance, promotion, and release remain separate.",
+              development_text,
+              count=1,
+          )
+          old_cleanup = (
+              "The exact default baseline contains a 138-file Dropbox development snapshot, four direct historical "
+              "`docs/hepta-vnext` documents, and one superseded global live-shell narrative. V8.1 must delete the "
+              "entire `docs/hepta-vnext` tree plus `the retired live-shell note`, for an exact minimum of 143 tracked "
+              "paths in the same single commit that installs this document set. It must not add a V6/V8 side-by-side "
+              "archive or retain a migration-only helper in the final tree. Code-consumed APIs, schemas, policies, "
+              "migrations, tests and implementation contracts outside the historical development surface remain protected."
+          )
+          new_cleanup = (
+              "The pre-selection baseline contained 143 historical development paths. V8 deleted that complete set in "
+              "the same commit that installed the canonical document system. Git history and immutable external evidence "
+              "now preserve provenance; branch ancestry consolidation must never overlay an obsolete branch tree or "
+              "reintroduce an in-tree historical plan. Code-consumed APIs, schemas, policies, migrations, tests and "
+              "implementation contracts remain protected."
+          )
+          if old_cleanup in development_text:
+              development_text = development_text.replace(old_cleanup, new_cleanup, 1)
+          elif new_cleanup not in development_text:
+              raise SystemExit('unable to update historical cleanup paragraph')
+
+          start = development_text.index('## 3. Current truthful baseline')
+          end = development_text.index('## 4. Immutable execution, authority and data invariants', start)
+          section = (
+              "## 3. Current truthful baseline\n\n"
+              "The selected repository default branch is `main`. The V8 document system and all surviving source state "
+              "are located there. Exact live head, tree, CI, review and operator facts are dynamic evidence and must be "
+              "resolved from current external receipts; canonical documents do not cache them.\n\n"
+              "The former selected branch was renamed to `main`. Every pre-consolidation branch tip was absorbed into "
+              "the first-parent V8 line as Git ancestry while the selected V8 tree remained authoritative content. "
+              "Obsolete branch trees were not overlaid, every non-`main` branch ref was removed, and outstanding pull "
+              "requests were closed as superseded by the consolidation. This operation grants no runtime, model, provider, "
+              "tool, network, filesystem, secret, Matrix, fleet, operator, promotion or release authority.\n\n"
+          )
+          development_text = development_text[:start] + section + development_text[end:]
+          development_text = development_text.replace(old_default, 'main').replace(old_candidate, 'main')
+          development.write_text(development_text, encoding='utf-8')
+          PY
+
+          python3 scripts/hepta-docs.py generate-status
+          python3 scripts/hepta-docs.py self-test
+          python3 scripts/hepta-docs.py inventory-legacy
+          python3 scripts/hepta-docs.py verify
+          git diff --check
+          git diff --binary -- README.md docs scripts/hepta-docs.py .github/workflows/hepta-development-docs.yml > /tmp/doc-registry.patch
+          test -s /tmp/doc-registry.patch
+          git reset --hard HEAD
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Absorb every current branch tip as ancestry without overlaying obsolete trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --force --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          git for-each-ref --format='%(refname:strip=3)%09%(objectname)' refs/remotes/origin \
+            | awk -F '\t' '$1 != "HEAD"' \
+            | sort > /tmp/pre-consolidation-branches.tsv
+          branch_count="$(wc -l < /tmp/pre-consolidation-branches.tsv | tr -d ' ')"
+          branch_digest="$(sha256sum /tmp/pre-consolidation-branches.tsv | awk '{print $1}')"
+          printf '%s\n' "$branch_count" > /tmp/pre-consolidation-branch-count
+          printf '%s\n' "$branch_digest" > /tmp/pre-consolidation-branch-digest
+
+          current="$(git rev-parse HEAD)"
+          tree="$(git rev-parse HEAD^{tree})"
+          mapfile -t tips < <(cut -f2 /tmp/pre-consolidation-branches.tsv | sort -u)
+          missing=()
+          for sha in "${tips[@]}"; do
+            if [[ "$sha" == "$current" ]]; then
+              continue
+            fi
+            if ! git merge-base --is-ancestor "$sha" "$current"; then
+              missing+=("$sha")
+            fi
+          done
+
+          batch_size=48
+          batch_number=0
+          for ((offset=0; offset<${#missing[@]}; offset+=batch_size)); do
+            batch_number=$((batch_number + 1))
+            parents=(-p "$current")
+            upper=$((offset + batch_size))
+            if (( upper > ${#missing[@]} )); then upper=${#missing[@]}; fi
+            for ((index=offset; index<upper; index++)); do
+              parents+=(-p "${missing[$index]}")
+            done
+            message="chore(repo): absorb branch ancestry batch ${batch_number}\n\nPreserve the selected V8 tree while making pre-consolidation branch tips reachable from the future main line.\nBranch inventory: ${branch_count}\nInventory SHA-256: ${branch_digest}\nAuthority delta: none."
+            current="$(printf '%b\n' "$message" | git commit-tree "$tree" "${parents[@]}")"
+          done
+
+          git reset --hard "$current"
+          git push origin "$current:refs/heads/$OLD_DEFAULT"
+          printf '%s\n' "$current" > /tmp/absorption-head
+
+      - name: Close every outstanding pull request as superseded
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          import time
+          import urllib.request
+
+          repository = os.environ['REPOSITORY_FULL_NAME']
+          token = os.environ['GH_TOKEN']
+          base = f'https://api.github.com/repos/{repository}'
+          headers = {
+              'Accept': 'application/vnd.github+json',
+              'Authorization': f'Bearer {token}',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'hepta-branch-consolidation',
+          }
+
+          def request(method: str, path: str, payload=None):
+              data = None if payload is None else json.dumps(payload).encode()
+              req = urllib.request.Request(base + path, data=data, headers=headers, method=method)
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  body = response.read()
+                  return None if not body else json.loads(body)
+
+          closed = 0
+          while True:
+              pulls = request('GET', '/pulls?state=open&per_page=100&page=1')
+              if not pulls:
+                  break
+              for pull in pulls:
+                  request('PATCH', f"/pulls/{pull['number']}", {'state': 'closed'})
+                  closed += 1
+                  time.sleep(0.05)
+          with open('/tmp/closed-pr-count', 'w', encoding='utf-8') as handle:
+              handle.write(str(closed) + '\n')
+          print(json.dumps({'closedPullRequests': closed}, sort_keys=True))
+          PY
+
+      - name: Replace the old main ref and rename the selected default branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          old_main_sha="$(git rev-parse refs/remotes/origin/main)"
+          selected_sha="$(cat /tmp/absorption-head)"
+          git push --force-with-lease="refs/heads/main:$old_main_sha" origin ':refs/heads/main'
+
+          if ! python3 - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          import time
+          import urllib.parse
+          import urllib.request
+
+          repository = os.environ['REPOSITORY_FULL_NAME']
+          token = os.environ['GH_TOKEN']
+          old = os.environ['OLD_DEFAULT']
+          new = os.environ['FINAL_BRANCH']
+          headers = {
+              'Accept': 'application/vnd.github+json',
+              'Authorization': f'Bearer {token}',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'hepta-branch-consolidation',
+          }
+          path = urllib.parse.quote(old, safe='')
+          req = urllib.request.Request(
+              f'https://api.github.com/repos/{repository}/branches/{path}/rename',
+              data=json.dumps({'new_name': new}).encode(),
+              headers=headers,
+              method='POST',
+          )
+          with urllib.request.urlopen(req, timeout=60) as response:
+              response.read()
+          for _ in range(60):
+              req = urllib.request.Request(
+                  f'https://api.github.com/repos/{repository}', headers=headers, method='GET'
+              )
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  repo = json.loads(response.read())
+              if repo['default_branch'] == new:
+                  print(json.dumps({'defaultBranch': new}, sort_keys=True))
+                  break
+              time.sleep(1)
+          else:
+              raise SystemExit('default branch rename did not converge')
+          PY
+          then
+            git push origin "$old_main_sha:refs/heads/main"
+            exit 1
+          fi
+
+          git fetch --force --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          test "$(git rev-parse refs/remotes/origin/main)" = "$selected_sha"
+          git checkout -B main "$selected_sha"
+          git branch --set-upstream-to=origin/main main
+
+      - name: Absorb late branch updates and delete every non-main ref
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          absorb_missing() {
+            local inventory="$1"
+            local current tree
+            current="$(git rev-parse HEAD)"
+            tree="$(git rev-parse HEAD^{tree})"
+            mapfile -t tips < <(cut -f2 "$inventory" | sort -u)
+            local missing=()
+            for sha in "${tips[@]}"; do
+              if [[ "$sha" == "$current" ]]; then continue; fi
+              if ! git merge-base --is-ancestor "$sha" "$current"; then
+                missing+=("$sha")
+              fi
+            done
+            local batch_size=48 batch=0
+            for ((offset=0; offset<${#missing[@]}; offset+=batch_size)); do
+              batch=$((batch + 1))
+              local parents=(-p "$current")
+              local upper=$((offset + batch_size))
+              if (( upper > ${#missing[@]} )); then upper=${#missing[@]}; fi
+              for ((index=offset; index<upper; index++)); do
+                parents+=(-p "${missing[$index]}")
+              done
+              current="$(printf 'chore(repo): absorb late branch ancestry batch %s\n\nTree overlay: none. Authority delta: none.\n' "$batch" | git commit-tree "$tree" "${parents[@]}")"
+            done
+            if (( ${#missing[@]} > 0 )); then
+              git reset --hard "$current"
+              git push origin "$current:refs/heads/main"
+            fi
+          }
+
+          for round in 1 2 3 4 5 6; do
+            git fetch --force --prune origin '+refs/heads/*:refs/remotes/origin/*'
+            git for-each-ref --format='%(refname:strip=3)%09%(objectname)' refs/remotes/origin \
+              | awk -F '\t' '$1 != "HEAD" && $1 != "main"' \
+              | sort > "/tmp/delete-round-${round}.tsv"
+            if [[ ! -s "/tmp/delete-round-${round}.tsv" ]]; then
+              break
+            fi
+
+            absorb_missing "/tmp/delete-round-${round}.tsv"
+            git fetch --force --prune origin '+refs/heads/*:refs/remotes/origin/*'
+            git for-each-ref --format='%(refname:strip=3)%09%(objectname)' refs/remotes/origin \
+              | awk -F '\t' '$1 != "HEAD" && $1 != "main"' \
+              | sort > "/tmp/delete-stable-${round}.tsv"
+
+            current="$(git rev-parse HEAD)"
+            while IFS=$'\t' read -r branch sha; do
+              git merge-base --is-ancestor "$sha" "$current"
+            done < "/tmp/delete-stable-${round}.tsv"
+
+            mapfile -t rows < "/tmp/delete-stable-${round}.tsv"
+            raced=0
+            batch_size=32
+            for ((offset=0; offset<${#rows[@]}; offset+=batch_size)); do
+              args=(git push --atomic origin)
+              upper=$((offset + batch_size))
+              if (( upper > ${#rows[@]} )); then upper=${#rows[@]}; fi
+              for ((index=offset; index<upper; index++)); do
+                row="${rows[$index]}"
+                branch="${row%%$'\t'*}"
+                sha="${row#*$'\t'}"
+                args+=("--force-with-lease=refs/heads/${branch}:${sha}" ":refs/heads/${branch}")
+              done
+              if ! "${args[@]}"; then
+                raced=1
+                break
+              fi
+            done
+            if (( raced == 1 )); then
+              continue
+            fi
+          done
+
+          git fetch --force --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          remaining="$(git for-each-ref --format='%(refname:strip=3)' refs/remotes/origin | awk '$1 != "HEAD" && $1 != "main"')"
+          test -z "$remaining"
+          test "$(git ls-remote --heads origin | wc -l | tr -d ' ')" = "1"
+
+      - name: Apply the validated registry patch and remove the one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout main
+          git apply /tmp/doc-registry.patch
+          git rm "$ONE_SHOT_WORKFLOW"
+          python3 scripts/hepta-docs.py generate-status
+          python3 scripts/hepta-docs.py self-test
+          python3 scripts/hepta-docs.py inventory-legacy
+          python3 scripts/hepta-docs.py verify
+          git diff --check
+          git add README.md docs scripts/hepta-docs.py .github/workflows/hepta-development-docs.yml "$ONE_SHOT_WORKFLOW"
+          branch_count="$(cat /tmp/pre-consolidation-branch-count)"
+          branch_digest="$(cat /tmp/pre-consolidation-branch-digest)"
+          git commit -s \
+            -m "docs(repo): select main and close DOC-REGISTRY-CLOSED-WORLD" \
+            -m "Absorbed ${branch_count} pre-consolidation branch refs as ancestry without overlaying obsolete trees. Inventory SHA-256: ${branch_digest}. Closed outstanding pull requests and deleted every non-main branch ref. Authority delta: none."
+          git push origin HEAD:refs/heads/main
+          git rev-parse HEAD > /tmp/final-head
+
+      - name: Verify the final single-branch repository state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-docs.py verify
+          test -z "$(git status --porcelain --untracked-files=no)"
+          while IFS=$'\t' read -r branch sha; do
+            git merge-base --is-ancestor "$sha" HEAD
+          done < /tmp/pre-consolidation-branches.tsv
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          import urllib.request
+
+          repository = os.environ['REPOSITORY_FULL_NAME']
+          token = os.environ['GH_TOKEN']
+          headers = {
+              'Accept': 'application/vnd.github+json',
+              'Authorization': f'Bearer {token}',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'hepta-branch-consolidation',
+          }
+
+          def get(path: str):
+              req = urllib.request.Request(
+                  f'https://api.github.com/repos/{repository}{path}', headers=headers, method='GET'
+              )
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  return json.loads(response.read())
+
+          repo = get('')
+          branches = get('/branches?per_page=100&page=1')
+          pulls = get('/pulls?state=open&per_page=100&page=1')
+          if repo['default_branch'] != 'main':
+              raise SystemExit(f"unexpected default branch: {repo['default_branch']}")
+          if [branch['name'] for branch in branches] != ['main']:
+              raise SystemExit(f"unexpected branches: {[branch['name'] for branch in branches]}")
+          if pulls:
+              raise SystemExit(f"open pull requests remain: {[pull['number'] for pull in pulls]}")
+          print(
+              json.dumps(
+                  {
+                      'defaultBranch': repo['default_branch'],
+                      'branches': [branch['name'] for branch in branches],
+                      'openPullRequests': 0,
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
+
+          {
+            echo "## Hepta repository consolidation"
+            echo
+            echo "- Final branch: \`main\`"
+            echo "- Final head: \`$(cat /tmp/final-head)\`"
+            echo "- Pre-consolidation refs: \`$(cat /tmp/pre-consolidation-branch-count)\`"
+            echo "- Inventory SHA-256: \`$(cat /tmp/pre-consolidation-branch-digest)\`"
+            echo "- Closed pull requests: \`$(cat /tmp/closed-pr-count)\`"
+            echo "- Remaining non-main branches: \`0\`"
+          } >> "$GITHUB_STEP_SUMMARY"
