@@ -19,7 +19,7 @@ env:
 jobs:
   materialize:
     if: "github.event.head_commit.message == 'ops(docs): materialize DOC-3 module closure'"
-    runs-on: ubuntu-latest
+    runs-on: hepta-vnext-linux-x64-09e9
     timeout-minutes: 30
     steps:
       - name: Check out exact trigger commit
@@ -39,14 +39,14 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          parent_sha="$(git rev-parse HEAD^)"
           git fetch --force --prune origin '+refs/heads/*:refs/remotes/origin/*'
           test "$(git rev-parse "refs/remotes/origin/$CURRENT_DEFAULT")" = "$GITHUB_SHA"
-          test "$(git rev-parse "refs/remotes/origin/$FUTURE_DEFAULT")" = "$parent_sha"
+          main_sha="$(git rev-parse "refs/remotes/origin/$FUTURE_DEFAULT")"
+          git merge-base --is-ancestor "$main_sha" "$GITHUB_SHA"
           test "$(git ls-remote --heads origin | wc -l | tr -d ' ')" = "2"
           git config user.name "Hepta Module Documentation Closure"
           git config user.email "hepta-module-docs@users.noreply.github.com"
-          printf '%s\n' "$parent_sha" > /tmp/hepta-doc3-parent
+          printf '%s\n' "$main_sha" > /tmp/hepta-doc3-main
 
       - name: Materialize and verify DOC-3
         shell: bash
@@ -124,11 +124,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          parent_sha="$(cat /tmp/hepta-doc3-parent)"
+          main_sha="$(cat /tmp/hepta-doc3-main)"
           final_sha="$(cat /tmp/hepta-doc3-final)"
           git push --atomic \
             --force-with-lease="refs/heads/$CURRENT_DEFAULT:$GITHUB_SHA" \
-            --force-with-lease="refs/heads/$FUTURE_DEFAULT:$parent_sha" \
+            --force-with-lease="refs/heads/$FUTURE_DEFAULT:$main_sha" \
             origin \
             "$final_sha:refs/heads/$CURRENT_DEFAULT" \
             "$final_sha:refs/heads/$FUTURE_DEFAULT"
