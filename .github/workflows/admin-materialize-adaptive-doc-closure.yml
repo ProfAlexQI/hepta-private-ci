@@ -1,0 +1,163 @@
+name: Admin materialize adaptive document closure
+
+on:
+  push:
+    branches:
+      - admin/materialize-adaptive-doc-closure-20260902
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: admin-materialize-adaptive-doc-closure-20260902
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      BASE_COMMIT: 70ef65a90a031ce0cc08b77b5596eb0d99edaa11
+      SOURCE_HEAD: ea5898eb8098bea45dfd5f3d1c52a28bf0c61f9d
+      ARTIFACT_ID: '9815260391'
+      ARTIFACT_ZIP_SHA256: 8592acab9da49a8dd67772b5287dffa153845d7d42bc76705393b30acee559d5
+      FINAL_TAR_SHA256: bb8a5db51d56184d14e78f760e8456f95503750e34d2830786616b85a6b395bc
+      FINAL_PATCH_SHA256: b5c605349a18658294ec417317e033306d113046779a67ca7f1db45d9957ca5c
+      OUTPUT_BRANCH: admin/materialized-adaptive-doc-closure-output-20260902
+    steps:
+      - name: Check out exact administrative source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Download and verify exact validated artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mkdir -p /tmp/hepta-closure/artifact /tmp/hepta-closure/final
+          curl --fail --location --silent --show-error \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            --output /tmp/hepta-closure/artifact.zip
+          echo "$ARTIFACT_ZIP_SHA256  /tmp/hepta-closure/artifact.zip" | sha256sum --check --strict
+          unzip -q /tmp/hepta-closure/artifact.zip -d /tmp/hepta-closure/artifact
+          echo "$FINAL_TAR_SHA256  /tmp/hepta-closure/artifact/adaptive-document-closure-final-tree.tar.gz" | sha256sum --check --strict
+          echo "$FINAL_PATCH_SHA256  /tmp/hepta-closure/artifact/adaptive-document-closure-squash.patch" | sha256sum --check --strict
+          tar -xzf /tmp/hepta-closure/artifact/adaptive-document-closure-final-tree.tar.gz \
+            -C /tmp/hepta-closure/final
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          artifact = Path('/tmp/hepta-closure/artifact')
+          final = Path('/tmp/hepta-closure/final')
+          manifest = json.loads((artifact / 'adaptive-document-closure-validation.json').read_text())
+          assert manifest['schema'] == 'hepta.adaptive-document-closure-validation.v2'
+          assert manifest['sourceHead'] == 'ea5898eb8098bea45dfd5f3d1c52a28bf0c61f9d'
+          assert manifest['baseCommit'] == '70ef65a90a031ce0cc08b77b5596eb0d99edaa11'
+          assert manifest['validation'] == 'pass'
+          assert manifest['authorityGranted'] is False
+          assert manifest['deletions'] == []
+          assert manifest['tarSha256'] == 'bb8a5db51d56184d14e78f760e8456f95503750e34d2830786616b85a6b395bc'
+          assert manifest['patchSha256'] == 'b5c605349a18658294ec417317e033306d113046779a67ca7f1db45d9957ca5c'
+          expected = {row['path'] for row in manifest['files']}
+          observed = {
+              str(path.relative_to(final))
+              for path in final.rglob('*')
+              if path.is_file()
+          }
+          assert observed == expected, (sorted(observed - expected), sorted(expected - observed))
+          for row in manifest['files']:
+              data = (final / row['path']).read_bytes()
+              assert len(data) == row['bytes'], row['path']
+              assert hashlib.sha256(data).hexdigest() == row['sha256'], row['path']
+          print(json.dumps({'status': 'PASS_EXACT_ARTIFACT_AND_FILE_MANIFEST', 'files': len(expected)}, sort_keys=True))
+          PY
+
+      - name: Build one direct-child candidate from main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$BASE_COMMIT^{commit}"
+          git checkout --detach "$BASE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$BASE_COMMIT"
+          cp -a /tmp/hepta-closure/final/. .
+          rm -f -- \
+            .github/adaptive-doc-close.part00 \
+            .github/adaptive-doc-close.part01 \
+            .github/adaptive-doc-close.part02 \
+            .github/adaptive-doc-close.part03 \
+            .github/workflows/recover-adaptive-doc-closure.yml \
+            .github/workflows/recover-adaptive-doc-closure-v2.yml \
+            .github/scripts/finalize-adaptive-doc-closure.py
+          chmod 0644 scripts/hepta-algorithm-docs.py
+          chmod 0755 scripts/hepta-docs.py
+
+          python3 scripts/hepta-algorithm-docs.py self-test
+          python3 scripts/hepta-algorithm-docs.py verify-sources
+          python3 scripts/hepta-algorithm-docs.py generate-status --check
+          python3 scripts/hepta-algorithm-docs.py verify
+          python3 scripts/hepta-module-docs.py self-test
+          python3 scripts/hepta-module-docs.py verify
+          python3 scripts/hepta-docs.py self-test
+          python3 scripts/hepta-docs.py inventory-legacy
+          python3 scripts/hepta-docs.py generate-status
+          python3 scripts/hepta-docs.py verify
+          git diff --check
+
+          git add -A
+          python3 - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          manifest = json.loads(Path('/tmp/hepta-closure/artifact/adaptive-document-closure-validation.json').read_text())
+          expected = sorted(row['path'] for row in manifest['files'])
+          observed = sorted(
+              row
+              for row in subprocess.check_output(
+                  ['git', 'diff', '--cached', '--name-only', '--diff-filter=ACMRT'],
+                  text=True,
+              ).splitlines()
+              if row
+          )
+          assert observed == expected, {
+              'unexpected': sorted(set(observed) - set(expected)),
+              'missing': sorted(set(expected) - set(observed)),
+          }
+          forbidden = [
+              path for path in observed
+              if path.startswith('.github/adaptive-doc-close.part')
+              or 'recover-adaptive-doc-closure' in path
+              or path == '.github/scripts/finalize-adaptive-doc-closure.py'
+          ]
+          assert not forbidden, forbidden
+          print(json.dumps({'status': 'PASS_EXACT_STAGED_FINAL_TREE', 'files': len(observed)}, sort_keys=True))
+          PY
+
+          git config user.name "Hepta Documentation Closure"
+          git config user.email "hepta-doc-closure@users.noreply.github.com"
+          git commit -m "docs(learning): close adaptive algorithm specification gaps" \
+            -m "Bind immutable paper source locks and claim locators; add formal NDU, Holder-Bellman, causal longitudinal, biomimicry, self-iteration and reference-conformance specifications; close typed protocol, data-authority, module-projection and registry-shape gaps. All documentation, module and algorithm closed-world gates pass. Authority delta: none."
+          FINAL_COMMIT="$(git rev-parse HEAD)"
+          FINAL_TREE="$(git rev-parse HEAD^{tree})"
+          test "$(git rev-list --parents -n 1 HEAD)" = "$FINAL_COMMIT $BASE_COMMIT"
+          test "$(git diff-tree --no-commit-id --name-only -r HEAD | sort | wc -l)" -eq 44
+          printf 'FINAL_COMMIT=%s\nFINAL_TREE=%s\n' "$FINAL_COMMIT" "$FINAL_TREE"
+          git push origin "HEAD:refs/heads/$OUTPUT_BRANCH" --force
+
+      - name: Emit bounded materialization receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show --no-patch --format='commit=%H%ntree=%T%nparents=%P%nsubject=%s' HEAD
+          test "$(git rev-list --count "$BASE_COMMIT..HEAD")" -eq 1
