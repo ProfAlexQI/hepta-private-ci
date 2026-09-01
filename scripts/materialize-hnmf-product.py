@@ -10,7 +10,7 @@ PARTS = [
 ]
 encoded = "".join(path.read_text(encoding="ascii").strip() for path in PARTS)
 source = bz2.decompress(base64.b64decode(encoded, validate=True))
-if hashlib.sha256(source).hexdigest() != "127a2d54f79d89ace2a9f4f525fe75abde3c0e68642d37a66ac6d3e5c9da40a3":
+if hashlib.sha256(source).hexdigest() != "6914b5a2d61d17cf7027bea9f709084895dfb1533bc2173c9b569940e24167c9":
     raise SystemExit("HNMF materializer source digest mismatch")
 for path in PARTS:
     path.unlink()
