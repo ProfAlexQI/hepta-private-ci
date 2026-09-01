@@ -1,4 +1,4 @@
-name: Hepta DOC-3 final module documentation closure
+name: Hepta DOC-3 final module documentation closure slim
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-doc3-final-module-closure
+  group: hepta-doc3-final-module-closure-slim
   cancel-in-progress: false
 
 env:
@@ -18,8 +18,8 @@ env:
 
 jobs:
   finalize:
-    if: "github.event.head_commit.message == 'ops(docs): execute final DOC-3 closure'"
-    runs-on: ubuntu-latest
+    if: "github.event.head_commit.message == 'ops(docs): execute slim DOC-3 closure'"
+    runs-on: ubuntu-slim
     timeout-minutes: 30
     steps:
       - name: Check out exact trigger commit
