@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: hepta-doc3-module-closure
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   CURRENT_DEFAULT: integration/vnext-main-20260811
@@ -19,7 +19,7 @@ env:
 jobs:
   materialize:
     if: "github.event.head_commit.message == 'ops(docs): materialize DOC-3 module closure'"
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-slim
     timeout-minutes: 30
     steps:
       - name: Check out exact trigger commit
