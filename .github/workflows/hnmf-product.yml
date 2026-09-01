@@ -1,0 +1,106 @@
+name: hnmf-product
+
+on:
+  pull_request:
+    paths:
+      - "codex-rs/hepta-hnmf-core/**"
+      - "codex-rs/hepta-cognitive-types/**"
+      - "codex-rs/hepta-cognitive-store/**"
+      - "codex-rs/hepta-cognitive-read/**"
+      - "codex-rs/hepta-memory-retrieval/**"
+      - "codex-rs/hepta-memory-federation/**"
+      - "codex-rs/hepta-kg/**"
+      - "codex-rs/hepta-compact-engine/**"
+      - "codex-rs/hepta-neuron/**"
+      - "codex-rs/hepta-ndu/**"
+      - "codex-rs/hepta-intuition/**"
+      - "codex-rs/hepta-learning-ledger/**"
+      - "codex-rs/hepta-bellman-operator/**"
+      - "codex-rs/hepta-learning-artifacts/**"
+      - "codex-rs/hepta-intelligence-eval/**"
+      - "codex-rs/hepta-plasticity/**"
+      - "codex-rs/hepta-context-compiler/**"
+      - "codex-rs/hepta-intelligence/**"
+      - "docs/hnmf/**"
+      - "docs/modules/**"
+      - "scripts/hepta-hnmf-product.py"
+      - ".github/workflows/hnmf-product.yml"
+      - "codex-rs/Cargo.toml"
+      - "codex-rs/Cargo.lock"
+  push:
+    branches:
+      - "codex/hnmf-*"
+
+permissions:
+  contents: read
+
+jobs:
+  source-closure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Verify HNMF reference and product closure
+        run: |
+          python3 scripts/hepta-hnmf.py self-test
+          python3 scripts/hepta-hnmf.py verify
+          python3 scripts/hepta-hnmf-product.py
+          python3 scripts/hepta-module-docs.py verify
+
+      - name: Check targeted formatting
+        working-directory: codex-rs
+        run: |
+          cargo fmt \
+            -p codex-hepta-hnmf-core \
+            -p codex-hepta-cognitive-types \
+            -p codex-hepta-cognitive-store \
+            -p codex-hepta-cognitive-read \
+            -p codex-hepta-memory-retrieval \
+            -p codex-hepta-memory-federation \
+            -p codex-hepta-kg \
+            -p codex-hepta-compact-engine \
+            -p codex-hepta-neuron \
+            -p codex-hepta-ndu \
+            -p codex-hepta-intuition \
+            -p codex-hepta-learning-ledger \
+            -p codex-hepta-bellman-operator \
+            -p codex-hepta-learning-artifacts \
+            -p codex-hepta-intelligence-eval \
+            -p codex-hepta-plasticity \
+            -p codex-hepta-context-compiler \
+            -p codex-hepta-intelligence \
+            -- --check
+
+      - name: Test all HNMF source modules
+        working-directory: codex-rs
+        run: |
+          for package in \
+            codex-hepta-hnmf-core \
+            codex-hepta-cognitive-types \
+            codex-hepta-cognitive-store \
+            codex-hepta-cognitive-read \
+            codex-hepta-memory-retrieval \
+            codex-hepta-memory-federation \
+            codex-hepta-kg \
+            codex-hepta-compact-engine \
+            codex-hepta-neuron \
+            codex-hepta-ndu \
+            codex-hepta-intuition \
+            codex-hepta-learning-ledger \
+            codex-hepta-bellman-operator \
+            codex-hepta-learning-artifacts \
+            codex-hepta-intelligence-eval \
+            codex-hepta-plasticity \
+            codex-hepta-context-compiler \
+            codex-hepta-intelligence
+          do
+            cargo test --locked -p "$package" --all-targets
+          done
+
+      - name: Check HNMF composition without execution authority
+        working-directory: codex-rs
+        run: cargo check --locked -p codex-hepta-intelligence --all-targets
