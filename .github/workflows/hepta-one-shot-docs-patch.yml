@@ -5,13 +5,14 @@ on:
   pull_request:
 
 permissions:
+  actions: write
   contents: write
 
 jobs:
   patch-and-format:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Check out exact pull-request branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -29,6 +30,24 @@ jobs:
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
         with:
           version: 0.11.3
+
+      - name: Set up repository-pinned Bazel
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          target: x86_64-unknown-linux-gnu
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: 22
+
+      - name: Install repository-locked JavaScript dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Materialize hardened verifier
         shell: bash
@@ -51,27 +70,92 @@ jobs:
       - name: Format with repository-locked Ruff
         run: uv run --frozen --project scripts ruff format scripts/hepta-docs.py
 
-      - name: Validate hardened document system
+      - name: Refresh canonical generated artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          just bazel-lock-update
+          python3 scripts/hepta-docs.py generate-status
+
+      - name: Validate complete development-document closure
         shell: bash
         run: |
           set -euo pipefail
           python3 -m py_compile scripts/hepta-docs.py
           python3 scripts/hepta-docs.py self-test
+
+          status_snapshot="${RUNNER_TEMP}/hepta-status.md"
+          cp docs/STATUS.md "${status_snapshot}"
           python3 scripts/hepta-docs.py generate-status
-          git diff --exit-code -- docs/STATUS.md
+          cmp -s docs/STATUS.md "${status_snapshot}"
+
           python3 scripts/hepta-module-docs.py verify
           python3 scripts/hepta-docs.py verify
+          python3 scripts/hepta-docs.py verify-source-tree
+          python3 scripts/hepta-docs.py verify-source-head \
+            --head-sha "$(git rev-parse HEAD)" \
+            --expected-repository "${GITHUB_REPOSITORY}"
+          python3 scripts/hepta-docs.py verify-no-legacy-docs
+          python3 scripts/hepta-docs.py verify-selected-source
+          just bazel-lock-check
+          pnpm run format
           git diff --check
 
-      - name: Commit formatted verifier to the pull-request branch
+      - name: Remove temporary repair transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/hepta-one-shot-docs-patch.yml
+          rm -rf scripts/.hepta-docs-payload
+
+      - name: Commit canonical documentation repair
+        id: commit
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
         shell: bash
         run: |
           set -euo pipefail
+
+          unexpected="$({
+            git status --porcelain=v1 --untracked-files=normal | while IFS= read -r line; do
+              path="${line:3}"
+              path="${path##* -> }"
+              case "${path}" in
+                MODULE.bazel.lock | docs/STATUS.md | scripts/hepta-docs.py | \
+                  .github/workflows/hepta-one-shot-docs-patch.yml | \
+                  scripts/.hepta-docs-payload/*)
+                  ;;
+                *)
+                  printf '%s\n' "${line}"
+                  ;;
+              esac
+            done
+          } || true)"
+          if [[ -n "${unexpected}" ]]; then
+            echo "Unexpected files changed by the documentation repair:" >&2
+            printf '%s\n' "${unexpected}" >&2
+            exit 1
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scripts/hepta-docs.py
-          git diff --cached --quiet && { echo "No verifier changes to commit"; exit 0; }
-          git commit -m "docs: harden canonical receipt and cleanup verification"
+          git add -A -- \
+            MODULE.bazel.lock \
+            docs/STATUS.md \
+            scripts/hepta-docs.py \
+            .github/workflows/hepta-one-shot-docs-patch.yml \
+            scripts/.hepta-docs-payload
+          git diff --cached --quiet && { echo "No documentation repair changes to commit"; exit 0; }
+          git commit -m "docs: close canonical documentation blockers"
           git push origin "HEAD:${HEAD_REF}"
+          echo "pushed-sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+
+      - name: Dispatch final source-head documentation verification
+        if: steps.commit.outputs.pushed-sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run hepta-development-docs.yml --ref "${HEAD_REF}"
