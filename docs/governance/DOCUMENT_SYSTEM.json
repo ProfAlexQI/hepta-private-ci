@@ -1,0 +1,555 @@
+{
+  "schema": "hepta.document-system.v4",
+  "schemaVersion": 4,
+  "documentId": "HEPTA-DEVELOPMENT-DOCUMENT-SYSTEM",
+  "version": "4.0.0",
+  "documentClass": "canonical_registry",
+  "authorityScope": "documentation_governance_cleanup_and_shape_source",
+  "planId": "HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN",
+  "planVersion": "8.0.0",
+  "repository": {
+    "id": 1320694176,
+    "fullName": "TrillionniumFoundation/hepta-private-ci",
+    "defaultBranch": "integration/vnext-main-20260811",
+    "exactCleanupBaseHead": "b621768b70a09d56626bb8a2c331e3dc424e6a4d",
+    "exactCleanupBaseTree": "f2e82fd525d337efae355adf6f19398812d4180c"
+  },
+  "canonicalHumanDevelopmentDocument": "docs/DEVELOPMENT.md",
+  "canonicalPaths": [
+    "README.md",
+    "docs/DEVELOPMENT.md",
+    "docs/CURRENT.json",
+    "docs/STATUS.md",
+    "docs/governance/DOCUMENT_SYSTEM.json",
+    "docs/architecture/ARCHITECTURE.json",
+    "docs/modules/MODULES.json",
+    "docs/contracts/CONTRACTS.json",
+    "docs/contracts/PROTOCOL_SCHEMAS.json",
+    "docs/data/DATA_AUTHORITY.json",
+    "docs/delivery/WORK_PACKAGES.json",
+    "docs/delivery/DEVELOPMENT_DAG.json",
+    "docs/delivery/ACTIVATION_DAG.json",
+    "docs/delivery/EVIDENCE_DAG.json",
+    "docs/delivery/PATH_OWNERSHIP.json",
+    "docs/control-plane/OBJECTIVES.json",
+    "docs/control-plane/NDU.json",
+    "docs/control-plane/OPTIMIZATION.json",
+    "docs/intelligence/PROMPT_INTERVENTIONS.json",
+    "docs/learning/LEARNING_SYSTEM.json",
+    "docs/learning/EXPERIMENTS.json",
+    "docs/learning/ARTIFACTS.json",
+    "docs/evidence/CLAIMS.json",
+    "docs/evidence/QUALIFICATION.json",
+    "docs/evidence/INDEX.json",
+    "docs/security/THREAT_MODEL.json",
+    "scripts/hepta-docs.py",
+    ".github/workflows/hepta-development-docs.yml"
+  ],
+  "singleSourceRules": [
+    "only DEVELOPMENT.md defines global policy in prose",
+    "one editable machine owner per fact domain",
+    "stable paths updated in place",
+    "Git history is history",
+    "PR body and queued workflows are not authority"
+  ],
+  "knownLegacyDeletion": {
+    "exactBaseHead": "b621768b70a09d56626bb8a2c331e3dc424e6a4d",
+    "exactBaseTree": "f2e82fd525d337efae355adf6f19398812d4180c",
+    "exactPathCount": 143,
+    "copiedSnapshotPath": "docs/hepta-vnext/dropbox-current-2026-08-27",
+    "copiedSnapshotDescendantCount": 138,
+    "directPaths": [
+      "docs/hepta-vnext/G5_LOCAL_DEVELOPMENT_PROFILE_V1.md",
+      "docs/hepta-vnext/G5_OPERATOR_TRUST_PROFILE_V1.md",
+      "docs/hepta-vnext/OPERATOR_ACCEPTANCE_V1.md",
+      "docs/hepta-vnext/VNEXT_MAIN_CUTOVER.md",
+      "docs/architecture/HEPTA_VNEXT_LIVE_SHELL.md"
+    ],
+    "exactGitObjects": {
+      "docs/hepta-vnext/dropbox-current-2026-08-27": "5e22095f331292c6a58bda1c47d8cedd1bb48c58",
+      "docs/hepta-vnext/G5_LOCAL_DEVELOPMENT_PROFILE_V1.md": "1146219e93c9ae223841a2d30c86a8185f1591d1",
+      "docs/hepta-vnext/G5_OPERATOR_TRUST_PROFILE_V1.md": "c792a21e58cfa5c1bfa8e98952e43091253d8226",
+      "docs/hepta-vnext/OPERATOR_ACCEPTANCE_V1.md": "775c2c19c2eb3eb06540036a315ea61086d43d4b",
+      "docs/hepta-vnext/VNEXT_MAIN_CUTOVER.md": "1af0fef954448fe03a845c82341b189ad23345b9",
+      "docs/architecture/HEPTA_VNEXT_LIVE_SHELL.md": "08f213f143782664fa32b7daa77cf90644d9cdb5"
+    },
+    "unexpectedDeletionAllowed": false,
+    "retainedConsumerScanRequired": true,
+    "sourceHeadDirectParentRequired": true
+  },
+  "forbiddenLegacyPathRules": [
+    {
+      "id": "hepta-vnext-tree",
+      "regex": "^docs/hepta-vnext(?:/|$)"
+    },
+    {
+      "id": "old-live-shell",
+      "regex": "^docs/architecture/HEPTA_VNEXT_LIVE_SHELL\\.md$"
+    },
+    {
+      "id": "in-tree-archive",
+      "regex": "^docs/(?:archive|[^/]+/archive)(?:/|$)"
+    },
+    {
+      "id": "versioned-development-plan",
+      "regex": "(^|/)[^/]*(?:DEVELOPMENT_PLAN|MASTER_PLAN|IMPLEMENTATION_PLAN|UPGRADE_PLAN|ROADMAP|CURRENT_TRUTH|GAP_LEDGER|QUALIFICATION_STATUS)(?:_[^/]*)?\\.(?:md|json|ya?ml)$"
+    }
+  ],
+  "preservePolicy": {
+    "implementationContractsPreserved": true,
+    "codeConsumedSchemasMigrationsPoliciesTestsPreserved": true,
+    "ordinaryProductDocsPreserved": true,
+    "deletedPathMustNotBeCodeConsumed": true
+  },
+  "generatedProjections": {
+    "docs/STATUS.md": {
+      "generator": "python3 scripts/hepta-docs.py generate-status",
+      "handEditingAllowed": false
+    }
+  },
+  "forbiddenLegacyReferenceRules": [
+    {
+      "id": "legacy-tree-reference",
+      "regex": "docs/hepta-vnext/"
+    },
+    {
+      "id": "legacy-live-shell-reference",
+      "regex": "HEPTA_VNEXT_LIVE_SHELL\\.md"
+    }
+  ],
+  "referenceScanPolicy": {
+    "scanExtensions": [
+      ".md",
+      ".json",
+      ".yaml",
+      ".yml",
+      ".py",
+      ".rs",
+      ".toml",
+      ".sh",
+      ".bzl",
+      ".bazel"
+    ],
+    "allowedReferenceFiles": [
+      "docs/governance/DOCUMENT_SYSTEM.json"
+    ],
+    "scanTrackedFilesOnly": true,
+    "deletedJsonConsumerScanRequired": true,
+    "preCommitInventoryRequired": true
+  },
+  "authorityFlags": {
+    "runtimeAuthority": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalFilesystemMutation": false,
+    "secretOperation": false,
+    "matrixSend": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "canonicalSelection": false,
+    "merge": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  },
+  "registryShapeClosures": [
+    {
+      "path": "docs/CURRENT.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "repository",
+        "candidate",
+        "currentWorkPackage",
+        "baselineClaims",
+        "dynamicObservationPolicy",
+        "supersedes",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "6c57d2b87711614bf5046f14a81bfb0d3390d83c87b72bde90b939b97357da4d"
+    },
+    {
+      "path": "docs/architecture/ARCHITECTURE.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "repository",
+        "planes",
+        "nonNegotiableInvariants",
+        "dependencyDirection",
+        "forbiddenDependencies",
+        "intelligenceComposition",
+        "theoryBoundaries",
+        "fastSlowLoops",
+        "recoveryOrder",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "f4262a973beb82a7f1f376b65d1a2904a875e9c303d9bbfb95bb9d60bf66fa21"
+    },
+    {
+      "path": "docs/modules/MODULES.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "defaults",
+        "rules",
+        "modules",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "1d69e1a81c59c57671aec5b178437a87667ffd226635e44d5a4a545687ca9dbb"
+    },
+    {
+      "path": "docs/contracts/CONTRACTS.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "rules",
+        "contracts",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "571005e0046188eff45c3bcadd83f3ba5e70cfbd0e03ef72dc25b64383f9b501"
+    },
+    {
+      "path": "docs/contracts/PROTOCOL_SCHEMAS.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "defaults",
+        "protocols",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "eef12535292b94448b7e729537feb5b8b61e3bf22991987b387101e1272cd5d1"
+    },
+    {
+      "path": "docs/data/DATA_AUTHORITY.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "rules",
+        "domains",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "2d210fdd81043471fb6d58aeec850671e39e31207f158e667f3e595e94c13062"
+    },
+    {
+      "path": "docs/delivery/WORK_PACKAGES.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "currentPackage",
+        "defaults",
+        "rules",
+        "packages",
+        "validStopOutcomes",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "f9ce7693574ddb38991c120a34efbd3f0ae5a07b89e607fd40dd7d25865827f8"
+    },
+    {
+      "path": "docs/delivery/DEVELOPMENT_DAG.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "purpose",
+        "nodes",
+        "edges",
+        "acyclicRequired",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "803a8cd9fbd298c568fbe07172d6c3538816e1a8ca00c1b40dd97fd9a451fb92"
+    },
+    {
+      "path": "docs/delivery/ACTIVATION_DAG.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "purpose",
+        "nodes",
+        "edges",
+        "acyclicRequired",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "803a8cd9fbd298c568fbe07172d6c3538816e1a8ca00c1b40dd97fd9a451fb92"
+    },
+    {
+      "path": "docs/delivery/EVIDENCE_DAG.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "purpose",
+        "nodes",
+        "edges",
+        "acyclicRequired",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "803a8cd9fbd298c568fbe07172d6c3538816e1a8ca00c1b40dd97fd9a451fb92"
+    },
+    {
+      "path": "docs/delivery/PATH_OWNERSHIP.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "moduleNamespaces",
+        "developmentDocumentNamespace",
+        "rules",
+        "activeLeases",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "536a6094c2f677b8918a6b32a6c8c5c9b4d6f3b9c49c4fe48e2c8789bc12b57a"
+    },
+    {
+      "path": "docs/control-plane/OBJECTIVES.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "hardConstraints",
+        "objectiveFunctionContract",
+        "baselineProfiles",
+        "preferenceAdaptation",
+        "recursiveUtilityProfiles",
+        "proposalProtocol",
+        "optimizerAuthority",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "107e41467912f5eb24f064376f17987364102333f75958a1aad14eca0e0c508b"
+    },
+    {
+      "path": "docs/control-plane/NDU.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "originalDefinitionBoundary",
+        "allowedSubjectClasses",
+        "subjects",
+        "preferenceState",
+        "recursiveUtility",
+        "hierarchicalExtension",
+        "engineeringDiscretization",
+        "fallback",
+        "currentClaim",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "69f6de2790134c8dde19718af9157eaf6f69f4254cd81b65cce5f738a0a62e4b"
+    },
+    {
+      "path": "docs/control-plane/OPTIMIZATION.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "globalOptimumDefinition",
+        "moduleProtocol",
+        "solverClasses",
+        "requiredDecisionReceipt",
+        "stability",
+        "authority",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "a23c6c1ccd132fc5f37cc5fefa8d4ccb18c3b019f2a4fe9a6e06c6f443423a75"
+    },
+    {
+      "path": "docs/intelligence/PROMPT_INTERVENTIONS.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "terminology",
+        "sourcesOfTruth",
+        "lifecycleStates",
+        "nonEquivalence",
+        "factorClasses",
+        "realizationBinding",
+        "trustedInstructionChannels",
+        "evidenceOnlyChannels",
+        "security",
+        "pricing",
+        "portfolio",
+        "timing",
+        "causalEvaluation",
+        "currentClaim",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "a5509d060a86e2f5ff1a9fde6078d683d1c36b393d61724087ea4ab1cc45d534"
+    },
+    {
+      "path": "docs/learning/LEARNING_SYSTEM.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "episodeChain",
+        "causalRequirements",
+        "operatorSystem",
+        "sensorCorePolicy",
+        "artifactLifecycle",
+        "currentRunMutationAllowed",
+        "nextSnapshotOnly",
+        "evaluation",
+        "longitudinal",
+        "functionalBiomimicry",
+        "plasticity",
+        "selfIteration",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "c83860ac5bbd48fd321db3733ad8ad3c556fe56c13d3298ee4e212e9e163f9c4"
+    },
+    {
+      "path": "docs/learning/EXPERIMENTS.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "families",
+        "requirements",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "ae983cd680d46149c7e2e47117187289c16fd83215365f370f255750972ceab5"
+    },
+    {
+      "path": "docs/learning/ARTIFACTS.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "artifactTypes",
+        "manifestRequiredFields",
+        "loadPolicy",
+        "lineage",
+        "authority",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "1fae7ec0ded19ad4affea37841dc69ed11623601c520d320786a050a2b3116ae"
+    },
+    {
+      "path": "docs/evidence/CLAIMS.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "ladders",
+        "nonSubstitutionRules",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "047cdafcec852f3b0b5b3b7a806f77f9208abf37450e2b64bad0a838518b8af3"
+    },
+    {
+      "path": "docs/evidence/QUALIFICATION.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "profiles",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "19a9c39454cf46498f0614516ba69d36393bf66484d3097dead211edb2bc6c96"
+    },
+    {
+      "path": "docs/evidence/INDEX.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "evidenceTypes",
+        "externalReceiptPolicy",
+        "neverPass",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "ecb4a20ee850ec95f621a6c743536fd9cdd84fdc5e569766cc24ff96cce83719"
+    },
+    {
+      "path": "docs/security/THREAT_MODEL.json",
+      "topLevelKeys": [
+        "schema",
+        "schemaVersion",
+        "documentClass",
+        "authorityScope",
+        "planId",
+        "planVersion",
+        "threats",
+        "rules",
+        "authorityFlags"
+      ],
+      "recursiveShapeSha256": "63d3f915c5d818e94843e6fb0a37427ea1528ab1c7ade0e0be49ad9201930f97"
+    }
+  ]
+}

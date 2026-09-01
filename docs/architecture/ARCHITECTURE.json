@@ -1,0 +1,111 @@
+{
+  "schema": "hepta.architecture-model.v5",
+  "schemaVersion": 5,
+  "documentClass": "canonical_registry",
+  "authorityScope": "product_architecture_invariants_and_theory_application_source",
+  "planId": "HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN",
+  "planVersion": "8.0.0",
+  "repository": {
+    "id": 1320694176,
+    "fullName": "TrillionniumFoundation/hepta-private-ci",
+    "defaultBranch": "integration/vnext-main-20260811",
+    "exactBaseHead": "b621768b70a09d56626bb8a2c331e3dc424e6a4d",
+    "exactBaseTree": "f2e82fd525d337efae355adf6f19398812d4180c"
+  },
+  "planes": [
+    "execution",
+    "domain",
+    "adapter",
+    "control",
+    "qualification",
+    "engineering",
+    "external_control"
+  ],
+  "nonNegotiableInvariants": [
+    "Codex App Server is the sole session, thread, turn, model-call and tool-execution spine.",
+    "Agentd is a thin lifecycle and composition host and owns no product-domain durable fact.",
+    "Every durable domain has one schema owner and one authoritative writer.",
+    "Cross-owner mutation uses local transaction, durable intent, outbox, destination dedupe/apply, acknowledgement and reconciliation.",
+    "Queue or dispatch acknowledgement is not terminal external-effect success.",
+    "Indeterminate remains open until current-fence reconciliation records applied, not applied or quarantined.",
+    "Every irreversible boundary consumes a final-payload-bound short-lived VerifiedUse token that the adapter cannot mint.",
+    "Hard objectives, authority, truth, privacy, deletion and writer ownership are not learnable.",
+    "Current-run objective and artifact snapshots are immutable.",
+    "Adaptive modules propose next-snapshot artifacts and cannot self-authorize or self-accept.",
+    "Central optimizers select feasible plans but never execute physical effects or issue capabilities.",
+    "Qualification fixtures and test signers never link into production artifacts."
+  ],
+  "dependencyDirection": [
+    "platform_types",
+    "wire_DTOs",
+    "kernel_and_domain_ports",
+    "domain_modules",
+    "checked_adapters",
+    "composition_and_presentation"
+  ],
+  "forbiddenDependencies": [
+    "codex_implementation_to_hepta_implementation",
+    "wire_to_SQL_or_daemon",
+    "domain_to_Agentd_or_UI_binary",
+    "qualification_to_production_writer",
+    "adapter_to_its_authority_issuer",
+    "optimizer_to_effect_adapter"
+  ],
+  "intelligenceComposition": {
+    "route": [
+      "objective.compiler",
+      "utility.ndu",
+      "neuron.runtime",
+      "prompt.optimizer",
+      "intuition.policy",
+      "context.compiler",
+      "intelligence.control",
+      "runtime.agentd",
+      "runtime.codex"
+    ],
+    "secondExecutionSpineAllowed": false,
+    "directModelCallOutsideCodexAllowed": false
+  },
+  "theoryBoundaries": {
+    "NDU": "preference_state_and_recursive_utility_only",
+    "FBSDE": "analysis_and_bounded_subject_models_not_universal_runtime_template",
+    "HolderBellman": "registered_smooth_subspaces_only",
+    "assetPricing": "prompt_control_asset_valuation_analogy_not_market_no_arbitrage_claim",
+    "biomimicry": "requires_mechanism_and_ablation_evidence"
+  },
+  "fastSlowLoops": {
+    "fast": "frozen_snapshot_decision_and_authorized_execution",
+    "slow": "causal_learning_evaluation_and_next_snapshot_artifact",
+    "onlineSelfModificationAllowed": false
+  },
+  "recoveryOrder": [
+    "release_identity",
+    "supervisor_generation_and_fence",
+    "authoritative_store_and_schema",
+    "operation_and_outbox_reconciliation",
+    "Agentd_composition",
+    "Codex_spine",
+    "read_attachments",
+    "physical_adapters",
+    "readiness_graph"
+  ],
+  "authorityFlags": {
+    "runtimeAuthority": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalFilesystemMutation": false,
+    "secretOperation": false,
+    "matrixSend": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "canonicalSelection": false,
+    "merge": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

@@ -1,0 +1,153 @@
+{
+  "schema": "hepta.learning-system.v2",
+  "schemaVersion": 2,
+  "documentClass": "canonical_registry",
+  "authorityScope": "causal_ledger_operator_learning_longitudinal_evaluation_and_plasticity_source",
+  "planId": "HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN",
+  "planVersion": "8.0.0",
+  "episodeChain": [
+    "RunStartSnapshot",
+    "generatorRelativeCompleteCandidateSet",
+    "assignmentPropensity",
+    "promptCompilation",
+    "promptDeliveryObservation",
+    "IntuitionDecision",
+    "VerifiedUseWitness",
+    "ObservedOutcome",
+    "CreditAssignment",
+    "DatasetSnapshot",
+    "Evaluation",
+    "NextSnapshotArtifact"
+  ],
+  "causalRequirements": {
+    "policyCannotLabelOwnSuccess": true,
+    "independentOutcomeObserverRequired": true,
+    "positivityAndSupportDiagnosticsRequired": true,
+    "creditConservationRequired": true,
+    "delayedOutcomeWatermarkRequired": true,
+    "censoringAndConfounderMetadataRequired": true
+  },
+  "operatorSystem": {
+    "appliesOnlyToRegisteredSmoothAxes": true,
+    "discreteEventAxesUseHybridModel": true,
+    "authorityAndTruthAxesDeterministic": true,
+    "simplestSufficientLearnerGate": true,
+    "stateActionSeparation": true,
+    "measuredSeparationRankRequired": true,
+    "monotonePositiveReconstructionWhereRequired": true,
+    "lInfinityGainBoundRequired": true,
+    "residualModeNearGreedyOnly": true
+  },
+  "sensorCorePolicy": {
+    "separateFromReplay": true,
+    "fixedAndVersioned": true,
+    "coverageMetrics": [
+      "fillDistance",
+      "separationRadius",
+      "meshRatio",
+      "OODMargin"
+    ],
+    "runtimeExperienceMaySilentlyReplace": false
+  },
+  "artifactLifecycle": [
+    "proposed",
+    "trained",
+    "evaluated",
+    "shadow",
+    "canary",
+    "operator_accepted",
+    "selected",
+    "revoked",
+    "retired"
+  ],
+  "currentRunMutationAllowed": false,
+  "nextSnapshotOnly": true,
+  "evaluation": {
+    "metrics": [
+      "taskUtility",
+      "quality",
+      "latency",
+      "resourceCost",
+      "risk",
+      "fairness",
+      "calibration",
+      "OOD",
+      "abstention"
+    ],
+    "estimators": [
+      "IPS",
+      "SNIPS",
+      "doubly_robust"
+    ],
+    "supportDiagnostics": [
+      "ESS",
+      "maximumWeight",
+      "coverageBySubgroup"
+    ],
+    "promotionRule": "candidate_LCB_greater_than_baseline_UCB_and_all_safety_floors"
+  },
+  "longitudinal": {
+    "minimumIndependentSnapshots": 3,
+    "minimumCalendarWindows": 2,
+    "preRegisteredFutureHoldout": true,
+    "retentionAndForgettingRequired": true,
+    "driftAndChangePointRequired": true,
+    "subgroupAndSafetyFloorsRequired": true,
+    "rollbackRehearsalRequired": true,
+    "deletionNonResurrectionRequired": true
+  },
+  "functionalBiomimicry": {
+    "requires": [
+      "temporal_state",
+      "sparse_competition",
+      "lateral_inhibition",
+      "eligibility_trace",
+      "homeostasis_or_metaplasticity",
+      "neuromodulatory_signal",
+      "replay_consolidation",
+      "prediction_error",
+      "lesion_or_ablation"
+    ],
+    "NDUAloneSufficient": false,
+    "localModelAloneSufficient": false
+  },
+  "plasticity": {
+    "parameterProposalAllowed": true,
+    "topologyProposalAllowed": true,
+    "topologyOnlineActivationAllowed": false,
+    "sandboxAndCapabilityTypingRequired": true,
+    "independentAcceptanceRequired": true
+  },
+  "selfIteration": {
+    "mayGenerateCandidates": true,
+    "mayGenerateTests": true,
+    "mayEvaluate": true,
+    "mayOpenPR": true,
+    "maySelfAuthorize": false,
+    "maySelfReview": false,
+    "maySelfSelect": false,
+    "maySelfMerge": false,
+    "maySelfAccept": false,
+    "maySelfPromote": false,
+    "maySelfRelease": false
+  },
+  "authorityFlags": {
+    "runtimeAuthority": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalFilesystemMutation": false,
+    "secretOperation": false,
+    "matrixSend": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "canonicalSelection": false,
+    "merge": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

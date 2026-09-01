@@ -1,0 +1,1729 @@
+{
+  "schema": "hepta.protocol-schema-registry.v2",
+  "schemaVersion": 2,
+  "documentClass": "canonical_registry",
+  "authorityScope": "critical_protocol_field_shape_and_bound_source",
+  "planId": "HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN",
+  "planVersion": "8.0.0",
+  "defaults": {
+    "maximumEncodedBytes": 262144,
+    "canonicalEncoding": "canonical_json_utf8",
+    "denyUnknownCriticalFields": true
+  },
+  "protocols": [
+    {
+      "id": "ContextCompilationReceiptV1",
+      "contractId": "ContextCompilationReceiptV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "compilationId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "objectiveDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "portfolioDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "modelTupleDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "messagesDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "tokenUpperBound",
+          "type": "u32",
+          "required": true
+        },
+        {
+          "name": "truncationPolicyDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "untrustedInstructionCount",
+          "type": "u32",
+          "required": true
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "CreditAssignmentReceiptV1",
+      "contractId": "CreditAssignmentReceiptV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "creditId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "episodeId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "outcomeDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "parentCreditId",
+          "type": "id128",
+          "required": false,
+          "maxBytes": 128
+        },
+        {
+          "name": "allocations",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 65536
+        },
+        {
+          "name": "conservationResidualQ32",
+          "type": "i64",
+          "required": true
+        },
+        {
+          "name": "ruleDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "DatasetSnapshotV1",
+      "contractId": "DatasetSnapshotV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "datasetId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "episodeRangeDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "rowCount",
+          "type": "u64",
+          "required": true
+        },
+        {
+          "name": "schemaDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "splitPolicyDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "deletionCutoffDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "contentDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "EvaluationReceiptV1",
+      "contractId": "EvaluationReceiptV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "evaluationId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "candidateArtifactDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "baselineArtifactDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "datasetDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "metrics",
+          "type": "bounded_object",
+          "required": true,
+          "maxBytes": 65536
+        },
+        {
+          "name": "supportDiagnostics",
+          "type": "bounded_object",
+          "required": true,
+          "maxBytes": 32768
+        },
+        {
+          "name": "decision",
+          "type": "enum",
+          "required": true,
+          "maxBytes": 32
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "IntuitionDecisionReceiptV1",
+      "contractId": "IntuitionDecisionReceiptV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "decisionId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "candidateSetDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "distribution",
+          "type": "bounded_probability_vector",
+          "required": true,
+          "maxBytes": 65536
+        },
+        {
+          "name": "selectedActionId",
+          "type": "id128",
+          "required": false,
+          "maxBytes": 128
+        },
+        {
+          "name": "selectedPropensityPpm",
+          "type": "u32",
+          "required": false
+        },
+        {
+          "name": "confidencePpm",
+          "type": "u32",
+          "required": true
+        },
+        {
+          "name": "oodPpm",
+          "type": "u32",
+          "required": true
+        },
+        {
+          "name": "disposition",
+          "type": "enum",
+          "required": true,
+          "maxBytes": 32
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "LearningArtifactManifestV1",
+      "contractId": "LearningArtifactManifestV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "artifactId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "artifactType",
+          "type": "enum",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "bytesDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "sourceDatasetDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "trainingCodeDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "compatibilityDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "predecessorArtifactId",
+          "type": "id128",
+          "required": false,
+          "maxBytes": 128
+        },
+        {
+          "name": "expiresUnixMs",
+          "type": "u64",
+          "required": false
+        },
+        {
+          "name": "rollbackDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "LearningDecisionV1",
+      "contractId": "LearningDecisionV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "decisionId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "episodeId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "candidateSetDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "policyDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "chosenId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "propensityPpm",
+          "type": "u32",
+          "required": true
+        },
+        {
+          "name": "randomSeedDigest",
+          "type": "sha256",
+          "required": false,
+          "maxBytes": 64
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "LearningEpisodeV1",
+      "contractId": "LearningEpisodeV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "episodeId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "runSnapshotDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "orderedEventDigests",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 131072
+        },
+        {
+          "name": "terminality",
+          "type": "enum",
+          "required": true,
+          "maxBytes": 32
+        },
+        {
+          "name": "outcomeWatermark",
+          "type": "bounded_object",
+          "required": true,
+          "maxBytes": 4096
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "LegalActionCandidateSetV1",
+      "contractId": "LegalActionCandidateSetV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "candidateSetId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "stateDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "generatorId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "grammarDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "candidates",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 131072
+        },
+        {
+          "name": "supportFloorPpm",
+          "type": "u32",
+          "required": true
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "LocalModelRuntimeReceiptV1",
+      "contractId": "LocalModelRuntimeReceiptV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "modelId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "weightsDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "tokenizerDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "preprocessorDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "quantizationId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "backendId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "deviceIdentityDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "latencyMicros",
+          "type": "u64",
+          "required": true
+        },
+        {
+          "name": "residentBytes",
+          "type": "u64",
+          "required": true
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "LongitudinalEvaluationReceiptV1",
+      "contractId": "LongitudinalEvaluationReceiptV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "evaluationId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "snapshotDigests",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 16384
+        },
+        {
+          "name": "windowCount",
+          "type": "u32",
+          "required": true
+        },
+        {
+          "name": "calendarSpanSeconds",
+          "type": "u64",
+          "required": true
+        },
+        {
+          "name": "futureHoldoutDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "retentionMetrics",
+          "type": "bounded_object",
+          "required": true,
+          "maxBytes": 32768
+        },
+        {
+          "name": "forgettingMetrics",
+          "type": "bounded_object",
+          "required": true,
+          "maxBytes": 32768
+        },
+        {
+          "name": "decision",
+          "type": "enum",
+          "required": true,
+          "maxBytes": 32
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "NduBoundaryConditionV1",
+      "contractId": "NduBoundaryConditionV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "parentSubjectId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "childSubjectId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "objectiveDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "continuationUtilityDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "resourceBudget",
+          "type": "bounded_object",
+          "required": true,
+          "maxBytes": 8192
+        },
+        {
+          "name": "riskBudget",
+          "type": "bounded_object",
+          "required": true,
+          "maxBytes": 8192
+        },
+        {
+          "name": "shadowPrices",
+          "type": "bounded_vector",
+          "required": true,
+          "maxBytes": 16384
+        },
+        {
+          "name": "expiresUnixMs",
+          "type": "u64",
+          "required": true
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "NduPreferenceStateV1",
+      "contractId": "NduPreferenceStateV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "subjectId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "subjectClass",
+          "type": "enum",
+          "required": true,
+          "maxBytes": 32
+        },
+        {
+          "name": "stateVector",
+          "type": "bounded_fixed_point_vector",
+          "required": true,
+          "maxBytes": 32768
+        },
+        {
+          "name": "observationDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "resourceDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "revision",
+          "type": "u64",
+          "required": true
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "NduSummaryReceiptV1",
+      "contractId": "NduSummaryReceiptV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "subjectId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "preferenceStateDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "recursiveUtilityQ32",
+          "type": "i64",
+          "required": true
+        },
+        {
+          "name": "uncertaintyPpm",
+          "type": "u32",
+          "required": true
+        },
+        {
+          "name": "resourceMarginal",
+          "type": "bounded_vector",
+          "required": true,
+          "maxBytes": 16384
+        },
+        {
+          "name": "riskMarginal",
+          "type": "bounded_vector",
+          "required": true,
+          "maxBytes": 16384
+        },
+        {
+          "name": "boundaryResidualPpm",
+          "type": "u32",
+          "required": true
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "NeuronSignalReceiptV1",
+      "contractId": "NeuronSignalReceiptV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "signalSetId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "modelRuntimeDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "temporalStateDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "signals",
+          "type": "bounded_vector",
+          "required": true,
+          "maxBytes": 32768
+        },
+        {
+          "name": "activationSparsityPpm",
+          "type": "u32",
+          "required": true
+        },
+        {
+          "name": "oodPpm",
+          "type": "u32",
+          "required": true
+        },
+        {
+          "name": "abstain",
+          "type": "bool",
+          "required": true
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "ObjectiveFunctionV1",
+      "contractId": "ObjectiveFunctionV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "objectiveId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "requestDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "principalScope",
+          "type": "bounded_object",
+          "required": true,
+          "maxBytes": 4096
+        },
+        {
+          "name": "successPredicates",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 32768
+        },
+        {
+          "name": "terminalConditions",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 16384
+        },
+        {
+          "name": "hardConstraints",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 32768
+        },
+        {
+          "name": "softUtilityDimensions",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 16384
+        },
+        {
+          "name": "resourceEndowment",
+          "type": "bounded_object",
+          "required": true,
+          "maxBytes": 8192
+        },
+        {
+          "name": "deadlineUnixMs",
+          "type": "u64",
+          "required": false
+        },
+        {
+          "name": "revision",
+          "type": "u64",
+          "required": true
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "OperatorSensorCoreManifestV1",
+      "contractId": "OperatorSensorCoreManifestV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "sensorCoreId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "stateDomainDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "actionDomainDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "pointSetDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "fillDistanceQ32",
+          "type": "u64",
+          "required": true
+        },
+        {
+          "name": "separationRadiusQ32",
+          "type": "u64",
+          "required": true
+        },
+        {
+          "name": "meshRatioQ32",
+          "type": "u64",
+          "required": true
+        },
+        {
+          "name": "oodMarginQ32",
+          "type": "u64",
+          "required": true
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "OutcomeReceiptV1",
+      "contractId": "OutcomeReceiptV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "outcomeId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "episodeId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "observerId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "observationDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "utilityVector",
+          "type": "bounded_fixed_point_vector",
+          "required": true,
+          "maxBytes": 32768
+        },
+        {
+          "name": "observedAtUnixMs",
+          "type": "u64",
+          "required": true
+        },
+        {
+          "name": "censoring",
+          "type": "enum",
+          "required": true,
+          "maxBytes": 32
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "PromptCandidateSetReceiptV1",
+      "contractId": "PromptCandidateSetReceiptV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "setId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "objectiveDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "stateDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "registryDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "candidateFactorIds",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 32768
+        },
+        {
+          "name": "selectionGrammarDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "PromptDeliveryObservationV1",
+      "contractId": "PromptDeliveryObservationV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "compilationId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "providerRequestDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "delivered",
+          "type": "bool",
+          "required": true
+        },
+        {
+          "name": "rejectedReason",
+          "type": "enum",
+          "required": false,
+          "maxBytes": 64
+        },
+        {
+          "name": "observedTokenPositions",
+          "type": "bounded_array",
+          "required": false,
+          "maxBytes": 32768
+        },
+        {
+          "name": "truncationObserved",
+          "type": "bool",
+          "required": true
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "PromptExerciseDecisionV1",
+      "contractId": "PromptExerciseDecisionV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "factorOrPortfolioId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "decisionBoundary",
+          "type": "enum",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "exerciseNowValueQ32",
+          "type": "i64",
+          "required": true
+        },
+        {
+          "name": "waitValueQ32",
+          "type": "i64",
+          "required": true
+        },
+        {
+          "name": "decision",
+          "type": "enum",
+          "required": true,
+          "maxBytes": 16
+        },
+        {
+          "name": "policyDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "PromptFactorV1",
+      "contractId": "PromptFactorV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "factorId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "semanticPurpose",
+          "type": "utf8",
+          "required": true,
+          "maxBytes": 4096
+        },
+        {
+          "name": "authorityClass",
+          "type": "enum",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "eligibleObjectiveDimensions",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 8192
+        },
+        {
+          "name": "lifecycle",
+          "type": "enum",
+          "required": true,
+          "maxBytes": 32
+        },
+        {
+          "name": "revision",
+          "type": "u64",
+          "required": true
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "PromptPortfolioReceiptV1",
+      "contractId": "PromptPortfolioReceiptV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "portfolioId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "candidateSetDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "factorIds",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 32768
+        },
+        {
+          "name": "interactionDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "expectedUtilityQ32",
+          "type": "i64",
+          "required": true
+        },
+        {
+          "name": "totalTokenUpperBound",
+          "type": "u32",
+          "required": true
+        },
+        {
+          "name": "validUntilUnixMs",
+          "type": "u64",
+          "required": true
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "PromptPricingReceiptV1",
+      "contractId": "PromptPricingReceiptV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "factorId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "stateDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "expectedUtilityQ32",
+          "type": "i64",
+          "required": true
+        },
+        {
+          "name": "downsideQ32",
+          "type": "i64",
+          "required": true
+        },
+        {
+          "name": "tokenCost",
+          "type": "u32",
+          "required": true
+        },
+        {
+          "name": "latencyCostMicros",
+          "type": "u64",
+          "required": true
+        },
+        {
+          "name": "interferencePpm",
+          "type": "u32",
+          "required": true
+        },
+        {
+          "name": "confidenceInterval",
+          "type": "bounded_object",
+          "required": true,
+          "maxBytes": 4096
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "PromptRealizationV1",
+      "contractId": "PromptRealizationV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "factorId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "modelId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "modelVersion",
+          "type": "utf8",
+          "required": true,
+          "maxBytes": 256
+        },
+        {
+          "name": "tokenizerDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "systemTemplateDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "messageRole",
+          "type": "enum",
+          "required": true,
+          "maxBytes": 32
+        },
+        {
+          "name": "payloadDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "tokenCostUpperBound",
+          "type": "u32",
+          "required": true
+        },
+        {
+          "name": "expiresUnixMs",
+          "type": "u64",
+          "required": false
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "RegularityProfileV1",
+      "contractId": "RegularityProfileV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "profileId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "continuousStateAxes",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 16384
+        },
+        {
+          "name": "discreteStateAxes",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 16384
+        },
+        {
+          "name": "authorityAxes",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 16384
+        },
+        {
+          "name": "holderAlphaQ32",
+          "type": "u64",
+          "required": true
+        },
+        {
+          "name": "actionLipschitzQ32",
+          "type": "u64",
+          "required": true
+        },
+        {
+          "name": "effectiveDiffusionFloorQ32",
+          "type": "u64",
+          "required": true
+        },
+        {
+          "name": "controlStepMicros",
+          "type": "u64",
+          "required": true
+        },
+        {
+          "name": "operatorRankUpperBound",
+          "type": "u32",
+          "required": true
+        },
+        {
+          "name": "lInfinityGainQ32",
+          "type": "u64",
+          "required": true
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "RunStartSnapshotV1",
+      "contractId": "RunStartSnapshotV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "runId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "objectiveDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "hardConstraintDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "preferenceStateDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "modelTupleDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "promptRegistryDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "artifactSetDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "authorityEpoch",
+          "type": "u64",
+          "required": true
+        },
+        {
+          "name": "generation",
+          "type": "u64",
+          "required": true
+        },
+        {
+          "name": "fenceDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "TopologyProposalV1",
+      "contractId": "TopologyProposalV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "proposalId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "baseTopologyDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "operations",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 32768
+        },
+        {
+          "name": "capabilityTypeDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "resourceDelta",
+          "type": "bounded_object",
+          "required": true,
+          "maxBytes": 8192
+        },
+        {
+          "name": "rollbackTopologyDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    },
+    {
+      "id": "UnlearningComplianceReceiptV1",
+      "contractId": "UnlearningComplianceReceiptV1",
+      "canonicalEncoding": "canonical_json_utf8",
+      "denyUnknownCriticalFields": true,
+      "maximumEncodedBytes": 262144,
+      "digestScope": "all_semantic_fields_except_detached_signature",
+      "fields": [
+        {
+          "name": "requestId",
+          "type": "id128",
+          "required": true,
+          "maxBytes": 128
+        },
+        {
+          "name": "sourceLineageDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "affectedArtifactDigests",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 65536
+        },
+        {
+          "name": "rebuildOrRevocationDigests",
+          "type": "bounded_array",
+          "required": true,
+          "maxBytes": 65536
+        },
+        {
+          "name": "backupRestoreTestDigest",
+          "type": "sha256",
+          "required": true,
+          "maxBytes": 64
+        },
+        {
+          "name": "nonResurrection",
+          "type": "bool",
+          "required": true
+        }
+      ],
+      "invariants": [
+        "bounded_lengths",
+        "canonical_field_order",
+        "digest_before_authority_use",
+        "unknown_critical_fields_rejected"
+      ]
+    }
+  ],
+  "authorityFlags": {
+    "runtimeAuthority": false,
+    "productionCaller": false,
+    "productionWriter": false,
+    "modelInvocation": false,
+    "providerDispatch": false,
+    "toolExecution": false,
+    "networkConnect": false,
+    "externalFilesystemMutation": false,
+    "secretOperation": false,
+    "matrixSend": false,
+    "externalEffect": false,
+    "fleetMutation": false,
+    "canonicalSelection": false,
+    "merge": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
