@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::BTreeSet;
 
 fn digest(character: char) -> Digest32 {
     Digest32::parse(std::iter::repeat_n(character, 64).collect::<String>()).unwrap()
@@ -213,8 +214,11 @@ fn graph_bounds_fail_closed() {
 
 #[test]
 fn authority_posture_is_compile_time_false() {
-    assert!(!CURRENT_RUN_MUTATION_ALLOWED);
-    assert!(!ONLINE_TOPOLOGY_ACTIVATION_ALLOWED);
-    assert!(!PRODUCTION_AUTHORITY);
-    assert!(!EXTERNAL_EFFECTS_ALLOWED);
+    let posture = [
+        std::hint::black_box(CURRENT_RUN_MUTATION_ALLOWED),
+        std::hint::black_box(ONLINE_TOPOLOGY_ACTIVATION_ALLOWED),
+        std::hint::black_box(PRODUCTION_AUTHORITY),
+        std::hint::black_box(EXTERNAL_EFFECTS_ALLOWED),
+    ];
+    assert_eq!(posture, [false; 4]);
 }
