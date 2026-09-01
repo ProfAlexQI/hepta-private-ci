@@ -109,7 +109,7 @@ jobs:
         run: |
           set -euo pipefail
           git switch --orphan paper-source-locks-v1
-          git rm -rf .
+          git rm -rf --ignore-unmatch .
           cp -a /tmp/hepta-paper-locks/. .
           git add -A
           test "$(git diff --cached --name-only | wc -l)" -eq 8
