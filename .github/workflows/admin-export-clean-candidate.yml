@@ -18,31 +18,29 @@ jobs:
       CANDIDATE_COMMIT: f784ece19bfee9851336b8ecd226e6d7edc8b343
       CANDIDATE_TREE: 7b0a2ae192903ee01fb32095af67938bda1d2e64
     steps:
-      - name: Check out repository objects
+      - name: Check out exact clean candidate branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.CANDIDATE_BRANCH }}
           persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: 2
 
       - name: Verify and archive exact clean candidate
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --no-tags origin \
-            "refs/heads/$CANDIDATE_BRANCH:refs/remotes/origin/$CANDIDATE_BRANCH"
-          test "$(git rev-parse "refs/remotes/origin/$CANDIDATE_BRANCH")" = "$CANDIDATE_COMMIT"
-          test "$(git rev-parse "$CANDIDATE_COMMIT^{tree}")" = "$CANDIDATE_TREE"
-          test "$(git rev-list --parents -n 1 "$CANDIDATE_COMMIT")" = "$CANDIDATE_COMMIT 70ef65a90a031ce0cc08b77b5596eb0d99edaa11"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_COMMIT"
+          test "$(git rev-parse HEAD^{tree})" = "$CANDIDATE_TREE"
+          test "$(git rev-list --parents -n 1 HEAD)" = "$CANDIDATE_COMMIT 70ef65a90a031ce0cc08b77b5596eb0d99edaa11"
           git archive --format=tar.gz \
             --output clean-adaptive-candidate-f784ece19.tar.gz \
-            "$CANDIDATE_COMMIT"
+            HEAD
           sha256sum clean-adaptive-candidate-f784ece19.tar.gz | tee clean-adaptive-candidate-f784ece19.sha256
 
       - name: Retain exact clean candidate archive
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: clean-adaptive-candidate-f784ece19
+          name: clean-adaptive-candidate-f784ece19-${{ github.sha }}
           path: |
             clean-adaptive-candidate-f784ece19.tar.gz
             clean-adaptive-candidate-f784ece19.sha256
