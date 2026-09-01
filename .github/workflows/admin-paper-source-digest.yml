@@ -12,43 +12,64 @@ permissions:
 jobs:
   fingerprint:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Download immutable-version paper artifacts and emit manifest
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p paper-sources
-          curl --fail --location --retry 5 --retry-all-errors \
-            --user-agent 'hepta-source-lock/1.0' \
-            https://arxiv.org/pdf/2606.16846v1 \
-            --output paper-sources/arxiv-2606.16846v1.pdf
-          test "$(head -c 4 paper-sources/arxiv-2606.16846v1.pdf)" = '%PDF'
+          fetch_pdf() {
+            local url="$1"
+            local output="$2"
+            local expected_pages="$3"
+            curl --fail --location --retry 5 --retry-all-errors \
+              --user-agent 'hepta-source-lock/1.0' \
+              "$url" --output "$output"
+            test "$(head -c 4 "$output")" = '%PDF'
+            test "$(pdfinfo "$output" | awk '/^Pages:/ {print $2}')" = "$expected_pages"
+          }
+          fetch_pdf \
+            'https://papers.ssrn.com/sol3/Delivery.cfm/5072524.pdf?abstractid=5072524' \
+            paper-sources/ssrn-5072524.pdf 173
+          fetch_pdf \
+            'https://papers.ssrn.com/sol3/Delivery.cfm/5125219.pdf?abstractid=5125219&mirid=1' \
+            paper-sources/ssrn-5125219.pdf 73
+          fetch_pdf \
+            'https://papers.ssrn.com/sol3/Delivery.cfm/5267854.pdf?abstractid=5267854&mirid=1' \
+            paper-sources/ssrn-5267854.pdf 43
+          fetch_pdf \
+            'https://arxiv.org/pdf/2606.16846v1' \
+            paper-sources/arxiv-2606.16846v1.pdf 35
           curl --fail --location --retry 5 --retry-all-errors \
             --user-agent 'hepta-source-lock/1.0' \
             https://export.arxiv.org/e-print/2606.16846v1 \
             --output paper-sources/arxiv-2606.16846v1-source.tar
-          curl --fail --location --retry 5 --retry-all-errors \
-            --user-agent 'hepta-source-lock/1.0' \
-            https://raw.githubusercontent.com/mlresearch/v336/main/assets/qi26a/qi26a.pdf \
-            --output paper-sources/pmlr-v336-qi26a.pdf
-          test "$(head -c 4 paper-sources/pmlr-v336-qi26a.pdf)" = '%PDF'
+          fetch_pdf \
+            'https://raw.githubusercontent.com/mlresearch/v336/main/assets/qi26a/qi26a.pdf' \
+            paper-sources/pmlr-v336-qi26a.pdf 2
           python3 - <<'PY'
           import hashlib
           import json
+          import subprocess
           from pathlib import Path
 
           rows = []
           for path in sorted(Path('paper-sources').iterdir()):
               data = path.read_bytes()
+              pages = None
+              if data.startswith(b'%PDF'):
+                  info = subprocess.check_output(['pdfinfo', str(path)], text=True)
+                  pages = int(next(line.split(':', 1)[1] for line in info.splitlines() if line.startswith('Pages:')))
               rows.append({
                   'file': path.name,
                   'bytes': len(data),
                   'sha256': hashlib.sha256(data).hexdigest(),
+                  'pages': pages,
                   'magicHex': data[:16].hex(),
               })
           manifest = {
-              'schema': 'hepta.paper-source-fingerprint.v1',
+              'schema': 'hepta.paper-source-fingerprint.v2',
               'artifacts': rows,
               'authorityGranted': False,
           }
