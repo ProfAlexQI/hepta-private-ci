@@ -19,7 +19,7 @@ env:
 jobs:
   materialize:
     if: "github.event.head_commit.message == 'ops(docs): materialize DOC-3 module closure'"
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - name: Check out exact trigger commit
@@ -58,9 +58,9 @@ jobs:
           python3 scripts/hepta-docs.py self-test
           python3 scripts/hepta-docs.py inventory-legacy
           python3 scripts/hepta-docs.py generate-status
-          status_sha="$(sha256sum docs/STATUS.md | awk '{print $1}')"
+          cp docs/STATUS.md /tmp/hepta-doc3-status
           python3 scripts/hepta-docs.py generate-status
-          test "$(sha256sum docs/STATUS.md | awk '{print $1}')" = "$status_sha"
+          cmp -s docs/STATUS.md /tmp/hepta-doc3-status
           python3 scripts/hepta-docs.py verify
           git diff --check
           python3 - <<'PY'
