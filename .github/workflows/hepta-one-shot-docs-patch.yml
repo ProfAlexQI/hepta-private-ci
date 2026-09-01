@@ -78,53 +78,66 @@ jobs:
           source = path.read_text(encoding="utf-8")
 
           helper_anchor = "def acyclic(nodes, edges, label):\n"
-          helper = '''def deleted_path_reference_present(text: str, deleted_path: str) -> bool:
-              if deleted_path in text:
-                  return True
-              basename = re.escape(Path(deleted_path).name)
-              return re.search(
-                  rf"(?<![A-Za-z0-9_.-]){basename}(?![A-Za-z0-9_.-])",
-                  text,
-              ) is not None
-
-
-          '''
+          helper = "\n".join(
+              [
+                  "def deleted_path_reference_present(text: str, deleted_path: str) -> bool:",
+                  "    if deleted_path in text:",
+                  "        return True",
+                  "    basename = re.escape(Path(deleted_path).name)",
+                  "    return re.search(",
+                  '        rf"(?<![A-Za-z0-9_.-]){basename}(?![A-Za-z0-9_.-])",',
+                  "        text,",
+                  "    ) is not None",
+                  "",
+                  "",
+              ]
+          )
           if source.count(helper_anchor) != 1:
               raise SystemExit("could not locate helper insertion anchor")
           source = source.replace(helper_anchor, helper + helper_anchor, 1)
 
-          old_consumer_scan = '''        terms = (old_path, Path(old_path).name)
-              for path, text in retained:
-                  if any(term in text for term in terms):
-                      consumer_hits.append({"retainedPath": path, "deletedJson": old_path})
-          '''
-          new_consumer_scan = '''        for path, text in retained:
-                  if deleted_path_reference_present(text, old_path):
-                      consumer_hits.append({"retainedPath": path, "deletedJson": old_path})
-          '''
+          old_consumer_scan = "\n".join(
+              [
+                  "        terms = (old_path, Path(old_path).name)",
+                  "        for path, text in retained:",
+                  "            if any(term in text for term in terms):",
+                  '                consumer_hits.append({"retainedPath": path, "deletedJson": old_path})',
+              ]
+          )
+          new_consumer_scan = "\n".join(
+              [
+                  "        for path, text in retained:",
+                  "            if deleted_path_reference_present(text, old_path):",
+                  '                consumer_hits.append({"retainedPath": path, "deletedJson": old_path})',
+              ]
+          )
           if source.count(old_consumer_scan) != 1:
               raise SystemExit("could not locate deleted JSON consumer scan")
           source = source.replace(old_consumer_scan, new_consumer_scan, 1)
 
           self_test_anchor = "def self_test():\n    cases = []\n"
-          self_test_prefix = '''def self_test():
-              cases = []
-              need(
-                  not deleted_path_reference_present(
-                      "https://bcr.bazel.build/bazel_registry.json",
-                      "docs/historical/registry.json",
-                  ),
-                  "deleted JSON basename boundary false positive",
-              )
-              need(
-                  deleted_path_reference_present(
-                      'consumer = "registry.json"',
-                      "docs/historical/registry.json",
-                  ),
-                  "deleted JSON basename boundary false negative",
-              )
-              cases.append("deleted_json_consumer_boundary")
-          '''
+          self_test_prefix = "\n".join(
+              [
+                  "def self_test():",
+                  "    cases = []",
+                  "    need(",
+                  "        not deleted_path_reference_present(",
+                  '            "https://bcr.bazel.build/bazel_registry.json",',
+                  '            "docs/historical/registry.json",',
+                  "        ),",
+                  '        "deleted JSON basename boundary false positive",',
+                  "    )",
+                  "    need(",
+                  "        deleted_path_reference_present(",
+                  '            \'consumer = "registry.json"\',',
+                  '            "docs/historical/registry.json",',
+                  "        ),",
+                  '        "deleted JSON basename boundary false negative",',
+                  "    )",
+                  '    cases.append("deleted_json_consumer_boundary")',
+                  "",
+              ]
+          )
           if source.count(self_test_anchor) != 1:
               raise SystemExit("could not locate self-test insertion anchor")
           source = source.replace(self_test_anchor, self_test_prefix, 1)
