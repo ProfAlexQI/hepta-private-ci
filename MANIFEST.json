@@ -1,0 +1,43 @@
+{
+  "authorityGranted": false,
+  "schema": "hepta.paper-source-lock-manifest.v1",
+  "sourceCount": 6,
+  "sources": [
+    {
+      "bytes": 644,
+      "gitBlobSha": "90d721c249c4bb95543a87f9316f902adcab65d1",
+      "path": "sources/SSRN-5072524/official-abstract.txt",
+      "sha256": "735d842f690836752de0fac6c36bba2c5f8608361f17c90a0c580192707a16eb"
+    },
+    {
+      "bytes": 864,
+      "gitBlobSha": "debace7bc99a3af995823ebf804f20c2cc700252",
+      "path": "sources/SSRN-5125219/official-abstract.txt",
+      "sha256": "d5c003e7b3219e11accf442feba3caa7802cf3fa4292d6a07900421b039cb4a2"
+    },
+    {
+      "bytes": 832,
+      "gitBlobSha": "35f295fd4a2cd05a4dd217497782a84c0fb385be",
+      "path": "sources/SSRN-5267854/official-abstract.txt",
+      "sha256": "0dc0deb5d2c1d84137150c0b0893696c81425ed94c86565f7fce5d373af3c9dd"
+    },
+    {
+      "bytes": 98363,
+      "gitBlobSha": "ada2fa14622476cf4f2a9ad24ed11180193d685e",
+      "path": "sources/PMLR-V336-QI26A/publisher-summary.pdf",
+      "sha256": "19892c98ba43ba1c01e0d4d01859f0d1e3bce601808414543f182b630338f60a"
+    },
+    {
+      "bytes": 473280,
+      "gitBlobSha": "53324d1cccadbf406b6b7d067a25bcc1adbde30d",
+      "path": "sources/ARXIV-2606.16846V1/paper.pdf",
+      "sha256": "37f58e29d6ba72a15660a5c2d7a7b26eca7dc68588da68e7e7bcebf39ce1403e"
+    },
+    {
+      "bytes": 43207,
+      "gitBlobSha": "e4dbfc1f65b47312b076bbce625bbe3cc76ba904",
+      "path": "sources/ARXIV-2606.16846V1/source.tar",
+      "sha256": "50966241ca58a0840b9fecc926c76e87b4a7f2b3b68e6d6c587d3bd867a41316"
+    }
+  ]
+}
