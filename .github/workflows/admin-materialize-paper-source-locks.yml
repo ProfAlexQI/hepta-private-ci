@@ -1,0 +1,126 @@
+name: Admin materialize paper source locks
+
+on:
+  push:
+    branches:
+      - admin/materialize-adaptive-doc-closure-20260902
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: admin-materialize-paper-source-locks-v1
+  cancel-in-progress: true
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      OUTPUT_BRANCH: evidence/paper-source-locks-v1
+      FIXED_DATE: '2026-09-01T20:00:00Z'
+    steps:
+      - name: Check out repository for authenticated push
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: true
+          fetch-depth: 1
+
+      - name: Acquire and verify exact source bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/hepta-paper-locks
+          mkdir -p \
+            /tmp/hepta-paper-locks/sources/SSRN-5072524 \
+            /tmp/hepta-paper-locks/sources/SSRN-5125219 \
+            /tmp/hepta-paper-locks/sources/SSRN-5267854 \
+            /tmp/hepta-paper-locks/sources/PMLR-V336-QI26A \
+            /tmp/hepta-paper-locks/sources/ARXIV-2606.16846V1
+
+          printf '%s' 'This paper introduces Neural Differential Utility (NDU), a novel framework integrating deep neural networks within a recursive utility paradigm. NDU offers a tractable yet more granular approach for analyzing the evolution of preferences within a resource-constrained agent. We establish conditions for NDU to satisfy the Universal Approximation Theorem, demonstrating its capacity to endogenize various preferences within L p spaces. In a representative agent asset market setting, NDU generates nonlinear and time-varying SDF, shining light the theoretical foundations for the growing applications of deep learning in empirical asset pricing.' \
+            > /tmp/hepta-paper-locks/sources/SSRN-5072524/official-abstract.txt
+          printf '%s' 'This paper establishes conditions under which (NDU, see Qi (2024)), a framework for modeling dynamic decision-making, satisfies the Universal Approximation Theorem. NDU represents preferences via a continuous-time stochastic process governed by a Forward-Backward Stochastic Differential Equation (FBSDE), with latent preference state dynamics parameterized by continuous-time Residual Networks (ResNets). We prove two key results: (i) ResNet-parameterized aggregator functions within NDU can approximate regular functions in L^p spaces; (ii) NDU can approximate "Well Functions" uniformly over weakly compact sets of admissible consumption processes, extending to the full space via a diagonalization argument. These results demonstrate NDU''s capacity to represent, and thus potentially endogenize within a unified framework, a broad class of dynamic preferences.' \
+            > /tmp/hepta-paper-locks/sources/SSRN-5125219/official-abstract.txt
+          printf '%s' 'This paper establishes theoretical foundations for the Neural Differential Utility (NDU) framework where information is driven by general multi-dimensional square-integrable martingales. We define the core NDU system as a forward-backward stochastic differential equation (FBSDE) where the forward component, representing the agent''s preference state, and the backward component, representing the utility aggregator, are driven by distinct components of the general martingale. We provide rigorous conditions for the existence and uniqueness of solutions to this FBSDE system. Furthermore, we address the problem of optimal control of the preference parameters. Under specific regularity, growth, concavity, and a crucial weak-to-strong continuity assumption for the FBSDE solution map, we prove the existence of an optimal control.' \
+            > /tmp/hepta-paper-locks/sources/SSRN-5267854/official-abstract.txt
+
+          curl --fail --location --retry 5 --retry-all-errors \
+            --user-agent 'hepta-source-lock/1.0' \
+            https://raw.githubusercontent.com/mlresearch/v336/main/assets/qi26a/qi26a.pdf \
+            --output /tmp/hepta-paper-locks/sources/PMLR-V336-QI26A/publisher-summary.pdf
+          curl --fail --location --retry 5 --retry-all-errors \
+            --user-agent 'hepta-source-lock/1.0' \
+            https://arxiv.org/pdf/2606.16846v1 \
+            --output /tmp/hepta-paper-locks/sources/ARXIV-2606.16846V1/paper.pdf
+          curl --fail --location --retry 5 --retry-all-errors \
+            --user-agent 'hepta-source-lock/1.0' \
+            https://export.arxiv.org/e-print/2606.16846v1 \
+            --output /tmp/hepta-paper-locks/sources/ARXIV-2606.16846V1/source.tar
+
+          cat > /tmp/hepta-paper-locks/README.md <<'EOF'
+          # Hepta paper source locks v1
+
+          This orphan evidence branch preserves the exact source bytes referenced by the adaptive-algorithm documentation. The product branch binds this tree, individual paths, byte lengths, SHA-256 digests and Git blob identities. These files grant no runtime, model, tool, network, acceptance, promotion or release authority.
+
+          The three SSRN files are canonical one-line snapshots of the exact official-publisher abstract text used by the claim-scoped registry; they do not represent or substitute for the full working papers. The PMLR file is the two-page publisher summary. Detailed Hölder–Bellman claims use the immutable arXiv v1 PDF and source archive.
+          EOF
+          sed -i 's/^          //' /tmp/hepta-paper-locks/README.md
+
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import subprocess
+          from pathlib import Path
+
+          root = Path('/tmp/hepta-paper-locks')
+          expected = {
+              'sources/SSRN-5072524/official-abstract.txt': (644, '735d842f690836752de0fac6c36bba2c5f8608361f17c90a0c580192707a16eb', '90d721c249c4bb95543a87f9316f902adcab65d1'),
+              'sources/SSRN-5125219/official-abstract.txt': (864, 'd5c003e7b3219e11accf442feba3caa7802cf3fa4292d6a07900421b039cb4a2', 'debace7bc99a3af995823ebf804f20c2cc700252'),
+              'sources/SSRN-5267854/official-abstract.txt': (832, '0dc0deb5d2c1d84137150c0b0893696c81425ed94c86565f7fce5d373af3c9dd', '35f295fd4a2cd05a4dd217497782a84c0fb385be'),
+              'sources/PMLR-V336-QI26A/publisher-summary.pdf': (98363, '19892c98ba43ba1c01e0d4d01859f0d1e3bce601808414543f182b630338f60a', 'ada2fa14622476cf4f2a9ad24ed11180193d685e'),
+              'sources/ARXIV-2606.16846V1/paper.pdf': (473280, '37f58e29d6ba72a15660a5c2d7a7b26eca7dc68588da68e7e7bcebf39ce1403e', '53324d1cccadbf406b6b7d067a25bcc1adbde30d'),
+              'sources/ARXIV-2606.16846V1/source.tar': (43207, '50966241ca58a0840b9fecc926c76e87b4a7f2b3b68e6d6c587d3bd867a41316', 'e4dbfc1f65b47312b076bbce625bbe3cc76ba904'),
+          }
+          rows = []
+          for relative, (size, sha256, blob) in expected.items():
+              path = root / relative
+              data = path.read_bytes()
+              actual_blob = hashlib.sha1(f'blob {len(data)}\0'.encode() + data).hexdigest()
+              assert len(data) == size, relative
+              assert hashlib.sha256(data).hexdigest() == sha256, relative
+              assert actual_blob == blob, relative
+              rows.append({'path': relative, 'bytes': size, 'sha256': sha256, 'gitBlobSha': blob})
+          manifest = {
+              'schema': 'hepta.paper-source-lock-manifest.v1',
+              'sourceCount': len(rows),
+              'sources': rows,
+              'authorityGranted': False,
+          }
+          (root / 'MANIFEST.json').write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          print(json.dumps(manifest, sort_keys=True))
+          PY
+
+      - name: Create deterministic orphan evidence commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git switch --orphan paper-source-locks-v1
+          git rm -rf .
+          cp -a /tmp/hepta-paper-locks/. .
+          git add -A
+          test "$(git diff --cached --name-only | wc -l)" -eq 8
+          git config user.name 'Hepta Paper Source Locks'
+          git config user.email 'hepta-paper-locks@users.noreply.github.com'
+          export GIT_AUTHOR_DATE="$FIXED_DATE"
+          export GIT_COMMITTER_DATE="$FIXED_DATE"
+          git commit -m 'evidence(papers): preserve adaptive paper source locks v1' \
+            -m 'Preserve three canonical official-abstract snapshots, the PMLR publisher summary, and the exact arXiv v1 PDF/source archive. Authority delta: none.'
+          COMMIT="$(git rev-parse HEAD)"
+          TREE="$(git rev-parse HEAD^{tree})"
+          test "$(git rev-list --parents -n 1 HEAD)" = "$COMMIT"
+          printf 'commit=%s\ntree=%s\n' "$COMMIT" "$TREE"
+          git ls-tree -r HEAD
+          git push origin "HEAD:refs/heads/$OUTPUT_BRANCH" --force
