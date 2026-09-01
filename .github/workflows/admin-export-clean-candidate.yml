@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
+      CANDIDATE_BRANCH: admin/materialized-adaptive-doc-closure-output-20260902
       CANDIDATE_COMMIT: f784ece19bfee9851336b8ecd226e6d7edc8b343
       CANDIDATE_TREE: 7b0a2ae192903ee01fb32095af67938bda1d2e64
     steps:
@@ -28,6 +29,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git fetch --no-tags origin \
+            "refs/heads/$CANDIDATE_BRANCH:refs/remotes/origin/$CANDIDATE_BRANCH"
+          test "$(git rev-parse "refs/remotes/origin/$CANDIDATE_BRANCH")" = "$CANDIDATE_COMMIT"
           test "$(git rev-parse "$CANDIDATE_COMMIT^{tree}")" = "$CANDIDATE_TREE"
           test "$(git rev-list --parents -n 1 "$CANDIDATE_COMMIT")" = "$CANDIDATE_COMMIT 70ef65a90a031ce0cc08b77b5596eb0d99edaa11"
           git archive --format=tar.gz \
