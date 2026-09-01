@@ -14,13 +14,13 @@
   },
   "candidate": {
     "pullRequest": 286,
-    "targetBranch": "codex/hepta-development-docs-v7-1-final-20260901",
-    "sourceHead": "resolved_by_exact_source_receipt",
-    "sourceTree": "resolved_by_exact_source_receipt",
-    "mergeCandidate": "resolved_by_merge_candidate_receipt",
-    "relationship": "one_direct_parent_after_final_collapse"
+    "targetBranch": "main",
+    "sourceHead": "resolved_by_exact_main_default_mirror_receipt",
+    "sourceTree": "resolved_by_exact_main_default_mirror_receipt",
+    "mergeCandidate": "not_applicable_after_ancestry_consolidation",
+    "relationship": "main_and_current_default_same_tip_pending_repository_admin_switch"
   },
-  "currentWorkPackage": "DOC-1-V8-SEMANTIC-UPGRADE",
+  "currentWorkPackage": "DOC-2-DEFAULT-BRANCH-SELECTION",
   "baselineClaims": {
     "systemLearning": "L0_STATIC",
     "ndu": "D0_SPECIFIED_ONLY",
@@ -43,7 +43,8 @@
   "supersedes": [
     "V6 document candidate PR 285",
     "V7.1 document candidate bytes previously on PR 286",
-    "all historical in-tree Hepta development plans and snapshots"
+    "all historical in-tree Hepta development plans and snapshots",
+    "pre-consolidation multi-branch repository ref surface"
   ],
   "authorityFlags": {
     "runtimeAuthority": false,

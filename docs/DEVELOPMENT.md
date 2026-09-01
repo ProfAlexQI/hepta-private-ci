@@ -3,7 +3,7 @@
 **Plan ID:** `HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN`
 **Version:** `8.0.0`
 **Date:** 2026-09-01
-**Status:** canonical development source on its exact candidate; executable qualification, independent review, default-branch selection, operator acceptance, promotion, and release remain separate.
+**Status:** canonical V8 content is mirrored on `main`; GitHub still names `integration/vnext-main-20260811` as the default branch, so default-branch selection remains an external repository-administration gate.
 
 This is the only global human-readable development authority in the working tree. Machine registries own bounded facts and `docs/STATUS.md` is generated. This document grants no runtime, model, provider, tool, network, filesystem, secret, Matrix, fleet, operator, promotion, or release authority.
 
@@ -44,23 +44,17 @@ Read in this order:
 
 Stable paths are updated in place. Version numbers live inside documents, never in filenames. Historical plans, status snapshots, current-plan pointers, gap ledgers, tranche narratives, Dropbox exports and in-tree archives are prohibited. Git history and immutable content-addressed external evidence preserve provenance.
 
-The exact default baseline contains a 138-file Dropbox development snapshot, four direct historical `docs/hepta-vnext` documents, and one superseded global live-shell narrative. V8.1 must delete the entire `docs/hepta-vnext` tree plus `the retired live-shell note`, for an exact minimum of 143 tracked paths in the same single commit that installs this document set. It must not add a V6/V8 side-by-side archive or retain a migration-only helper in the final tree. Code-consumed APIs, schemas, policies, migrations, tests and implementation contracts outside the historical development surface remain protected.
+The pre-selection baseline contained 143 historical development paths. V8 deleted that complete set in the same commit that installed the canonical document system. Git ancestry now preserves every pre-consolidation branch tip without overlaying an obsolete branch tree or reintroducing an in-tree historical plan. Code-consumed APIs, schemas, policies, migrations, tests and implementation contracts remain protected.
 
 `python3 scripts/hepta-docs.py verify` runs on every pull request and default-branch push with read-only permissions and no path bypass.
 
 ## 3. Current truthful baseline
 
-Observed default branch:
+The selected V8 content is present on both `main` and `integration/vnext-main-20260811` at the same exact tip. Every one of the 789 pre-consolidation branch tips is reachable from that line as Git ancestry; obsolete branch trees were not overlaid. All 64 outstanding pull requests were closed as superseded, and all 787 other branch refs were removed by a bounded operation after exact ancestry verification.
 
-```text
-repository = TrillionniumFoundation/hepta-private-ci
-repository_id = 1320694176
-branch = integration/vnext-main-20260811
-head = b621768b70a09d56626bb8a2c331e3dc424e6a4d
-tree = f2e82fd525d337efae355adf6f19398812d4180c
-```
+GitHub still reports `integration/vnext-main-20260811` as the repository default because the Actions integration is not permitted to mutate repository administration settings. Therefore `DOC-2-DEFAULT-BRANCH-SELECTION` remains `blocked_external`. The final administrative transition is to select the existing `main` ref as default and then delete the old default ref. Until that observable state exists, canonical registries must not claim that `main` is already the GitHub default branch.
 
-The V8.1 delivery target is one clean commit directly on that baseline. The prior V6 documentation PR is superseded as a candidate, not retained as an in-tree historical plan. Existing Architecture, AuthBus, Inference, Intelligence, UI and Browser source candidates remain separate lanes; none receives runtime authority from this document upgrade.
+Exact live head, tree, CI, review and operator facts remain dynamic evidence and must be resolved from current external receipts. This consolidation grants no runtime, model, provider, tool, network, filesystem, secret, Matrix, fleet, operator, promotion or release authority.
 
 ## 4. Immutable execution, authority and data invariants
 

@@ -5,8 +5,8 @@
 **Plan:** `HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN` v8.0.0
 **Repository:** `TrillionniumFoundation/hepta-private-ci`
 **Exact base:** `b621768b70a09d56626bb8a2c331e3dc424e6a4d` / `f2e82fd525d337efae355adf6f19398812d4180c`
-**Target branch:** `codex/hepta-development-docs-v7-1-final-20260901`
-**Current package:** `DOC-1-V8-SEMANTIC-UPGRADE`
+**Target branch:** `main`
+**Current package:** `DOC-2-DEFAULT-BRANCH-SELECTION`
 
 Dynamic Git, CI, review, operator, selection, promotion and release facts are external exact-candidate receipts and are not cached in this file.
 
@@ -22,12 +22,11 @@ Dynamic Git, CI, review, operator, selection, promotion and release facts are ex
 
 | State | Count |
 |---|---:|
-| `blocked_external` | 1 |
+| `blocked_external` | 2 |
 | `open` | 7 |
-| `planned` | 57 |
+| `planned` | 55 |
 | `source_identity_conflict` | 1 |
-| `source_implemented` | 1 |
-| `source_implemented_exact_head_pending` | 1 |
+| `source_implemented` | 3 |
 | `source_implemented_execution_pending` | 8 |
 | `source_implemented_semantic_review_pending` | 1 |
 

@@ -5,7 +5,7 @@
   "authorityScope": "delivery_scope_ownership_state_dependencies_acceptance_and_stop_source",
   "planId": "HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN",
   "planVersion": "8.0.0",
-  "currentPackage": "DOC-1-V8-SEMANTIC-UPGRADE",
+  "currentPackage": "DOC-2-DEFAULT-BRANCH-SELECTION",
   "defaults": {
     "authorityDelta": "none",
     "stopConditions": [
@@ -115,7 +115,7 @@
       "id": "DOC-1-V8-SEMANTIC-UPGRADE",
       "module": "control.engineering",
       "priority": 0,
-      "state": "source_implemented_exact_head_pending",
+      "state": "source_implemented",
       "parallelClass": "serial_governance",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -212,7 +212,7 @@
       "id": "DOC-2-DEFAULT-BRANCH-SELECTION",
       "module": "control.engineering",
       "priority": 0,
-      "state": "planned",
+      "state": "blocked_external",
       "parallelClass": "serial_governance",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -8749,7 +8749,7 @@
       "id": "DOC-REGISTRY-CLOSED-WORLD",
       "module": "control.engineering",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
