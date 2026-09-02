@@ -17,7 +17,16 @@
     "Bellman_operator",
     "world_model",
     "sensor_core",
-    "topology_snapshot"
+    "topology_snapshot",
+    "NDU_coefficient_manifest",
+    "NDU_well_posedness_certificate",
+    "operator_applicability_certificate",
+    "operator_regularity_profile",
+    "neuron_checkpoint",
+    "plasticity_proposal",
+    "iteration_candidate",
+    "golden_fixture_manifest",
+    "conformance_receipt_bundle"
   ],
   "manifestRequiredFields": [
     "artifactId",
@@ -69,5 +78,84 @@
     "operatorAcceptance": false,
     "promotion": false,
     "release": false
+  },
+  "lifecycleStateMachine": {
+    "states": [
+      "proposed",
+      "trained",
+      "evaluated",
+      "shadow",
+      "canary",
+      "operator_accepted",
+      "selected",
+      "revoked",
+      "retired"
+    ],
+    "transitions": [
+      [
+        "proposed",
+        "trained"
+      ],
+      [
+        "trained",
+        "evaluated"
+      ],
+      [
+        "evaluated",
+        "shadow"
+      ],
+      [
+        "shadow",
+        "canary"
+      ],
+      [
+        "canary",
+        "operator_accepted"
+      ],
+      [
+        "operator_accepted",
+        "selected"
+      ],
+      [
+        "proposed",
+        "revoked"
+      ],
+      [
+        "trained",
+        "revoked"
+      ],
+      [
+        "evaluated",
+        "revoked"
+      ],
+      [
+        "shadow",
+        "revoked"
+      ],
+      [
+        "canary",
+        "revoked"
+      ],
+      [
+        "operator_accepted",
+        "revoked"
+      ],
+      [
+        "selected",
+        "revoked"
+      ],
+      [
+        "selected",
+        "retired"
+      ],
+      [
+        "revoked",
+        "retired"
+      ]
+    ],
+    "bytesImmutable": true,
+    "selectionDistinctFromAcceptance": true,
+    "acceptanceDistinctFromPromotionAndRelease": true,
+    "currentRunReplacementAllowed": false
   }
 }

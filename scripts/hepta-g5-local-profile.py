@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Compatibility guard for a retired local-profile generator."""
+
 from __future__ import annotations
 
 import sys

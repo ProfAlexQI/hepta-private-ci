@@ -85,12 +85,16 @@ fn b1_profile_is_exact_default_deny_and_key_generation_forbidden() {
     profile
         .allows_static_route("/basil.broker.v1.SigningService/Verify")
         .expect("allowed route");
-    assert!(profile
-        .allows_static_route("/basil.broker.v1.AeadService/Decrypt")
-        .is_err());
-    assert!(profile
-        .allows_static_route("/basil.broker.v1.FutureService/New")
-        .is_err());
+    assert!(
+        profile
+            .allows_static_route("/basil.broker.v1.AeadService/Decrypt")
+            .is_err()
+    );
+    assert!(
+        profile
+            .allows_static_route("/basil.broker.v1.FutureService/New")
+            .is_err()
+    );
     assert!(profile.require_registered_key(None).is_err());
     profile
         .require_registered_key(Some(&registration()))

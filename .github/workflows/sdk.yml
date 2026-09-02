@@ -3,12 +3,13 @@ name: sdk
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   python-sdk:
-    runs-on:
-      group: ${{ github.event.repository.name }}-runners
-      labels: ${{ github.event.repository.name }}-linux-x64
-    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -43,10 +44,8 @@ jobs:
         uses: ./.github/actions/check-clean-worktree
 
   sdks:
-    runs-on:
-      group: ${{ github.event.repository.name }}-runners
-      labels: ${{ github.event.repository.name }}-linux-x64
-    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     environment:
       name: bazel
       deployment: false
