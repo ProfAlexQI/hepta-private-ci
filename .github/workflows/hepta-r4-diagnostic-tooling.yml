@@ -1,0 +1,128 @@
+name: Hepta r4 diagnostic tooling
+
+on:
+  push:
+    branches:
+      - diagnostic/hepta-r4-tooling
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-r4-diagnostic-tooling-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format-source:
+    name: Export exact r4 source and Prettier output
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out diagnostic commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Resolve and archive exact r4 parent
+        id: source
+        env:
+          EXPECTED_SOURCE_SHA: 0c46a7a6ff662a710b6fc7beb0212a9c3e365d19
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="$(git rev-parse HEAD^)"
+          test "$SOURCE_SHA" = "$EXPECTED_SOURCE_SHA"
+          mkdir -p diagnostic-output
+          git archive --format=tar.gz \
+            --output=diagnostic-output/hepta-r4-source.tar.gz \
+            "$SOURCE_SHA"
+          printf 'sha=%s\n' "$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          git checkout --detach "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288
+
+      - name: Set up Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: 22
+
+      - name: Install locked dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+
+      - name: Produce exact formatted files and patch
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --write \
+            docs/STATUS.md \
+            .github/workflows/hepta-algorithm-docs.yml \
+            .github/workflows/hepta-cns-embodiment.yml \
+            .github/workflows/hepta-repository-integrity.yml
+          pnpm exec prettier --check \
+            docs/STATUS.md \
+            .github/workflows/hepta-algorithm-docs.yml \
+            .github/workflows/hepta-cns-embodiment.yml \
+            .github/workflows/hepta-repository-integrity.yml
+          mkdir -p \
+            diagnostic-output/formatted/docs \
+            diagnostic-output/formatted/.github/workflows
+          cp docs/STATUS.md diagnostic-output/formatted/docs/STATUS.md
+          cp .github/workflows/hepta-algorithm-docs.yml \
+            diagnostic-output/formatted/.github/workflows/hepta-algorithm-docs.yml
+          cp .github/workflows/hepta-cns-embodiment.yml \
+            diagnostic-output/formatted/.github/workflows/hepta-cns-embodiment.yml
+          cp .github/workflows/hepta-repository-integrity.yml \
+            diagnostic-output/formatted/.github/workflows/hepta-repository-integrity.yml
+          git diff --binary -- \
+            docs/STATUS.md \
+            .github/workflows/hepta-algorithm-docs.yml \
+            .github/workflows/hepta-cns-embodiment.yml \
+            .github/workflows/hepta-repository-integrity.yml \
+            > diagnostic-output/prettier.patch
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path('diagnostic-output')
+          paths = sorted(
+              path for path in root.rglob('*')
+              if path.is_file() and path.name != 'MANIFEST.json'
+          )
+          manifest = {
+              'schema': 'hepta.r4-diagnostic-prettier.v1',
+              'sourceSha': '${{ steps.source.outputs.sha }}',
+              'files': [
+                  {
+                      'path': str(path.relative_to(root)).replace('\\', '/'),
+                      'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                      'size': path.stat().st_size,
+                  }
+                  for path in paths
+              ],
+          }
+          (root / 'MANIFEST.json').write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          PY
+          sha256sum diagnostic-output/hepta-r4-source.tar.gz \
+            > diagnostic-output/hepta-r4-source.tar.gz.sha256
+
+      - name: Upload diagnostic artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-r4-diagnostic-${{ steps.source.outputs.sha }}
+          path: diagnostic-output
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
