@@ -211,6 +211,116 @@
       }
     },
     {
+      "id": "DOC-3D-ADAPTIVE-ALGORITHM-DOC-CLOSED-WORLD",
+      "module": "control.engineering",
+      "priority": 0,
+      "state": "source_implemented",
+      "parallelClass": "serial_governance",
+      "authorityDelta": "none",
+      "developmentAfter": [
+        "DOC-3C-MODULE-DOC-CLOSED-WORLD"
+      ],
+      "activationAfter": [
+        "DOC-3C-MODULE-DOC-CLOSED-WORLD"
+      ],
+      "evidenceAfter": [
+        "DOC-3C-MODULE-DOC-CLOSED-WORLD"
+      ],
+      "owner": "developer-productivity",
+      "deputy": "architecture",
+      "sourceMutationAllowed": true,
+      "allowedWritePaths": [
+        "README.md",
+        "docs/DEVELOPMENT.md",
+        "docs/STATUS.md",
+        "docs/governance/DOCUMENT_SYSTEM.json",
+        "docs/contracts/**",
+        "docs/data/**",
+        "docs/delivery/**",
+        "docs/learning/**",
+        "docs/modules/README.md",
+        "scripts/hepta-docs.py",
+        "scripts/hepta-algorithm-docs.py",
+        ".github/workflows/hepta-development-docs.yml",
+        ".github/workflows/hepta-algorithm-docs.yml"
+      ],
+      "coOwnerModules": [],
+      "consumesContracts": [
+        "DomainRead::qualification_evidenceV1",
+        "ModulePort::kernel.evidence::control.engineering",
+        "TopologyProposalV1"
+      ],
+      "producesContracts": [
+        "DomainRead::integration_decisionV1",
+        "DomainRead::work_assignment_projectionV1"
+      ],
+      "deliverables": [
+        "global_algorithm_document_registration",
+        "paper_source_lock_and_claim_anchors",
+        "canonical_algorithm_protocol_schemas",
+        "algorithm_data_authority_ownership",
+        "deterministic_golden_vectors",
+        "quantitative_experiment_profile",
+        "read_only_exact_source_and_merge_candidate_ci",
+        "temporary_installer_inventory_zero"
+      ],
+      "acceptanceCriteria": [
+        "global_document_system_contains_every_algorithm_path",
+        "global_verifier_invokes_algorithm_verifier",
+        "all_required_protocols_and_domains_registered",
+        "paper_identity_and_claim_anchor_verification_pass",
+        "all_golden_vectors_have_exact_expected_values",
+        "dedicated_and_global_source_head_pass",
+        "dedicated_and_global_synthetic_merge_pass",
+        "temporary_installers_absent",
+        "all_authority_flags_false"
+      ],
+      "resourceBudget": {
+        "maxChangedPaths": 40,
+        "maxCiMinutes": 90,
+        "maxParallelAgents": 2
+      },
+      "rollback": {
+        "required": true,
+        "predecessorIdentityRequired": true,
+        "uncertainExternalEffectTreatedAsAbsent": false
+      },
+      "stopConditions": [
+        "authority_violation",
+        "base_drift",
+        "claim_evidence_mismatch",
+        "paper_source_identity_mismatch",
+        "cross_owner_write",
+        "unbounded_resource_or_retry"
+      ],
+      "qualificationProfile": "documentation",
+      "claimImpact": [],
+      "invariantChecklist": {
+        "forbiddenAuthorities": [
+          "runtime_capability_issuance",
+          "self_merge"
+        ],
+        "authoritativeWriteDomains": [
+          "work_assignment_projection",
+          "integration_decision"
+        ],
+        "directDependencies": [
+          "kernel.evidence"
+        ],
+        "contractInputs": [
+          "DomainRead::qualification_evidenceV1",
+          "ModulePort::kernel.evidence::control.engineering",
+          "TopologyProposalV1"
+        ],
+        "contractOutputs": [
+          "DomainRead::integration_decisionV1",
+          "DomainRead::work_assignment_projectionV1"
+        ],
+        "centralSynchronousRpcAllowed": false,
+        "authorityDelta": "none"
+      }
+    },
+    {
       "id": "DOC-2-DEFAULT-BRANCH-SELECTION",
       "module": "control.engineering",
       "priority": 0,
@@ -219,15 +329,18 @@
       "authorityDelta": "none",
       "developmentAfter": [
         "DOC-1-V8-SEMANTIC-UPGRADE",
-        "DOC-3C-MODULE-DOC-CLOSED-WORLD"
+        "DOC-3C-MODULE-DOC-CLOSED-WORLD",
+        "DOC-3D-ADAPTIVE-ALGORITHM-DOC-CLOSED-WORLD"
       ],
       "activationAfter": [
         "DOC-1-V8-SEMANTIC-UPGRADE",
-        "DOC-3C-MODULE-DOC-CLOSED-WORLD"
+        "DOC-3C-MODULE-DOC-CLOSED-WORLD",
+        "DOC-3D-ADAPTIVE-ALGORITHM-DOC-CLOSED-WORLD"
       ],
       "evidenceAfter": [
         "DOC-1-V8-SEMANTIC-UPGRADE",
-        "DOC-3C-MODULE-DOC-CLOSED-WORLD"
+        "DOC-3C-MODULE-DOC-CLOSED-WORLD",
+        "DOC-3D-ADAPTIVE-ALGORITHM-DOC-CLOSED-WORLD"
       ],
       "owner": "developer-productivity",
       "deputy": "architecture",

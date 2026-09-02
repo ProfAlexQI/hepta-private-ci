@@ -26,7 +26,6 @@ UTILITY_NAME_EXCEPTIONS = {
     "path-utils": "codex-utils-path",
 }
 MANIFEST_FEATURE_EXCEPTIONS = {
-    "codex-rs/code-mode/Cargo.toml": {"sandbox": ("v8/v8_enable_sandbox",)},
     "codex-rs/v8-poc/Cargo.toml": {"sandbox": ("v8/v8_enable_sandbox",)},
 }
 OPTIONAL_DEPENDENCY_EXCEPTIONS = set()
@@ -380,6 +379,7 @@ def cargo_manifests() -> list[Path]:
         path
         for path in CARGO_RS_ROOT.rglob("Cargo.toml")
         if path != CARGO_RS_ROOT / "Cargo.toml"
+        and "third_party" not in path.relative_to(CARGO_RS_ROOT).parts
     )
 
 
