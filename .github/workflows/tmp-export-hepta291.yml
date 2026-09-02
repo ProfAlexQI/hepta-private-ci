@@ -5,18 +5,18 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   export:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Check out export carrier
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Install repository-pinned uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
@@ -33,17 +33,67 @@ jobs:
           sha256sum hepta291-source.tar.gz > hepta291-source.sha256
           printf 'commit=%s\ntree=%s\n' "$SOURCE_SHA" "$(git rev-parse "$SOURCE_SHA^{tree}")" > hepta291-source.identity
 
-      - name: Produce exact Ruff-formatted script tree
+      - name: Produce exact semantically hardened Ruff-formatted script tree
         shell: bash
         run: |
           set -euo pipefail
           SOURCE_SHA="5b3ed971cdb9515f42dcc617396675471570792c"
           git checkout --detach "$SOURCE_SHA"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/hepta-algorithm-docs.py")
+          source = path.read_text(encoding="utf-8")
+          old = '''    need(
+              "ALGORITHM_VERIFIER='scripts/hepta-algorithm-docs.py'" in global_verifier,
+              "global verifier binding",
+          )
+          need(
+              "algorithm_check=subprocess.run" in global_verifier,
+              "global verifier invocation",
+          )
+          '''
+          new = '''    need(
+              re.search(
+                  r"(?m)^ALGORITHM_VERIFIER\\s*=\\s*[\\\"\\\']scripts/hepta-algorithm-docs\\.py[\\\"\\\']\\s*$",
+                  global_verifier,
+              )
+              is not None,
+              "global verifier binding",
+          )
+          need(
+              re.search(
+                  r"(?m)^\\s*algorithm_check\\s*=\\s*subprocess\\.run\\(",
+                  global_verifier,
+              )
+              is not None,
+              "global verifier invocation",
+          )
+          '''
+          if old not in source:
+              raise SystemExit("brittle global-verifier binding block not found")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          PY
           uv run --frozen --project scripts ruff format scripts
+          python3 -m compileall -q scripts
+          python3 scripts/hepta-algorithm-docs.py self-test
           tar -czf hepta291-formatted-scripts.tar.gz scripts
           git diff --check
           git diff --stat -- scripts > hepta291-formatted-scripts.stat
           git diff --name-only -- scripts > hepta291-formatted-scripts.files
+
+      - name: Publish clean ordinary formatter output commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "5b3ed971cdb9515f42dcc617396675471570792c"
+          git config user.name "Hepta formatter carrier"
+          git config user.email "hepta-formatter-carrier@users.noreply.github.com"
+          git add -- scripts
+          git diff --cached --quiet && { echo "formatter produced no changes" >&2; exit 1; }
+          git commit -m "style(scripts): apply repository-pinned formatter and semantic binding fix"
+          git push origin HEAD:refs/heads/codex/tmp-formatted-hepta291-output-20260902 --force
+          printf 'commit=%s\ntree=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" > hepta291-formatted-output.identity
 
       - name: Retain exact source and formatter artifacts
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
@@ -56,5 +106,6 @@ jobs:
             hepta291-formatted-scripts.tar.gz
             hepta291-formatted-scripts.stat
             hepta291-formatted-scripts.files
+            hepta291-formatted-output.identity
           if-no-files-found: error
           retention-days: 1
