@@ -1,0 +1,199 @@
+name: Hepta final repository closure
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - integration/vnext-main-20260811
+      - 'codex/hepta-v8-final-gap-closure-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-final-closure-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_TOOLCHAIN: 1.95.0
+
+jobs:
+  source-head:
+    name: Verify exact final source head
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install repository-pinned uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: 0.11.3
+
+      - name: Install exact Rust toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt,clippy
+
+      - name: Set up repository Bazel toolchain
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          target: x86_64-unknown-linux-gnu
+
+      - name: Verify repository-owned closure
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          uv run --frozen --project scripts ruff format --check scripts
+          python3 -m compileall -q scripts
+          cargo fmt --all --manifest-path codex-rs/Cargo.toml -- --check
+          for manifest in qualification/hnmf-reference/Cargo.toml qualification/hnmf-contract-reference/Cargo.toml qualification/hnmf-adversarial-reference/Cargo.toml; do
+            cargo fmt --manifest-path "$manifest" -- --check
+            cargo check --manifest-path "$manifest" --all-targets --locked
+            cargo test --manifest-path "$manifest" --locked
+          done
+          python3 scripts/hepta-paper-evidence.py verify
+          python3 scripts/hepta-hnmf.py self-test
+          python3 scripts/hepta-hnmf.py verify
+          python3 scripts/hepta-cns.py self-test
+          python3 scripts/hepta-cns.py generate-status --check
+          python3 scripts/hepta-cns.py verify
+          python3 scripts/hepta-module-docs.py self-test
+          python3 scripts/hepta-module-docs.py verify
+          python3 scripts/hepta-algorithm-docs.py self-test
+          python3 scripts/hepta-algorithm-docs.py verify-sources
+          python3 scripts/hepta-algorithm-docs.py generate-status --check
+          python3 scripts/hepta-algorithm-docs.py verify
+          python3 scripts/hepta-docs.py self-test
+          python3 scripts/hepta-docs.py generate-status
+          git diff --exit-code -- docs/STATUS.md
+          python3 scripts/hepta-docs.py verify
+          python3 scripts/hepta-repository-integrity.py self-test
+          python3 scripts/hepta-repository-integrity.py verify
+          ./scripts/check-module-bazel-lock.sh
+          test ! -e .github/workflows/tmp-final-converge-v2.yml
+          test ! -e .github/workflows/tmp-final-converge-v3.yml
+          test ! -e .github/workflows/tmp-final-converge-v4.yml
+          test ! -e .github/workflows/tmp-generate-cargo-lock.yml
+          test ! -e .github/workflows/tmp-pr295-ci-observer.yml
+          test ! -e .github/workflows/tmp-pr295-ci-observer-v2.yml
+          git diff --check
+          test -z "$(git status --porcelain=v1 --untracked-files=no)"
+          mkdir -p .hepta-evidence
+          printf '{"schema":"hepta.final-closure-receipt.v1","sourceSha":"%s","sourceTree":"%s","scope":"repository-owned","externalEvidenceGatesRemain":true}\n' "$EXPECTED_SHA" "$(git rev-parse HEAD^{tree})" > .hepta-evidence/final-source-head.json
+
+      - name: Retain exact source receipt
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-final-source-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .hepta-evidence/final-source-head.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+
+  merge-candidate:
+    name: Verify exact final synthetic merge
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact source for merge construction
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Construct exact synthetic merge
+        id: merge
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git cat-file -e "$BASE_SHA^{commit}"
+          tree="$(git merge-tree --write-tree "$BASE_SHA" "$SOURCE_SHA")"
+          [[ "$tree" =~ ^[0-9a-f]{40}$ ]]
+          export GIT_AUTHOR_NAME="Hepta Final Closure CI"
+          export GIT_AUTHOR_EMAIL="hepta-final-closure-ci@users.noreply.github.com"
+          export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
+          export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+          export GIT_AUTHOR_DATE="2000-01-01T00:00:00Z"
+          export GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE"
+          sha="$(printf 'Synthetic final closure merge for PR %s\n' "$PR_NUMBER" | git commit-tree "$tree" -p "$BASE_SHA" -p "$SOURCE_SHA")"
+          git checkout --detach "$sha"
+          test "$(git rev-parse HEAD)" = "$sha"
+          test "$(git rev-parse HEAD^{tree})" = "$tree"
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+          printf 'tree=%s\n' "$tree" >> "$GITHUB_OUTPUT"
+
+      - name: Install repository-pinned uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: 0.11.3
+
+      - name: Install exact Rust toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt,clippy
+
+      - name: Set up repository Bazel toolchain
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          target: x86_64-unknown-linux-gnu
+
+      - name: Verify repository-owned merged closure
+        env:
+          EXPECTED_SHA: ${{ steps.merge.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          uv run --frozen --project scripts ruff format --check scripts
+          cargo fmt --all --manifest-path codex-rs/Cargo.toml -- --check
+          for manifest in qualification/hnmf-reference/Cargo.toml qualification/hnmf-contract-reference/Cargo.toml qualification/hnmf-adversarial-reference/Cargo.toml; do
+            cargo fmt --manifest-path "$manifest" -- --check
+            cargo check --manifest-path "$manifest" --all-targets --locked
+            cargo test --manifest-path "$manifest" --locked
+          done
+          python3 scripts/hepta-paper-evidence.py verify
+          python3 scripts/hepta-hnmf.py verify
+          python3 scripts/hepta-cns.py generate-status --check
+          python3 scripts/hepta-cns.py verify
+          python3 scripts/hepta-module-docs.py verify
+          python3 scripts/hepta-algorithm-docs.py verify-sources
+          python3 scripts/hepta-algorithm-docs.py generate-status --check
+          python3 scripts/hepta-algorithm-docs.py verify
+          python3 scripts/hepta-docs.py generate-status
+          git diff --exit-code -- docs/STATUS.md
+          python3 scripts/hepta-docs.py verify
+          python3 scripts/hepta-repository-integrity.py verify
+          ./scripts/check-module-bazel-lock.sh
+          git diff --check
+          test -z "$(git status --porcelain=v1 --untracked-files=no)"
+          mkdir -p .hepta-evidence
+          printf '{"schema":"hepta.final-closure-receipt.v1","mergeSha":"%s","mergeTree":"%s","scope":"repository-owned","externalEvidenceGatesRemain":true}\n' "$EXPECTED_SHA" "${{ steps.merge.outputs.tree }}" > .hepta-evidence/final-merge-candidate.json
+
+      - name: Retain exact merge receipt
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-final-merge-${{ steps.merge.outputs.sha }}
+          path: .hepta-evidence/final-merge-candidate.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
