@@ -1,9 +1,8 @@
 name: Temporary exact Cargo lock generation
 
 on:
-  push:
-    branches:
-      - codex/tmp-generate-cargo-lock-20260902
+  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,7 +15,7 @@ jobs:
       - name: Check out lock carrier
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          fetch-depth: 2
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Install exact repository Rust toolchain
@@ -24,12 +23,12 @@ jobs:
         with:
           toolchain: 1.95.0
 
-      - name: Regenerate exact Cargo lock from source parent
+      - name: Regenerate exact Cargo lock from source commit
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE_SHA="$(git rev-parse HEAD^)"
-          test "$SOURCE_SHA" = "caab9c103a8873827caeb31878fcdbaabc0ed577"
+          SOURCE_SHA="caab9c103a8873827caeb31878fcdbaabc0ed577"
+          git cat-file -e "$SOURCE_SHA^{tree}"
           git checkout --detach "$SOURCE_SHA"
           cp codex-rs/Cargo.lock "${RUNNER_TEMP}/Cargo.lock.before"
           cargo metadata --manifest-path codex-rs/Cargo.toml --format-version 1 > "${RUNNER_TEMP}/cargo-metadata.json"
