@@ -1,0 +1,188 @@
+name: Temporary ARM final convergence
+
+on:
+  push:
+    branches:
+      - codex/tmp-generate-cargo-lock-20260902
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: temporary-arm-final-convergence
+  cancel-in-progress: true
+
+jobs:
+  converge:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - name: Check out convergence carrier
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install exact Rust toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+
+      - name: Install repository-pinned uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: 0.11.3
+
+      - name: Check out exact PR source
+        env:
+          SOURCE_SHA: 5a8d22b2d38a8777756212554984b0aec6ebde42
+          TARGET_BRANCH: codex/hepta-v8-final-gap-closure-20260902
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$SOURCE_SHA"
+          git checkout --detach "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Port CI jobs to available hosted runners
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str, count: int = 1) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(f"{path}: expected {count} occurrences, found {actual}: {old!r}")
+              file.write_text(text.replace(old, new), encoding="utf-8")
+
+          bazel = ".github/workflows/bazel.yml"
+          replace_exact(bazel, "    timeout-minutes: 30\n", "    timeout-minutes: 60\n", 4)
+          replace_exact(
+              bazel,
+              "          - os: macos-15-xlarge\n            target: aarch64-apple-darwin\n",
+              "          - os: macos-15\n            target: aarch64-apple-darwin\n",
+              3,
+          )
+          replace_exact(
+              bazel,
+              "          - os: macos-15-xlarge\n            target: x86_64-apple-darwin\n",
+              "          - os: macos-15-intel\n            target: x86_64-apple-darwin\n",
+          )
+          replace_exact(
+              bazel,
+              "    runs-on:\n      group: ${{ github.event.repository.name }}-runners\n      labels: ${{ github.event.repository.name }}-windows-x64\n",
+              "    runs-on: windows-latest\n",
+              2,
+          )
+          replace_exact(
+              bazel,
+              "            runs_on:\n              group: ${{ github.event.repository.name }}-runners\n              labels: ${{ github.event.repository.name }}-windows-x64\n",
+              "",
+              2,
+          )
+
+          rust_ci = ".github/workflows/rust-ci.yml"
+          replace_exact(
+              rust_ci,
+              "          - name: macOS\n            runner: macos-15-xlarge\n            timeout_minutes: 30\n",
+              "          - name: macOS\n            runner: macos-15\n            timeout_minutes: 60\n",
+          )
+          replace_exact(
+              rust_ci,
+              "          - name: Windows\n            runner: windows-x64\n            timeout_minutes: 30\n            runs_on:\n              group: ${{ github.event.repository.name }}-runners\n              labels: ${{ github.event.repository.name }}-windows-x64\n",
+              "          - name: Windows\n            runner: windows-latest\n            timeout_minutes: 60\n",
+          )
+
+          sdk = ".github/workflows/sdk.yml"
+          replace_exact(
+              sdk,
+              "    runs-on:\n      group: ${{ github.event.repository.name }}-runners\n      labels: ${{ github.event.repository.name }}-linux-x64\n    timeout-minutes: 10\n",
+              "    runs-on: ubuntu-24.04\n    timeout-minutes: 20\n",
+          )
+          replace_exact(
+              sdk,
+              "    runs-on:\n      group: ${{ github.event.repository.name }}-runners\n      labels: ${{ github.event.repository.name }}-linux-x64\n    timeout-minutes: 10\n",
+              "    runs-on: ubuntu-24.04\n    timeout-minutes: 60\n",
+          )
+
+          canary = ".github/workflows/v8-canary.yml"
+          replace_exact(canary, "          - runner: macos-15-xlarge\n            bazel_config: ci-macos\n            platform: macos_amd64\n", "          - runner: macos-15-intel\n            bazel_config: ci-macos\n            platform: macos_amd64\n", 2)
+          replace_exact(canary, "          - runner: macos-15-xlarge\n            bazel_config: ci-macos\n            platform: macos_arm64\n", "          - runner: macos-15\n            bazel_config: ci-macos\n            platform: macos_arm64\n", 2)
+          PY
+
+      - name: Apply exact repository formatters
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path qualification/hnmf-adversarial-reference/Cargo.toml
+          uv run --frozen --project scripts ruff format scripts/hepta-repository-integrity.py
+          cargo fmt --manifest-path qualification/hnmf-adversarial-reference/Cargo.toml -- --check
+          uv run --frozen --project scripts ruff format --check scripts/hepta-repository-integrity.py
+
+      - name: Materialize verified Bazel lock
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/bazel-lock"
+          mkdir -p "$artifact"
+          curl --fail --silent --show-error --location --retry 5 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -o "$artifact/archive.zip" \
+            https://api.github.com/repos/TrillionniumFoundation/hepta-private-ci/actions/artifacts/9842068004/zip
+          unzip -q "$artifact/archive.zip" -d "$artifact/files"
+          test "$(cat "$artifact/files/bazel-lock-update.exit")" = 0
+          test "$(cat "$artifact/files/bazel-lock-after.exit")" = 0
+          cp "$artifact/files/MODULE.bazel.lock" MODULE.bazel.lock
+          printf '%s  %s\n' c03b95ff14a8c813ea4cbb27498437293057540d2374b7f9b6903c1a0a4749d4 MODULE.bazel.lock | sha256sum --check
+
+      - name: Verify deterministic closure patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/hepta-repository-integrity.py
+          python3 scripts/hepta-repository-integrity.py self-test
+          ! grep -R -n -E 'macos-15-xlarge|windows-x64|repository\.name.*-runners' \
+            .github/workflows/bazel.yml \
+            .github/workflows/rust-ci.yml \
+            .github/workflows/sdk.yml \
+            .github/workflows/v8-canary.yml
+          cat > "$RUNNER_TEMP/expected" <<'EOF'
+          .github/workflows/bazel.yml
+          .github/workflows/rust-ci.yml
+          .github/workflows/sdk.yml
+          .github/workflows/v8-canary.yml
+          MODULE.bazel.lock
+          qualification/hnmf-adversarial-reference/src/recall.rs
+          qualification/hnmf-adversarial-reference/src/tests.rs
+          scripts/hepta-repository-integrity.py
+          EOF
+          git diff --name-only | sort > "$RUNNER_TEMP/actual"
+          sort -o "$RUNNER_TEMP/expected" "$RUNNER_TEMP/expected"
+          diff -u "$RUNNER_TEMP/expected" "$RUNNER_TEMP/actual"
+          git diff --check
+
+      - name: Fast-forward PR 294
+        env:
+          SOURCE_SHA: 5a8d22b2d38a8777756212554984b0aec6ebde42
+          TARGET_BRANCH: codex/hepta-v8-final-gap-closure-20260902
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git config user.name "Hepta convergence carrier"
+          git config user.email "hepta-convergence-carrier@users.noreply.github.com"
+          git add -- .github/workflows/bazel.yml .github/workflows/rust-ci.yml .github/workflows/sdk.yml .github/workflows/v8-canary.yml MODULE.bazel.lock qualification/hnmf-adversarial-reference/src/recall.rs qualification/hnmf-adversarial-reference/src/tests.rs scripts/hepta-repository-integrity.py
+          git diff --cached --check
+          git commit -m "fix(ci): close deterministic format, lock and hosted-runner blockers"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
