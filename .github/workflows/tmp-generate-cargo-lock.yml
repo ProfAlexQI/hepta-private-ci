@@ -23,7 +23,7 @@ jobs:
         with:
           toolchain: 1.95.0
 
-      - name: Regenerate exact Cargo lock from source commit
+      - name: Regenerate lock and apply exact policy fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -35,20 +35,61 @@ jobs:
           cp codex-rs/Cargo.lock Cargo.lock.generated
           diff -u "${RUNNER_TEMP}/Cargo.lock.before" Cargo.lock.generated > Cargo.lock.diff || true
           sha256sum Cargo.lock.generated > Cargo.lock.sha256
-          git status --porcelain=v1 > Cargo.lock.status
-          test -s Cargo.lock.generated
 
-      - name: Publish clean ordinary lock output commit
+          python3 - <<'PY'
+          from pathlib import Path
+
+          deny = Path("codex-rs/deny.toml")
+          text = deny.read_text(encoding="utf-8")
+          old = '''        # Temporary migration exceptions.
+                  "codex-otel",
+                  # Third-party crates that own their reqwest integration. These are not part of the
+                  # first-party migration count above.
+                  "oauth2",
+                  "opentelemetry-http",
+                  "opentelemetry-otlp",
+                  "rmcp",
+                  "sentry",
+          '''
+          new = '''        # Temporary migration exceptions.
+                  "codex-hepta-matrixd",
+                  "codex-otel",
+                  # Third-party crates that own their reqwest integration. These are not part of the
+                  # first-party migration count above.
+                  "matrix-sdk",
+                  "oauth2",
+                  "oauth2-reqwest",
+                  "opentelemetry-http",
+                  "opentelemetry-otlp",
+                  "rmcp",
+                  "sentry",
+          '''
+          if old not in text:
+              raise SystemExit("reqwest wrapper policy anchor not found")
+          deny.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          patch = Path("patches/rules_rs_build_script_deps_annotation.patch")
+          text = patch.read_text(encoding="utf-8")
+          old = "@@ -12,12 +12,12 @@ _LINUX_ZLIB = {"
+          new = "@@ -12,11 +12,11 @@ _LINUX_ZLIB = {"
+          if text.count(old) != 1:
+              raise SystemExit("rules_rs zlib hunk anchor not found exactly once")
+          patch.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
+          git diff --check
+          git status --porcelain=v1 > Cargo.lock.status
+
+      - name: Publish clean ordinary toolchain output commit
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "caab9c103a8873827caeb31878fcdbaabc0ed577"
-          cp Cargo.lock.generated codex-rs/Cargo.lock
-          git config user.name "Hepta lock carrier"
-          git config user.email "hepta-lock-carrier@users.noreply.github.com"
-          git add -- codex-rs/Cargo.lock
-          git diff --cached --quiet && { echo "Cargo lock did not change" >&2; exit 1; }
-          git commit -m "chore(rust): regenerate workspace lock with Rust 1.95"
+          git config user.name "Hepta toolchain carrier"
+          git config user.email "hepta-toolchain-carrier@users.noreply.github.com"
+          git add -- codex-rs/Cargo.lock codex-rs/deny.toml patches/rules_rs_build_script_deps_annotation.patch
+          git diff --cached --quiet && { echo "toolchain fixes produced no changes" >&2; exit 1; }
+          git commit -m "fix(toolchain): regenerate lock and close policy and Bazel patch blockers"
           git push origin HEAD:refs/heads/codex/tmp-generated-cargo-lock-output-20260902 --force
           printf 'commit=%s\ntree=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" > Cargo.lock.output.identity
 
