@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: temporary-format-pr295-bee6217
@@ -15,14 +15,18 @@ concurrency:
 
 jobs:
   format:
-    runs-on: ubuntu-24.04-arm
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
     timeout-minutes: 20
     steps:
-      - name: Check out temporary carrier
+      - name: Check out exact immutable candidate
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          fetch-depth: 0
-          persist-credentials: true
+          ref: bee6217a0083f7368e477c6768bca285dabb1545
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Set up pnpm
         uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
@@ -35,16 +39,11 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Check out exact candidate and format bounded paths
-        env:
-          SOURCE_SHA: bee6217a0083f7368e477c6768bca285dabb1545
-          OUTPUT_BRANCH: admin/formatted-pr295-bee6217-output-20260902
+      - name: Format bounded paths and retain exact bytes
         shell: bash
         run: |
           set -euo pipefail
-          git cat-file -e "$SOURCE_SHA^{commit}"
-          git checkout --detach "$SOURCE_SHA"
-          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = bee6217a0083f7368e477c6768bca285dabb1545
           pnpm install --frozen-lockfile
           pnpm exec prettier --write \
             docs/STATUS.md \
@@ -66,12 +65,23 @@ jobs:
           sort -o "$RUNNER_TEMP/expected" "$RUNNER_TEMP/expected"
           diff -u "$RUNNER_TEMP/expected" "$RUNNER_TEMP/actual"
           git diff --check
-          git config user.name "Hepta bounded formatter"
-          git config user.email "hepta-bounded-formatter@users.noreply.github.com"
-          git add -- \
-            docs/STATUS.md \
-            .github/workflows/hepta-algorithm-docs.yml \
-            .github/workflows/hepta-cns-embodiment.yml \
-            .github/workflows/hepta-repository-integrity.yml
-          git commit -m "style: apply repository Prettier to PR 295 closure files"
-          git push origin "HEAD:refs/heads/$OUTPUT_BRANCH" --force
+          mkdir -p "$RUNNER_TEMP/pr295-prettier/.github/workflows" "$RUNNER_TEMP/pr295-prettier/docs"
+          cp .github/workflows/hepta-algorithm-docs.yml "$RUNNER_TEMP/pr295-prettier/.github/workflows/"
+          cp .github/workflows/hepta-cns-embodiment.yml "$RUNNER_TEMP/pr295-prettier/.github/workflows/"
+          cp .github/workflows/hepta-repository-integrity.yml "$RUNNER_TEMP/pr295-prettier/.github/workflows/"
+          cp docs/STATUS.md "$RUNNER_TEMP/pr295-prettier/docs/"
+          git diff --binary > "$RUNNER_TEMP/pr295-prettier/prettier.patch"
+          sha256sum \
+            "$RUNNER_TEMP/pr295-prettier/.github/workflows/hepta-algorithm-docs.yml" \
+            "$RUNNER_TEMP/pr295-prettier/.github/workflows/hepta-cns-embodiment.yml" \
+            "$RUNNER_TEMP/pr295-prettier/.github/workflows/hepta-repository-integrity.yml" \
+            "$RUNNER_TEMP/pr295-prettier/docs/STATUS.md" \
+            > "$RUNNER_TEMP/pr295-prettier/SHA256SUMS"
+
+      - name: Upload bounded Prettier output
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: pr295-prettier-bee6217
+          path: ${{ runner.temp }}/pr295-prettier
+          if-no-files-found: error
+          retention-days: 1
