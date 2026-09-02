@@ -1,10 +1,10 @@
 #![forbid(unsafe_code)]
 
 use hnmf_reference::{
-    ActivationPath, ActiveNode, Contradiction, EngramNode, EngramPopulation, EventId,
-    FabricConfig, FabricError, ForgetBatch, MemoryCue, MemoryEvent, NodeId, OutcomeSignal,
-    PlasticityBatch, RecallAbstainReason, RecallPacket, ReplayCandidate, ReplaySelectionReceipt,
-    Synapse, SynapseRelation, ThresholdProposal, WeightProposal, PPM,
+    ActivationPath, ActiveNode, Contradiction, EngramNode, EngramPopulation, EventId, FabricConfig,
+    FabricError, ForgetBatch, MemoryCue, MemoryEvent, NodeId, OutcomeSignal, PPM, PlasticityBatch,
+    RecallAbstainReason, RecallPacket, ReplayCandidate, ReplaySelectionReceipt, Synapse,
+    SynapseRelation, ThresholdProposal, WeightProposal,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -98,7 +98,9 @@ impl fmt::Display for HardeningError {
             Self::BoundExceeded(name) => write!(formatter, "HNMF hardening bound exceeded: {name}"),
             Self::Conflict(message) => write!(formatter, "HNMF hardening conflict: {message}"),
             Self::Missing(name) => write!(formatter, "HNMF hardening object missing: {name}"),
-            Self::AuthorityBoundary => write!(formatter, "HNMF hardening authority boundary crossed"),
+            Self::AuthorityBoundary => {
+                write!(formatter, "HNMF hardening authority boundary crossed")
+            }
             Self::ArithmeticOverflow => write!(formatter, "HNMF hardening arithmetic overflow"),
         }
     }
@@ -191,8 +193,7 @@ impl HardenedFabric {
     pub fn insert_synapse(&mut self, synapse: Synapse) -> Result<(), HardeningError> {
         synapse.validate()?;
         let key = (synapse.source, synapse.target, synapse.relation);
-        if self.synapses.len() >= self.runtime.maximum_synapses
-            && !self.synapses.contains_key(&key)
+        if self.synapses.len() >= self.runtime.maximum_synapses && !self.synapses.contains_key(&key)
         {
             return Err(HardeningError::BoundExceeded("synapses"));
         }
@@ -271,9 +272,7 @@ fn insert_exact<K: Ord + Clone, V: Eq>(
 fn eligible(event: &MemoryEvent, now_unix_ms: i64) -> bool {
     !event.tombstoned
         && event.valid_from_unix_ms <= now_unix_ms
-        && event
-            .valid_to_unix_ms
-            .is_none_or(|end| now_unix_ms < end)
+        && event.valid_to_unix_ms.is_none_or(|end| now_unix_ms < end)
 }
 
 fn mul_ppm(left: i64, right: i64) -> Result<i64, HardeningError> {
