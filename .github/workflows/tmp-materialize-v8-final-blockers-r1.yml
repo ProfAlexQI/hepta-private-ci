@@ -32,10 +32,18 @@ jobs:
           persist-credentials: true
 
       - name: Install exact HNMF formatter toolchain
-        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
-        with:
-          toolchain: 1.98.0
-          components: rustfmt,clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.0 \
+            --profile minimal \
+            --component rustfmt \
+            --component clippy \
+            --no-self-update
+          rustc +1.98.0 --version --verbose
+          cargo +1.98.0 --version --verbose
+          rustfmt +1.98.0 --version
+          cargo +1.98.0 clippy --version
 
       - name: Check out immutable final source candidate
         shell: bash
