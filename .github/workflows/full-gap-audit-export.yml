@@ -1,0 +1,65 @@
+name: full-gap-audit-export
+
+on:
+  push:
+    branches:
+      - admin/full-gap-closure-audit-export-20260902
+    paths:
+      - .github/workflows/full-gap-audit-export.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact audit commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch exact candidate refs read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin \
+            refs/heads/integration/vnext-main-20260811:refs/remotes/origin/integration/vnext-main-20260811 \
+            refs/heads/codex/close-v8-blockers-20260901:refs/remotes/origin/codex/close-v8-blockers-20260901 \
+            refs/heads/docs/algorithm-closure-v8-1:refs/remotes/origin/docs/algorithm-closure-v8-1 \
+            refs/heads/codex/hnmf-blocker-closure-20260902:refs/remotes/origin/codex/hnmf-blocker-closure-20260902 \
+            refs/heads/codex/hnmf-full-gap-closure-20260902:refs/remotes/origin/codex/hnmf-full-gap-closure-20260902 \
+            refs/heads/evidence/paper-source-locks-v1:refs/remotes/origin/evidence/paper-source-locks-v1 \
+            refs/heads/admin/materialized-adaptive-doc-closure-output-20260902:refs/remotes/origin/admin/materialized-adaptive-doc-closure-output-20260902
+
+      - name: Archive immutable source snapshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p snapshots
+          declare -A refs=(
+            [base]=70ef65a90a031ce0cc08b77b5596eb0d99edaa11
+            [ci-fixes]=a33221ac258889707acdbfdbbf40dbe8fbace5b1
+            [adaptive-docs]=80258f1ab7e71df28bc0e59715e3fd6027aafd56
+            [hnmf-live]=9a2994860e486d1b34505629e9768c31da9e271a
+            [hnmf-reference]=126557775d992a0e8dfe57818d1242589a7dcd33
+            [paper-evidence]=891db03e056b36e5e89491bfc3d9c15cddd62e83
+            [adaptive-output]=8275d06f6a39b038727a856790abb53bc7883582
+          )
+          for name in "${!refs[@]}"; do
+            sha="${refs[$name]}"
+            test "$(git rev-parse "$sha")" = "$sha"
+            git archive --format=tar.gz --prefix="$name/" -o "snapshots/$name.tar.gz" "$sha"
+            sha256sum "snapshots/$name.tar.gz" >> snapshots/SHA256SUMS
+          done
+          sort -o snapshots/SHA256SUMS snapshots/SHA256SUMS
+
+      - name: Upload exact source snapshots
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: full-gap-audit-snapshots
+          path: snapshots
+          if-no-files-found: error
+          retention-days: 1
