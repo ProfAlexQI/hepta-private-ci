@@ -1,4 +1,4 @@
-name: Temporary exact Prettier materialization for PR 295
+name: Temporary exact Prettier materialization for PR 295 r4
 
 on:
   push:
@@ -10,21 +10,18 @@ permissions:
   contents: read
 
 concurrency:
-  group: temporary-format-pr295-bee6217
+  group: temporary-format-pr295-r4
   cancel-in-progress: true
 
 jobs:
   format:
-    runs-on:
-      - self-hosted
-      - linux
-      - x64
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Check out exact immutable candidate
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: bee6217a0083f7368e477c6768bca285dabb1545
+          ref: 0c46a7a6ff662a710b6fc7beb0212a9c3e365d19
           fetch-depth: 1
           persist-credentials: false
 
@@ -43,7 +40,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = bee6217a0083f7368e477c6768bca285dabb1545
+          test "$(git rev-parse HEAD)" = 0c46a7a6ff662a710b6fc7beb0212a9c3e365d19
           pnpm install --frozen-lockfile
           pnpm exec prettier --write \
             docs/STATUS.md \
@@ -65,23 +62,23 @@ jobs:
           sort -o "$RUNNER_TEMP/expected" "$RUNNER_TEMP/expected"
           diff -u "$RUNNER_TEMP/expected" "$RUNNER_TEMP/actual"
           git diff --check
-          mkdir -p "$RUNNER_TEMP/pr295-prettier/.github/workflows" "$RUNNER_TEMP/pr295-prettier/docs"
-          cp .github/workflows/hepta-algorithm-docs.yml "$RUNNER_TEMP/pr295-prettier/.github/workflows/"
-          cp .github/workflows/hepta-cns-embodiment.yml "$RUNNER_TEMP/pr295-prettier/.github/workflows/"
-          cp .github/workflows/hepta-repository-integrity.yml "$RUNNER_TEMP/pr295-prettier/.github/workflows/"
-          cp docs/STATUS.md "$RUNNER_TEMP/pr295-prettier/docs/"
-          git diff --binary > "$RUNNER_TEMP/pr295-prettier/prettier.patch"
+          mkdir -p "$RUNNER_TEMP/pr295-r4-prettier/.github/workflows" "$RUNNER_TEMP/pr295-r4-prettier/docs"
+          cp .github/workflows/hepta-algorithm-docs.yml "$RUNNER_TEMP/pr295-r4-prettier/.github/workflows/"
+          cp .github/workflows/hepta-cns-embodiment.yml "$RUNNER_TEMP/pr295-r4-prettier/.github/workflows/"
+          cp .github/workflows/hepta-repository-integrity.yml "$RUNNER_TEMP/pr295-r4-prettier/.github/workflows/"
+          cp docs/STATUS.md "$RUNNER_TEMP/pr295-r4-prettier/docs/"
+          git diff --binary > "$RUNNER_TEMP/pr295-r4-prettier/prettier.patch"
           sha256sum \
-            "$RUNNER_TEMP/pr295-prettier/.github/workflows/hepta-algorithm-docs.yml" \
-            "$RUNNER_TEMP/pr295-prettier/.github/workflows/hepta-cns-embodiment.yml" \
-            "$RUNNER_TEMP/pr295-prettier/.github/workflows/hepta-repository-integrity.yml" \
-            "$RUNNER_TEMP/pr295-prettier/docs/STATUS.md" \
-            > "$RUNNER_TEMP/pr295-prettier/SHA256SUMS"
+            "$RUNNER_TEMP/pr295-r4-prettier/.github/workflows/hepta-algorithm-docs.yml" \
+            "$RUNNER_TEMP/pr295-r4-prettier/.github/workflows/hepta-cns-embodiment.yml" \
+            "$RUNNER_TEMP/pr295-r4-prettier/.github/workflows/hepta-repository-integrity.yml" \
+            "$RUNNER_TEMP/pr295-r4-prettier/docs/STATUS.md" \
+            > "$RUNNER_TEMP/pr295-r4-prettier/SHA256SUMS"
 
       - name: Upload bounded Prettier output
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: pr295-prettier-bee6217
-          path: ${{ runner.temp }}/pr295-prettier
+          name: pr295-r4-prettier-0c46a7a
+          path: ${{ runner.temp }}/pr295-r4-prettier
           if-no-files-found: error
           retention-days: 1
