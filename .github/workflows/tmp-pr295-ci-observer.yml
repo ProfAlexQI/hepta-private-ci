@@ -1,0 +1,97 @@
+name: Temporary PR 295 CI observer
+
+on:
+  push:
+    branches:
+      - codex/tmp-generate-cargo-lock-20260902
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: hepta-pr295-ci-observer-20260902
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Observe exact clean-output candidate and retry transient failures once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_BRANCH: codex/hepta-v8-final-gap-closure-output-20260902
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p observer-logs
+          pr_json="$(gh api "/repos/${REPOSITORY}/pulls?state=open&head=TrillionniumFoundation:${HEAD_BRANCH}")"
+          pr_count="$(jq 'length' <<<"$pr_json")"
+          if [[ "$pr_count" != "1" ]]; then
+            printf '%s\n' "$pr_json" > observer-logs/pr-discovery.json
+            echo "expected exactly one open clean-output PR, found ${pr_count}" >&2
+            exit 1
+          fi
+          pr_number="$(jq -r '.[0].number' <<<"$pr_json")"
+          head_sha="$(jq -r '.[0].head.sha' <<<"$pr_json")"
+          printf '{"pr":%s,"headSha":"%s","headBranch":"%s"}\n' "$pr_number" "$head_sha" "$HEAD_BRANCH" > observer-logs/identity.json
+
+          deadline=$((SECONDS + 2700))
+          rerun_done=false
+          while (( SECONDS < deadline )); do
+            runs="$(gh api --paginate "/repos/${REPOSITORY}/actions/runs?head_sha=${head_sha}&event=pull_request&per_page=100" --jq '.workflow_runs')"
+            printf '%s\n' "$runs" > observer-logs/runs.json
+            count="$(jq 'length' <<<"$runs")"
+            if [[ "$count" == "0" ]]; then
+              sleep 15
+              continue
+            fi
+            active="$(jq '[.[] | select(.status != "completed")] | length' <<<"$runs")"
+            if [[ "$active" != "0" ]]; then
+              sleep 20
+              continue
+            fi
+            failed_ids="$(jq -r '.[] | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "action_required" or .conclusion == "startup_failure") | .id' <<<"$runs")"
+            if [[ -n "$failed_ids" && "$rerun_done" == "false" ]]; then
+              while read -r run_id; do
+                [[ -n "$run_id" ]] || continue
+                gh api --method POST "/repos/${REPOSITORY}/actions/runs/${run_id}/rerun-failed-jobs" || true
+              done <<<"$failed_ids"
+              rerun_done=true
+              sleep 30
+              continue
+            fi
+            break
+          done
+
+          runs="$(gh api --paginate "/repos/${REPOSITORY}/actions/runs?head_sha=${head_sha}&event=pull_request&per_page=100" --jq '.workflow_runs')"
+          printf '%s\n' "$runs" > observer-logs/runs-final.json
+          jq -n \
+            --argjson pr "$pr_number" \
+            --arg headSha "$head_sha" \
+            --argjson runs "$runs" \
+            '{pr:$pr,headSha:$headSha,workflows:[$runs[]|{id,name,status,conclusion,event,run_number,html_url}],counts:{total:($runs|length),active:([$runs[]|select(.status!="completed")]|length),failed:([$runs[]|select(.conclusion=="failure" or .conclusion=="timed_out" or .conclusion=="action_required" or .conclusion=="startup_failure")]|length),successful:([$runs[]|select(.conclusion=="success")]|length)}}' \
+            > observer-logs/summary.json
+
+          while read -r run_id; do
+            [[ -n "$run_id" ]] || continue
+            gh api "/repos/${REPOSITORY}/actions/runs/${run_id}/jobs?per_page=100" > "observer-logs/jobs-${run_id}.json"
+            gh run view "$run_id" --repo "$REPOSITORY" --log-failed > "observer-logs/failed-${run_id}.log" 2>&1 || true
+          done < <(jq -r '.[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral") | .id' <<<"$runs")
+
+          active="$(jq '[.[] | select(.status != "completed")] | length' <<<"$runs")"
+          failed="$(jq '[.[] | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "action_required" or .conclusion == "startup_failure")] | length' <<<"$runs")"
+          test "$active" = "0"
+          test "$failed" = "0"
+
+      - name: Retain exact CI observation
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-pr295-ci-observation
+          path: observer-logs
+          if-no-files-found: error
+          retention-days: 7
