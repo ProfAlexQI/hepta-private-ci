@@ -63,7 +63,7 @@ diff --git a/rs/private/repository_utils.bzl b/rs/private/repository_utils.bzl
 diff --git a/rs/private/rustc_repository.bzl b/rs/private/rustc_repository.bzl
 --- a/rs/private/rustc_repository.bzl
 +++ b/rs/private/rustc_repository.bzl
-@@ -12,12 +12,12 @@ _LINUX_ZLIB = {
+@@ -12,11 +12,11 @@ _LINUX_ZLIB = {
      "aarch64": struct(
          libdir = "usr/lib/aarch64-linux-gnu",
          sha256 = "cbe3d39ec32d3cc27c021ae4af11e7c67bdf9d700d573207e0941d4038056278",

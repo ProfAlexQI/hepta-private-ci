@@ -249,10 +249,13 @@ deny = [
         # upstream HTTP transport independently of Codex.
         "codex-responses-api-proxy",
         # Temporary migration exceptions.
+        "codex-hepta-matrixd",
         "codex-otel",
         # Third-party crates that own their reqwest integration. These are not part of the
         # first-party migration count above.
+        "matrix-sdk",
         "oauth2",
+        "oauth2-reqwest",
         "opentelemetry-http",
         "opentelemetry-otlp",
         "rmcp",
