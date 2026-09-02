@@ -55,6 +55,49 @@ jobs:
           test "$(git rev-list --parents -n 1 HEAD | awk '{print NF-1}')" = 1
           test "$(git rev-parse HEAD^)" = 70ef65a90a031ce0cc08b77b5596eb0d99edaa11
 
+      - name: Apply exact HNMF quality fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("qualification/hnmf-adversarial-reference/src/tests.rs")
+          source = path.read_text(encoding="utf-8")
+          replacements = (
+              (
+                  "    let mut hardening = HardeningConfig::default();\n"
+                  "    hardening.maximum_stored_events = 2;\n"
+                  "    hardening.maximum_candidate_events = 1;\n",
+                  "    let hardening = HardeningConfig {\n"
+                  "        maximum_stored_events: 2,\n"
+                  "        maximum_candidate_events: 1,\n"
+                  "        ..HardeningConfig::default()\n"
+                  "    };\n",
+                  "bounded hardening configuration",
+              ),
+              (
+                  "    assert!(!CURRENT_RUN_MUTATION_ALLOWED);\n"
+                  "    assert!(!ONLINE_TOPOLOGY_ACTIVATION_ALLOWED);\n"
+                  "    assert!(!PRODUCTION_AUTHORITY);\n"
+                  "    assert!(!EXTERNAL_EFFECTS_ALLOWED);\n",
+                  "    const {\n"
+                  "        assert!(!CURRENT_RUN_MUTATION_ALLOWED);\n"
+                  "        assert!(!ONLINE_TOPOLOGY_ACTIVATION_ALLOWED);\n"
+                  "        assert!(!PRODUCTION_AUTHORITY);\n"
+                  "        assert!(!EXTERNAL_EFFECTS_ALLOWED);\n"
+                  "    };\n",
+                  "compile-time negative authority assertions",
+              ),
+          )
+          for old, new, label in replacements:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label} anchor count is {count}, expected 1")
+              source = source.replace(old, new, 1)
+          path.write_text(source, encoding="utf-8")
+          PY
+
       - name: Format and qualify adversarial HNMF reference
         shell: bash
         run: |
@@ -113,7 +156,7 @@ jobs:
           git config user.email "hepta-final-blocker-carrier@users.noreply.github.com"
           git add -- MODULE.bazel.lock qualification/hnmf-adversarial-reference/src
           git diff --cached --quiet && { echo "no materialized changes" >&2; exit 1; }
-          git commit -m "fix(v8): format HNMF adversarial reference and refresh Bazel lock"
+          git commit -m "fix(v8): format and lint HNMF reference and refresh Bazel lock"
           git push origin "HEAD:refs/heads/$OUTPUT_BRANCH" --force
           {
             printf 'outputCommit=%s\n' "$(git rev-parse HEAD)"
