@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   generate:
@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Install exact repository Rust toolchain
         uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
@@ -38,6 +38,20 @@ jobs:
           git status --porcelain=v1 > Cargo.lock.status
           test -s Cargo.lock.generated
 
+      - name: Publish clean ordinary lock output commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "caab9c103a8873827caeb31878fcdbaabc0ed577"
+          cp Cargo.lock.generated codex-rs/Cargo.lock
+          git config user.name "Hepta lock carrier"
+          git config user.email "hepta-lock-carrier@users.noreply.github.com"
+          git add -- codex-rs/Cargo.lock
+          git diff --cached --quiet && { echo "Cargo lock did not change" >&2; exit 1; }
+          git commit -m "chore(rust): regenerate workspace lock with Rust 1.95"
+          git push origin HEAD:refs/heads/codex/tmp-generated-cargo-lock-output-20260902 --force
+          printf 'commit=%s\ntree=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" > Cargo.lock.output.identity
+
       - name: Retain generated lock and diagnostics
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
@@ -47,5 +61,6 @@ jobs:
             Cargo.lock.diff
             Cargo.lock.sha256
             Cargo.lock.status
+            Cargo.lock.output.identity
           if-no-files-found: error
           retention-days: 1
