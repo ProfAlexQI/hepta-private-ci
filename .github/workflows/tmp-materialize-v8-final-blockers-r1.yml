@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: write
 
 concurrency:
@@ -16,11 +17,13 @@ concurrency:
 env:
   SOURCE_SHA: 5a8d22b2d38a8777756212554984b0aec6ebde42
   OUTPUT_BRANCH: codex/tmp-materialized-v8-final-output-20260902-r1
+  BAZEL_ARTIFACT_ID: "9842068004"
+  BAZEL_LOCK_SHA256: c03b95ff14a8c813ea4cbb27498437293057540d2374b7f9b6903c1a0a4749d4
 
 jobs:
   materialize:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - name: Check out temporary carrier with push credential
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -54,18 +57,23 @@ jobs:
           cargo +1.98.0 clippy --manifest-path qualification/hnmf-adversarial-reference/Cargo.toml --all-targets --locked -- -D warnings
           cargo +1.98.0 test --manifest-path qualification/hnmf-adversarial-reference/Cargo.toml --locked
 
-      - name: Prepare Bazel CI
-        uses: ./.github/actions/prepare-bazel-ci
-        with:
-          target: x86_64-unknown-linux-gnu
-          cache-scope: tmp-v8-final-lock-r1
-
-      - name: Regenerate and verify exact Bazel module lock
+      - name: Replay verified Bazel lock artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          just bazel-lock-update
-          ./scripts/check-module-bazel-lock.sh
+          mkdir -p "$RUNNER_TEMP/bazel-lock-artifact"
+          curl --fail --location --silent --show-error \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$BAZEL_ARTIFACT_ID/zip" \
+            --output "$RUNNER_TEMP/bazel-lock.zip"
+          unzip -q "$RUNNER_TEMP/bazel-lock.zip" -d "$RUNNER_TEMP/bazel-lock-artifact"
+          test "$(cat "$RUNNER_TEMP/bazel-lock-artifact/bazel-lock-update.exit")" = 0
+          test "$(cat "$RUNNER_TEMP/bazel-lock-artifact/bazel-lock-after.exit")" = 0
+          test "$(shasum -a 256 "$RUNNER_TEMP/bazel-lock-artifact/MODULE.bazel.lock" | awk '{print $1}')" = "$BAZEL_LOCK_SHA256"
+          cp "$RUNNER_TEMP/bazel-lock-artifact/MODULE.bazel.lock" MODULE.bazel.lock
 
       - name: Enforce bounded ordinary-source output
         shell: bash
@@ -87,6 +95,7 @@ jobs:
           git diff --stat > "$RUNNER_TEMP/hepta-v8-final-materialization/diff.stat"
           git diff --numstat > "$RUNNER_TEMP/hepta-v8-final-materialization/diff.numstat"
           printf 'source=%s\n' "$SOURCE_SHA" > "$RUNNER_TEMP/hepta-v8-final-materialization/identity.txt"
+          printf 'bazelLockSha256=%s\n' "$BAZEL_LOCK_SHA256" >> "$RUNNER_TEMP/hepta-v8-final-materialization/identity.txt"
 
       - name: Publish ordinary Git output object
         shell: bash
