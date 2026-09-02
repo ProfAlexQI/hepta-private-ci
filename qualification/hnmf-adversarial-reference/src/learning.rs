@@ -59,9 +59,8 @@ impl HardenedFabric {
                 });
             }
         }
-        weight_proposals.sort_by_key(|proposal| {
-            (proposal.source, proposal.target, proposal.relation)
-        });
+        weight_proposals
+            .sort_by_key(|proposal| (proposal.source, proposal.target, proposal.relation));
         let mut threshold_proposals = Vec::new();
         for node in self.nodes.values().filter(|node| !node.retired) {
             let observed = if active.get(&node.id).copied().unwrap_or(0) > 0 {
@@ -105,10 +104,8 @@ impl HardenedFabric {
         &self,
         candidate: &BoundPlasticityBatch,
     ) -> Result<Self, HardeningError> {
-        let expected = self.propose_plasticity(
-            &candidate.source_packet,
-            candidate.outcome_signal,
-        )?;
+        let expected =
+            self.propose_plasticity(&candidate.source_packet, candidate.outcome_signal)?;
         if &expected != candidate {
             return Err(HardeningError::Conflict(
                 "plasticity batch does not match deterministic source evidence",
