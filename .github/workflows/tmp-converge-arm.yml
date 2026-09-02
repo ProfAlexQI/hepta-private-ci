@@ -54,67 +54,96 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          def replace_exact(path: str, old: str, new: str, count: int = 1) -> None:
+          def read(path: str) -> tuple[Path, str]:
               file = Path(path)
-              text = file.read_text(encoding="utf-8")
-              actual = text.count(old)
-              if actual != count:
-                  raise SystemExit(f"{path}: expected {count} occurrences, found {actual}: {old!r}")
-              file.write_text(text.replace(old, new), encoding="utf-8")
+              return file, file.read_text(encoding="utf-8")
 
-          bazel = ".github/workflows/bazel.yml"
-          replace_exact(bazel, "    timeout-minutes: 30\n", "    timeout-minutes: 60\n", 4)
-          replace_exact(
-              bazel,
+          def replace(text: str, old: str, new: str, expected: int) -> str:
+              actual = text.count(old)
+              if actual != expected:
+                  raise SystemExit(f"expected {expected} occurrences, found {actual}: {old!r}")
+              return text.replace(old, new)
+
+          repository_expression = "$" + "{{ github.event.repository.name }}"
+
+          file, text = read(".github/workflows/bazel.yml")
+          text = replace(text, "    timeout-minutes: 30\n", "    timeout-minutes: 60\n", 4)
+          text = replace(
+              text,
               "          - os: macos-15-xlarge\n            target: aarch64-apple-darwin\n",
               "          - os: macos-15\n            target: aarch64-apple-darwin\n",
               3,
           )
-          replace_exact(
-              bazel,
+          text = replace(
+              text,
               "          - os: macos-15-xlarge\n            target: x86_64-apple-darwin\n",
               "          - os: macos-15-intel\n            target: x86_64-apple-darwin\n",
+              1,
           )
-          replace_exact(
-              bazel,
-              "    runs-on:\n      group: ${{ github.event.repository.name }}-runners\n      labels: ${{ github.event.repository.name }}-windows-x64\n",
-              "    runs-on: windows-latest\n",
-              2,
+          block = (
+              "    runs-on:\n"
+              f"      group: {repository_expression}-runners\n"
+              f"      labels: {repository_expression}-windows-x64\n"
           )
-          replace_exact(
-              bazel,
-              "            runs_on:\n              group: ${{ github.event.repository.name }}-runners\n              labels: ${{ github.event.repository.name }}-windows-x64\n",
-              "",
-              2,
+          text = replace(text, block, "    runs-on: windows-latest\n", 2)
+          nested = (
+              "            runs_on:\n"
+              f"              group: {repository_expression}-runners\n"
+              f"              labels: {repository_expression}-windows-x64\n"
           )
+          text = replace(text, nested, "", 2)
+          file.write_text(text, encoding="utf-8")
 
-          rust_ci = ".github/workflows/rust-ci.yml"
-          replace_exact(
-              rust_ci,
+          file, text = read(".github/workflows/rust-ci.yml")
+          text = replace(
+              text,
               "          - name: macOS\n            runner: macos-15-xlarge\n            timeout_minutes: 30\n",
               "          - name: macOS\n            runner: macos-15\n            timeout_minutes: 60\n",
+              1,
           )
-          replace_exact(
-              rust_ci,
-              "          - name: Windows\n            runner: windows-x64\n            timeout_minutes: 30\n            runs_on:\n              group: ${{ github.event.repository.name }}-runners\n              labels: ${{ github.event.repository.name }}-windows-x64\n",
+          old = (
+              "          - name: Windows\n"
+              "            runner: windows-x64\n"
+              "            timeout_minutes: 30\n"
+              "            runs_on:\n"
+              f"              group: {repository_expression}-runners\n"
+              f"              labels: {repository_expression}-windows-x64\n"
+          )
+          text = replace(
+              text,
+              old,
               "          - name: Windows\n            runner: windows-latest\n            timeout_minutes: 60\n",
+              1,
           )
+          file.write_text(text, encoding="utf-8")
 
-          sdk = ".github/workflows/sdk.yml"
-          replace_exact(
-              sdk,
-              "    runs-on:\n      group: ${{ github.event.repository.name }}-runners\n      labels: ${{ github.event.repository.name }}-linux-x64\n    timeout-minutes: 10\n",
-              "    runs-on: ubuntu-24.04\n    timeout-minutes: 20\n",
+          file, text = read(".github/workflows/sdk.yml")
+          old = (
+              "    runs-on:\n"
+              f"      group: {repository_expression}-runners\n"
+              f"      labels: {repository_expression}-linux-x64\n"
+              "    timeout-minutes: 10\n"
           )
-          replace_exact(
-              sdk,
-              "    runs-on:\n      group: ${{ github.event.repository.name }}-runners\n      labels: ${{ github.event.repository.name }}-linux-x64\n    timeout-minutes: 10\n",
-              "    runs-on: ubuntu-24.04\n    timeout-minutes: 60\n",
-          )
+          if text.count(old) != 2:
+              raise SystemExit(f"SDK runner block count changed: {text.count(old)}")
+          text = text.replace(old, "    runs-on: ubuntu-24.04\n    timeout-minutes: 20\n", 1)
+          text = text.replace(old, "    runs-on: ubuntu-24.04\n    timeout-minutes: 60\n", 1)
+          file.write_text(text, encoding="utf-8")
 
-          canary = ".github/workflows/v8-canary.yml"
-          replace_exact(canary, "          - runner: macos-15-xlarge\n            bazel_config: ci-macos\n            platform: macos_amd64\n", "          - runner: macos-15-intel\n            bazel_config: ci-macos\n            platform: macos_amd64\n", 2)
-          replace_exact(canary, "          - runner: macos-15-xlarge\n            bazel_config: ci-macos\n            platform: macos_arm64\n", "          - runner: macos-15\n            bazel_config: ci-macos\n            platform: macos_arm64\n", 2)
+          file, text = read(".github/workflows/v8-canary.yml")
+          text = replace(
+              text,
+              "          - runner: macos-15-xlarge\n            bazel_config: ci-macos\n            platform: macos_amd64\n",
+              "          - runner: macos-15-intel\n            bazel_config: ci-macos\n            platform: macos_amd64\n",
+              2,
+          )
+          text = replace(
+              text,
+              "          - runner: macos-15-xlarge\n            bazel_config: ci-macos\n            platform: macos_arm64\n",
+              "          - runner: macos-15\n            bazel_config: ci-macos\n            platform: macos_arm64\n",
+              2,
+          )
+          file.write_text(text, encoding="utf-8")
           PY
 
       - name: Apply exact repository formatters
