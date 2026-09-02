@@ -1,0 +1,155 @@
+name: Hepta immutable fail-closed analysis
+
+on:
+  push:
+    branches:
+      - codex/hepta-immutable-auto-analysis-20260902
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: hepta-immutable-fail-closed-analysis-20260902
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 160
+    env:
+      SOURCE_BRANCH: codex/hepta-v8-repository-closure-immutable-20260902
+      REPORT_BRANCH: codex/hepta-immutable-final-report-20260902
+      OUTPUT_BRANCH: codex/hepta-v8-repository-closure-immutable-v2-20260902
+    steps:
+      - name: Check out immutable source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: codex/hepta-v8-repository-closure-immutable-20260902
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Wait for exact immutable report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          deadline=$((SECONDS + 7500))
+          while (( SECONDS < deadline )); do
+            rm -rf "${RUNNER_TEMP}/report"
+            if git clone --depth=1 --branch "$REPORT_BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git" "${RUNNER_TEMP}/report" 2>/dev/null; then
+              if [[ -f "${RUNNER_TEMP}/report/summary.json" ]] && [[ "$(jq -r '.headSha' "${RUNNER_TEMP}/report/summary.json")" = "$source_sha" ]]; then
+                break
+              fi
+            fi
+            sleep 20
+          done
+          test -f "${RUNNER_TEMP}/report/summary.json"
+          test "$(jq -r '.headSha' "${RUNNER_TEMP}/report/summary.json")" = "$source_sha"
+          cp -R "${RUNNER_TEMP}/report" "${RUNNER_TEMP}/matched-report"
+          if [[ "$(jq -r '.counts.failed' "${RUNNER_TEMP}/matched-report/summary.json")" = "0" ]] && [[ "$(jq -r '.counts.active' "${RUNNER_TEMP}/matched-report/summary.json")" = "0" ]]; then
+            echo "green=true" >> "$GITHUB_ENV"
+          else
+            echo "green=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Set up deterministic repository tools
+        if: env.green != 'true'
+        uses: ./.github/actions/setup-ci
+
+      - name: Install repository-pinned uv
+        if: env.green != 'true'
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: 0.11.3
+
+      - name: Install exact Rust toolchain
+        if: env.green != 'true'
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Set up repository Bazel toolchain
+        if: env.green != 'true'
+        uses: ./.github/actions/setup-bazel-ci
+        with:
+          target: x86_64-unknown-linux-gnu
+
+      - name: Replay only safe deterministic transformations
+        if: env.green != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable || true
+          just fmt
+          python3 scripts/hepta-cns.py generate-status --check || python3 scripts/hepta-cns.py generate-status
+          python3 scripts/hepta-algorithm-docs.py generate-status --check || python3 scripts/hepta-algorithm-docs.py generate-status
+          python3 scripts/hepta-docs.py generate-status
+          just bazel-lock-update
+          git diff --check
+
+      - name: Verify deterministic replay before publication
+        if: env.green != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --frozen --project scripts ruff format --check scripts
+          python3 -m compileall -q scripts
+          cargo fmt --all --manifest-path codex-rs/Cargo.toml -- --check
+          for manifest in qualification/hnmf-reference/Cargo.toml qualification/hnmf-contract-reference/Cargo.toml qualification/hnmf-adversarial-reference/Cargo.toml; do
+            cargo fmt --manifest-path "$manifest" -- --check
+            cargo check --manifest-path "$manifest" --all-targets --locked
+            cargo test --manifest-path "$manifest" --locked
+          done
+          python3 scripts/hepta-paper-evidence.py verify
+          python3 scripts/hepta-hnmf.py self-test
+          python3 scripts/hepta-hnmf.py verify
+          python3 scripts/hepta-cns.py self-test
+          python3 scripts/hepta-cns.py generate-status --check
+          python3 scripts/hepta-cns.py verify
+          python3 scripts/hepta-module-docs.py self-test
+          python3 scripts/hepta-module-docs.py verify
+          python3 scripts/hepta-algorithm-docs.py self-test
+          python3 scripts/hepta-algorithm-docs.py verify-sources
+          python3 scripts/hepta-algorithm-docs.py generate-status --check
+          python3 scripts/hepta-algorithm-docs.py verify
+          python3 scripts/hepta-docs.py self-test
+          python3 scripts/hepta-docs.py generate-status
+          git diff --exit-code -- docs/STATUS.md
+          python3 scripts/hepta-docs.py verify
+          python3 scripts/hepta-repository-integrity.py self-test
+          python3 scripts/hepta-repository-integrity.py verify
+          ./scripts/check-module-bazel-lock.sh
+          if find .github/workflows -maxdepth 1 -type f -name 'tmp-*.yml' -print -quit | grep -q .; then
+            exit 1
+          fi
+          git diff --check
+
+      - name: Publish immutable-v2 only for an actual safe diff
+        if: env.green != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Hepta immutable fail-closed remediator"
+          git config user.email "hepta-immutable-remediator@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No deterministic source diff can address the observed failure."
+            exit 1
+          fi
+          git commit -m "fix(ci): apply immutable evidence-bound remediation v2"
+          git push --force origin "HEAD:refs/heads/${OUTPUT_BRANCH}"
+
+      - name: Retain exact failure report
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: hepta-immutable-fail-closed-analysis
+          path: ${{ runner.temp }}/matched-report
+          if-no-files-found: warn
+          retention-days: 30
