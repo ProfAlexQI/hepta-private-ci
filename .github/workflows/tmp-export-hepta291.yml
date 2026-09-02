@@ -44,14 +44,8 @@ jobs:
 
           path = Path("scripts/hepta-algorithm-docs.py")
           source = path.read_text(encoding="utf-8")
-          old = '''    need(
-              "ALGORITHM_VERIFIER='scripts/hepta-algorithm-docs.py'" in global_verifier,
-              "global verifier binding",
-          )
-          need(
-              "algorithm_check=subprocess.run" in global_verifier,
-              "global verifier invocation",
-          )
+          old = '''    need("ALGORITHM_VERIFIER='scripts/hepta-algorithm-docs.py'" in global_verifier, "global verifier binding")
+              need("algorithm_check=subprocess.run" in global_verifier, "global verifier invocation")
           '''
           new = '''    need(
               re.search(
@@ -71,7 +65,7 @@ jobs:
           )
           '''
           if old not in source:
-              raise SystemExit("brittle global-verifier binding block not found")
+              raise SystemExit("pre-format global-verifier binding block not found")
           path.write_text(source.replace(old, new, 1), encoding="utf-8")
           PY
           uv run --frozen --project scripts ruff format scripts
