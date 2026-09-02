@@ -126,11 +126,11 @@ async fn prepare_qualification_turn_writer_input_with_request(
 
     use codex_hepta_contracts::Sha256Digest;
     use codex_hepta_memory::CompactFence;
+    use codex_hepta_memory::LocalTurnLifecycleBinding;
     use codex_hepta_memory::LogicalTurnAttemptRequest;
     use codex_hepta_memory::LogicalTurnRegistryError;
     use codex_hepta_memory::LogicalTurnRequest;
     use codex_hepta_memory::LogicalTurnReservation;
-    use codex_hepta_memory::LocalTurnLifecycleBinding;
     use codex_hepta_memory_extension::QualificationTurnWriterInput;
     use codex_hepta_memory_extension::QualificationTurnWriterInputError;
 
@@ -205,8 +205,8 @@ async fn prepare_qualification_turn_writer_input_with_request(
         fleet_generation,
         spawn_generation,
     )
-        .as_str()
-        .to_string();
+    .as_str()
+    .to_string();
     let attempt_id = format!("qualification-attempt:{attempt_suffix}");
     let lease_id = format!("qualification-turn-attempt:{attempt_suffix}");
     let journal_id = format!("qualification-turn-journal-attempt:{attempt_suffix}");
@@ -262,7 +262,7 @@ async fn prepare_qualification_turn_writer_input_with_request(
         LogicalTurnReservation::Conflict { reason } => {
             return Err(QualificationTurnWriterInputError::Invalid(format!(
                 "logical-turn registry conflict: {reason}"
-            )))
+            )));
         }
         LogicalTurnReservation::BlockedByEvidence { evidence, .. } => {
             // Evidence is a durable quarantine witness, not an implicit
@@ -283,7 +283,9 @@ async fn prepare_qualification_turn_writer_input_with_request(
         .await
         .map_err(|error| QualificationTurnWriterInputError::Invalid(error.to_string()))?;
     let head = match inspected.disposition {
-        codex_hepta_memory::LocalLeaseHeadDisposition::Active => inspected.head.ok_or_else(fenced)?,
+        codex_hepta_memory::LocalLeaseHeadDisposition::Active => {
+            inspected.head.ok_or_else(fenced)?
+        }
         codex_hepta_memory::LocalLeaseHeadDisposition::ExpiredActive
         | codex_hepta_memory::LocalLeaseHeadDisposition::Released
         | codex_hepta_memory::LocalLeaseHeadDisposition::RolledBack
