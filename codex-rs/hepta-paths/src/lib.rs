@@ -130,13 +130,17 @@ impl HeptaStateLayout {
 }
 
 fn validate_absolute_non_root(path: &Path) -> Result<()> {
-    if !path.is_absolute()
-        || !path
+    let native_absolute_non_root = path.is_absolute()
+        && path
             .components()
-            .any(|component| matches!(component, Component::Normal(_)))
-    {
+            .any(|component| matches!(component, Component::Normal(_)));
+    let portable_absolute_non_root = path
+        .to_str()
+        .is_some_and(is_portable_absolute_non_root_path);
+    if !native_absolute_non_root && !portable_absolute_non_root {
         anyhow::bail!("path must be absolute and must not be filesystem root");
     }
+
     let raw_path = path.as_os_str().to_string_lossy();
     if raw_path
         .split(['/', '\\'])
@@ -148,6 +152,28 @@ fn validate_absolute_non_root(path: &Path) -> Result<()> {
         anyhow::bail!("path must not contain current-directory or parent-directory components");
     }
     Ok(())
+}
+
+fn is_portable_absolute_non_root_path(raw_path: &str) -> bool {
+    let normalized = raw_path.replace('\\', "/");
+    let components: Vec<_> = normalized
+        .split('/')
+        .filter(|component| !component.is_empty())
+        .collect();
+
+    if normalized.starts_with("//") {
+        return components.len() >= 3 && !matches!(components[0], "." | "?");
+    }
+    if normalized.starts_with('/') {
+        return !components.is_empty();
+    }
+
+    let bytes = normalized.as_bytes();
+    bytes.len() >= 4
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && bytes[2] == b'/'
+        && !normalized[3..].trim_matches('/').is_empty()
 }
 
 #[cfg(test)]
@@ -199,6 +225,27 @@ mod tests {
             )
         );
         Ok(())
+    }
+
+    #[test]
+    fn portable_absolute_paths_are_host_independent() {
+        for path in [
+            "/srv/hepta/state",
+            r"C:\srv\hepta\state",
+            r"\\server\share\hepta\state",
+        ] {
+            assert!(
+                validate_absolute_non_root(Path::new(path)).is_ok(),
+                "rejected portable absolute path {path:?}"
+            );
+        }
+
+        for root in ["/", r"C:\", r"\\server\share"] {
+            assert!(
+                validate_absolute_non_root(Path::new(root)).is_err(),
+                "accepted filesystem root {root:?}"
+            );
+        }
     }
 
     #[test]
