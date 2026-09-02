@@ -39,7 +39,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PAPER_EVIDENCE_COMMIT: 213497f26f56e5f51c4b9a83c3f9de2552cb23e2
+  PAPER_EVIDENCE_COMMIT: de36bedfbb2ae463e690f5737b22cb280527b142
 
 jobs:
   source-head:
