@@ -31,22 +31,21 @@ jobs:
             refs/heads/docs/algorithm-closure-v8-1:refs/remotes/origin/docs/algorithm-closure-v8-1 \
             refs/heads/codex/hnmf-blocker-closure-20260902:refs/remotes/origin/codex/hnmf-blocker-closure-20260902 \
             refs/heads/codex/hnmf-full-gap-closure-20260902:refs/remotes/origin/codex/hnmf-full-gap-closure-20260902 \
-            refs/heads/evidence/paper-source-locks-v1:refs/remotes/origin/evidence/paper-source-locks-v1 \
-            refs/heads/admin/materialized-adaptive-doc-closure-output-20260902:refs/remotes/origin/admin/materialized-adaptive-doc-closure-output-20260902
+            refs/heads/evidence/paper-source-locks-v1:refs/remotes/origin/evidence/paper-source-locks-v1
 
-      - name: Archive immutable source snapshots
+      - name: Archive immutable intermediate objects
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p snapshots
           declare -A refs=(
-            [base]=70ef65a90a031ce0cc08b77b5596eb0d99edaa11
-            [ci-fixes]=a33221ac258889707acdbfdbbf40dbe8fbace5b1
-            [adaptive-docs]=80258f1ab7e71df28bc0e59715e3fd6027aafd56
-            [hnmf-live]=9a2994860e486d1b34505629e9768c31da9e271a
-            [hnmf-reference]=126557775d992a0e8dfe57818d1242589a7dcd33
-            [paper-evidence]=891db03e056b36e5e89491bfc3d9c15cddd62e83
-            [adaptive-output]=8275d06f6a39b038727a856790abb53bc7883582
+            [ci-clean]=7d5e297b584603b274befdacb6fbab455c745cb4
+            [ci-first-review]=1a0fb7b2e5431b0ac36b0a7d8ecbd727e88d2af7
+            [ci-generated]=fa95337e90e70497a79bf7620c981fab0abbbe82
+            [hnmf-product-a]=67f830771e90ef53ffa86b1f439dba7d8be0c265
+            [hnmf-product-b]=f776027c0417c61bfaf950012692a24db88acc9e
+            [hnmf-product-c]=832a230f7afb6b6c29c248c8d71ef282f2c77fd0
+            [hnmf-product-d]=c2ff1ea206312d0ddbd9242a1c1dbf2598dc0da2
           )
           for name in "${!refs[@]}"; do
             sha="${refs[$name]}"
@@ -56,10 +55,10 @@ jobs:
           done
           sort -o snapshots/SHA256SUMS snapshots/SHA256SUMS
 
-      - name: Upload exact source snapshots
+      - name: Upload exact intermediate snapshots
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: full-gap-audit-snapshots
+          name: full-gap-audit-intermediates
           path: snapshots
           if-no-files-found: error
           retention-days: 1
