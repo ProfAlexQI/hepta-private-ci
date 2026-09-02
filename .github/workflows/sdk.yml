@@ -3,12 +3,13 @@ name: sdk
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   python-sdk:
-    runs-on:
-      group: ${{ github.event.repository.name }}-runners
-      labels: ${{ github.event.repository.name }}-linux-x64
-    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -43,10 +44,8 @@ jobs:
         uses: ./.github/actions/check-clean-worktree
 
   sdks:
-    runs-on:
-      group: ${{ github.event.repository.name }}-runners
-      labels: ${{ github.event.repository.name }}-linux-x64
-    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     environment:
       name: bazel
       deployment: false
@@ -80,16 +79,19 @@ jobs:
         with:
           target: x86_64-unknown-linux-gnu
 
-      - name: Build codex with Bazel
+      - name: Build codex and code-mode host with Bazel
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
+          codex_target="//codex-rs/cli:codex"
+          code_mode_host_target="//codex-rs/code-mode-host:codex-code-mode-host"
+
           # Use the shared CI wrapper so fork PRs fall back cleanly when
-          # BuildBuddy credentials are unavailable. This workflow needs the
-          # built `codex` binary on disk afterwards, so ask the wrapper to
-          # override CI's default remote_download_minimal behavior.
+          # BuildBuddy credentials are unavailable. The SDK tests need both
+          # executables on disk because codex resolves code-mode-host as a
+          # sibling process at runtime.
           ./.github/scripts/run-bazel-ci.sh \
             --remote-download-toplevel \
             -- \
@@ -97,49 +99,75 @@ jobs:
             --build_metadata=COMMIT_SHA=${GITHUB_SHA} \
             --build_metadata=TAG_job=sdk \
             -- \
-            //codex-rs/cli:codex
+            "${codex_target}" \
+            "${code_mode_host_target}"
 
-          # Resolve the exact output file using the same wrapper/config path as
-          # the build instead of guessing which Bazel convenience symlink is
-          # available on the runner.
-          cquery_output="$(
-            ./.github/scripts/run-bazel-ci.sh \
-              -- \
-              cquery \
-              --output=files \
-              -- \
-              //codex-rs/cli:codex \
-              | grep -E '^(/|bazel-out/)' \
-              | tail -n 1
+          # Resolve exact output files through the same wrapper/config path as
+          # the build instead of relying on Bazel convenience symlinks.
+          resolve_bazel_executable() {
+            local target="$1"
+            local executable_name="$2"
+            local cquery_output=""
+            local candidate
+            local resolved_output
+
+            while IFS= read -r candidate; do
+              if [[ "${candidate}" != /* && "${candidate}" != bazel-out/* ]]; then
+                continue
+              fi
+              if [[ "$(basename "${candidate}")" == "${executable_name}" ]]; then
+                cquery_output="${candidate}"
+              fi
+            done < <(
+              ./.github/scripts/run-bazel-ci.sh \
+                -- \
+                cquery \
+                --output=files \
+                -- \
+                "${target}"
+            )
+
+            if [[ -z "${cquery_output}" ]]; then
+              echo "Bazel did not report ${executable_name} for ${target}." >&2
+              return 1
+            fi
+
+            if [[ "${cquery_output}" = /* ]]; then
+              resolved_output="${cquery_output}"
+            else
+              resolved_output="${GITHUB_WORKSPACE}/${cquery_output}"
+            fi
+            if [[ ! -e "${resolved_output}" ]]; then
+              echo "Unable to locate ${target} at ${resolved_output}." >&2
+              return 1
+            fi
+            printf '%s\n' "${resolved_output}"
+          }
+
+          codex_bazel_output_path="$(resolve_bazel_executable "${codex_target}" codex)"
+          code_mode_host_bazel_output_path="$(
+            resolve_bazel_executable \
+              "${code_mode_host_target}" \
+              codex-code-mode-host
           )"
-          if [[ "${cquery_output}" = /* ]]; then
-            codex_bazel_output_path="${cquery_output}"
-          else
-            codex_bazel_output_path="${GITHUB_WORKSPACE}/${cquery_output}"
-          fi
-          if [[ -z "${codex_bazel_output_path}" ]]; then
-            echo "Bazel did not report an output path for //codex-rs/cli:codex." >&2
-            exit 1
-          fi
-          if [[ ! -e "${codex_bazel_output_path}" ]]; then
-            echo "Unable to locate the Bazel-built codex binary at ${codex_bazel_output_path}." >&2
-            exit 1
-          fi
 
-          # Stage the binary into the workspace and point the SDK tests at that
-          # stable path. The tests spawn `codex` directly many times, so using a
-          # normal executable path is more reliable than invoking Bazel for each
-          # test process.
+          # Stage both sibling executables into one stable workspace directory.
+          # The tests spawn codex repeatedly; codex then discovers the host next
+          # to itself without requiring a source checkout or a Bazel invocation.
           install_dir="${GITHUB_WORKSPACE}/.tmp/sdk-ci"
           mkdir -p "${install_dir}"
           install -m 755 "${codex_bazel_output_path}" "${install_dir}/codex"
+          install -m 755 \
+            "${code_mode_host_bazel_output_path}" \
+            "${install_dir}/codex-code-mode-host"
           echo "CODEX_EXEC_PATH=${install_dir}/codex" >> "$GITHUB_ENV"
 
-      - name: Warm up Bazel-built codex
+      - name: Warm up Bazel-built SDK executables
         shell: bash
         run: |
           set -euo pipefail
           "${CODEX_EXEC_PATH}" --version
+          "${CODEX_EXEC_PATH%/*}/codex-code-mode-host" --help >/dev/null
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

@@ -563,9 +563,7 @@ pub enum ModelReceiptError {
     ChainHeadMismatch,
     #[error("model receipt chain contains a duplicate attempt id")]
     DuplicateAttemptId,
-    #[error(
-        "model receipt attempt sequence is not contiguous (expected {expected}, got {actual})"
-    )]
+    #[error("model receipt attempt sequence is not contiguous (expected {expected}, got {actual})")]
     NonContiguousAttempt { expected: u32, actual: u32 },
     #[error("model receipt serialization failed: {0}")]
     Serialization(String),

@@ -115,16 +115,53 @@ def remote_config(args: Sequence[str], env: Mapping[str, str]) -> str | None:
     return config
 
 
-def bazel_args_without_remote_execution(args: Sequence[str]) -> list[str]:
-    # Remote CI configs require BuildBuddy credentials. Removing them preserves
-    # the local fallback used for fork pull requests.
+def bazel_args_without_remote_execution(
+    args: Sequence[str], env: Mapping[str, str]
+) -> list[str]:
+    """Remove credentialed RBE configs and produce a coherent local fallback.
+
+    On a Windows hosted runner, an unauthenticated `ci-windows-cross` request
+    cannot execute its Linux RBE actions. The shell wrapper already selects an
+    MSVC host platform in this path; complete that fallback here by selecting
+    both the local CI config and the native MSVC target. This prevents Rust
+    MSVC link actions from consuming MinGW/LLVM C archives.
+    """
     try:
         separator_idx = args.index("--")
     except ValueError:
         separator_idx = len(args)
-    return [
-        *(arg for arg in args[:separator_idx] if arg not in REMOTE_EXECUTION_CONFIGS),
+
+    before_separator = list(args[:separator_idx])
+    requested_windows_cross = "--config=ci-windows-cross" in before_separator
+    configured_args = [
+        *(arg for arg in before_separator if arg not in REMOTE_EXECUTION_CONFIGS),
         *args[separator_idx:],
+    ]
+
+    if env.get("RUNNER_OS") != "Windows":
+        return configured_args
+
+    try:
+        configured_separator_idx = configured_args.index("--")
+    except ValueError:
+        configured_separator_idx = len(configured_args)
+    configured_prefix = configured_args[:configured_separator_idx]
+
+    uses_msvc_host = any(
+        arg == "--host_platform=//:local_windows_msvc" for arg in configured_prefix
+    )
+    injected_args: list[str] = []
+    if not any(arg.startswith("--config=") for arg in configured_prefix):
+        injected_args.append("--config=ci-windows")
+    if (requested_windows_cross or uses_msvc_host) and not any(
+        arg.startswith("--platforms=") for arg in configured_prefix
+    ):
+        injected_args.append("--platforms=//:windows_x86_64_msvc")
+
+    return [
+        *configured_args[:configured_separator_idx],
+        *injected_args,
+        *configured_args[configured_separator_idx:],
     ]
 
 
@@ -140,7 +177,7 @@ def bazel_args_with_remote_config(
 
     config = remote_config(args, env)
     if config is None:
-        configured_args = bazel_args_without_remote_execution(args)
+        configured_args = bazel_args_without_remote_execution(args, env)
     else:
         # `remote_config()` returns a configuration only when this key is present.
         api_key = env["BUILDBUDDY_API_KEY"]
