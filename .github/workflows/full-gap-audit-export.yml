@@ -26,33 +26,35 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --no-tags origin \
-            refs/heads/integration/vnext-main-20260811:refs/remotes/origin/integration/vnext-main-20260811 \
             refs/heads/codex/close-v8-blockers-20260901:refs/remotes/origin/codex/close-v8-blockers-20260901 \
-            refs/heads/docs/algorithm-closure-v8-1:refs/remotes/origin/docs/algorithm-closure-v8-1 \
             refs/heads/codex/hnmf-blocker-closure-20260902:refs/remotes/origin/codex/hnmf-blocker-closure-20260902 \
-            refs/heads/codex/hnmf-full-gap-closure-20260902:refs/remotes/origin/codex/hnmf-full-gap-closure-20260902 \
-            refs/heads/evidence/paper-source-locks-v1:refs/remotes/origin/evidence/paper-source-locks-v1
+            refs/heads/codex/hnmf-full-gap-closure-20260902:refs/remotes/origin/codex/hnmf-full-gap-closure-20260902
 
-      - name: Archive immutable intermediate objects
+      - name: Archive reachable immutable intermediate objects
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p snapshots
-          declare -A refs=(
-            [ci-clean]=7d5e297b584603b274befdacb6fbab455c745cb4
-            [ci-first-review]=1a0fb7b2e5431b0ac36b0a7d8ecbd727e88d2af7
-            [ci-generated]=fa95337e90e70497a79bf7620c981fab0abbbe82
-            [hnmf-product-a]=67f830771e90ef53ffa86b1f439dba7d8be0c265
-            [hnmf-product-b]=f776027c0417c61bfaf950012692a24db88acc9e
-            [hnmf-product-c]=832a230f7afb6b6c29c248c8d71ef282f2c77fd0
-            [hnmf-product-d]=c2ff1ea206312d0ddbd9242a1c1dbf2598dc0da2
-          )
-          for name in "${!refs[@]}"; do
-            sha="${refs[$name]}"
-            test "$(git rev-parse "$sha")" = "$sha"
+          cat > snapshots/OBJECTS.tsv <<'EOF'
+          ci-head	a33221ac258889707acdbfdbbf40dbe8fbace5b1
+          hnmf-product-a	67f830771e90ef53ffa86b1f439dba7d8be0c265
+          hnmf-product-b	f776027c0417c61bfaf950012692a24db88acc9e
+          hnmf-product-c	832a230f7afb6b6c29c248c8d71ef282f2c77fd0
+          hnmf-product-d	c2ff1ea206312d0ddbd9242a1c1dbf2598dc0da2
+          hnmf-reference	126557775d992a0e8dfe57818d1242589a7dcd33
+          hnmf-live	9a2994860e486d1b34505629e9768c31da9e271a
+          EOF
+          : > snapshots/SHA256SUMS
+          : > snapshots/SKIPPED.tsv
+          while IFS=$'\t' read -r name sha; do
+            if ! git cat-file -e "$sha^{tree}" 2>/dev/null; then
+              printf '%s\t%s\tunreachable\n' "$name" "$sha" >> snapshots/SKIPPED.tsv
+              continue
+            fi
             git archive --format=tar.gz --prefix="$name/" -o "snapshots/$name.tar.gz" "$sha"
             sha256sum "snapshots/$name.tar.gz" >> snapshots/SHA256SUMS
-          done
+          done < snapshots/OBJECTS.tsv
+          test -s snapshots/SHA256SUMS
           sort -o snapshots/SHA256SUMS snapshots/SHA256SUMS
 
       - name: Upload exact intermediate snapshots
