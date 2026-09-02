@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-'''Closed-world verifier for Hepta adaptive algorithm specifications.'''
+"""Closed-world verifier for Hepta adaptive algorithm specifications."""
+
 from __future__ import annotations
 
 import argparse
@@ -40,10 +41,23 @@ DOC_PACKAGE = "DOC-3D-ADAPTIVE-ALGORITHM-DOC-CLOSED-WORLD"
 RECEIPT_SCHEMA = "hepta.algorithm-docs-execution-receipt.v2"
 
 AUTHORITY_KEYS = [
-    "runtimeAuthority", "productionCaller", "productionWriter", "modelInvocation",
-    "providerDispatch", "toolExecution", "networkConnect", "externalFilesystemMutation",
-    "secretOperation", "matrixSend", "externalEffect", "fleetMutation",
-    "canonicalSelection", "merge", "operatorAcceptance", "promotion", "release",
+    "runtimeAuthority",
+    "productionCaller",
+    "productionWriter",
+    "modelInvocation",
+    "providerDispatch",
+    "toolExecution",
+    "networkConnect",
+    "externalFilesystemMutation",
+    "secretOperation",
+    "matrixSend",
+    "externalEffect",
+    "fleetMutation",
+    "canonicalSelection",
+    "merge",
+    "operatorAcceptance",
+    "promotion",
+    "release",
 ]
 HEADINGS = [
     "## 1. Scope, ownership and non-claims",
@@ -71,32 +85,74 @@ TEMPORARY_PATHS = [
 
 PAPER_SCHEMA = "hepta.paper-traceability.v2"
 PAPER_ROW_KEYS = [
-    "id", "title", "author", "dateWritten", "publication", "canonicalUrl",
-    "fullTextUrl", "sourceClass", "claimsUsed", "nonClaims", "doi",
-    "sourceLock", "claimAnchors", "nonClaimAnchors",
+    "id",
+    "title",
+    "author",
+    "dateWritten",
+    "publication",
+    "canonicalUrl",
+    "fullTextUrl",
+    "sourceClass",
+    "claimsUsed",
+    "nonClaims",
+    "doi",
+    "sourceLock",
+    "claimAnchors",
+    "nonClaimAnchors",
 ]
 SOURCE_LOCK_KEYS = [
-    "sourceArtifactId", "identityClass", "publisher", "recordId", "doi",
-    "postedDate", "sourceKind", "sourceScope", "canonicalization",
-    "contentDigestAlgorithm", "contentDigest", "contentLengthBytes",
-    "contentDigestStatus", "pageCount", "canonicalUrl", "immutableUrl",
-    "publisherRepository", "publisherCommit", "publisherGitBlobSha",
-    "verifiedTitle", "verifiedAuthor", "verifiedDateWritten",
+    "sourceArtifactId",
+    "identityClass",
+    "publisher",
+    "recordId",
+    "doi",
+    "postedDate",
+    "sourceKind",
+    "sourceScope",
+    "canonicalization",
+    "contentDigestAlgorithm",
+    "contentDigest",
+    "contentLengthBytes",
+    "contentDigestStatus",
+    "pageCount",
+    "canonicalUrl",
+    "immutableUrl",
+    "publisherRepository",
+    "publisherCommit",
+    "publisherGitBlobSha",
+    "verifiedTitle",
+    "verifiedAuthor",
+    "verifiedDateWritten",
     "verificationStatus",
 ]
 CLAIM_ANCHOR_KEYS = [
-    "claim", "sourceArtifactId", "locator", "sourceTextDigestAlgorithm",
-    "sourceTextDigest", "sourceTextLengthBytes", "claimScope",
+    "claim",
+    "sourceArtifactId",
+    "locator",
+    "sourceTextDigestAlgorithm",
+    "sourceTextDigest",
+    "sourceTextLengthBytes",
+    "claimScope",
     "verificationStatus",
 ]
 LOCATOR_KEYS = [
-    "kind", "section", "paragraphIndex", "sentenceIndex",
-    "publicationPage", "pdfPage", "theoremOrEquation",
+    "kind",
+    "section",
+    "paragraphIndex",
+    "sentenceIndex",
+    "publicationPage",
+    "pdfPage",
+    "theoremOrEquation",
 ]
 NONCLAIM_ANCHOR_KEYS = [
-    "nonClaim", "basis", "sourceArtifactId", "locator",
-    "sourceTextDigestAlgorithm", "sourceTextDigest",
-    "sourceTextLengthBytes", "verificationStatus",
+    "nonClaim",
+    "basis",
+    "sourceArtifactId",
+    "locator",
+    "sourceTextDigestAlgorithm",
+    "sourceTextDigest",
+    "sourceTextLengthBytes",
+    "verificationStatus",
 ]
 HEPTA_ONLY_PAPER_BOUNDARIES = {
     "quasi_uniform_sensor_geometry",
@@ -144,32 +200,112 @@ EXPECTED_SOURCE_LOCKS = {
 }
 EXPECTED_CLAIM_ANCHORS = {
     "PAPER-NDU-FOUNDATIONS-2024": {
-        "resource_constrained_subject": (2, "bdd5ede55b15ba28da08a2eeb1f402f7dfdb6301b81a68a79f50ccc2a65c2740", 129),
-        "endogenous_preference_state": (2, "bdd5ede55b15ba28da08a2eeb1f402f7dfdb6301b81a68a79f50ccc2a65c2740", 129),
-        "recursive_utility_framing": (1, "5c58e43d831c0ebd2ac5d73c0c115aec5998629a7c6bf6c0c72b88af920b2a39", 144),
-        "neural_parameterization_motivation": (1, "5c58e43d831c0ebd2ac5d73c0c115aec5998629a7c6bf6c0c72b88af920b2a39", 144),
+        "resource_constrained_subject": (
+            2,
+            "bdd5ede55b15ba28da08a2eeb1f402f7dfdb6301b81a68a79f50ccc2a65c2740",
+            129,
+        ),
+        "endogenous_preference_state": (
+            2,
+            "bdd5ede55b15ba28da08a2eeb1f402f7dfdb6301b81a68a79f50ccc2a65c2740",
+            129,
+        ),
+        "recursive_utility_framing": (
+            1,
+            "5c58e43d831c0ebd2ac5d73c0c115aec5998629a7c6bf6c0c72b88af920b2a39",
+            144,
+        ),
+        "neural_parameterization_motivation": (
+            1,
+            "5c58e43d831c0ebd2ac5d73c0c115aec5998629a7c6bf6c0c72b88af920b2a39",
+            144,
+        ),
     },
     "PAPER-NDU-UPA-2025": {
-        "continuous_time_fbsde_preference_process": (2, "109913c27bf17b1a4f7ac904a9a5885b108655807f32e343f9f849e348043bd7", 240),
-        "continuous_time_resnet_preference_parameterization": (2, "109913c27bf17b1a4f7ac904a9a5885b108655807f32e343f9f849e348043bd7", 240),
-        "resnet_aggregator_approximation": (3, "f1ca1c2d65f34ca4819da0906120ced5694746b6bca092ed19d66c0387355cc5", 307),
-        "weakly_compact_admissible_process_scope": (3, "f1ca1c2d65f34ca4819da0906120ced5694746b6bca092ed19d66c0387355cc5", 307),
+        "continuous_time_fbsde_preference_process": (
+            2,
+            "109913c27bf17b1a4f7ac904a9a5885b108655807f32e343f9f849e348043bd7",
+            240,
+        ),
+        "continuous_time_resnet_preference_parameterization": (
+            2,
+            "109913c27bf17b1a4f7ac904a9a5885b108655807f32e343f9f849e348043bd7",
+            240,
+        ),
+        "resnet_aggregator_approximation": (
+            3,
+            "f1ca1c2d65f34ca4819da0906120ced5694746b6bca092ed19d66c0387355cc5",
+            307,
+        ),
+        "weakly_compact_admissible_process_scope": (
+            3,
+            "f1ca1c2d65f34ca4819da0906120ced5694746b6bca092ed19d66c0387355cc5",
+            307,
+        ),
     },
     "PAPER-NDU-EU-2025": {
-        "general_multidimensional_square_integrable_martingale": (1, "0e517302738db798a49dfc4836f86301f9d21c68d49762bca7c79f7c4f82b43e", 185),
-        "distinct_forward_and_backward_driver_components": (2, "d5af987b16fcda258bd8f796cb9a0eaf46fe9f742a9633ca4500b5cc83e59e9d", 290),
-        "forward_preference_state": (2, "d5af987b16fcda258bd8f796cb9a0eaf46fe9f742a9633ca4500b5cc83e59e9d", 290),
-        "backward_utility_aggregator": (2, "d5af987b16fcda258bd8f796cb9a0eaf46fe9f742a9633ca4500b5cc83e59e9d", 290),
-        "existence_and_uniqueness_require_explicit_conditions": (3, "d65636fb63fc0484f5e4f815882f47d421d1bb88ac116a05f4aa37d88ea02b60", 98),
-        "optimal_control_requires_regularity_growth_concavity_and_weak_to_strong_continuity": (5, "5336e30f4d1d176a49c0ed54ead6a570c846e79885ce065c1b9488e5be662f7d", 170),
+        "general_multidimensional_square_integrable_martingale": (
+            1,
+            "0e517302738db798a49dfc4836f86301f9d21c68d49762bca7c79f7c4f82b43e",
+            185,
+        ),
+        "distinct_forward_and_backward_driver_components": (
+            2,
+            "d5af987b16fcda258bd8f796cb9a0eaf46fe9f742a9633ca4500b5cc83e59e9d",
+            290,
+        ),
+        "forward_preference_state": (
+            2,
+            "d5af987b16fcda258bd8f796cb9a0eaf46fe9f742a9633ca4500b5cc83e59e9d",
+            290,
+        ),
+        "backward_utility_aggregator": (
+            2,
+            "d5af987b16fcda258bd8f796cb9a0eaf46fe9f742a9633ca4500b5cc83e59e9d",
+            290,
+        ),
+        "existence_and_uniqueness_require_explicit_conditions": (
+            3,
+            "d65636fb63fc0484f5e4f815882f47d421d1bb88ac116a05f4aa37d88ea02b60",
+            98,
+        ),
+        "optimal_control_requires_regularity_growth_concavity_and_weak_to_strong_continuity": (
+            5,
+            "5336e30f4d1d176a49c0ed54ead6a570c846e79885ce065c1b9488e5be662f7d",
+            170,
+        ),
     },
     "PAPER-HOLDER-Q-2026": {
-        "continuous_state_continuous_action_controlled_diffusion": (1, "bf531440a9a7e987fe4ea15189b9a07e1c37b849163019c347583f5ae0fd1396", 124),
-        "uniform_ellipticity": (2, "dbdd2ed9b141593a84b0946ee998cb77faa29d144e16a700a1e4973abee50898", 244),
-        "holder_regular_coefficients": (3, "7b3211f59d946cf03713fcb36793f0b52b77ce994663808f51326318c48e3bc6", 253),
-        "state_smoothing_action_lipschitz_anisotropy": (3, "7b3211f59d946cf03713fcb36793f0b52b77ce994663808f51326318c48e3bc6", 253),
-        "tensor_product_deeponet": (4, "411df267ec4168dd8200450fbb7d51e6860fb213553e78de35f8449064056e6b", 159),
-        "stiffness_complexity_tradeoff": (5, "0199dd83b5e85ef764d8c98f4926d39d78496ce5aa36a837b8fb9ccb4074b3c0", 131),
+        "continuous_state_continuous_action_controlled_diffusion": (
+            1,
+            "bf531440a9a7e987fe4ea15189b9a07e1c37b849163019c347583f5ae0fd1396",
+            124,
+        ),
+        "uniform_ellipticity": (
+            2,
+            "dbdd2ed9b141593a84b0946ee998cb77faa29d144e16a700a1e4973abee50898",
+            244,
+        ),
+        "holder_regular_coefficients": (
+            3,
+            "7b3211f59d946cf03713fcb36793f0b52b77ce994663808f51326318c48e3bc6",
+            253,
+        ),
+        "state_smoothing_action_lipschitz_anisotropy": (
+            3,
+            "7b3211f59d946cf03713fcb36793f0b52b77ce994663808f51326318c48e3bc6",
+            253,
+        ),
+        "tensor_product_deeponet": (
+            4,
+            "411df267ec4168dd8200450fbb7d51e6860fb213553e78de35f8449064056e6b",
+            159,
+        ),
+        "stiffness_complexity_tradeoff": (
+            5,
+            "0199dd83b5e85ef764d8c98f4926d39d78496ce5aa36a837b8fb9ccb4074b3c0",
+            131,
+        ),
     },
 }
 
@@ -316,8 +452,14 @@ def validate_paper_sources(papers: dict[str, Any]) -> int:
         "sourceArtifactSubstitutionForbidden",
     ):
         need(rules.get(key) is True, "paper rule " + key)
-    need(rules.get("abstractStatementMaySatisfyTheoremOrEquationClaim") is False, "abstract theorem rule")
-    need(rules.get("heptaExtensionsMayBeAttributedToPaper") is False, "Hepta attribution rule")
+    need(
+        rules.get("abstractStatementMaySatisfyTheoremOrEquationClaim") is False,
+        "abstract theorem rule",
+    )
+    need(
+        rules.get("heptaExtensionsMayBeAttributedToPaper") is False,
+        "Hepta attribution rule",
+    )
 
     rows = papers.get("papers")
     need(isinstance(rows, list) and len(rows) == 4, "paper source count")
@@ -332,98 +474,284 @@ def validate_paper_sources(papers: dict[str, Any]) -> int:
         need(list(row) == PAPER_ROW_KEYS, paper_id + " paper key closure/order")
         lock = row.get("sourceLock")
         need(isinstance(lock, dict), paper_id + " source lock")
-        need(list(lock) == SOURCE_LOCK_KEYS, paper_id + " source-lock key closure/order")
+        need(
+            list(lock) == SOURCE_LOCK_KEYS, paper_id + " source-lock key closure/order"
+        )
         expected_lock = EXPECTED_SOURCE_LOCKS[paper_id]
         for key, expected in expected_lock.items():
             need(lock.get(key) == expected, paper_id + " source lock " + key)
         source_artifact_id = lock["sourceArtifactId"]
-        need(source_artifact_id not in source_artifact_ids, paper_id + " duplicate source artifact")
+        need(
+            source_artifact_id not in source_artifact_ids,
+            paper_id + " duplicate source artifact",
+        )
         source_artifact_ids.add(source_artifact_id)
-        need(lock.get("verificationStatus") == "verified", paper_id + " source verification")
+        need(
+            lock.get("verificationStatus") == "verified",
+            paper_id + " source verification",
+        )
         need(lock.get("verifiedTitle") == row["title"], paper_id + " title lock")
         need(lock.get("verifiedAuthor") == row["author"], paper_id + " author lock")
-        need(lock.get("verifiedDateWritten") == row["dateWritten"], paper_id + " date lock")
-        need(str(lock.get("canonicalUrl", "")).startswith("https://"), paper_id + " canonical URL")
-        need(lock.get("contentDigestAlgorithm") == "sha256", paper_id + " digest algorithm")
-        need(re.fullmatch(r"[0-9a-f]{64}", str(lock.get("contentDigest"))) is not None, paper_id + " digest")
+        need(
+            lock.get("verifiedDateWritten") == row["dateWritten"],
+            paper_id + " date lock",
+        )
+        need(
+            str(lock.get("canonicalUrl", "")).startswith("https://"),
+            paper_id + " canonical URL",
+        )
+        need(
+            lock.get("contentDigestAlgorithm") == "sha256",
+            paper_id + " digest algorithm",
+        )
+        need(
+            re.fullmatch(r"[0-9a-f]{64}", str(lock.get("contentDigest"))) is not None,
+            paper_id + " digest",
+        )
         need(lock.get("contentLengthBytes", 0) > 0, paper_id + " content length")
         need(lock.get("contentDigestStatus") == "verified", paper_id + " digest status")
-        need(lock.get("sourceKind") in {"publisher_abstract", "publisher_extended_abstract_pdf"}, paper_id + " source kind")
-        need("challenge" not in lock.get("sourceKind", "").casefold(), paper_id + " challenge substitution")
-        need("access_denied" not in lock.get("sourceKind", "").casefold(), paper_id + " access-denied substitution")
+        need(
+            lock.get("sourceKind")
+            in {"publisher_abstract", "publisher_extended_abstract_pdf"},
+            paper_id + " source kind",
+        )
+        need(
+            "challenge" not in lock.get("sourceKind", "").casefold(),
+            paper_id + " challenge substitution",
+        )
+        need(
+            "access_denied" not in lock.get("sourceKind", "").casefold(),
+            paper_id + " access-denied substitution",
+        )
         if lock["sourceKind"] == "publisher_abstract":
-            need(str(lock.get("doi", "")).startswith("10.2139/ssrn."), paper_id + " SSRN DOI")
-            need(lock.get("canonicalization") == "unicode_nfkc_whitespace_collapse_v1", paper_id + " abstract canonicalization")
+            need(
+                str(lock.get("doi", "")).startswith("10.2139/ssrn."),
+                paper_id + " SSRN DOI",
+            )
+            need(
+                lock.get("canonicalization") == "unicode_nfkc_whitespace_collapse_v1",
+                paper_id + " abstract canonicalization",
+            )
             need(lock.get("immutableUrl") is None, paper_id + " false immutable URL")
-            need(lock.get("publisherRepository") is None, paper_id + " false repository")
-            need(lock.get("publisherCommit") is None, paper_id + " false publisher commit")
-            need(lock.get("publisherGitBlobSha") is None, paper_id + " false publisher blob")
+            need(
+                lock.get("publisherRepository") is None, paper_id + " false repository"
+            )
+            need(
+                lock.get("publisherCommit") is None,
+                paper_id + " false publisher commit",
+            )
+            need(
+                lock.get("publisherGitBlobSha") is None,
+                paper_id + " false publisher blob",
+            )
         else:
-            need(lock.get("canonicalization") == "raw_bytes", paper_id + " PDF canonicalization")
-            need(str(lock.get("immutableUrl", "")).startswith("https://"), paper_id + " immutable PDF URL")
-            need(re.fullmatch(r"[0-9a-f]{40}", str(lock.get("publisherCommit"))) is not None, paper_id + " publisher commit")
-            need(re.fullmatch(r"[0-9a-f]{40}", str(lock.get("publisherGitBlobSha"))) is not None, paper_id + " publisher blob")
+            need(
+                lock.get("canonicalization") == "raw_bytes",
+                paper_id + " PDF canonicalization",
+            )
+            need(
+                str(lock.get("immutableUrl", "")).startswith("https://"),
+                paper_id + " immutable PDF URL",
+            )
+            need(
+                re.fullmatch(r"[0-9a-f]{40}", str(lock.get("publisherCommit")))
+                is not None,
+                paper_id + " publisher commit",
+            )
+            need(
+                re.fullmatch(r"[0-9a-f]{40}", str(lock.get("publisherGitBlobSha")))
+                is not None,
+                paper_id + " publisher blob",
+            )
 
         expected_anchors = EXPECTED_CLAIM_ANCHORS[paper_id]
         claims = row.get("claimsUsed")
-        need(isinstance(claims, list) and claims == list(expected_anchors), paper_id + " claim identity/order")
-        need(not (set(claims) & HEPTA_ONLY_PAPER_BOUNDARIES), paper_id + " Hepta extension attributed to paper")
+        need(
+            isinstance(claims, list) and claims == list(expected_anchors),
+            paper_id + " claim identity/order",
+        )
+        need(
+            not (set(claims) & HEPTA_ONLY_PAPER_BOUNDARIES),
+            paper_id + " Hepta extension attributed to paper",
+        )
         attributed_claims.update(claims)
         claim_anchors = row.get("claimAnchors")
-        need(isinstance(claim_anchors, list) and len(claim_anchors) == len(claims), paper_id + " claim anchor closure")
-        need([item.get("claim") for item in claim_anchors] == claims, paper_id + " claim anchor order")
+        need(
+            isinstance(claim_anchors, list) and len(claim_anchors) == len(claims),
+            paper_id + " claim anchor closure",
+        )
+        need(
+            [item.get("claim") for item in claim_anchors] == claims,
+            paper_id + " claim anchor order",
+        )
         for anchor in claim_anchors:
             claim = anchor["claim"]
-            need(list(anchor) == CLAIM_ANCHOR_KEYS, paper_id + " claim-anchor key closure " + claim)
-            need(anchor.get("sourceArtifactId") == source_artifact_id, paper_id + " source artifact substitution " + claim)
+            need(
+                list(anchor) == CLAIM_ANCHOR_KEYS,
+                paper_id + " claim-anchor key closure " + claim,
+            )
+            need(
+                anchor.get("sourceArtifactId") == source_artifact_id,
+                paper_id + " source artifact substitution " + claim,
+            )
             locator = anchor.get("locator")
-            need(isinstance(locator, dict) and list(locator) == LOCATOR_KEYS, paper_id + " locator closure " + claim)
-            need(locator.get("section") == "Abstract", paper_id + " source section " + claim)
-            need(locator.get("paragraphIndex") == 1, paper_id + " paragraph locator " + claim)
-            need(isinstance(locator.get("sentenceIndex"), int) and locator["sentenceIndex"] > 0, paper_id + " sentence locator " + claim)
-            need(locator.get("theoremOrEquation") is None, paper_id + " abstract promoted to theorem/equation " + claim)
+            need(
+                isinstance(locator, dict) and list(locator) == LOCATOR_KEYS,
+                paper_id + " locator closure " + claim,
+            )
+            need(
+                locator.get("section") == "Abstract",
+                paper_id + " source section " + claim,
+            )
+            need(
+                locator.get("paragraphIndex") == 1,
+                paper_id + " paragraph locator " + claim,
+            )
+            need(
+                isinstance(locator.get("sentenceIndex"), int)
+                and locator["sentenceIndex"] > 0,
+                paper_id + " sentence locator " + claim,
+            )
+            need(
+                locator.get("theoremOrEquation") is None,
+                paper_id + " abstract promoted to theorem/equation " + claim,
+            )
             expected_sentence, expected_digest, expected_bytes = expected_anchors[claim]
-            need(locator.get("sentenceIndex") == expected_sentence, paper_id + " sentence identity " + claim)
-            need(anchor.get("sourceTextDigestAlgorithm") == "sha256", paper_id + " claim digest algorithm " + claim)
-            need(anchor.get("sourceTextDigest") == expected_digest, paper_id + " claim text digest " + claim)
-            need(anchor.get("sourceTextLengthBytes") == expected_bytes, paper_id + " claim text length " + claim)
-            need(anchor.get("claimScope") == lock["sourceScope"], paper_id + " claim scope " + claim)
-            need(anchor.get("verificationStatus") == "verified", paper_id + " claim verification " + claim)
+            need(
+                locator.get("sentenceIndex") == expected_sentence,
+                paper_id + " sentence identity " + claim,
+            )
+            need(
+                anchor.get("sourceTextDigestAlgorithm") == "sha256",
+                paper_id + " claim digest algorithm " + claim,
+            )
+            need(
+                anchor.get("sourceTextDigest") == expected_digest,
+                paper_id + " claim text digest " + claim,
+            )
+            need(
+                anchor.get("sourceTextLengthBytes") == expected_bytes,
+                paper_id + " claim text length " + claim,
+            )
+            need(
+                anchor.get("claimScope") == lock["sourceScope"],
+                paper_id + " claim scope " + claim,
+            )
+            need(
+                anchor.get("verificationStatus") == "verified",
+                paper_id + " claim verification " + claim,
+            )
             if lock["sourceKind"] == "publisher_abstract":
-                need(locator.get("publicationPage") is None and locator.get("pdfPage") is None, paper_id + " false page locator " + claim)
+                need(
+                    locator.get("publicationPage") is None
+                    and locator.get("pdfPage") is None,
+                    paper_id + " false page locator " + claim,
+                )
             else:
-                need(locator.get("publicationPage") == 5397 and locator.get("pdfPage") == 1, paper_id + " PDF page locator " + claim)
+                need(
+                    locator.get("publicationPage") == 5397
+                    and locator.get("pdfPage") == 1,
+                    paper_id + " PDF page locator " + claim,
+                )
 
         nonclaims = row.get("nonClaims")
         nonclaim_anchors = row.get("nonClaimAnchors")
-        need(isinstance(nonclaims, list) and len(nonclaims) == len(set(nonclaims)), paper_id + " nonclaim identity")
-        need(isinstance(nonclaim_anchors, list) and len(nonclaim_anchors) == len(nonclaims), paper_id + " nonclaim anchor closure")
-        need([item.get("nonClaim") for item in nonclaim_anchors] == nonclaims, paper_id + " nonclaim anchor order")
+        need(
+            isinstance(nonclaims, list) and len(nonclaims) == len(set(nonclaims)),
+            paper_id + " nonclaim identity",
+        )
+        need(
+            isinstance(nonclaim_anchors, list)
+            and len(nonclaim_anchors) == len(nonclaims),
+            paper_id + " nonclaim anchor closure",
+        )
+        need(
+            [item.get("nonClaim") for item in nonclaim_anchors] == nonclaims,
+            paper_id + " nonclaim anchor order",
+        )
         for anchor in nonclaim_anchors:
             nonclaim = anchor["nonClaim"]
-            need(list(anchor) == NONCLAIM_ANCHOR_KEYS, paper_id + " nonclaim-anchor key closure " + nonclaim)
-            need(anchor.get("verificationStatus") == "verified", paper_id + " nonclaim verification " + nonclaim)
+            need(
+                list(anchor) == NONCLAIM_ANCHOR_KEYS,
+                paper_id + " nonclaim-anchor key closure " + nonclaim,
+            )
+            need(
+                anchor.get("verificationStatus") == "verified",
+                paper_id + " nonclaim verification " + nonclaim,
+            )
             if anchor.get("sourceArtifactId") is None:
-                need(anchor.get("basis") == "explicit_engineering_non_substitution_boundary", paper_id + " nonclaim basis " + nonclaim)
-                need(anchor.get("locator") is None, paper_id + " false nonclaim locator " + nonclaim)
-                need(anchor.get("sourceTextDigestAlgorithm") is None, paper_id + " false nonclaim algorithm " + nonclaim)
-                need(anchor.get("sourceTextDigest") is None, paper_id + " false nonclaim digest " + nonclaim)
-                need(anchor.get("sourceTextLengthBytes") is None, paper_id + " false nonclaim length " + nonclaim)
+                need(
+                    anchor.get("basis")
+                    == "explicit_engineering_non_substitution_boundary",
+                    paper_id + " nonclaim basis " + nonclaim,
+                )
+                need(
+                    anchor.get("locator") is None,
+                    paper_id + " false nonclaim locator " + nonclaim,
+                )
+                need(
+                    anchor.get("sourceTextDigestAlgorithm") is None,
+                    paper_id + " false nonclaim algorithm " + nonclaim,
+                )
+                need(
+                    anchor.get("sourceTextDigest") is None,
+                    paper_id + " false nonclaim digest " + nonclaim,
+                )
+                need(
+                    anchor.get("sourceTextLengthBytes") is None,
+                    paper_id + " false nonclaim length " + nonclaim,
+                )
             else:
-                need(anchor.get("sourceArtifactId") == source_artifact_id, paper_id + " nonclaim source substitution " + nonclaim)
-                need(nonclaim == "no_full_sampled_dqn_convergence_theorem", paper_id + " unexpected sourced nonclaim")
-                need(anchor.get("basis") == "explicit_publisher_extended_abstract_nonclaim", paper_id + " sourced nonclaim basis")
+                need(
+                    anchor.get("sourceArtifactId") == source_artifact_id,
+                    paper_id + " nonclaim source substitution " + nonclaim,
+                )
+                need(
+                    nonclaim == "no_full_sampled_dqn_convergence_theorem",
+                    paper_id + " unexpected sourced nonclaim",
+                )
+                need(
+                    anchor.get("basis")
+                    == "explicit_publisher_extended_abstract_nonclaim",
+                    paper_id + " sourced nonclaim basis",
+                )
                 locator = anchor.get("locator")
-                need(isinstance(locator, dict) and list(locator) == LOCATOR_KEYS, paper_id + " sourced nonclaim locator")
-                need(locator.get("sentenceIndex") == 6 and locator.get("theoremOrEquation") is None, paper_id + " sourced nonclaim location")
-                need(anchor.get("sourceTextDigestAlgorithm") == "sha256", paper_id + " sourced nonclaim algorithm")
-                need(anchor.get("sourceTextDigest") == "6bc394a19d18f298335ab050f5f08d7603a1f2f6a78244e604fda66494e71853", paper_id + " sourced nonclaim digest")
-                need(anchor.get("sourceTextLengthBytes") == 188, paper_id + " sourced nonclaim length")
+                need(
+                    isinstance(locator, dict) and list(locator) == LOCATOR_KEYS,
+                    paper_id + " sourced nonclaim locator",
+                )
+                need(
+                    locator.get("sentenceIndex") == 6
+                    and locator.get("theoremOrEquation") is None,
+                    paper_id + " sourced nonclaim location",
+                )
+                need(
+                    anchor.get("sourceTextDigestAlgorithm") == "sha256",
+                    paper_id + " sourced nonclaim algorithm",
+                )
+                need(
+                    anchor.get("sourceTextDigest")
+                    == "6bc394a19d18f298335ab050f5f08d7603a1f2f6a78244e604fda66494e71853",
+                    paper_id + " sourced nonclaim digest",
+                )
+                need(
+                    anchor.get("sourceTextLengthBytes") == 188,
+                    paper_id + " sourced nonclaim length",
+                )
 
     extensions = papers.get("heptaExtensions")
-    need(isinstance(extensions, list) and len(extensions) == len(set(extensions)), "Hepta extension identity")
-    need(HEPTA_ONLY_PAPER_BOUNDARIES.issubset(set(extensions)), "Hepta-only paper boundaries missing")
-    need(not (HEPTA_ONLY_PAPER_BOUNDARIES & attributed_claims), "Hepta-only boundary paper attribution")
+    need(
+        isinstance(extensions, list) and len(extensions) == len(set(extensions)),
+        "Hepta extension identity",
+    )
+    need(
+        HEPTA_ONLY_PAPER_BOUNDARIES.issubset(set(extensions)),
+        "Hepta-only paper boundaries missing",
+    )
+    need(
+        not (HEPTA_ONLY_PAPER_BOUNDARIES & attributed_claims),
+        "Hepta-only boundary paper attribution",
+    )
     return len(rows)
 
 
@@ -434,7 +762,9 @@ def verify_sources() -> int:
             {
                 "status": "PASS_HEPTA_PAPER_SOURCE_LOCKS_V2",
                 "papers": count,
-                "claimAnchors": sum(len(row) for row in EXPECTED_CLAIM_ANCHORS.values()),
+                "claimAnchors": sum(
+                    len(row) for row in EXPECTED_CLAIM_ANCHORS.values()
+                ),
                 "hostileSubstitutionPolicy": "fail_closed",
                 "authorityGranted": False,
             },
@@ -457,7 +787,9 @@ def verify() -> int:
     artifacts = load(ARTIFACTS_PATH)
     claims = load(CLAIMS_PATH)
 
-    need(registry.get("schema") == "hepta.algorithm-spec-registry.v1", "algorithm schema")
+    need(
+        registry.get("schema") == "hepta.algorithm-spec-registry.v1", "algorithm schema"
+    )
     need(papers.get("schema") == PAPER_SCHEMA, "paper schema")
     for label, value in (("algorithm", registry), ("paper", papers)):
         need(value.get("planId") == PLAN_ID, label + " plan ID")
@@ -465,7 +797,10 @@ def verify() -> int:
         false_authority(value.get("authorityFlags"), label)
 
     need(registry.get("documentationGapState") == "closed", "documentation gap state")
-    need(registry.get("globalClosure", {}).get("state") == "closed", "global closure state")
+    need(
+        registry.get("globalClosure", {}).get("state") == "closed",
+        "global closure state",
+    )
     need(
         registry.get("capabilityClaimState")
         == "unchanged_and_governed_by_docs/evidence/CLAIMS.json",
@@ -478,7 +813,10 @@ def verify() -> int:
     )
 
     module_ids = [row.get("id") for row in modules.get("modules", [])]
-    need(len(module_ids) == 40 and len(module_ids) == len(set(module_ids)), "module registry closure")
+    need(
+        len(module_ids) == 40 and len(module_ids) == len(set(module_ids)),
+        "module registry closure",
+    )
     critical = registry.get("criticalModules")
     need(isinstance(critical, list) and len(critical) == 14, "critical module count")
     need(set(critical).issubset(set(module_ids)), "unknown critical module")
@@ -527,16 +865,28 @@ def verify() -> int:
         need(target.is_file(), doc_id + " missing")
         text = target.read_text(encoding="utf-8")
         need(row.get("documentationState") == "closed", doc_id + " documentation state")
-        need(row.get("implementationState") == "not_implied", doc_id + " implementation state")
-        need(len(text.encode("utf-8")) >= int(rules["minimumDocumentBytes"]), doc_id + " byte floor")
-        need(word_count(text) >= int(rules["minimumDocumentWords"]), doc_id + " word floor")
+        need(
+            row.get("implementationState") == "not_implied",
+            doc_id + " implementation state",
+        )
+        need(
+            len(text.encode("utf-8")) >= int(rules["minimumDocumentBytes"]),
+            doc_id + " byte floor",
+        )
+        need(
+            word_count(text) >= int(rules["minimumDocumentWords"]),
+            doc_id + " word floor",
+        )
         need(git("hash-object", path) == row.get("blobSha"), doc_id + " blob identity")
         need(not unresolved.search(text), doc_id + " unresolved marker")
         positions = [text.find(heading) for heading in HEADINGS]
         need(all(position >= 0 for position in positions), doc_id + " missing section")
         need(positions == sorted(positions), doc_id + " section order")
         need("**Documentation state:** `closed`" in text, doc_id + " closure marker")
-        need("**Implementation state:** not implied" in text, doc_id + " implementation marker")
+        need(
+            "**Implementation state:** not implied" in text,
+            doc_id + " implementation marker",
+        )
         need(
             "docs/contracts/CONTRACTS.json" in text
             and "docs/contracts/PROTOCOL_SCHEMAS.json" in text,
@@ -545,26 +895,44 @@ def verify() -> int:
         for module in row["modules"]:
             need(module in text, doc_id + " missing module " + module)
         for paper_id in row.get("paperIds", []):
-            need(paper_id in {item["id"] for item in papers["papers"]}, doc_id + " unknown paper")
+            need(
+                paper_id in {item["id"] for item in papers["papers"]},
+                doc_id + " unknown paper",
+            )
             need(paper_id in text, doc_id + " missing paper " + paper_id)
         for term in common_terms:
             need(term.casefold() in text.casefold(), doc_id + " missing term " + term)
-    need(all(bound[module] for module in critical), "critical module without specification")
+    need(
+        all(bound[module] for module in critical),
+        "critical module without specification",
+    )
 
     contract_ids = {row["id"] for row in contracts["contracts"]}
     protocol_ids = {row["id"] for row in protocols["protocols"]}
     domain_ids = {row["id"] for row in data["domains"]}
     required_protocols = registry.get("requiredProtocols")
     required_domains = registry.get("requiredDataDomains")
-    need(isinstance(required_protocols, list) and len(required_protocols) >= 20, "protocol closure size")
+    need(
+        isinstance(required_protocols, list) and len(required_protocols) >= 20,
+        "protocol closure size",
+    )
     need(set(required_protocols).issubset(contract_ids), "required contract missing")
-    need(set(required_protocols).issubset(protocol_ids), "required protocol schema missing")
-    need(set(required_domains).issubset(domain_ids), "required data authority domain missing")
+    need(
+        set(required_protocols).issubset(protocol_ids),
+        "required protocol schema missing",
+    )
+    need(
+        set(required_domains).issubset(domain_ids),
+        "required data authority domain missing",
+    )
     protocol_rows = {row["id"]: row for row in protocols["protocols"]}
     for protocol_id in required_protocols:
         row = protocol_rows[protocol_id]
         need(row["contractId"] == protocol_id, protocol_id + " contract identity")
-        need(row["denyUnknownCriticalFields"] is True, protocol_id + " unknown-field policy")
+        need(
+            row["denyUnknownCriticalFields"] is True,
+            protocol_id + " unknown-field policy",
+        )
         need(row["maximumEncodedBytes"] > 0 and row["fields"], protocol_id + " bounds")
         names = [item["name"] for item in row["fields"]]
         need(len(names) == len(set(names)), protocol_id + " duplicate field")
@@ -645,11 +1013,15 @@ def verify() -> int:
         need((ROOT / rel).is_file(), rel + " missing")
     learning_readme = (ROOT / LEARNING_README).read_text(encoding="utf-8")
     for row in documents:
-        need(Path(row["path"]).name in learning_readme, "learning index missing " + row["id"])
+        need(
+            Path(row["path"]).name in learning_readme,
+            "learning index missing " + row["id"],
+        )
     need("ALGORITHM_SPECS.json" in learning_readme, "learning index algorithm registry")
     need("PAPER_TRACEABILITY.json" in learning_readme, "learning index paper registry")
     need(
-        (ROOT / STATUS_PATH).read_text(encoding="utf-8") == status_text(registry, papers),
+        (ROOT / STATUS_PATH).read_text(encoding="utf-8")
+        == status_text(registry, papers),
         "algorithm status drift",
     )
 
@@ -661,7 +1033,12 @@ def verify() -> int:
         (global_workflow, "global workflow"),
     ):
         need("permissions:\n  contents: read" in workflow, label + " permissions")
-        for forbidden in ("contents: write", "git push", "update-ref", "persist-credentials: true"):
+        for forbidden in (
+            "contents: write",
+            "git push",
+            "update-ref",
+            "persist-credentials: true",
+        ):
             need(forbidden not in workflow, label + " mutation " + forbidden)
         need("git merge-tree --write-tree" in workflow, label + " synthetic merge")
     for token in (
@@ -672,8 +1049,22 @@ def verify() -> int:
     ):
         need(token in dedicated_workflow, "dedicated workflow token " + token)
         need(token in global_workflow, "global workflow token " + token)
-    need("ALGORITHM_VERIFIER='scripts/hepta-algorithm-docs.py'" in global_verifier, "global verifier binding")
-    need("algorithm_check=subprocess.run" in global_verifier, "global verifier invocation")
+    need(
+        re.search(
+            r"(?m)^ALGORITHM_VERIFIER\s*=\s*[\"\']scripts/hepta-algorithm-docs\.py[\"\']\s*$",
+            global_verifier,
+        )
+        is not None,
+        "global verifier binding",
+    )
+    need(
+        re.search(
+            r"(?m)^\s*algorithm_check\s*=\s*subprocess\.run\(",
+            global_verifier,
+        )
+        is not None,
+        "global verifier invocation",
+    )
 
     print(
         json.dumps(
@@ -729,13 +1120,48 @@ def self_test() -> int:
             return
         raise AssertionError("hostile paper-source case accepted: " + name)
 
-    rejected("missing_source_digest", lambda value: value["papers"][0]["sourceLock"].__setitem__("contentDigest", None))
-    rejected("wrong_source_digest", lambda value: value["papers"][3]["sourceLock"].__setitem__("contentDigest", "0" * 64))
-    rejected("challenge_body_substitution", lambda value: value["papers"][0]["sourceLock"].__setitem__("sourceKind", "html_challenge"))
-    rejected("missing_exact_locator", lambda value: value["papers"][0]["claimAnchors"][0].__setitem__("locator", None))
-    rejected("claim_text_substitution", lambda value: value["papers"][1]["claimAnchors"][0].__setitem__("sourceTextDigest", "f" * 64))
-    rejected("source_artifact_substitution", lambda value: value["papers"][2]["claimAnchors"][0].__setitem__("sourceArtifactId", "other-artifact"))
-    rejected("abstract_promoted_to_theorem", lambda value: value["papers"][0]["claimAnchors"][0]["locator"].__setitem__("theoremOrEquation", "Theorem 1"))
+    rejected(
+        "missing_source_digest",
+        lambda value: value["papers"][0]["sourceLock"].__setitem__(
+            "contentDigest", None
+        ),
+    )
+    rejected(
+        "wrong_source_digest",
+        lambda value: value["papers"][3]["sourceLock"].__setitem__(
+            "contentDigest", "0" * 64
+        ),
+    )
+    rejected(
+        "challenge_body_substitution",
+        lambda value: value["papers"][0]["sourceLock"].__setitem__(
+            "sourceKind", "html_challenge"
+        ),
+    )
+    rejected(
+        "missing_exact_locator",
+        lambda value: value["papers"][0]["claimAnchors"][0].__setitem__(
+            "locator", None
+        ),
+    )
+    rejected(
+        "claim_text_substitution",
+        lambda value: value["papers"][1]["claimAnchors"][0].__setitem__(
+            "sourceTextDigest", "f" * 64
+        ),
+    )
+    rejected(
+        "source_artifact_substitution",
+        lambda value: value["papers"][2]["claimAnchors"][0].__setitem__(
+            "sourceArtifactId", "other-artifact"
+        ),
+    )
+    rejected(
+        "abstract_promoted_to_theorem",
+        lambda value: value["papers"][0]["claimAnchors"][0]["locator"].__setitem__(
+            "theoremOrEquation", "Theorem 1"
+        ),
+    )
 
     def add_unsupported_attribution(value: dict[str, Any]) -> None:
         row = value["papers"][3]
@@ -766,7 +1192,9 @@ def generate_status(check: bool) -> int:
     target = ROOT / STATUS_PATH
     if check:
         need(target.read_text(encoding="utf-8") == text, "algorithm status drift")
-        print(json.dumps({"status": "PASS_HEPTA_ALGORITHM_STATUS_CHECK"}, sort_keys=True))
+        print(
+            json.dumps({"status": "PASS_HEPTA_ALGORITHM_STATUS_CHECK"}, sort_keys=True)
+        )
         return 0
     target.write_text(text, encoding="utf-8")
     print(
@@ -815,8 +1243,15 @@ def receipt(expected_sha: str, output: str) -> int:
     if not target.is_absolute():
         target = ROOT / target
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(value, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"status": "PASS_HEPTA_ALGORITHM_RECEIPT_V2", "path": str(target)}, sort_keys=True))
+    target.write_text(
+        json.dumps(value, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+    )
+    print(
+        json.dumps(
+            {"status": "PASS_HEPTA_ALGORITHM_RECEIPT_V2", "path": str(target)},
+            sort_keys=True,
+        )
+    )
     return 0
 
 
@@ -830,14 +1265,22 @@ def receipt_verify(input_path: str, expected_sha: str) -> int:
         die("receipt input: " + str(exc))
     need(value.get("schema") == RECEIPT_SCHEMA, "receipt schema")
     need(value.get("expectedSha") == expected_sha, "receipt expected SHA")
-    need(value.get("headSha") == git("rev-parse", "HEAD") == expected_sha, "receipt current head")
+    need(
+        value.get("headSha") == git("rev-parse", "HEAD") == expected_sha,
+        "receipt current head",
+    )
     need(value.get("treeSha") == git("rev-parse", "HEAD^{tree}"), "receipt tree")
-    need(value.get("algorithmRegistryBlobSha") == git("hash-object", REGISTRY_PATH), "receipt registry")
+    need(
+        value.get("algorithmRegistryBlobSha") == git("hash-object", REGISTRY_PATH),
+        "receipt registry",
+    )
     need(value.get("documentationGapState") == "closed", "receipt closure")
     need(value.get("globalClosureState") == "closed", "receipt global closure")
     need(value.get("capabilityClaimsAdvanced") is False, "receipt capability")
     need(value.get("authorityGranted") is False, "receipt authority")
-    print(json.dumps({"status": "PASS_HEPTA_ALGORITHM_RECEIPT_VERIFY_V2"}, sort_keys=True))
+    print(
+        json.dumps({"status": "PASS_HEPTA_ALGORITHM_RECEIPT_VERIFY_V2"}, sort_keys=True)
+    )
     return 0
 
 

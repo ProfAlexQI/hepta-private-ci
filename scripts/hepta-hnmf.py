@@ -178,7 +178,9 @@ def need(condition: bool, message: str) -> None:
 def load_json(path: str) -> dict[str, Any]:
     file_path = ROOT / path
     try:
-        value = json.loads(file_path.read_text(encoding="utf-8"), object_pairs_hook=object_pairs)
+        value = json.loads(
+            file_path.read_text(encoding="utf-8"), object_pairs_hook=object_pairs
+        )
     except Exception as error:  # noqa: BLE001 - verifier reports exact parse failures.
         fail(f"{path}: {error}")
     need(isinstance(value, dict), f"{path}: top-level object required")
@@ -234,11 +236,17 @@ def verify() -> int:
 
     source = spec.get("sourceOfTruth", {})
     need(source.get("vectorDatabaseIsMemory") is False, "vector database authority")
-    need(source.get("projectionMayMutateSourceFacts") is False, "projection mutation authority")
+    need(
+        source.get("projectionMayMutateSourceFacts") is False,
+        "projection mutation authority",
+    )
 
     dynamics = spec.get("dynamics", {})
     need(dynamics.get("currentRunMutationAllowed") is False, "current-run mutation")
-    need(dynamics.get("onlineTopologyActivationAllowed") is False, "online topology activation")
+    need(
+        dynamics.get("onlineTopologyActivationAllowed") is False,
+        "online topology activation",
+    )
 
     bounds = spec.get("resourceBounds", {})
     expected_bounds = {
@@ -260,9 +268,18 @@ def verify() -> int:
     need(defaults.get("minimumIndependentSnapshots", 0) >= 3, "snapshot evidence floor")
     need(defaults.get("minimumFutureCalendarWindows", 0) >= 2, "future-window floor")
     need(defaults.get("minimumEffectiveSampleSize", 0) >= 200, "ESS floor")
-    need(defaults.get("candidateLcbMustExceedBaselineUcb") is True, "promotion interval rule")
-    need(defaults.get("maximumDeletionResurrectionCount") == 0, "deletion non-resurrection")
-    need(defaults.get("maximumUnresolvedHighRiskContradictions") == 0, "contradiction floor")
+    need(
+        defaults.get("candidateLcbMustExceedBaselineUcb") is True,
+        "promotion interval rule",
+    )
+    need(
+        defaults.get("maximumDeletionResurrectionCount") == 0,
+        "deletion non-resurrection",
+    )
+    need(
+        defaults.get("maximumUnresolvedHighRiskContradictions") == 0,
+        "contradiction floor",
+    )
 
     claims = spec.get("claimPosture", {})
     need(claims.get("referenceContractsClosed") is True, "reference contracts claim")
@@ -287,7 +304,10 @@ def verify() -> int:
         "gap reference states",
     )
     need(
-        all(row.get("productionState") == "requires_independent_activation_evidence" for row in gap_rows),
+        all(
+            row.get("productionState") == "requires_independent_activation_evidence"
+            for row in gap_rows
+        ),
         "gap production states",
     )
     need(all(row.get("evidence") for row in gap_rows), "gap evidence")
@@ -313,7 +333,9 @@ def verify() -> int:
     need(len(rust.encode("utf-8")) >= 35_000, "reference runtime too small")
     for token in RUST_TOKENS + RUST_TESTS:
         need(token in rust, f"reference token {token}")
-    need("unsafe" not in rust.replace("#![forbid(unsafe_code)]", ""), "unsafe code token")
+    need(
+        "unsafe" not in rust.replace("#![forbid(unsafe_code)]", ""), "unsafe code token"
+    )
     no_unresolved_markers(rust_path, rust)
 
     workflow = (ROOT / ".github/workflows/hnmf-qualification.yml").read_text(
@@ -358,7 +380,12 @@ def self_test() -> int:
         json.dumps(
             {
                 "status": "PASS_HEPTA_HNMF_SELF_TEST",
-                "cases": ["duplicate_keys", "modalities", "populations", "work_packages"],
+                "cases": [
+                    "duplicate_keys",
+                    "modalities",
+                    "populations",
+                    "work_packages",
+                ],
                 "productionAuthority": False,
             },
             sort_keys=True,
