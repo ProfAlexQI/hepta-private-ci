@@ -44,26 +44,30 @@ jobs:
 
           path = Path("scripts/hepta-algorithm-docs.py")
           source = path.read_text(encoding="utf-8")
-          old = '''    need("ALGORITHM_VERIFIER='scripts/hepta-algorithm-docs.py'" in global_verifier, "global verifier binding")
-              need("algorithm_check=subprocess.run" in global_verifier, "global verifier invocation")
-          '''
-          new = '''    need(
-              re.search(
-                  r"(?m)^ALGORITHM_VERIFIER\\s*=\\s*[\\\"\\\']scripts/hepta-algorithm-docs\\.py[\\\"\\\']\\s*$",
-                  global_verifier,
-              )
-              is not None,
-              "global verifier binding",
-          )
-          need(
-              re.search(
-                  r"(?m)^\\s*algorithm_check\\s*=\\s*subprocess\\.run\\(",
-                  global_verifier,
-              )
-              is not None,
-              "global verifier invocation",
-          )
-          '''
+          old = "\n".join([
+              "    need(\"ALGORITHM_VERIFIER='scripts/hepta-algorithm-docs.py'\" in global_verifier, \"global verifier binding\")",
+              "    need(\"algorithm_check=subprocess.run\" in global_verifier, \"global verifier invocation\")",
+              "",
+          ])
+          new = "\n".join([
+              "    need(",
+              "        re.search(",
+              "            r\"(?m)^ALGORITHM_VERIFIER\\s*=\\s*[\\\"\\\']scripts/hepta-algorithm-docs\\.py[\\\"\\\']\\s*$\",",
+              "            global_verifier,",
+              "        )",
+              "        is not None,",
+              "        \"global verifier binding\",",
+              "    )",
+              "    need(",
+              "        re.search(",
+              "            r\"(?m)^\\s*algorithm_check\\s*=\\s*subprocess\\.run\\(\",",
+              "            global_verifier,",
+              "        )",
+              "        is not None,",
+              "        \"global verifier invocation\",",
+              "    )",
+              "",
+          ])
           if old not in source:
               raise SystemExit("pre-format global-verifier binding block not found")
           path.write_text(source.replace(old, new, 1), encoding="utf-8")
