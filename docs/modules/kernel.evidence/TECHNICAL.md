@@ -234,3 +234,68 @@ None.
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+<!-- BEGIN GENERATED EXACT REGISTRY PROJECTION -->
+### Exact closed-world registry projection
+
+This generated projection binds `kernel.evidence` to the current canonical contract, protocol, data, delivery and threat registries. The registries remain authoritative; this block is a digest-checked documentation projection.
+
+**Produced contracts:**
+- `DomainRead::qualification_evidenceV1`
+- `IndependentDecisionReceiptV1`
+- `ModulePort::kernel.evidence::control.engineering`
+- `ModulePort::kernel.evidence::control.runtime`
+- `ModulePort::kernel.evidence::learning.eval`
+- `ModulePort::kernel.evidence::learning.operator`
+- `ModulePort::kernel.evidence::learning.plasticity`
+
+**Consumed contracts:**
+- `AlgorithmFaultReceiptV1`
+- `CandidateEvaluationReceiptV1`
+- `ConformanceReceiptV1`
+- `DomainRead::automation_occurrenceV1`
+- `DomainRead::automation_scheduleV1`
+- `DomainRead::browser_profile_stateV1`
+- `DomainRead::compact_checkpointV1`
+- `DomainRead::global_state_snapshotV1`
+- `DomainRead::integration_decisionV1`
+- `DomainRead::matrix_dispatch_ledgerV1`
+- `DomainRead::matrix_ingress_projectionV1`
+- `DomainRead::optimization_decisionV1`
+- `DomainRead::plasticity_proposal_registryV1`
+- `DomainRead::secret_leaseV1`
+- `DomainRead::secret_metadataV1`
+- `DomainRead::work_assignment_projectionV1`
+- `EvaluationReceiptV1`
+- `LocalModelRuntimeReceiptV1`
+- `LongitudinalEvaluationReceiptV1`
+- `ModulePort::platform.types::kernel.evidence`
+- `OutboxReceiptV1`
+- `ReconciliationReceiptV1`
+- `UnlearningComplianceReceiptV1`
+
+**Typed protocols:**
+- `AlgorithmFaultReceiptV1`
+- `CandidateEvaluationReceiptV1`
+- `ConformanceReceiptV1`
+- `EvaluationReceiptV1`
+- `IndependentDecisionReceiptV1`
+- `LocalModelRuntimeReceiptV1`
+- `LongitudinalEvaluationReceiptV1`
+- `UnlearningComplianceReceiptV1`
+
+**Owned data domains:**
+- `independent_decision_receipt_v1`
+- `qualification_evidence`
+
+**Read data domains:**
+- `algorithm_fault_receipt_v1`
+- `candidate_evaluation_receipt_v1`
+- `conformance_receipt_v1`
+
+**Work packages:**
+- `P0.9-EXTERNAL-GATES`
+
+**Owned threats:**
+- None.
+
+<!-- END GENERATED EXACT REGISTRY PROJECTION -->

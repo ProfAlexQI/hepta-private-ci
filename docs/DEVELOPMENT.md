@@ -38,9 +38,10 @@ Read in this order:
 4. `docs/modules/MODULES.json`, `docs/contracts/*` and `docs/data/DATA_AUTHORITY.json`;
 5. `docs/delivery/WORK_PACKAGES.json`, `PATH_OWNERSHIP.json` and the three DAGs;
 6. `docs/control-plane/OBJECTIVES.json`, `NDU.json` and `OPTIMIZATION.json`;
-7. `docs/intelligence/PROMPT_INTERVENTIONS.json` and `docs/learning/*`;
-8. `docs/evidence/CLAIMS.json`, `QUALIFICATION.json`, `INDEX.json` and exact external receipts;
-9. `docs/security/THREAT_MODEL.json` and independently issued decisions.
+7. `docs/intelligence/PROMPT_INTERVENTIONS.json`, `docs/learning/ALGORITHM_SPECS.json`, `PAPER_TRACEABILITY.json` and the six implementation-level adaptive specifications;
+8. `docs/learning/LEARNING_SYSTEM.json`, `EXPERIMENTS.json`, `ARTIFACTS.json` and the generated `ALGORITHM_STATUS.md`;
+9. `docs/evidence/CLAIMS.json`, `QUALIFICATION.json`, `INDEX.json` and exact external receipts;
+10. `docs/security/THREAT_MODEL.json` and independently issued decisions.
 
 Stable paths are updated in place. Version numbers live inside documents, never in filenames. Historical plans, status snapshots, current-plan pointers, gap ledgers, tranche narratives, Dropbox exports and in-tree archives are prohibited. Git history and immutable content-addressed external evidence preserve provenance.
 
@@ -100,6 +101,12 @@ Each module has a primary owner, deputy, exclusive roots, dependencies, data aut
 Every one of the forty registered modules has one stable implementation guide at `docs/modules/<module-id>/TECHNICAL.md`. `docs/modules/MODULE_DOCS.json` binds each guide to its exact digest, contracts, protocols, data domains, threats and work packages. `docs/modules/SOURCE_BINDINGS.json` separates declared target roots from existing implementation evidence, missing roots and the bootstrap package that must materialize each target.
 
 Source states are deliberately truthful: a module may be `existing_bound`, `existing_legacy_aggregate`, `existing_declared_unbound`, `target_partially_materialized`, `target_unmaterialized` or `external_with_adapter_target`. Documentation readiness never changes a source, activation, acceptance, promotion or release claim. `python3 scripts/hepta-module-docs.py verify` fails unless all forty guides, bindings and registry references are closed.
+
+## 5B. Adaptive algorithm closed world
+
+The implementation-level adaptive document set is globally governed, not an independent prose island. `docs/learning/ALGORITHM_SPECS.json` binds the six specifications, exact Git blob identities, paper claim anchors, canonical contracts and protocol schemas, data-authority domains, quantitative experiments, artifact lifecycle, work package `DOC-3D-ADAPTIVE-ALGORITHM-DOC-CLOSED-WORLD`, and both read-only CI workflows.
+
+`python3 scripts/hepta-algorithm-docs.py verify` is necessary but cannot self-certify closure. `python3 scripts/hepta-docs.py verify` must load the algorithm registry, invoke the dedicated verifier, confirm every adaptive path is in `DOCUMENT_SYSTEM.json`, and confirm the package and Development/Activation/Evidence DAG edges. Both exact source and deterministic synthetic merge candidates must pass. Temporary installers, split payloads, `contents: write`, branch pushes, and workflow-generated source mutations are forbidden in the final document tree.
 
 ## 6. Objective compilation
 
@@ -431,20 +438,20 @@ promotion != release
 
 ## 23. Immediate queue
 
-1. Materialize the V8 overlay as one exact commit on `b621768…`; purge all forbidden legacy documents.
-2. Run document inventory, schema, module/writer, Development/Activation/Evidence DAG and generated-status gates.
-3. Obtain exact-head and merge-candidate execution, independent review and default-branch selection.
-4. Restack #83 → #272 → #273 → #280 → #281 → #282 without legacy document reintroduction.
+1. Select `DOC-3D-ADAPTIVE-ALGORITHM-DOC-CLOSED-WORLD` only after dedicated and global exact-source and synthetic-merge receipts pass.
+2. Complete independent semantic review of the NDU, Bellman, causal, biomimicry, self-iteration and conformance specifications.
+3. Select the resulting V8 document tree into `main`, then complete `DOC-2-DEFAULT-BRANCH-SELECTION` through repository administration.
+4. Restack implementation candidates without reintroducing deleted or temporary development documents.
 5. Complete AuthBus semantic review, Browser identity reconciliation and B4 call-site proof.
-6. Begin contract-first Objective, Learning, NDU, Prompt, Bellman and Neuron/Intuition work in parallel while activation remains blocked.
+6. Begin contract-first Objective, Learning, NDU, Prompt, Bellman and Neuron/Intuition source work while activation remains blocked.
 7. Close Memory/KG extraction, fault/dependency/readiness/resource work, then the real-process base vertical slice.
-8. Build the durable learning stores and shadow intelligence components.
+8. Build durable learning stores and shadow intelligence components against the canonical protocols.
 9. Execute the first read-only prompted-retrieval loop and causal evaluation.
-10. Require longitudinal and unlearning evidence before any biomimicry or structural-plasticity claim.
+10. Require future-window, retention, rollback and unlearning evidence before any longitudinal, biomimicry or structural-plasticity claim.
 
 All authority flags remain false in this document set.
 
-## 21. V8 audit closure and executable document integrity
+## 24. V8 audit closure and executable document integrity
 
 V8 closes the remaining V8.1 review gaps rather than merely adding prose:
 
@@ -458,6 +465,7 @@ V8 closes the remaining V8.1 review gaps rather than merely adding prose:
 - pull-request qualification executes separate source-head and synthetic-merge jobs with explicit refs and retained receipts;
 - Prompt assignment, compilation, provider delivery, token position and causal effect remain separate claims;
 - longitudinal claims require at least three independently identified snapshots spanning at least two calendar windows;
-- current-run replacement, online topology activation, self-review, self-selection, self-merge and self-promotion remain forbidden.
+- current-run replacement, online topology activation, self-review, self-selection, self-merge and self-promotion remain forbidden;
+- adaptive algorithms are bound to canonical protocols, data writers, exact golden vectors, paper source locks and the global document verifier.
 
 The documentation gate is necessary but does not waive unrelated repository failures. A failed repository check must be attributed and closed or explicitly excluded by an independent policy authority; documentation source success cannot turn a red product matrix green.

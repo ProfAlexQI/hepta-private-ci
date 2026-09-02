@@ -44,3 +44,7 @@ This directory contains exactly one stable implementation guide for every module
 - [`ui.native`](ui.native/TECHNICAL.md) — `target_partially_materialized`, bootstrap `UI-NATIVE-1-SHELL`.
 - [`control.runtime`](control.runtime/TECHNICAL.md) — `target_partially_materialized`, bootstrap `RCP-1-RUNTIME-CONTROL-PLANE`.
 - [`control.engineering`](control.engineering/TECHNICAL.md) — `target_unmaterialized`, bootstrap `ECP-1-ENGINEERING-CONTROL-PLANE`.
+
+## Adaptive algorithm overlay
+
+The module guides above define ownership, boundaries and delivery envelopes. Implementation-level mathematics, algorithms, data lineage and quantitative acceptance gates for the fourteen adaptive modules are closed separately in [`../learning/README.md`](../learning/README.md) and bound by [`../learning/ALGORITHM_SPECS.json`](../learning/ALGORITHM_SPECS.json). This overlay does not change any module source status or capability claim.
