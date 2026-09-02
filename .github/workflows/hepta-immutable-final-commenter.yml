@@ -1,0 +1,84 @@
+name: Hepta immutable final CI commenter
+
+on:
+  push:
+    branches:
+      - codex/hepta-remediated-observer-final-20260902
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: hepta-immutable-final-commenter-20260902
+  cancel-in-progress: true
+
+jobs:
+  comment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      HEAD_BRANCH: codex/hepta-v8-repository-closure-immutable-20260902
+      REPORT_BRANCH: codex/hepta-immutable-final-report-20260902
+    steps:
+      - name: Publish exact immutable observation to its PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr_json="$(gh api "/repos/${REPOSITORY}/pulls?state=open&head=TrillionniumFoundation:${HEAD_BRANCH}")"
+          test "$(jq 'length' <<<"$pr_json")" = "1"
+          pr_number="$(jq -r '.[0].number' <<<"$pr_json")"
+          expected_head="$(jq -r '.[0].head.sha' <<<"$pr_json")"
+
+          deadline=$((SECONDS + 6900))
+          worktree="$(mktemp -d)"
+          while (( SECONDS < deadline )); do
+            rm -rf "$worktree/report"
+            if git clone --depth=1 --branch "$REPORT_BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git" "$worktree/report" 2>/dev/null; then
+              if [[ -f "$worktree/report/summary.json" ]] && [[ "$(jq -r '.headSha' "$worktree/report/summary.json")" = "$expected_head" ]]; then
+                break
+              fi
+            fi
+            sleep 20
+          done
+
+          test -f "$worktree/report/summary.json"
+          test "$(jq -r '.headSha' "$worktree/report/summary.json")" = "$expected_head"
+          active="$(jq -r '.counts.active' "$worktree/report/summary.json")"
+          failed="$(jq -r '.counts.failed' "$worktree/report/summary.json")"
+          successful="$(jq -r '.counts.successful' "$worktree/report/summary.json")"
+          total="$(jq -r '.counts.total' "$worktree/report/summary.json")"
+          tree="$(jq -r '.headTree' "$worktree/report/summary.json")"
+
+          {
+            echo "<!-- hepta-immutable-final-observation -->"
+            echo "## Immutable final-candidate observation"
+            echo
+            echo "- head SHA: \`${expected_head}\`"
+            echo "- head tree: \`${tree}\`"
+            echo "- workflows: ${total}"
+            echo "- successful: ${successful}"
+            echo "- active: ${active}"
+            echo "- failed: ${failed}"
+            echo
+            if [[ "$active" = "0" && "$failed" = "0" ]]; then
+              echo "All observed repository-owned pull-request workflows are green for this immutable source identity. External hardware, future-time, independent-safety, operator-acceptance and governed-release evidence gates remain fail-closed."
+            else
+              echo "Repository-owned closure remains fail-closed. Non-green workflows:"
+              jq -r '.workflows[] | select(.status != "completed" or (.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral")) | "- `\(.name)`: status=`\(.status)`, conclusion=`\(.conclusion)`, run=`\(.id)`"' "$worktree/report/summary.json"
+            fi
+          } > "$worktree/comment.md"
+
+          existing="$(gh api "/repos/${REPOSITORY}/issues/${pr_number}/comments?per_page=100" --jq '.[] | select(.body | contains("<!-- hepta-immutable-final-observation -->")) | .id' | head -n1)"
+          if [[ -n "$existing" ]]; then
+            gh api --method PATCH "/repos/${REPOSITORY}/issues/comments/${existing}" --raw-field body="$(cat "$worktree/comment.md")" >/dev/null
+          else
+            gh api --method POST "/repos/${REPOSITORY}/issues/${pr_number}/comments" --raw-field body="$(cat "$worktree/comment.md")" >/dev/null
+          fi
+
+          test "$active" = "0"
+          test "$failed" = "0"
