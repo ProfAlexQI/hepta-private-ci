@@ -77,12 +77,8 @@ fn cue(keys: &[&str]) -> MemoryCue {
 }
 
 fn fabric() -> HardenedFabric {
-    let mut fabric = HardenedFabric::new(
-        7,
-        FabricConfig::default(),
-        HardeningConfig::default(),
-    )
-    .unwrap();
+    let mut fabric =
+        HardenedFabric::new(7, FabricConfig::default(), HardeningConfig::default()).unwrap();
     fabric
         .insert_event(event(
             1,
@@ -247,9 +243,11 @@ fn replay_rejects_duplicate_event_ids() {
 
 #[test]
 fn storage_and_query_candidate_bounds_are_distinct() {
-    let mut hardening = HardeningConfig::default();
-    hardening.maximum_stored_events = 2;
-    hardening.maximum_candidate_events = 1;
+    let hardening = HardeningConfig {
+        maximum_stored_events: 2,
+        maximum_candidate_events: 1,
+        ..HardeningConfig::default()
+    };
     let mut fabric = HardenedFabric::new(1, FabricConfig::default(), hardening).unwrap();
     fabric
         .insert_event(event(
@@ -309,20 +307,20 @@ fn activation_paths_reference_only_final_active_nodes() {
         .iter()
         .map(|node| node.node_id)
         .collect::<BTreeSet<_>>();
-    assert!(packet.packet.activation_paths.iter().all(|path| {
-        active.contains(&path.source) && active.contains(&path.target)
-    }));
+    assert!(
+        packet
+            .packet
+            .activation_paths
+            .iter()
+            .all(|path| { active.contains(&path.source) && active.contains(&path.target) })
+    );
 }
 
 #[test]
 fn insertion_order_is_deterministic() {
     let first = fabric();
-    let mut second = HardenedFabric::new(
-        7,
-        FabricConfig::default(),
-        HardeningConfig::default(),
-    )
-    .unwrap();
+    let mut second =
+        HardenedFabric::new(7, FabricConfig::default(), HardeningConfig::default()).unwrap();
     second
         .insert_event(event(
             2,
@@ -368,8 +366,10 @@ fn insertion_order_is_deterministic() {
 
 #[test]
 fn authority_posture_is_compile_time_false() {
-    assert!(!CURRENT_RUN_MUTATION_ALLOWED);
-    assert!(!ONLINE_TOPOLOGY_ACTIVATION_ALLOWED);
-    assert!(!PRODUCTION_AUTHORITY);
-    assert!(!EXTERNAL_EFFECTS_ALLOWED);
+    const {
+        assert!(!CURRENT_RUN_MUTATION_ALLOWED);
+        assert!(!ONLINE_TOPOLOGY_ACTIVATION_ALLOWED);
+        assert!(!PRODUCTION_AUTHORITY);
+        assert!(!EXTERNAL_EFFECTS_ALLOWED);
+    };
 }

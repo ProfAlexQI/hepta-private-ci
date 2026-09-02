@@ -28,16 +28,18 @@ impl HardenedFabric {
                 let score = (semantic as i64)
                     .checked_mul(1_000_000)?
                     .checked_add((modality as i64).checked_mul(250_000)?)?
-                    .checked_add(if semantic > 0 && modality == 0 { 500_000 } else { 0 })?
+                    .checked_add(if semantic > 0 && modality == 0 {
+                        500_000
+                    } else {
+                        0
+                    })?
                     .checked_add(if seeded { 2_000_000 } else { 0 })?
                     .checked_add(i64::from(event.utility_ppm).max(0))?
                     .checked_sub(i64::from(event.risk_ppm))?;
                 Some((event.id, score.max(0) as u64))
             })
             .collect::<Vec<_>>();
-        initial.sort_by(|left, right| {
-            right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0))
-        });
+        initial.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
         initial.truncate(self.hardening.maximum_candidate_events);
         let initial_events = initial
             .iter()
@@ -108,8 +110,16 @@ impl HardenedFabric {
                 .ok_or(HardeningError::Missing("candidate node"))?;
             let semantic = node.cue_keys.intersection(&cue.semantic_keys).count() as i64;
             let modality = node.modalities.intersection(&cue.modalities).count() as i64;
-            let seeded = if cue.seed_nodes.contains(node_id) { 1_i64 } else { 0_i64 };
-            let cross_modal = if semantic > 0 && modality == 0 { 1_i64 } else { 0_i64 };
+            let seeded = if cue.seed_nodes.contains(node_id) {
+                1_i64
+            } else {
+                0_i64
+            };
+            let cross_modal = if semantic > 0 && modality == 0 {
+                1_i64
+            } else {
+                0_i64
+            };
             let drive = semantic
                 .checked_mul(300_000)
                 .and_then(|value| value.checked_add(modality * 100_000))
@@ -194,9 +204,10 @@ impl HardenedFabric {
             .collect::<BTreeSet<_>>();
 
         let mut path_map = BTreeMap::new();
-        for path in last_paths.into_iter().filter(|path| {
-            active_ids.contains(&path.source) && active_ids.contains(&path.target)
-        }) {
+        for path in last_paths
+            .into_iter()
+            .filter(|path| active_ids.contains(&path.source) && active_ids.contains(&path.target))
+        {
             let key = (path.source, path.target, path.relation);
             path_map
                 .entry(key)
@@ -261,9 +272,8 @@ impl HardenedFabric {
             }
         }
         let mut selected_events = event_strength.into_iter().collect::<Vec<_>>();
-        selected_events.sort_by(|left, right| {
-            right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0))
-        });
+        selected_events
+            .sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
         selected_events.truncate(self.runtime.maximum_recall_events);
         let selected_events = selected_events
             .into_iter()
@@ -399,9 +409,7 @@ impl HardenedFabric {
                     (node.population == population && *value > 0).then_some((*node_id, *value))
                 })
                 .collect::<Vec<_>>();
-            group.sort_by(|left, right| {
-                right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0))
-            });
+            group.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
             group.truncate(self.runtime.maximum_active_per_population);
             for (rank, (node_id, value)) in group.into_iter().enumerate() {
                 let inhibition = i64::from(self.runtime.lateral_inhibition_ppm)
@@ -411,9 +419,7 @@ impl HardenedFabric {
             }
         }
         let mut ranked = selected.into_iter().collect::<Vec<_>>();
-        ranked.sort_by(|left, right| {
-            right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0))
-        });
+        ranked.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
         ranked.truncate(self.runtime.maximum_active_nodes);
         let active = ranked.into_iter().collect::<BTreeMap<_, _>>();
         Ok(raw
