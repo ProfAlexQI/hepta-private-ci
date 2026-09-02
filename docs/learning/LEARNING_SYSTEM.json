@@ -149,5 +149,56 @@
     "operatorAcceptance": false,
     "promotion": false,
     "release": false
-  }
+  },
+  "canonicalProtocolIds": [
+    "NduCoefficientManifestV1",
+    "NduWellPosednessCertificateV1",
+    "NduUpdateReceiptV1",
+    "OperatorApplicabilityCertificateV1",
+    "OperatorSensorCoreManifestV1",
+    "RegularityProfileV1",
+    "CandidateSetCompletenessReceiptV1",
+    "OutcomeWatermarkV1",
+    "SupportAuditReceiptV1",
+    "NeuronCheckpointV1",
+    "PlasticityProposalV1",
+    "TopologyProposalV1",
+    "IterationEnvelopeV1",
+    "IterationCandidateV1",
+    "CandidateEvaluationReceiptV1",
+    "IndependentDecisionReceiptV1",
+    "GoldenFixtureManifestV1",
+    "ConformanceReceiptV1",
+    "RandomStreamManifestV1",
+    "AlgorithmFaultReceiptV1"
+  ],
+  "ledgerStateMachine": {
+    "states": [
+      "opened",
+      "candidate_set_recorded",
+      "decision_recorded",
+      "effect_witness_recorded",
+      "outcome_pending",
+      "outcome_finalized",
+      "credited",
+      "dataset_eligible",
+      "corrected",
+      "forgotten",
+      "revoked",
+      "quarantined"
+    ],
+    "eventTimeAndProcessingTimeDistinct": true,
+    "duplicateSemanticDigestIdempotent": true,
+    "lateOutcomeUsesWatermark": true,
+    "correctionSupersedesWithoutRewrite": true,
+    "deletedSourceCannotRemainDatasetEligible": true
+  },
+  "deterministicBaselines": {
+    "ndu": "zero_diffusion_fixed_point_forward_backward_reference",
+    "operator": "monotone_sensor_grid_bellman_reference",
+    "causalEvaluation": "streaming_fixed_point_ips_snips_dr",
+    "neuron": "fixed_point_temporal_top_k_reference",
+    "selfIteration": "bounded_grammar_plus_no_change"
+  },
+  "statisticalQualificationProfile": "adaptive_longitudinal_v1"
 }

@@ -464,3 +464,52 @@ For `platform.types`, this document grants no runtime, production, model, provid
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+<!-- BEGIN GENERATED EXACT REGISTRY PROJECTION -->
+### Exact closed-world registry projection
+
+This generated projection binds `platform.types` to the current canonical contract, protocol, data, delivery and threat registries. The registries remain authoritative; this block is a digest-checked documentation projection.
+
+**Produced contracts:**
+- `ModulePort::platform.types::cognitive.types`
+- `ModulePort::platform.types::context.compiler`
+- `ModulePort::platform.types::intuition.policy`
+- `ModulePort::platform.types::kernel.authority`
+- `ModulePort::platform.types::kernel.evidence`
+- `ModulePort::platform.types::kernel.operations`
+- `ModulePort::platform.types::learning.artifacts`
+- `ModulePort::platform.types::learning.ledger`
+- `ModulePort::platform.types::learning.operator`
+- `ModulePort::platform.types::neuron.runtime`
+- `ModulePort::platform.types::objective.compiler`
+- `ModulePort::platform.types::platform.wire`
+- `ModulePort::platform.types::prompt.optimizer`
+- `ModulePort::platform.types::prompt.registry`
+- `ModulePort::platform.types::utility.ndu`
+- `RandomStreamManifestV1`
+
+**Consumed contracts:**
+- None.
+
+**Typed protocols:**
+- `RandomStreamManifestV1`
+
+**Owned data domains:**
+- `random_stream_manifest_v1`
+
+**Read data domains:**
+- None.
+
+**Work packages:**
+- `BIO-0-NEURON-INTUITION-CONTRACTS`
+- `HBO-0-BELLMAN-OPERATOR-CONTRACTS`
+- `LRN-0-CAUSAL-LEARNING-CONTRACTS`
+- `NDU-0-PREFERENCE-UTILITY-CONTRACTS`
+- `OBJ-0-OBJECTIVE-CONTRACTS`
+- `P0.7E-DEPENDENCY-INVERSION`
+- `PIM-0-PROMPT-INTERVENTION-CONTRACTS`
+- `PLATFORM-0-TYPE-BOUNDARY`
+
+**Owned threats:**
+- None.
+
+<!-- END GENERATED EXACT REGISTRY PROJECTION -->
