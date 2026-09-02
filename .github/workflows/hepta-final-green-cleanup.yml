@@ -1,0 +1,72 @@
+name: Hepta final green cleanup
+
+on:
+  push:
+    branches:
+      - codex/hepta-remediated-observer-final-20260902
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: hepta-final-green-cleanup-20260902
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    env:
+      FINAL_HEAD_BRANCH: codex/hepta-v8-repository-closure-remediated-20260902
+      REPORT_BRANCH: codex/hepta-remediated-final-report-20260902
+    steps:
+      - name: Close only superseded review candidates after exact green evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          final_pr_json="$(gh api "/repos/${REPOSITORY}/pulls?state=open&head=TrillionniumFoundation:${FINAL_HEAD_BRANCH}")"
+          test "$(jq 'length' <<<"$final_pr_json")" = "1"
+          final_pr="$(jq -r '.[0].number' <<<"$final_pr_json")"
+          expected_head="$(jq -r '.[0].head.sha' <<<"$final_pr_json")"
+
+          deadline=$((SECONDS + 6300))
+          report_dir="$(mktemp -d)/report"
+          while (( SECONDS < deadline )); do
+            rm -rf "$report_dir"
+            if git clone --depth=1 --branch "$REPORT_BRANCH" "https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git" "$report_dir" 2>/dev/null; then
+              if [[ -f "$report_dir/summary.json" ]] && [[ "$(jq -r '.headSha' "$report_dir/summary.json")" = "$expected_head" ]]; then
+                break
+              fi
+            fi
+            sleep 20
+          done
+
+          test -f "$report_dir/summary.json"
+          test "$(jq -r '.headSha' "$report_dir/summary.json")" = "$expected_head"
+          test "$(jq -r '.counts.active' "$report_dir/summary.json")" = "0"
+          test "$(jq -r '.counts.failed' "$report_dir/summary.json")" = "0"
+
+          superseded='[
+            "codex/hepta-v8-final-gap-closure-20260902",
+            "codex/hepta-v8-final-gap-closure-output-20260902",
+            "codex/hepta-v8-repository-closure-final-20260902"
+          ]'
+          gh api --paginate "/repos/${REPOSITORY}/pulls?state=open&per_page=100" \
+            --jq ".[] | select(.number != ${final_pr}) | select(.head.ref as \$ref | ${superseded} | index(\$ref)) | .number" \
+            | while read -r number; do
+                [[ -n "$number" ]] || continue
+                gh api --method PATCH "/repos/${REPOSITORY}/pulls/${number}" -f state=closed >/dev/null
+              done
+
+          gh api --paginate "/repos/${REPOSITORY}/issues?state=open&per_page=100" \
+            --jq '.[] | select(.pull_request == null and .title == "DO NOT CREATE - CI sentinel") | .number' \
+            | while read -r number; do
+                [[ -n "$number" ]] || continue
+                gh api --method PATCH "/repos/${REPOSITORY}/issues/${number}" -f state=closed >/dev/null
+              done
