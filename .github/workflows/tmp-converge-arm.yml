@@ -36,7 +36,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cp candidate-r2.patch.b64 "$RUNNER_TEMP/candidate-r2.patch.b64"
           git fetch origin refs/heads/codex/tmp-materialized-v8-final-output-20260902-r1:refs/remotes/origin/materialized-r1
           git cat-file -e "$SOURCE_SHA^{commit}"
           git checkout --detach "$SOURCE_SHA"
@@ -55,13 +54,133 @@ jobs:
         with:
           version: 0.11.3
 
-      - name: Apply bounded ordinary-source patch
+      - name: Apply exact ordinary-source repairs
         shell: bash
         run: |
           set -euo pipefail
-          base64 --decode "$RUNNER_TEMP/candidate-r2.patch.b64" > "$RUNNER_TEMP/candidate-r2.patch"
-          git apply --check "$RUNNER_TEMP/candidate-r2.patch"
-          git apply "$RUNNER_TEMP/candidate-r2.patch"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def read(path: str) -> tuple[Path, str]:
+              file = Path(path)
+              return file, file.read_text(encoding="utf-8")
+
+          def replace(text: str, old: str, new: str, expected: int) -> str:
+              actual = text.count(old)
+              if actual != expected:
+                  raise SystemExit(f"expected {expected} occurrences, found {actual}: {old!r}")
+              return text.replace(old, new)
+
+          repository_expression = "$" + "{{ github.event.repository.name }}"
+
+          file, text = read(".github/workflows/bazel.yml")
+          text = replace(text, "    timeout-minutes: 30\n", "    timeout-minutes: 60\n", 4)
+          text = replace(
+              text,
+              "          - os: macos-15-xlarge\n            target: aarch64-apple-darwin\n",
+              "          - os: macos-15\n            target: aarch64-apple-darwin\n",
+              3,
+          )
+          text = replace(
+              text,
+              "          - os: macos-15-xlarge\n            target: x86_64-apple-darwin\n",
+              "          - os: macos-15-intel\n            target: x86_64-apple-darwin\n",
+              1,
+          )
+          block = (
+              "    runs-on:\n"
+              f"      group: {repository_expression}-runners\n"
+              f"      labels: {repository_expression}-windows-x64\n"
+          )
+          text = replace(text, block, "    runs-on: windows-latest\n", 2)
+          nested = (
+              "            runs_on:\n"
+              f"              group: {repository_expression}-runners\n"
+              f"              labels: {repository_expression}-windows-x64\n"
+          )
+          text = replace(text, nested, "", 2)
+          file.write_text(text, encoding="utf-8")
+
+          file, text = read(".github/workflows/rust-ci.yml")
+          text = replace(
+              text,
+              "          - name: macOS\n            runner: macos-15-xlarge\n            timeout_minutes: 30\n",
+              "          - name: macOS\n            runner: macos-15\n            timeout_minutes: 60\n",
+              1,
+          )
+          old = (
+              "          - name: Windows\n"
+              "            runner: windows-x64\n"
+              "            timeout_minutes: 30\n"
+              "            runs_on:\n"
+              f"              group: {repository_expression}-runners\n"
+              f"              labels: {repository_expression}-windows-x64\n"
+          )
+          text = replace(
+              text,
+              old,
+              "          - name: Windows\n            runner: windows-latest\n            timeout_minutes: 60\n",
+              1,
+          )
+          file.write_text(text, encoding="utf-8")
+
+          file, text = read(".github/workflows/sdk.yml")
+          old = (
+              "    runs-on:\n"
+              f"      group: {repository_expression}-runners\n"
+              f"      labels: {repository_expression}-linux-x64\n"
+              "    timeout-minutes: 10\n"
+          )
+          if text.count(old) != 2:
+              raise SystemExit(f"SDK runner block count changed: {text.count(old)}")
+          text = text.replace(old, "    runs-on: ubuntu-24.04\n    timeout-minutes: 20\n", 1)
+          text = text.replace(old, "    runs-on: ubuntu-24.04\n    timeout-minutes: 60\n", 1)
+          file.write_text(text, encoding="utf-8")
+
+          file, text = read(".github/workflows/v8-canary.yml")
+          text = replace(
+              text,
+              "          - runner: macos-15-xlarge\n            bazel_config: ci-macos\n            platform: macos_amd64\n",
+              "          - runner: macos-15-intel\n            bazel_config: ci-macos\n            platform: macos_amd64\n",
+              2,
+          )
+          text = replace(
+              text,
+              "          - runner: macos-15-xlarge\n            bazel_config: ci-macos\n            platform: macos_arm64\n",
+              "          - runner: macos-15\n            bazel_config: ci-macos\n            platform: macos_arm64\n",
+              2,
+          )
+          file.write_text(text, encoding="utf-8")
+
+          file, text = read("qualification/hnmf-adversarial-reference/src/tests.rs")
+          text = replace(
+              text,
+              "    let mut hardening = HardeningConfig::default();\n"
+              "    hardening.maximum_stored_events = 2;\n"
+              "    hardening.maximum_candidate_events = 1;\n",
+              "    let hardening = HardeningConfig {\n"
+              "        maximum_stored_events: 2,\n"
+              "        maximum_candidate_events: 1,\n"
+              "        ..HardeningConfig::default()\n"
+              "    };\n",
+              1,
+          )
+          text = replace(
+              text,
+              "    assert!(!CURRENT_RUN_MUTATION_ALLOWED);\n"
+              "    assert!(!ONLINE_TOPOLOGY_ACTIVATION_ALLOWED);\n"
+              "    assert!(!PRODUCTION_AUTHORITY);\n"
+              "    assert!(!EXTERNAL_EFFECTS_ALLOWED);\n",
+              "    const {\n"
+              "        assert!(!CURRENT_RUN_MUTATION_ALLOWED);\n"
+              "        assert!(!ONLINE_TOPOLOGY_ACTIVATION_ALLOWED);\n"
+              "        assert!(!PRODUCTION_AUTHORITY);\n"
+              "        assert!(!EXTERNAL_EFFECTS_ALLOWED);\n"
+              "    };\n",
+              1,
+          )
+          file.write_text(text, encoding="utf-8")
+          PY
 
       - name: Replay verified Bazel lock artifact
         env:
