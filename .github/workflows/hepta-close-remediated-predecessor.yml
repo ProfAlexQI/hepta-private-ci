@@ -1,0 +1,30 @@
+name: Hepta close remediated predecessor
+
+on:
+  push:
+    branches:
+      - codex/hepta-remediated-observer-final-20260902
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  close:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Close exact remediated predecessor without merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PREDECESSOR: codex/hepta-v8-repository-closure-remediated-20260902
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "/repos/${REPOSITORY}/pulls?state=open&head=TrillionniumFoundation:${PREDECESSOR}" \
+            --jq '.[].number' \
+            | while read -r number; do
+                [[ -n "$number" ]] || continue
+                gh api --method PATCH "/repos/${REPOSITORY}/pulls/${number}" -f state=closed >/dev/null
+              done
