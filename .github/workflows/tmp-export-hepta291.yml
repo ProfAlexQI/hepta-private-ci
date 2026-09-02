@@ -10,13 +10,18 @@ permissions:
 jobs:
   export:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out export carrier
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Install repository-pinned uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: 0.11.3
 
       - name: Archive exact source commit
         shell: bash
@@ -28,13 +33,28 @@ jobs:
           sha256sum hepta291-source.tar.gz > hepta291-source.sha256
           printf 'commit=%s\ntree=%s\n' "$SOURCE_SHA" "$(git rev-parse "$SOURCE_SHA^{tree}")" > hepta291-source.identity
 
-      - name: Retain exact source archive
+      - name: Produce exact Ruff-formatted script tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="5b3ed971cdb9515f42dcc617396675471570792c"
+          git checkout --detach "$SOURCE_SHA"
+          uv run --frozen --project scripts ruff format scripts
+          tar -czf hepta291-formatted-scripts.tar.gz scripts
+          git diff --check
+          git diff --stat -- scripts > hepta291-formatted-scripts.stat
+          git diff --name-only -- scripts > hepta291-formatted-scripts.files
+
+      - name: Retain exact source and formatter artifacts
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
-          name: hepta291-source-5b3ed971
+          name: hepta291-source-and-format-5b3ed971
           path: |
             hepta291-source.tar.gz
             hepta291-source.sha256
             hepta291-source.identity
+            hepta291-formatted-scripts.tar.gz
+            hepta291-formatted-scripts.stat
+            hepta291-formatted-scripts.files
           if-no-files-found: error
           retention-days: 1
