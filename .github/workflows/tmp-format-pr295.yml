@@ -1,0 +1,77 @@
+name: Temporary exact Prettier materialization for PR 295
+
+on:
+  push:
+    branches:
+      - admin/format-pr295-bee6217-20260902
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-format-pr295-bee6217
+  cancel-in-progress: true
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - name: Check out temporary carrier
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Check out exact candidate and format bounded paths
+        env:
+          SOURCE_SHA: bee6217a0083f7368e477c6768bca285dabb1545
+          OUTPUT_BRANCH: admin/formatted-pr295-bee6217-output-20260902
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$SOURCE_SHA^{commit}"
+          git checkout --detach "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          pnpm install --frozen-lockfile
+          pnpm exec prettier --write \
+            docs/STATUS.md \
+            .github/workflows/hepta-algorithm-docs.yml \
+            .github/workflows/hepta-cns-embodiment.yml \
+            .github/workflows/hepta-repository-integrity.yml
+          pnpm exec prettier --check \
+            docs/STATUS.md \
+            .github/workflows/hepta-algorithm-docs.yml \
+            .github/workflows/hepta-cns-embodiment.yml \
+            .github/workflows/hepta-repository-integrity.yml
+          cat > "$RUNNER_TEMP/expected" <<'EOF'
+          .github/workflows/hepta-algorithm-docs.yml
+          .github/workflows/hepta-cns-embodiment.yml
+          .github/workflows/hepta-repository-integrity.yml
+          docs/STATUS.md
+          EOF
+          git diff --name-only | sort > "$RUNNER_TEMP/actual"
+          sort -o "$RUNNER_TEMP/expected" "$RUNNER_TEMP/expected"
+          diff -u "$RUNNER_TEMP/expected" "$RUNNER_TEMP/actual"
+          git diff --check
+          git config user.name "Hepta bounded formatter"
+          git config user.email "hepta-bounded-formatter@users.noreply.github.com"
+          git add -- \
+            docs/STATUS.md \
+            .github/workflows/hepta-algorithm-docs.yml \
+            .github/workflows/hepta-cns-embodiment.yml \
+            .github/workflows/hepta-repository-integrity.yml
+          git commit -m "style: apply repository Prettier to PR 295 closure files"
+          git push origin "HEAD:refs/heads/$OUTPUT_BRANCH" --force
