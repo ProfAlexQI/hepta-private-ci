@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   format:
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     timeout-minutes: 20
     steps:
       - name: Check out exact immutable candidate
@@ -68,7 +68,7 @@ jobs:
           cp .github/workflows/hepta-repository-integrity.yml "$RUNNER_TEMP/pr295-r4-prettier/.github/workflows/"
           cp docs/STATUS.md "$RUNNER_TEMP/pr295-r4-prettier/docs/"
           git diff --binary > "$RUNNER_TEMP/pr295-r4-prettier/prettier.patch"
-          sha256sum \
+          shasum -a 256 \
             "$RUNNER_TEMP/pr295-r4-prettier/.github/workflows/hepta-algorithm-docs.yml" \
             "$RUNNER_TEMP/pr295-r4-prettier/.github/workflows/hepta-cns-embodiment.yml" \
             "$RUNNER_TEMP/pr295-r4-prettier/.github/workflows/hepta-repository-integrity.yml" \
