@@ -48,6 +48,5 @@ runs:
       run: |
         ./.github/scripts/run-argument-comment-lint-bazel.sh \
           --config=argument-comment-lint \
-          --platforms=//:local_windows \
           --keep_going \
           --build_metadata=COMMIT_SHA=${GITHUB_SHA}

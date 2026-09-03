@@ -304,3 +304,56 @@ For `learning.plasticity`, this document grants no runtime, production, model, p
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+<!-- BEGIN GENERATED EXACT REGISTRY PROJECTION -->
+### Exact closed-world registry projection
+
+This generated projection binds `learning.plasticity` to the current canonical contract, protocol, data, delivery and threat registries. The registries remain authoritative; this block is a digest-checked documentation projection.
+
+**Produced contracts:**
+- `DomainRead::plasticity_proposal_registryV1`
+- `IterationCandidateV1`
+- `PlasticityProposalV1`
+- `TopologyProposalV1`
+
+**Consumed contracts:**
+- `DomainRead::learning_artifact_registryV1`
+- `DomainRead::operator_sensor_core_registryV1`
+- `DomainRead::qualification_evidenceV1`
+- `IterationEnvelopeV1`
+- `ModulePort::kernel.evidence::learning.plasticity`
+- `ModulePort::learning.artifacts::learning.plasticity`
+- `ModulePort::learning.eval::learning.plasticity`
+- `NeuronCheckpointV1`
+- `RandomStreamManifestV1`
+
+**Typed protocols:**
+- `IterationCandidateV1`
+- `IterationEnvelopeV1`
+- `NeuronCheckpointV1`
+- `PlasticityProposalV1`
+- `RandomStreamManifestV1`
+- `TopologyProposalV1`
+
+**Owned data domains:**
+- `iteration_candidate_v1`
+- `plasticity_proposal_registry`
+- `plasticity_proposal_v1`
+- `topology_proposal_v1`
+
+**Read data domains:**
+- `iteration_envelope_v1`
+- `learning_artifact_registry`
+- `neuron_checkpoint_v1`
+- `operator_sensor_core_registry`
+- `qualification_evidence`
+- `random_stream_manifest_v1`
+
+**Work packages:**
+- `PLS-1-PARAMETER-PLASTICITY`
+- `PLS-2-TOPOLOGY-PROPOSAL`
+- `PLS-3-BOUNDED-STRUCTURAL-CANARY`
+
+**Owned threats:**
+- `topology_self_activation`
+
+<!-- END GENERATED EXACT REGISTRY PROJECTION -->

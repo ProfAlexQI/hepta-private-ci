@@ -3,12 +3,29 @@
 set -euo pipefail
 
 bazel_lint_args=("$@")
+bazel_wrapper_args=()
 if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
+  # Older callers passed the generic local Windows platform explicitly. That
+  # platform selects gnullvm for host-loaded proc macros and overrides the
+  # coherent split supplied below. Drop only that obsolete exact spelling;
+  # every other explicit caller platform remains authoritative.
+  sanitized_bazel_lint_args=()
+  for arg in "${bazel_lint_args[@]}"; do
+    if [[ "$arg" == "--platforms=//:local_windows" ]]; then
+      continue
+    fi
+    sanitized_bazel_lint_args+=("$arg")
+  done
+  bazel_lint_args=("${sanitized_bazel_lint_args[@]}")
+
   # Some Rust top-level targets are still intentionally incompatible with the
   # local Windows exec platform. Skip those explicit targets so the native
   # lint aspect can run across the compatible crate graph instead of failing the
   # whole build after analysis.
   bazel_lint_args+=("--skip_incompatible_explicit_targets")
+  # Use the same keyless Windows split as test, Clippy, and release lanes:
+  # MSVC for host-loaded proc macros and gnullvm for target code.
+  bazel_wrapper_args+=("--windows-cross-compile")
 fi
 
 read_query_labels() {
@@ -50,6 +67,7 @@ if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
 fi
 
 ./.github/scripts/run-bazel-ci.sh \
+  "${bazel_wrapper_args[@]}" \
   -- \
   build \
   "${bazel_lint_args[@]}" \

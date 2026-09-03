@@ -349,3 +349,66 @@ For `neuron.runtime`, this document grants no runtime, production, model, provid
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+<!-- BEGIN GENERATED EXACT REGISTRY PROJECTION -->
+### Exact closed-world registry projection
+
+This generated projection binds `neuron.runtime` to the current canonical contract, protocol, data, delivery and threat registries. The registries remain authoritative; this block is a digest-checked documentation projection.
+
+**Produced contracts:**
+- `DomainRead::eligibility_trace_checkpointV1`
+- `DomainRead::neuron_state_checkpointV1`
+- `LocalModelRuntimeReceiptV1`
+- `ModulePort::neuron.runtime::intelligence.control`
+- `ModulePort::neuron.runtime::intuition.policy`
+- `NeuronCheckpointV1`
+- `NeuronSignalReceiptV1`
+
+**Consumed contracts:**
+- `DomainRead::inference_receiptV1`
+- `DomainRead::inference_requestV1`
+- `DomainRead::inference_reservationV1`
+- `DomainRead::learning_artifact_registryV1`
+- `DomainRead::operator_sensor_core_registryV1`
+- `GoldenFixtureManifestV1`
+- `ModulePort::cognitive.read::neuron.runtime`
+- `ModulePort::inference.control::neuron.runtime`
+- `ModulePort::learning.artifacts::neuron.runtime`
+- `ModulePort::platform.types::neuron.runtime`
+- `RandomStreamManifestV1`
+- `RunStartSnapshotV1`
+
+**Typed protocols:**
+- `GoldenFixtureManifestV1`
+- `LocalModelRuntimeReceiptV1`
+- `NeuronCheckpointV1`
+- `NeuronSignalReceiptV1`
+- `RandomStreamManifestV1`
+- `RunStartSnapshotV1`
+
+**Owned data domains:**
+- `eligibility_trace_checkpoint`
+- `neuron_checkpoint_v1`
+- `neuron_state_checkpoint`
+
+**Read data domains:**
+- `golden_fixture_manifest_v1`
+- `inference_receipt`
+- `inference_request`
+- `inference_reservation`
+- `learning_artifact_registry`
+- `operator_sensor_core_registry`
+- `random_stream_manifest_v1`
+
+**Work packages:**
+- `BIO-0-NEURON-INTUITION-CONTRACTS`
+- `BIO-1-ELIGIBILITY-HOMEOSTASIS`
+- `NEU-1-LOCAL-MODEL-BAKEOFF`
+- `NEU-2-TEMPORAL-SIGNAL-RUNTIME`
+
+**Owned threats:**
+- `local_model_identity_drift`
+- `model_tokenizer_mismatch`
+- `neuron_state_collapse`
+- `neuron_state_explosion`
+
+<!-- END GENERATED EXACT REGISTRY PROJECTION -->

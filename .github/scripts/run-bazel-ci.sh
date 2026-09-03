@@ -88,20 +88,26 @@ print_bazel_test_log_tails() {
   local testlogs_dir
 
   local -a bazel_info_args=(info)
-  if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
-    # `bazel info` needs the same CI config as the failed test invocation so
-    # platform-specific output roots match. On Windows, omitting `ci-windows`
-    # would point at `local_windows-fastbuild` even when the test ran with the
-    # MSVC host platform under `local_windows_msvc-fastbuild`.
-    bazel_info_args+=("--config=${ci_config}")
-  fi
+  # The shared Python wrapper resolves authenticated and keyless configs.
+  # Use it identically for the build and for locating that build's test logs.
+  bazel_info_args+=("--config=${ci_config}")
 
   # Only pass flags that affect Bazel's output-root selection or repository
   # lookup. Test/build-only flags such as execution logs or remote download
   # mode can make `bazel info` fail, which would hide the real test log path.
-  for arg in "${post_config_bazel_args[@]}"; do
+  local copy_next=0
+  for arg in "${bazel_args[@]}" "${post_config_bazel_args[@]}"; do
+    if [[ $copy_next -eq 1 ]]; then
+      bazel_info_args+=("$arg")
+      copy_next=0
+      continue
+    fi
     case "$arg" in
-      --host_platform=* | --repo_contents_cache=* | --repository_cache=*)
+      --host_platform | --platforms | --repo_contents_cache | --repository_cache)
+        bazel_info_args+=("$arg")
+        copy_next=1
+        ;;
+      --host_platform=* | --platforms=* | --repo_contents_cache=* | --repository_cache=*)
         bazel_info_args+=("$arg")
         ;;
     esac
@@ -168,7 +174,8 @@ print_bazel_action_failure_summary() {
           line ~ /^[[:space:]]+= (note|help):/ ||
           line ~ /^[[:space:]]*\^[[:space:]^~-]*$/ ||
           line ~ /^For more information/ ||
-          line ~ /^error: aborting/
+          line ~ /^error: aborting/ ||
+          line ~ /^[[:space:]]+(rust-lld:|lld-link:|ld\.lld:|>>>|clang:|collect2:)/
       }
 
       {
@@ -253,13 +260,6 @@ done
 if [[ ${#bazel_args[@]} -eq 0 || ${#bazel_targets[@]} -eq 0 ]]; then
   echo "Expected Bazel args and targets separated by --" >&2
   exit 1
-fi
-
-if [[ "${RUNNER_OS:-}" == "Windows" && $windows_cross_compile -eq 1 && -z "${BUILDBUDDY_API_KEY:-}" ]]; then
-  # Windows cross-compilation depends on authenticated RBE. Preserve the local
-  # Windows build shape when credentials are unavailable.
-  ci_config=ci-windows
-  windows_msvc_host_platform=1
 fi
 
 post_config_bazel_args=()
@@ -385,10 +385,12 @@ bazel_run_args=(
 )
 if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
   echo "BuildBuddy API key is available; using remote Bazel configuration."
-  bazel_run_args+=("--config=${ci_config}")
 else
   echo "BuildBuddy API key is not available; using local Bazel configuration."
 fi
+# Preserve cross intent until the shared wrapper can choose a coherent local
+# GNU LLVM fallback. Do not replace it with an MSVC host in this shell layer.
+bazel_run_args+=("--config=${ci_config}")
 if (( ${#post_config_bazel_args[@]} > 0 )); then
   bazel_run_args+=("${post_config_bazel_args[@]}")
 fi

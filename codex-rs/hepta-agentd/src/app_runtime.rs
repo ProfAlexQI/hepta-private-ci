@@ -158,14 +158,14 @@ mod tests {
     #[test]
     fn manifest_queue_capacity_reaches_app_server_runtime_options_exactly() {
         let agent_id = AgentId::parse(AGENT_ID).expect("valid agent id");
-        let fleet_root =
-            HeptaFleetRoot::parse("/tmp/hepta-agentd-capacity-test").expect("valid fleet root");
+        let fleet_root_path = std::env::temp_dir().join("hepta-agentd-capacity-test");
+        let fleet_root = HeptaFleetRoot::parse(fleet_root_path).expect("valid fleet root");
         let layout = fleet_root.layout().agent(&agent_id);
         let mut resources = ResourceBudget::local_default();
         resources.turn_queue_capacity = 37;
         let identity = AgentdIdentity {
             agent_id,
-            workspace: "/tmp/hepta-agentd-capacity-workspace".into(),
+            workspace: std::env::temp_dir().join("hepta-agentd-capacity-workspace"),
             home_root: layout.home_root().to_path_buf(),
             run_root: layout.run_root().to_path_buf(),
             control_socket: layout.agentd_control_socket().to_path_buf(),
