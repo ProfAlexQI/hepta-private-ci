@@ -321,3 +321,80 @@ For `utility.ndu`, this document grants no runtime, production, model, provider,
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+<!-- BEGIN GENERATED EXACT REGISTRY PROJECTION -->
+### Exact closed-world registry projection
+
+This generated projection binds `utility.ndu` to the current canonical contract, protocol, data, delivery and threat registries. The registries remain authoritative; this block is a digest-checked documentation projection.
+
+**Produced contracts:**
+- `DomainRead::ndu_preference_projectionV1`
+- `DomainRead::ndu_utility_projectionV1`
+- `ModulePort::utility.ndu::control.runtime`
+- `ModulePort::utility.ndu::intelligence.control`
+- `ModulePort::utility.ndu::intuition.policy`
+- `ModulePort::utility.ndu::prompt.optimizer`
+- `NduBoundaryConditionV1`
+- `NduCoefficientManifestV1`
+- `NduPreferenceStateV1`
+- `NduSummaryReceiptV1`
+- `NduUpdateReceiptV1`
+
+**Consumed contracts:**
+- `DomainRead::learning_artifact_registryV1`
+- `DomainRead::learning_credit_ledgerV1`
+- `DomainRead::learning_episode_ledgerV1`
+- `DomainRead::learning_unlearning_lineageV1`
+- `DomainRead::operator_sensor_core_registryV1`
+- `GoldenFixtureManifestV1`
+- `ModulePort::cognitive.read::utility.ndu`
+- `ModulePort::learning.artifacts::utility.ndu`
+- `ModulePort::learning.ledger::utility.ndu`
+- `ModulePort::platform.types::utility.ndu`
+- `NduBoundaryConditionV1`
+- `NduWellPosednessCertificateV1`
+- `ObjectiveFunctionV1`
+- `OutcomeWatermarkV1`
+- `RandomStreamManifestV1`
+- `RunStartSnapshotV1`
+
+**Typed protocols:**
+- `GoldenFixtureManifestV1`
+- `NduBoundaryConditionV1`
+- `NduCoefficientManifestV1`
+- `NduPreferenceStateV1`
+- `NduSummaryReceiptV1`
+- `NduUpdateReceiptV1`
+- `NduWellPosednessCertificateV1`
+- `ObjectiveFunctionV1`
+- `OutcomeWatermarkV1`
+- `RandomStreamManifestV1`
+- `RunStartSnapshotV1`
+
+**Owned data domains:**
+- `ndu_coefficient_manifest_v1`
+- `ndu_preference_projection`
+- `ndu_update_receipt_v1`
+- `ndu_utility_projection`
+
+**Read data domains:**
+- `golden_fixture_manifest_v1`
+- `learning_artifact_registry`
+- `learning_credit_ledger`
+- `learning_episode_ledger`
+- `learning_unlearning_lineage`
+- `ndu_well_posedness_certificate_v1`
+- `operator_sensor_core_registry`
+- `outcome_watermark_v1`
+- `random_stream_manifest_v1`
+
+**Work packages:**
+- `NDU-0-PREFERENCE-UTILITY-CONTRACTS`
+- `NDU-1-DETERMINISTIC-UTILITY-BASELINE`
+- `NDU-2-AGENT-DOMAIN-HIERARCHY`
+
+**Owned threats:**
+- `parent_child_NDU_oscillation`
+- `preference_state_goal_drift`
+- `recursive_utility_instability`
+
+<!-- END GENERATED EXACT REGISTRY PROJECTION -->

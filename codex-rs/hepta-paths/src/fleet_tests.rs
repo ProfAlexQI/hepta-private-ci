@@ -1,6 +1,5 @@
 use std::collections::BTreeSet;
 use std::path::Path;
-use std::path::PathBuf;
 
 use anyhow::Result;
 use codex_hepta_contracts::AgentId;
@@ -10,14 +9,23 @@ use super::HeptaAgentLayout;
 use super::HeptaFleetLayout;
 use super::HeptaFleetRoot;
 
+#[cfg(unix)]
+const HOME: &str = "/Users/operator";
+#[cfg(windows)]
+const HOME: &str = r"C:\Users\operator";
+#[cfg(unix)]
+const FLEET_ROOT: &str = "/srv/hepta/fleet";
+#[cfg(windows)]
+const FLEET_ROOT: &str = r"C:\srv\hepta\fleet";
+
 const FIRST_AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 const SECOND_AGENT_ID: &str = "019153a4-3088-7e03-a56a-9b1964f75dd3";
 
 #[test]
 fn production_layout_is_stable_and_fleet_scoped() -> Result<()> {
-    let fleet_root = HeptaFleetRoot::production_default(Path::new("/Users/operator"))?;
+    let fleet_root = HeptaFleetRoot::production_default(Path::new(HOME))?;
     let layout = fleet_root.layout();
-    let expected_root = PathBuf::from("/Users/operator/.local/share/hepta-vnext/fleet-v1");
+    let expected_root = Path::new(HOME).join(".local/share/hepta-vnext/fleet-v1");
 
     assert_eq!(
         layout,
@@ -38,10 +46,10 @@ fn production_layout_is_stable_and_fleet_scoped() -> Result<()> {
 
 #[test]
 fn agent_layout_uses_safe_id_component_and_disjoint_owned_roots() -> Result<()> {
-    let fleet = HeptaFleetRoot::parse("/srv/hepta/fleet")?.layout();
+    let fleet = HeptaFleetRoot::parse(FLEET_ROOT)?.layout();
     let agent_id = AgentId::parse(FIRST_AGENT_ID).map_err(|error| anyhow::anyhow!("{error}"))?;
     let layout = fleet.agent(&agent_id);
-    let agent_root = PathBuf::from(format!("/srv/hepta/fleet/agents/{FIRST_AGENT_ID}"));
+    let agent_root = Path::new(FLEET_ROOT).join("agents").join(FIRST_AGENT_ID);
     let socket_key = "aghu64s7r56mdd2v36p3hkrmci";
 
     assert_eq!(
@@ -52,9 +60,9 @@ fn agent_layout_uses_safe_id_component_and_disjoint_owned_roots() -> Result<()> 
             agent_config: agent_root.join("agent.toml"),
             home_root: agent_root.join("home"),
             run_root: agent_root.join("run"),
-            agentd_control_socket: PathBuf::from(format!("/srv/hepta/fleet/run/a{socket_key}.ctl")),
-            matrixd_control_socket: PathBuf::from(format!("/srv/hepta/fleet/run/a{socket_key}.mx")),
-            app_server_socket: PathBuf::from(format!("/srv/hepta/fleet/run/a{socket_key}.app")),
+            agentd_control_socket: Path::new(FLEET_ROOT).join(format!("run/a{socket_key}.ctl")),
+            matrixd_control_socket: Path::new(FLEET_ROOT).join(format!("run/a{socket_key}.mx")),
+            app_server_socket: Path::new(FLEET_ROOT).join(format!("run/a{socket_key}.app")),
             writer_lock: agent_root.join("run/writer.lock"),
             generation_cursor: agent_root.join("run/generation.json"),
             matrixd_process_lease: agent_root.join("run/supervisor-matrix-process.json"),
@@ -89,7 +97,7 @@ fn agent_layout_uses_safe_id_component_and_disjoint_owned_roots() -> Result<()> 
 
 #[test]
 fn distinct_agent_ids_cannot_alias_one_agent_root() -> Result<()> {
-    let fleet = HeptaFleetRoot::parse("/srv/hepta/fleet")?.layout();
+    let fleet = HeptaFleetRoot::parse(FLEET_ROOT)?.layout();
     let first =
         fleet.agent(&AgentId::parse(FIRST_AGENT_ID).map_err(|error| anyhow::anyhow!("{error}"))?);
     let second =
@@ -109,9 +117,10 @@ fn distinct_agent_ids_cannot_alias_one_agent_root() -> Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
 #[test]
 fn production_socket_paths_fit_the_darwin_sun_path_limit() -> Result<()> {
-    let fleet = HeptaFleetRoot::production_default(Path::new("/Users/operator"))?.layout();
+    let fleet = HeptaFleetRoot::production_default(Path::new(HOME))?.layout();
     let agent =
         fleet.agent(&AgentId::parse(FIRST_AGENT_ID).map_err(|error| anyhow::anyhow!("{error}"))?);
 
