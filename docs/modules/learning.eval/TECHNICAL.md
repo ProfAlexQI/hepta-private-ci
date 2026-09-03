@@ -366,3 +366,128 @@ For `learning.eval`, this document grants no runtime, production, model, provide
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+<!-- BEGIN GENERATED EXACT REGISTRY PROJECTION -->
+### Exact closed-world registry projection
+
+This generated projection binds `learning.eval` to the current canonical contract, protocol, data, delivery and threat registries. The registries remain authoritative; this block is a digest-checked documentation projection.
+
+**Produced contracts:**
+- `AlgorithmFaultReceiptV1`
+- `CandidateEvaluationReceiptV1`
+- `ConformanceReceiptV1`
+- `EvaluationReceiptV1`
+- `LongitudinalEvaluationReceiptV1`
+- `ModulePort::learning.eval::intelligence.control`
+- `ModulePort::learning.eval::learning.plasticity`
+- `NduWellPosednessCertificateV1`
+- `OperatorApplicabilityCertificateV1`
+- `RegularityProfileV1`
+- `SupportAuditReceiptV1`
+- `UnlearningComplianceReceiptV1`
+
+**Consumed contracts:**
+- `BellmanOperatorArtifactV1`
+- `CandidateSetCompletenessReceiptV1`
+- `CreditAssignmentReceiptV1`
+- `DatasetSnapshotV1`
+- `DomainRead::learning_artifact_registryV1`
+- `DomainRead::learning_credit_ledgerV1`
+- `DomainRead::learning_episode_ledgerV1`
+- `DomainRead::learning_unlearning_lineageV1`
+- `DomainRead::operator_sensor_core_registryV1`
+- `DomainRead::qualification_evidenceV1`
+- `GoldenFixtureManifestV1`
+- `IterationCandidateV1`
+- `IterationEnvelopeV1`
+- `LearningArtifactManifestV1`
+- `LearningDecisionV1`
+- `LearningEpisodeV1`
+- `LocalModelRuntimeReceiptV1`
+- `ModulePort::kernel.evidence::learning.eval`
+- `ModulePort::learning.artifacts::learning.eval`
+- `ModulePort::learning.ledger::learning.eval`
+- `NduCoefficientManifestV1`
+- `NduUpdateReceiptV1`
+- `NeuronCheckpointV1`
+- `OperatorSensorCoreManifestV1`
+- `OutcomeReceiptV1`
+- `OutcomeWatermarkV1`
+- `PlasticityProposalV1`
+- `PromptCandidateSetReceiptV1`
+- `PromptDeliveryObservationV1`
+- `RandomStreamManifestV1`
+- `TopologyProposalV1`
+
+**Typed protocols:**
+- `AlgorithmFaultReceiptV1`
+- `CandidateEvaluationReceiptV1`
+- `CandidateSetCompletenessReceiptV1`
+- `ConformanceReceiptV1`
+- `CreditAssignmentReceiptV1`
+- `DatasetSnapshotV1`
+- `EvaluationReceiptV1`
+- `GoldenFixtureManifestV1`
+- `IterationCandidateV1`
+- `IterationEnvelopeV1`
+- `LearningArtifactManifestV1`
+- `LearningDecisionV1`
+- `LearningEpisodeV1`
+- `LocalModelRuntimeReceiptV1`
+- `LongitudinalEvaluationReceiptV1`
+- `NduCoefficientManifestV1`
+- `NduUpdateReceiptV1`
+- `NduWellPosednessCertificateV1`
+- `NeuronCheckpointV1`
+- `OperatorApplicabilityCertificateV1`
+- `OperatorSensorCoreManifestV1`
+- `OutcomeReceiptV1`
+- `OutcomeWatermarkV1`
+- `PlasticityProposalV1`
+- `PromptCandidateSetReceiptV1`
+- `PromptDeliveryObservationV1`
+- `RandomStreamManifestV1`
+- `RegularityProfileV1`
+- `SupportAuditReceiptV1`
+- `TopologyProposalV1`
+- `UnlearningComplianceReceiptV1`
+
+**Owned data domains:**
+- `algorithm_fault_receipt_v1`
+- `candidate_evaluation_receipt_v1`
+- `conformance_receipt_v1`
+- `ndu_well_posedness_certificate_v1`
+- `operator_applicability_certificate_v1`
+- `regularity_profile_v1`
+- `support_audit_receipt_v1`
+
+**Read data domains:**
+- `candidate_set_completeness_receipt_v1`
+- `golden_fixture_manifest_v1`
+- `iteration_candidate_v1`
+- `iteration_envelope_v1`
+- `learning_artifact_registry`
+- `learning_credit_ledger`
+- `learning_episode_ledger`
+- `learning_unlearning_lineage`
+- `ndu_coefficient_manifest_v1`
+- `ndu_update_receipt_v1`
+- `neuron_checkpoint_v1`
+- `operator_sensor_core_manifest_v1`
+- `operator_sensor_core_registry`
+- `outcome_watermark_v1`
+- `plasticity_proposal_v1`
+- `qualification_evidence`
+- `random_stream_manifest_v1`
+- `topology_proposal_v1`
+
+**Work packages:**
+- `LONG-1-TEMPORAL-HOLDOUT`
+- `LONG-2-RETENTION-FORGETTING`
+- `LONG-3-UNLEARNING-NON-RESURRECTION`
+- `LRN-2-CAUSAL-EVALUATION`
+
+**Owned threats:**
+- `catastrophic_forgetting`
+- `deleted_data_resurrection`
+
+<!-- END GENERATED EXACT REGISTRY PROJECTION -->

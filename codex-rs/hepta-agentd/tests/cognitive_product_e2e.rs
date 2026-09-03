@@ -355,13 +355,10 @@ async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_send
     fleet.supervisor.kill(&agent.agent_id)?;
     wait_inactive(&mut fleet, &agent.agent_id).await?;
     let trajectory_store = CognitiveStore::open(&agent.layout).await?;
-    let remember_trajectory = read_h7_trajectory_for_turn(
-        &trajectory_store,
-        &agent,
-        &remember_turn_id,
-    )
-        .await?
-        .context("qualification turn did not leave an H7 trajectory")?;
+    let remember_trajectory =
+        read_h7_trajectory_for_turn(&trajectory_store, &agent, &remember_turn_id)
+            .await?
+            .context("qualification turn did not leave an H7 trajectory")?;
     ensure!(
         remember_trajectory.events.len() == 2,
         "qualification turn trajectory was not start+terminal: {:?}",

@@ -298,3 +298,92 @@ For `learning.ledger`, this document grants no runtime, production, model, provi
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+<!-- BEGIN GENERATED EXACT REGISTRY PROJECTION -->
+### Exact closed-world registry projection
+
+This generated projection binds `learning.ledger` to the current canonical contract, protocol, data, delivery and threat registries. The registries remain authoritative; this block is a digest-checked documentation projection.
+
+**Produced contracts:**
+- `CandidateSetCompletenessReceiptV1`
+- `CreditAssignmentReceiptV1`
+- `DatasetSnapshotV1`
+- `DomainRead::learning_credit_ledgerV1`
+- `DomainRead::learning_episode_ledgerV1`
+- `DomainRead::learning_unlearning_lineageV1`
+- `LearningDecisionV1`
+- `LearningEpisodeV1`
+- `ModulePort::learning.ledger::learning.eval`
+- `ModulePort::learning.ledger::learning.operator`
+- `ModulePort::learning.ledger::utility.ndu`
+- `OutcomeReceiptV1`
+- `OutcomeWatermarkV1`
+
+**Consumed contracts:**
+- `ContextCompilationReceiptV1`
+- `DomainRead::cross_owner_outboxV1`
+- `DomainRead::operation_ledgerV1`
+- `IntuitionDecisionReceiptV1`
+- `LegalActionCandidateSetV1`
+- `ModulePort::cognitive.types::learning.ledger`
+- `ModulePort::kernel.operations::learning.ledger`
+- `ModulePort::platform.types::learning.ledger`
+- `NduPreferenceStateV1`
+- `NduSummaryReceiptV1`
+- `NduUpdateReceiptV1`
+- `NeuronSignalReceiptV1`
+- `ObjectiveFunctionV1`
+- `PromptCandidateSetReceiptV1`
+- `PromptDeliveryObservationV1`
+- `PromptExerciseDecisionV1`
+- `PromptPortfolioReceiptV1`
+- `PromptPricingReceiptV1`
+- `RunStartSnapshotV1`
+
+**Typed protocols:**
+- `CandidateSetCompletenessReceiptV1`
+- `ContextCompilationReceiptV1`
+- `CreditAssignmentReceiptV1`
+- `DatasetSnapshotV1`
+- `IntuitionDecisionReceiptV1`
+- `LearningDecisionV1`
+- `LearningEpisodeV1`
+- `LegalActionCandidateSetV1`
+- `NduPreferenceStateV1`
+- `NduSummaryReceiptV1`
+- `NduUpdateReceiptV1`
+- `NeuronSignalReceiptV1`
+- `ObjectiveFunctionV1`
+- `OutcomeReceiptV1`
+- `OutcomeWatermarkV1`
+- `PromptCandidateSetReceiptV1`
+- `PromptDeliveryObservationV1`
+- `PromptExerciseDecisionV1`
+- `PromptPortfolioReceiptV1`
+- `PromptPricingReceiptV1`
+- `RunStartSnapshotV1`
+
+**Owned data domains:**
+- `candidate_set_completeness_receipt_v1`
+- `learning_credit_ledger`
+- `learning_episode_ledger`
+- `learning_unlearning_lineage`
+- `outcome_watermark_v1`
+
+**Read data domains:**
+- `cross_owner_outbox`
+- `ndu_update_receipt_v1`
+- `operation_ledger`
+
+**Work packages:**
+- `LRN-0-CAUSAL-LEARNING-CONTRACTS`
+- `LRN-1-DURABLE-EPISODE-LEDGER`
+
+**Owned threats:**
+- `candidate_set_omission`
+- `credit_double_count`
+- `delayed_reward_misattribution`
+- `policy_self_labels_outcome`
+- `prompt_delivery_misattribution`
+- `propensity_falsification`
+
+<!-- END GENERATED EXACT REGISTRY PROJECTION -->
