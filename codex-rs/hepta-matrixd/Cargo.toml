@@ -5,10 +5,6 @@ name = "codex-hepta-matrixd"
 version.workspace = true
 publish = false
 
-[features]
-default = []
-real-synapse-e2e = ["codex-hepta-matrix-sdk/qualification-failpoints"]
-
 [lib]
 name = "codex_hepta_matrixd"
 path = "src/lib.rs"

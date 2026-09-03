@@ -30,7 +30,7 @@ pub const RUNTIME_INTEGRITY_KEY_NAME: &str = "runtime-integrity.key";
 pub const PREFERENCE_INTEGRITY_KEY_NAME: &str = "preference-integrity.key";
 pub const PREFERENCE_INGRESS_KEY_NAME: &str = "preference-ingress-auth.key";
 
-/// A normalized, absolute, non-root path selected as one Hepta state domain.
+/// A normalized, host-native absolute, non-root path for one Hepta state domain.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HeptaStateRoot(PathBuf);
 
@@ -130,6 +130,8 @@ impl HeptaStateLayout {
 }
 
 fn validate_absolute_non_root(path: &Path) -> Result<()> {
+    // A foreign absolute spelling may still be relative on this host. Runtime
+    // callers use this PathBuf directly, so portable syntax is not sufficient.
     if !path.is_absolute()
         || !path
             .components()
@@ -218,3 +220,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "native_root_tests.rs"]
+mod native_root_tests;

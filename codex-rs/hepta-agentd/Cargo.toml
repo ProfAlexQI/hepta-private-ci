@@ -10,12 +10,6 @@ name = "codex_hepta_agentd"
 path = "src/lib.rs"
 doctest = false
 
-[features]
-default = []
-# Qualification-only host profile. This is intentionally opt-in at build time;
-# the default and production binaries keep the cognitive/KG writer disabled.
-qualification-cognitive-write = []
-
 [[bin]]
 name = "codex-hepta-agentd"
 path = "src/main.rs"
@@ -44,7 +38,6 @@ codex-uds = { workspace = true }
 codex-utils-absolute-path = { workspace = true }
 codex-utils-cli = { workspace = true }
 codex-utils-home-dir = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = [
@@ -59,11 +52,11 @@ tokio = { workspace = true, features = [
 tokio-util = { workspace = true }
 
 [dev-dependencies]
+serde = { workspace = true, features = ["derive"] }
 app_test_support = { workspace = true }
 codex-hepta-supervisor = { workspace = true }
 codex-state = { workspace = true }
 core_test_support = { workspace = true }
-pretty_assertions = { workspace = true }
 sqlx = { workspace = true }
 tempfile = { workspace = true }
 wiremock = { workspace = true }
