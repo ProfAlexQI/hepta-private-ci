@@ -21,21 +21,32 @@ use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::ErrorKind;
 use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use codex_hepta_agentd::AgentdProductionWriterHost;
-use codex_hepta_contracts::{AgentId, Sha256Digest};
-use codex_hepta_memory::{
-    CognitiveStore, LocalOutcomeState, PRODUCTION_DURABLE_WRITER_JOURNAL_MODE,
-    PRODUCTION_DURABLE_WRITER_SYNCHRONOUS_FULL, ProductionAuthorityLease, ProductionAuthorityToken,
-    ProductionAuthorityVerifier, ProductionLeaseReceipt, ProductionOutcomeReceipt,
-    ProductionQueuedReceipt, ProductionRecoveryReceipt,
-};
+use codex_hepta_contracts::AgentId;
+use codex_hepta_contracts::Sha256Digest;
+use codex_hepta_memory::CognitiveStore;
+use codex_hepta_memory::LocalOutcomeState;
+use codex_hepta_memory::PRODUCTION_DURABLE_WRITER_JOURNAL_MODE;
+use codex_hepta_memory::PRODUCTION_DURABLE_WRITER_SYNCHRONOUS_FULL;
+use codex_hepta_memory::ProductionAuthorityLease;
+use codex_hepta_memory::ProductionAuthorityToken;
+use codex_hepta_memory::ProductionAuthorityVerifier;
+use codex_hepta_memory::ProductionLeaseReceipt;
+use codex_hepta_memory::ProductionOutcomeReceipt;
+use codex_hepta_memory::ProductionQueuedReceipt;
+use codex_hepta_memory::ProductionRecoveryReceipt;
 use codex_hepta_paths::HeptaFleetRoot;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use sqlx::SqlitePool;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::sqlite::SqliteConnectOptions;
+use sqlx::sqlite::SqlitePoolOptions;
 
 const HARNESS_SCHEMA_VERSION: u32 = 1;
 const HARNESS_NAMESPACE: &str = "h4_agentd_production_writer_persistent";
@@ -634,15 +645,17 @@ async fn main() -> HarnessResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codex_hepta_memory::{
-        ProductionDispatchFuture, ProductionDispatchRequest, ProductionOutboxTarget,
-        ProductionTargetOutcome,
-    };
+    use codex_hepta_memory::ProductionDispatchFuture;
+    use codex_hepta_memory::ProductionDispatchRequest;
+    use codex_hepta_memory::ProductionOutboxTarget;
+    use codex_hepta_memory::ProductionTargetOutcome;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
     use tempfile::TempDir;
     use tokio::sync::Notify;
-    use tokio::time::{Duration, timeout};
+    use tokio::time::Duration;
+    use tokio::time::timeout;
 
     /// Target fixture that is entered only after `claim_dispatch` has
     /// committed.  Aborting the task while this future is pending models a

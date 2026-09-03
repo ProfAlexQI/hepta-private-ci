@@ -115,16 +115,66 @@ def remote_config(args: Sequence[str], env: Mapping[str, str]) -> str | None:
     return config
 
 
-def bazel_args_without_remote_execution(args: Sequence[str]) -> list[str]:
-    # Remote CI configs require BuildBuddy credentials. Removing them preserves
-    # the local fallback used for fork pull requests.
+def bazel_args_without_remote_execution(
+    args: Sequence[str], env: Mapping[str, str]
+) -> list[str]:
+    """Remove credentialed RBE configs and keep local Windows on GNU LLVM.
+
+    The pinned hermetic LLVM toolchain builds Windows C/C++ inputs with MinGW.
+    Selecting an MSVC Rust target does not change that C ABI. A keyless cross
+    request must therefore use gnullvm for both target and local helper crates.
+    Explicit platform choices and arguments after ``--`` belong to the caller.
+    """
     try:
         separator_idx = args.index("--")
     except ValueError:
         separator_idx = len(args)
+
+    prefix = list(args[:separator_idx])
+    requested_windows_cross = "--config=ci-windows-cross" in prefix
+    prefix = [arg for arg in prefix if arg not in REMOTE_EXECUTION_CONFIGS]
+    suffix = list(args[separator_idx:])
+    if env.get("RUNNER_OS") != "Windows":
+        return [*prefix, *suffix]
+
+    command_idx = next(
+        (idx for idx, arg in enumerate(prefix) if not arg.startswith("-")),
+        None,
+    )
+    # Queries and administrative commands do not configure build actions.
+    # Do not inject CI build options or runtime skip filters into those calls.
+    if command_idx is None or prefix[command_idx] not in {
+        "build",
+        "test",
+        "run",
+        "coverage",
+        "cquery",
+        "aquery",
+        "info",
+    }:
+        return [*prefix, *suffix]
+
+    injected_args: list[str] = []
+    if "--config=ci-windows" not in prefix and (
+        requested_windows_cross
+        or not any(arg.startswith("--config=") for arg in prefix)
+    ):
+        injected_args.append("--config=ci-windows")
+    if requested_windows_cross:
+        for option, platform in (
+            ("--host_platform", "//:local_windows"),
+            ("--platforms", "//:windows_x86_64_gnullvm"),
+        ):
+            if not any(arg == option or arg.startswith(f"{option}=") for arg in prefix):
+                injected_args.append(f"{option}={platform}")
+
+    # Put defaults before caller options so a CI config cannot override an
+    # explicit per-job cache path (or other later command-line setting).
     return [
-        *(arg for arg in args[:separator_idx] if arg not in REMOTE_EXECUTION_CONFIGS),
-        *args[separator_idx:],
+        *prefix[: command_idx + 1],
+        *injected_args,
+        *prefix[command_idx + 1 :],
+        *suffix,
     ]
 
 
@@ -140,7 +190,7 @@ def bazel_args_with_remote_config(
 
     config = remote_config(args, env)
     if config is None:
-        configured_args = bazel_args_without_remote_execution(args)
+        configured_args = bazel_args_without_remote_execution(args, env)
     else:
         # `remote_config()` returns a configuration only when this key is present.
         api_key = env["BUILDBUDDY_API_KEY"]

@@ -36,23 +36,6 @@ pub use authbus::AuthBusRefSet;
 pub use authbus::AuthBusSourceAttachment;
 pub use authbus::AuthBusSourceManifest;
 pub use authbus::AuthBusUpstreamPin;
-pub use authbus::b2::AdmissionDecision;
-pub use authbus::b2::AdmissionDecisionKind;
-pub use authbus::b2::AUTHBUS_B2_AUTHORITY_DEFAULT;
-pub use authbus::b2::AUTHBUS_B2_CONTRACT_SCHEMA_VERSION;
-pub use authbus::b2::CapabilityAttenuation;
-pub use authbus::b2::ClockSnapshot;
-pub use authbus::b2::ClockSource;
-pub use authbus::b2::OperationRef;
-pub use authbus::b2::PeerSession;
-pub use authbus::b2::PeerTrustMode;
-pub use authbus::b2::ProviderStatus;
-pub use authbus::b2::ProviderStatusKind;
-pub use authbus::b2::ProviderStatusState;
-pub use authbus::b2::QuotaReservation;
-pub use authbus::b2::QuotaReservationState;
-pub use authbus::b2::ResourceAdvertisement;
-pub use authbus::b2::ResourceAdvertisementState;
 pub use authbus::AuthRequest;
 pub use authbus::AuthResource;
 pub use authbus::BASIL_LATEST_RELEASE;
@@ -83,8 +66,23 @@ pub use authbus::b1::BasilRouteClass;
 pub use authbus::b1::BasilServiceProfile;
 pub use authbus::b1::IdentityBinding;
 pub use authbus::b1::IdentityPeerEvidence;
-pub use authbus::b3::derive_refresh_operation_id;
-pub use authbus::b3::derive_refresh_operation_key;
+pub use authbus::b2::AUTHBUS_B2_AUTHORITY_DEFAULT;
+pub use authbus::b2::AUTHBUS_B2_CONTRACT_SCHEMA_VERSION;
+pub use authbus::b2::AdmissionDecision;
+pub use authbus::b2::AdmissionDecisionKind;
+pub use authbus::b2::CapabilityAttenuation;
+pub use authbus::b2::ClockSnapshot;
+pub use authbus::b2::ClockSource;
+pub use authbus::b2::OperationRef;
+pub use authbus::b2::PeerSession;
+pub use authbus::b2::PeerTrustMode;
+pub use authbus::b2::ProviderStatus;
+pub use authbus::b2::ProviderStatusKind;
+pub use authbus::b2::ProviderStatusState;
+pub use authbus::b2::QuotaReservation;
+pub use authbus::b2::QuotaReservationState;
+pub use authbus::b2::ResourceAdvertisement;
+pub use authbus::b2::ResourceAdvertisementState;
 pub use authbus::b3::AUTHBUS_B3_CONTRACT_SCHEMA_VERSION;
 pub use authbus::b3::AUTHBUS_B3_QUALIFICATION_ONLY;
 pub use authbus::b3::AUTHBUS_B3_RAW_SECRET_BYTES_ALLOWED;
@@ -98,31 +96,93 @@ pub use authbus::b3::RefreshWithSecretRefResponse;
 pub use authbus::b3::RotateSecretRefRequest;
 pub use authbus::b3::RotateSecretRefResponse;
 pub use authbus::b3::SecretProviderStatus;
+pub use authbus::b3::SecretRefBinding;
 pub use authbus::b3::SecretRefCallbackFence;
 pub use authbus::b3::SecretRefErrorClass;
 pub use authbus::b3::SecretRefEvent;
 pub use authbus::b3::SecretRefOperationRecord;
 pub use authbus::b3::SecretRefOutcome;
 pub use authbus::b3::SecretRefState;
-pub use authbus::b3::SecretRefBinding;
+pub use authbus::b3::derive_refresh_operation_id;
+pub use authbus::b3::derive_refresh_operation_key;
 pub use authbus::embedded_source_manifest;
 pub use authbus::embedded_source_manifest_for_candidate;
 #[cfg(feature = "authbus-local-qualification")]
-pub use authbus_b4::{
-    AUTHBUS_B4_AUTHORITY, AUTHBUS_B4_EFFECT_AUTHORITY, AUTHBUS_B4_EXECUTE_ALLOWED,
-    AUTHBUS_B4_G5_ALLOWED, AUTHBUS_B4_OPERATOR_ACCEPTANCE, AUTHBUS_B4_PRODUCTION_CALLER,
-    AUTHBUS_B4_PRODUCTION_WRITER, AUTHBUS_B4_PROMOTION, AUTHBUS_B4_QUALIFICATION_ONLY,
-    LocalScheduler, QuotaLimits, QuotaVector, ResourceState, SchedulerError, SchedulerPermit,
-    SchedulerRequest, SchedulerResource, jain_fairness_ppm,
-};
+pub use authbus_b4::AUTHBUS_B4_AUTHORITY;
 #[cfg(feature = "authbus-local-qualification")]
-pub use authbus_b5::{
-    AUTHBUS_B5_AUTHORITY, AUTHBUS_B5_EFFECT_AUTHORITY, AUTHBUS_B5_EXECUTE_ALLOWED,
-    AUTHBUS_B5_G5_ALLOWED, AUTHBUS_B5_OPERATOR_ACCEPTANCE, AUTHBUS_B5_PRODUCTION_CALLER,
-    AUTHBUS_B5_PRODUCTION_WRITER, AUTHBUS_B5_PROMOTION, AUTHBUS_B5_QUALIFICATION_ONLY,
-    B5AppendDisposition, B5DispatchResponse, B5DispatchTicket, B5EffectState, B5Error, B5Fence,
-    B5Intent, B5LookupOutcome, B5OutboxDelivery, B5RecoveryAction, LocalB5Wal,
-};
+pub use authbus_b4::AUTHBUS_B4_EFFECT_AUTHORITY;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::AUTHBUS_B4_EXECUTE_ALLOWED;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::AUTHBUS_B4_G5_ALLOWED;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::AUTHBUS_B4_OPERATOR_ACCEPTANCE;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::AUTHBUS_B4_PRODUCTION_CALLER;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::AUTHBUS_B4_PRODUCTION_WRITER;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::AUTHBUS_B4_PROMOTION;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::AUTHBUS_B4_QUALIFICATION_ONLY;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::LocalScheduler;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::QuotaLimits;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::QuotaVector;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::ResourceState;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::SchedulerError;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::SchedulerPermit;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::SchedulerRequest;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::SchedulerResource;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::jain_fairness_ppm;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::AUTHBUS_B5_AUTHORITY;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::AUTHBUS_B5_EFFECT_AUTHORITY;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::AUTHBUS_B5_EXECUTE_ALLOWED;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::AUTHBUS_B5_G5_ALLOWED;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::AUTHBUS_B5_OPERATOR_ACCEPTANCE;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::AUTHBUS_B5_PRODUCTION_CALLER;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::AUTHBUS_B5_PRODUCTION_WRITER;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::AUTHBUS_B5_PROMOTION;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::AUTHBUS_B5_QUALIFICATION_ONLY;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::B5AppendDisposition;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::B5DispatchResponse;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::B5DispatchTicket;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::B5EffectState;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::B5Error;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::B5Fence;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::B5Intent;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::B5LookupOutcome;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::B5OutboxDelivery;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::B5RecoveryAction;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::LocalB5Wal;
 pub use identity::ActionId;
 pub use identity::DecisionId;
 pub use identity::ReceiptId;
@@ -178,8 +238,6 @@ pub use provider_effect::ProviderEffectStatusObservation;
 pub use provider_effect::ProviderEffectUncertainty;
 pub use provider_effect::reconcile_provider_lookup;
 pub use qualification_receipt::GovernanceQualificationReceipt;
-pub use qualification_receipt::QualificationGovernanceReceipt;
-pub use qualification_receipt::QualificationReceiptStatus;
 pub use qualification_receipt::QUALIFICATION_RECEIPT_EFFECT_AUTHORITY;
 pub use qualification_receipt::QUALIFICATION_RECEIPT_EXECUTE_ALLOWED;
 pub use qualification_receipt::QUALIFICATION_RECEIPT_G5_ALLOWED;
@@ -190,6 +248,8 @@ pub use qualification_receipt::QUALIFICATION_RECEIPT_PRODUCTION_CALLER;
 pub use qualification_receipt::QUALIFICATION_RECEIPT_PRODUCTION_WRITER;
 pub use qualification_receipt::QUALIFICATION_RECEIPT_PROMOTION;
 pub use qualification_receipt::QUALIFICATION_RECEIPT_SCHEMA_VERSION;
+pub use qualification_receipt::QualificationGovernanceReceipt;
+pub use qualification_receipt::QualificationReceiptStatus;
 pub use qualification_receipt::SupervisorRollbackReceipt;
 pub use receipt::GOVERNANCE_SCHEMA_VERSION;
 pub use receipt::GovernanceDecision;
