@@ -39,9 +39,57 @@ SOURCE_PATHS = tuple(
     sorted({path for roots in SOURCE_ROOTS.values() for path in roots})
 )
 
+SOURCE_REPAIRS = {
+    "codex-rs/hepta-memory-retrieval/src/lib.rs": (
+        (
+            """        results.push(RetrievalResult {
+            record_id: candidate.record.record_id,
+            record_digest: candidate.record.record_digest(),
+""",
+            """        let record_digest = candidate.record.record_digest();
+        results.push(RetrievalResult {
+            record_id: candidate.record.record_id,
+            record_digest,
+""",
+        ),
+    ),
+    "codex-rs/hepta-cognitive-store/src/lib.rs": (
+        (
+            """        self.records.insert(record.record_id.clone(), record.clone());
+        self.sequence = self.sequence.next().map_err(|_| Error::SequenceOverflow)?;
+        Ok(self.receipt(record.record_id, digest, AppendDisposition::Inserted))
+""",
+            """        let record_id = record.record_id.clone();
+        self.records.insert(record_id.clone(), record);
+        self.sequence = self.sequence.next().map_err(|_| Error::SequenceOverflow)?;
+        Ok(self.receipt(record_id, digest, AppendDisposition::Inserted))
+""",
+        ),
+    ),
+}
+
 
 class RemainingSourceError(RuntimeError):
     """Raised when generated source closure is inconsistent."""
+
+
+def _apply_source_repairs(changed: list[Path]) -> None:
+    for relative, replacements in SOURCE_REPAIRS.items():
+        path = ROOT / relative
+        text = path.read_text(encoding="utf-8")
+        original = text
+        for old, new in replacements:
+            if new in text:
+                continue
+            if old not in text:
+                raise RemainingSourceError(
+                    f"generated source repair anchor is missing: {relative}"
+                )
+            text = text.replace(old, new, 1)
+        if text != original:
+            path.write_text(text, encoding="utf-8")
+            if path not in changed:
+                changed.append(path)
 
 
 def normalize_files() -> bool:
@@ -54,6 +102,8 @@ def normalize_files() -> bool:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         changed.append(path)
+
+    _apply_source_repairs(changed)
 
     manifest = json.loads(QUALIFICATION_MANIFEST.read_text(encoding="utf-8"))
     current_roots = manifest.get("source_roots")
