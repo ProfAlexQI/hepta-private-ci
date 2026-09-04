@@ -1,0 +1,124 @@
+name: Temporary OBJ-0 source materialization
+
+on:
+  push:
+    branches:
+      - codex/hepta-obj0-contracts-20260904
+    paths:
+      - '.obj0-transport/payload.b64'
+      - '.github/workflows/tmp-obj0-transport.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-obj0-source-materialization
+  cancel-in-progress: true
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out transport head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Decode and apply exact OBJ-0 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = codex/hepta-obj0-contracts-20260904
+          git merge-base --is-ancestor 91104656060ffc319dc6b946d4b9bada7b04d88b HEAD
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          import bz2
+          import hashlib
+
+          encoded = Path('.obj0-transport/payload.b64').read_text(encoding='ascii').strip()
+          patch = bz2.decompress(base64.b64decode(encoded, validate=True))
+          expected = '043dc78b76e35cf78dc3b650fcbde84d51f95631ac45df07aea467e7456757cb'
+          actual = hashlib.sha256(patch).hexdigest()
+          if actual != expected:
+              raise SystemExit(f'OBJ-0 patch digest mismatch: {actual}')
+          if len(patch) != 49338:
+              raise SystemExit(f'OBJ-0 patch length mismatch: {len(patch)}')
+          Path('/tmp/hepta-obj0.patch').write_bytes(patch)
+          PY
+          git apply --index /tmp/hepta-obj0.patch
+          python3 - <<'PY'
+          import subprocess
+
+          expected = {
+              'codex-rs/Cargo.lock',
+              'codex-rs/Cargo.toml',
+              'codex-rs/hepta-objective/BUILD.bazel',
+              'codex-rs/hepta-objective/Cargo.toml',
+              'codex-rs/hepta-objective/src/canonical.rs',
+              'codex-rs/hepta-objective/src/compiler.rs',
+              'codex-rs/hepta-objective/src/error.rs',
+              'codex-rs/hepta-objective/src/lib.rs',
+              'codex-rs/hepta-objective/src/model.rs',
+              'codex-rs/hepta-objective/src/objective_tests.rs',
+              'docs/STATUS.md',
+              'docs/delivery/WORK_PACKAGES.json',
+              'docs/modules/MODULES.json',
+              'docs/modules/MODULE_DOCS.json',
+              'docs/modules/SOURCE_BINDINGS.json',
+              'docs/modules/objective.compiler/TECHNICAL.md',
+          }
+          actual = set(
+              subprocess.check_output(
+                  ['git', 'diff', '--cached', '--name-only'], text=True
+              ).splitlines()
+          )
+          if actual != expected:
+              raise SystemExit(
+                  f'OBJ-0 path envelope mismatch; missing={sorted(expected-actual)} '
+                  f'extra={sorted(actual-expected)}'
+              )
+          PY
+          git diff --cached --check
+
+      - name: Install exact Rust toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: '1.95.0'
+          components: rustfmt, clippy
+
+      - name: Execute OBJ-0 package qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd codex-rs
+          cargo fmt --all -- --check
+          cargo test -p codex-hepta-objective --locked
+          cargo clippy -p codex-hepta-objective --all-targets --locked -- -D warnings
+
+      - name: Verify repository contract closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/verify_cargo_workspace_manifests.py
+          python3 scripts/hepta-module-docs.py self-test
+          python3 scripts/hepta-module-docs.py verify
+          python3 scripts/hepta-algorithm-docs.py generate-status --check
+          python3 scripts/hepta-hnmf.py verify
+          python3 scripts/hepta-cns.py generate-status --check
+          python3 scripts/hepta-cns.py verify
+          python3 scripts/hepta-docs.py self-test
+          python3 scripts/hepta-docs.py generate-status
+          git diff --exit-code -- docs/STATUS.md
+          git diff --cached --check
+
+      - name: Commit source-only OBJ-0 candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Hepta OBJ-0 Materializer'
+          git config user.email 'hepta-obj0@users.noreply.github.com'
+          git commit -m 'feat(hepta): materialize immutable objective contracts'
+          git push origin "HEAD:$GITHUB_REF_NAME"
