@@ -10,6 +10,7 @@ use crate::EvaluationDisposition;
 use crate::NduError;
 use crate::ScalarizationProfile;
 use crate::UtilityProfile;
+use crate::evaluator::normalize_axis_values;
 use crate::mul_q32_ties_even;
 
 pub(crate) fn pareto_frontier(
@@ -99,12 +100,11 @@ pub(crate) fn score_frontier(
     for candidate in frontier.iter_mut() {
         let mut score = FixedQ32::ZERO;
         for (axis, direction) in &profile.dimensions {
-            let value = axis_value(&candidate.utility, axis).ok_or_else(|| {
-                NduError::MissingAxis {
+            let value =
+                axis_value(&candidate.utility, axis).ok_or_else(|| NduError::MissingAxis {
                     candidate: candidate.candidate_id.to_string(),
                     axis: axis.to_string(),
-                }
-            })?;
+                })?;
             let weight = weights
                 .get(axis)
                 .copied()
@@ -140,4 +140,3 @@ pub(crate) fn score_frontier(
         ))
     }
 }
-

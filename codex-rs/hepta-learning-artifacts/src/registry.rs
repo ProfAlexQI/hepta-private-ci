@@ -50,7 +50,9 @@ impl ArtifactRegistry {
         let event_digest = digest_event(&event);
         if let Some(existing_digest) = self.event_digests.get(&event_id) {
             if *existing_digest != event_digest {
-                return Err(ArtifactRegistryError::IdentityConflict(event_id.to_string()));
+                return Err(ArtifactRegistryError::IdentityConflict(
+                    event_id.to_string(),
+                ));
             }
             let existing = self
                 .records
@@ -155,9 +157,7 @@ impl ArtifactRegistry {
                 .records
                 .last()
                 .ok_or(ArtifactRegistryError::InternalInvariant)?;
-            if actual != &expected
-                || receipt.disposition != RegistryAppendDisposition::Appended
-            {
+            if actual != &expected || receipt.disposition != RegistryAppendDisposition::Appended {
                 return Err(ArtifactRegistryError::SnapshotRecordMismatch(
                     expected.sequence.get(),
                 ));
@@ -185,10 +185,7 @@ impl ArtifactRegistry {
         }
     }
 
-    fn validate_manifest(
-        &self,
-        manifest: &ArtifactManifest,
-    ) -> Result<(), ArtifactRegistryError> {
+    fn validate_manifest(&self, manifest: &ArtifactManifest) -> Result<(), ArtifactRegistryError> {
         validate_manifest_digests(manifest)?;
         if manifest.encoded_size_bytes == 0 {
             return Err(ArtifactRegistryError::ZeroEncodedSize);
@@ -273,10 +270,7 @@ impl ArtifactRegistry {
         true
     }
 
-    fn index_record(
-        &mut self,
-        record: &ArtifactRecord,
-    ) -> Result<(), ArtifactRegistryError> {
+    fn index_record(&mut self, record: &ArtifactRecord) -> Result<(), ArtifactRegistryError> {
         self.event_digests
             .insert(record.event.event_id().clone(), record.event_digest);
         match &record.event {

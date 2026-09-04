@@ -77,7 +77,9 @@ impl fmt::Display for NduError {
                 "candidate {candidate} contribution from organ {organ} has an empty support digest"
             ),
             Self::MixedObjective => formatter.write_str("contributions bind different objectives"),
-            Self::MixedGeneration => formatter.write_str("contributions bind different generations"),
+            Self::MixedGeneration => {
+                formatter.write_str("contributions bind different generations")
+            }
             Self::DuplicateOrganContribution { candidate, organ } => write!(
                 formatter,
                 "candidate {candidate} has duplicate contribution from organ {organ}"
@@ -91,7 +93,9 @@ impl fmt::Display for NduError {
             }
             Self::UnknownAxis(axis) => write!(formatter, "unknown utility axis: {axis}"),
             Self::DuplicateAxis(axis) => write!(formatter, "duplicate utility axis: {axis}"),
-            Self::NegativeCeiling(axis) => write!(formatter, "ceiling must be non-negative: {axis}"),
+            Self::NegativeCeiling(axis) => {
+                write!(formatter, "ceiling must be non-negative: {axis}")
+            }
             Self::MissingAbstainCandidate => {
                 formatter.write_str("every legal candidate set must contain abstain")
             }
@@ -102,7 +106,9 @@ impl fmt::Display for NduError {
                 formatter.write_str("scalarization profile is incomplete")
             }
             Self::InvalidWeight(axis) => write!(formatter, "invalid scalarization weight: {axis}"),
-            Self::InvalidEta => formatter.write_str("eta must be in the closed interval [1/16, 1/4]"),
+            Self::InvalidEta => {
+                formatter.write_str("eta must be in the closed interval [1/16, 1/4]")
+            }
             Self::DimensionMismatch => formatter.write_str("preference dimensions do not match"),
             Self::StateDigestMismatch => formatter.write_str("preference state digest mismatch"),
             Self::SimultaneousHierarchyUpdate(generation) => write!(

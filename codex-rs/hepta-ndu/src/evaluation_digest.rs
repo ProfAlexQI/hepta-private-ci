@@ -94,7 +94,7 @@ fn push_candidate(bytes: &mut Vec<u8>, candidate: &CandidateUtility) {
     }
 }
 
-fn push_axis_values(bytes: &mut Vec<u8>, values: &[AxisValue]) {
+pub(crate) fn push_axis_values(bytes: &mut Vec<u8>, values: &[AxisValue]) {
     push_len(bytes, values.len());
     for value in values {
         push_id(bytes, &value.axis);
@@ -137,3 +137,13 @@ fn rejection_reason_tag(value: CandidateRejectionReason) -> u8 {
     }
 }
 
+fn push_id(bytes: &mut Vec<u8>, value: &StableId) {
+    let raw = value.as_str().as_bytes();
+    push_len(bytes, raw.len());
+    bytes.extend_from_slice(raw);
+}
+
+fn push_len(bytes: &mut Vec<u8>, value: usize) {
+    let converted = u32::try_from(value).unwrap_or(u32::MAX);
+    bytes.extend_from_slice(&converted.to_be_bytes());
+}

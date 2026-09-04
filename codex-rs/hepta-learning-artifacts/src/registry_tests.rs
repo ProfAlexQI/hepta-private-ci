@@ -62,8 +62,14 @@ fn registration_is_immutable_and_idempotent() {
     let replay = must(registry.append(event));
 
     assert_eq!(first.disposition, RegistryAppendDisposition::Appended);
-    assert_eq!(replay.disposition, RegistryAppendDisposition::IdempotentReplay);
-    assert_eq!(registry.state(&id("artifact-a")), Some(ArtifactState::Candidate));
+    assert_eq!(
+        replay.disposition,
+        RegistryAppendDisposition::IdempotentReplay
+    );
+    assert_eq!(
+        registry.state(&id("artifact-a")),
+        Some(ArtifactState::Candidate)
+    );
 }
 
 #[test]
@@ -96,16 +102,21 @@ fn quarantine_and_revoke_remove_candidate_eligibility() {
         evaluator_id: id("independent-evaluator"),
         reason_digest: Digest32::of_bytes(b"regression"),
     })));
-    assert!(registry
-        .eligible_candidates(ArtifactKind::Policy, objective)
-        .is_empty());
+    assert!(
+        registry
+            .eligible_candidates(ArtifactKind::Policy, objective)
+            .is_empty()
+    );
     must(registry.append(ArtifactEvent::Revoke(StateChange {
         event_id: id("event-revoke-a"),
         artifact_id: id("artifact-a"),
         evaluator_id: id("deletion-authority"),
         reason_digest: Digest32::of_bytes(b"delete"),
     })));
-    assert_eq!(registry.state(&id("artifact-a")), Some(ArtifactState::Revoked));
+    assert_eq!(
+        registry.state(&id("artifact-a")),
+        Some(ArtifactState::Revoked)
+    );
 }
 
 #[test]
@@ -132,9 +143,11 @@ fn ancestor_revocation_makes_derived_artifacts_ineligible() {
 
     assert!(!registry.is_eligible(&id("artifact-a")));
     assert!(!registry.is_eligible(&id("artifact-b")));
-    assert!(registry
-        .eligible_candidates(ArtifactKind::Policy, objective)
-        .is_empty());
+    assert!(
+        registry
+            .eligible_candidates(ArtifactKind::Policy, objective)
+            .is_empty()
+    );
 }
 
 #[test]

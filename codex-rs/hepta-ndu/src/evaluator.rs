@@ -6,6 +6,7 @@ use codex_hepta_types::FixedQ32;
 use codex_hepta_types::StableId;
 
 use crate::AxisDirection;
+use crate::AxisLimit;
 use crate::AxisValue;
 use crate::CandidateRejectionReason;
 use crate::CandidateUtility;
@@ -21,6 +22,7 @@ use crate::UtilityProfile;
 use crate::evaluation_digest::EvaluationDigestInput;
 use crate::evaluation_digest::digest_evaluation;
 use crate::evaluation_digest::digest_profile;
+use crate::evaluation_digest::push_axis_values;
 use crate::scoring::pareto_frontier;
 use crate::scoring::score_frontier;
 
@@ -73,11 +75,7 @@ pub fn evaluate_candidates(
         if accumulator.hard_violation {
             reasons.push(CandidateRejectionReason::HardConstraintViolation);
         }
-        if exceeds_any(
-            &candidate_id,
-            &accumulator.risk,
-            &profile.risk_ceilings,
-        )? {
+        if exceeds_any(&candidate_id, &accumulator.risk, &profile.risk_ceilings)? {
             reasons.push(CandidateRejectionReason::RiskCeilingExceeded);
         }
         if exceeds_any(
@@ -88,11 +86,7 @@ pub fn evaluate_candidates(
             reasons.push(CandidateRejectionReason::ResourceCeilingExceeded);
         }
         if reasons.is_empty() {
-            evaluated_candidates.push(finalize_candidate(
-                candidate_id,
-                accumulator,
-                &profile,
-            )?);
+            evaluated_candidates.push(finalize_candidate(candidate_id, accumulator, &profile)?);
         } else {
             rejected_candidates.push(RejectedCandidate {
                 candidate_id,
@@ -116,26 +110,22 @@ pub fn evaluate_candidates(
         .as_ref()
         .map(canonical_scalarization_digest)
         .transpose()?;
-    let (disposition, advisory_recommendation) = if evaluated_candidates.len() == 1
-        && evaluated_candidates[0].candidate_id == abstain
-    {
-        (
-            EvaluationDisposition::InfeasibleExplicitAbstain,
-            Some(abstain),
-        )
-    } else if frontier.len() == 1 {
-        (
-            EvaluationDisposition::UniqueParetoRecommendation,
-            Some(frontier[0].candidate_id.clone()),
-        )
-    } else if let Some(scalarization) = scalarization {
-        score_frontier(&mut frontier, &profile, scalarization)?
-    } else {
-        (
-            EvaluationDisposition::ParetoSetRequiresSlowPath,
-            None,
-        )
-    };
+    let (disposition, advisory_recommendation) =
+        if evaluated_candidates.len() == 1 && evaluated_candidates[0].candidate_id == abstain {
+            (
+                EvaluationDisposition::InfeasibleExplicitAbstain,
+                Some(abstain),
+            )
+        } else if frontier.len() == 1 {
+            (
+                EvaluationDisposition::UniqueParetoRecommendation,
+                Some(frontier[0].candidate_id.clone()),
+            )
+        } else if let Some(scalarization) = scalarization {
+            score_frontier(&mut frontier, &profile, scalarization)?
+        } else {
+            (EvaluationDisposition::ParetoSetRequiresSlowPath, None)
+        };
 
     let evaluation_digest = digest_evaluation(EvaluationDigestInput {
         objective_digest: set.objective_digest,
@@ -275,7 +265,9 @@ fn accumulate(
     sum_values(&mut accumulator.risk, contribution.risk)?;
     sum_values(&mut accumulator.resource, contribution.resource)?;
     max_values(&mut accumulator.uncertainty, contribution.uncertainty);
-    accumulator.support_digests.push(contribution.support_digest);
+    accumulator
+        .support_digests
+        .push(contribution.support_digest);
     Ok(())
 }
 
@@ -290,7 +282,7 @@ fn validate_contribution_dimensions(contribution: &UtilityContribution) -> Resul
     Ok(())
 }
 
-fn normalize_axis_values(values: &mut [AxisValue]) -> Result<(), NduError> {
+pub(crate) fn normalize_axis_values(values: &mut [AxisValue]) -> Result<(), NduError> {
     values.sort();
     for window in values.windows(2) {
         if window[0].axis == window[1].axis {

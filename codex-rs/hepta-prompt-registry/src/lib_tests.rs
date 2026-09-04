@@ -32,9 +32,11 @@ fn registry() -> PromptRegistry {
 #[test]
 fn external_material_cannot_admit_itself() {
     let mut registry = registry();
-    assert!(registry
-        .register_factor(factor(FactorSource::ExternalUntrusted))
-        .is_ok());
+    assert!(
+        registry
+            .register_factor(factor(FactorSource::ExternalUntrusted))
+            .is_ok()
+    );
     assert_eq!(
         registry.admit_factor(&id("factor:1"), &id("reviewer:1"), digest(b"evidence")),
         Err(Error::ExternalSelfAdmission)
@@ -44,14 +46,14 @@ fn external_material_cannot_admit_itself() {
 #[test]
 fn independent_admission_enables_realization_registration() {
     let mut registry = registry();
-    assert!(registry
-        .register_factor(factor(FactorSource::GovernedInternal))
-        .is_ok());
-    let Ok(receipt) = registry.admit_factor(
-        &id("factor:1"),
-        &id("reviewer:1"),
-        digest(b"evidence"),
-    ) else {
+    assert!(
+        registry
+            .register_factor(factor(FactorSource::GovernedInternal))
+            .is_ok()
+    );
+    let Ok(receipt) =
+        registry.admit_factor(&id("factor:1"), &id("reviewer:1"), digest(b"evidence"))
+    else {
         panic!("independent admission must succeed");
     };
     assert!(!receipt.authority.grants_any());
@@ -70,9 +72,11 @@ fn independent_admission_enables_realization_registration() {
 #[test]
 fn proposer_cannot_self_review() {
     let mut registry = registry();
-    assert!(registry
-        .register_factor(factor(FactorSource::GovernedInternal))
-        .is_ok());
+    assert!(
+        registry
+            .register_factor(factor(FactorSource::GovernedInternal))
+            .is_ok()
+    );
     assert_eq!(
         registry.admit_factor(&id("factor:1"), &id("proposer:1"), digest(b"evidence")),
         Err(Error::SelfReview)
@@ -82,12 +86,16 @@ fn proposer_cannot_self_review() {
 #[test]
 fn revocation_cascades_and_is_terminal() {
     let mut registry = registry();
-    assert!(registry
-        .register_factor(factor(FactorSource::GovernedInternal))
-        .is_ok());
-    assert!(registry
-        .admit_factor(&id("factor:1"), &id("reviewer:1"), digest(b"evidence"))
-        .is_ok());
+    assert!(
+        registry
+            .register_factor(factor(FactorSource::GovernedInternal))
+            .is_ok()
+    );
+    assert!(
+        registry
+            .admit_factor(&id("factor:1"), &id("reviewer:1"), digest(b"evidence"))
+            .is_ok()
+    );
     let realization = PromptRealization {
         realization_id: id("realization:1"),
         factor_id: id("factor:1"),

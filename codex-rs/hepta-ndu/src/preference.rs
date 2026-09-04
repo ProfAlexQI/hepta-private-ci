@@ -82,14 +82,26 @@ pub fn solve_preference_target(
     initial: PreferenceState,
     mut target: Vec<AxisValue>,
     eta: FixedQ32,
-) -> Result<(PreferenceState, NduConvergenceCertificate, Vec<NduIterationReceipt>), NduError> {
+) -> Result<
+    (
+        PreferenceState,
+        NduConvergenceCertificate,
+        Vec<NduIterationReceipt>,
+    ),
+    NduError,
+> {
     if !(ETA_MIN_RAW..=ETA_MAX_RAW).contains(&eta.raw()) {
         return Err(NduError::InvalidEta);
     }
     normalize_values(&mut target)?;
     let mut state = initial;
     normalize_values(&mut state.values)?;
-    if state.values.iter().map(|value| &value.axis).ne(target.iter().map(|value| &value.axis)) {
+    if state
+        .values
+        .iter()
+        .map(|value| &value.axis)
+        .ne(target.iter().map(|value| &value.axis))
+    {
         return Err(NduError::DimensionMismatch);
     }
     let expected_state_digest = digest_state(
@@ -117,12 +129,12 @@ pub fn solve_preference_target(
         receipts.push(receipt);
         if converged {
             let certificate = NduConvergenceCertificate {
-                    disposition: SolveDisposition::Converged,
-                    iterations: iteration,
-                    maximum_residual_raw: terminal_residual_raw,
-                    projection_count: total_projection_count,
-                    predecessor_digest,
-                    terminal_state_digest: state.state_digest,
+                disposition: SolveDisposition::Converged,
+                iterations: iteration,
+                maximum_residual_raw: terminal_residual_raw,
+                projection_count: total_projection_count,
+                predecessor_digest,
+                terminal_state_digest: state.state_digest,
             };
             return Ok((state, certificate, receipts));
         }
@@ -164,7 +176,9 @@ fn update_once(
             .clamp(FixedQ32::from_raw(-FixedQ32::ONE.raw()), FixedQ32::ONE)
             .map_err(|_| NduError::Arithmetic)?;
         if projected != raw_next {
-            projection_count = projection_count.checked_add(1).ok_or(NduError::Arithmetic)?;
+            projection_count = projection_count
+                .checked_add(1)
+                .ok_or(NduError::Arithmetic)?;
         }
         let residual = desired
             .value

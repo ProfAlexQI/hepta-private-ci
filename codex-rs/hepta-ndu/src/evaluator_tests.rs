@@ -194,7 +194,6 @@ fn missing_required_contribution_is_not_treated_as_zero() {
     assert_eq!(error.code(), "NDU-E003");
 }
 
-
 #[test]
 fn infeasible_abstain_is_rejected_before_any_recommendation() {
     let mut abstain = contribution("abstain", 0, 0);

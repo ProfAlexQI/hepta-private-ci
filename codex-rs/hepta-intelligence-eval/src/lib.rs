@@ -81,7 +81,9 @@ pub fn evaluate(mut request: EvaluationRequest) -> Result<EvaluationReceipt, Err
         return Err(Error::MetricLimitExceeded);
     }
 
-    request.comparisons.sort_by(|left, right| left.metric_id.cmp(&right.metric_id));
+    request
+        .comparisons
+        .sort_by(|left, right| left.metric_id.cmp(&right.metric_id));
     let mut seen = BTreeSet::new();
     let mut failed_metrics = Vec::new();
     let mut insufficient = request.comparisons.is_empty();
@@ -127,11 +129,7 @@ fn subtract(left: FixedQ32, right: FixedQ32) -> Result<FixedQ32, Error> {
     ))
 }
 
-fn digest(
-    request: &EvaluationRequest,
-    disposition: Disposition,
-    failed: &[StableId],
-) -> Digest32 {
+fn digest(request: &EvaluationRequest, disposition: Disposition, failed: &[StableId]) -> Digest32 {
     let mut bytes = Vec::new();
     bytes.extend_from_slice(b"hepta.intelligence-eval.v1");
     for id in [

@@ -94,7 +94,10 @@ fn compilation_is_permutation_invariant() {
     reordered.allowed_actions.reverse();
     let second = must(must(compile(reordered)));
 
-    assert_eq!(first.objective.semantic_digest, second.objective.semantic_digest);
+    assert_eq!(
+        first.objective.semantic_digest,
+        second.objective.semantic_digest
+    );
     assert_eq!(first.objective, second.objective);
 }
 
@@ -153,7 +156,10 @@ fn changing_soft_weight_preserves_hard_digest() {
         first.objective.hard_constraint_digest,
         second.objective.hard_constraint_digest
     );
-    assert_ne!(first.objective.semantic_digest, second.objective.semantic_digest);
+    assert_ne!(
+        first.objective.semantic_digest,
+        second.objective.semantic_digest
+    );
 }
 
 #[test]

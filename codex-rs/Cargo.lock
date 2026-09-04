@@ -3516,6 +3516,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-bellman-operator"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-types",
+ "pretty_assertions",
+]
+
+[[package]]
 name = "codex-hepta-contracts"
 version = "0.0.0"
 dependencies = [
@@ -3574,24 +3582,43 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-hepta-operations"
+name = "codex-hepta-infer-worker-host"
 version = "0.0.0"
 dependencies = [
  "codex-hepta-types",
+ "pretty_assertions",
 ]
 
 [[package]]
-name = "codex-hepta-types"
-version = "0.0.0"
-dependencies = [
- "sha2 0.10.9",
-]
-
-[[package]]
-name = "codex-hepta-wire"
+name = "codex-hepta-intelligence-eval"
 version = "0.0.0"
 dependencies = [
  "codex-hepta-types",
+ "pretty_assertions",
+]
+
+[[package]]
+name = "codex-hepta-intuition"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-types",
+ "pretty_assertions",
+]
+
+[[package]]
+name = "codex-hepta-learning-artifacts"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-types",
+ "pretty_assertions",
+]
+
+[[package]]
+name = "codex-hepta-learning-ledger"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-types",
+ "pretty_assertions",
 ]
 
 [[package]]
@@ -3730,6 +3757,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-ndu"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-types",
+ "pretty_assertions",
+]
+
+[[package]]
+name = "codex-hepta-neuron"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-types",
+ "pretty_assertions",
+]
+
+[[package]]
+name = "codex-hepta-objective"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-types",
+ "pretty_assertions",
+]
+
+[[package]]
+name = "codex-hepta-operations"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-types",
+]
+
+[[package]]
 name = "codex-hepta-operator-acceptance"
 version = "0.0.0"
 dependencies = [
@@ -3755,6 +3813,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-plasticity"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-types",
+ "pretty_assertions",
+]
+
+[[package]]
+name = "codex-hepta-prompt-optimizer"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-types",
+ "pretty_assertions",
+]
+
+[[package]]
+name = "codex-hepta-prompt-registry"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-types",
+ "pretty_assertions",
+]
+
+[[package]]
 name = "codex-hepta-runtime"
 version = "0.0.0"
 dependencies = [
@@ -3775,6 +3857,11 @@ dependencies = [
 name = "codex-hepta-shadow-qualification"
 version = "0.0.0"
 dependencies = [
+ "codex-hepta-learning-artifacts",
+ "codex-hepta-learning-ledger",
+ "codex-hepta-ndu",
+ "codex-hepta-objective",
+ "codex-hepta-types",
  "libc",
  "pretty_assertions",
  "rand 0.9.3",
@@ -3815,6 +3902,20 @@ dependencies = [
  "tokio-util",
  "uuid",
  "zeroize",
+]
+
+[[package]]
+name = "codex-hepta-types"
+version = "0.0.0"
+dependencies = [
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "codex-hepta-wire"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-types",
 ]
 
 [[package]]

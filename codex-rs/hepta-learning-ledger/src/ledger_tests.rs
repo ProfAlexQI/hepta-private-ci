@@ -187,7 +187,9 @@ fn zero_propensity_and_missing_abstain_fail_closed() {
     );
 
     let mut missing = decision();
-    missing.candidate_ids.retain(|candidate| candidate.as_str() != "abstain");
+    missing
+        .candidate_ids
+        .retain(|candidate| candidate.as_str() != "abstain");
     assert_eq!(
         must_err(ledger.append(LedgerEvent::Decision(missing))),
         LedgerError::MissingAbstainCandidate

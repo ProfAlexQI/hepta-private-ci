@@ -261,10 +261,7 @@ impl ProposalRegistry {
         }
     }
 
-    pub fn append(
-        &mut self,
-        proposal: PlasticityProposal,
-    ) -> Result<AppendDisposition, Error> {
+    pub fn append(&mut self, proposal: PlasticityProposal) -> Result<AppendDisposition, Error> {
         if let Some(existing) = self.proposals.get(&proposal.proposal_id) {
             if existing == &proposal {
                 return Ok(AppendDisposition::Unchanged);
@@ -274,7 +271,8 @@ impl ProposalRegistry {
         if self.proposals.len() >= self.maximum_records {
             return Err(Error::RegistryCapacityExceeded);
         }
-        self.proposals.insert(proposal.proposal_id.clone(), proposal);
+        self.proposals
+            .insert(proposal.proposal_id.clone(), proposal);
         Ok(AppendDisposition::Inserted)
     }
 

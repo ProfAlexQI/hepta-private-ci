@@ -9,9 +9,7 @@ use std::collections::BTreeSet;
 use std::error::Error as StdError;
 use std::fmt;
 
-use codex_hepta_types::{
-    AuthorityPosture, Digest32, FixedQ32, ProbabilityQ32, StableId,
-};
+use codex_hepta_types::{AuthorityPosture, Digest32, FixedQ32, ProbabilityQ32, StableId};
 
 const MAX_CANDIDATES: usize = 4_096;
 
@@ -94,7 +92,9 @@ pub fn decide(mut request: DecisionRequest) -> Result<IntuitionDecisionReceipt, 
     let mut seen = BTreeSet::new();
     for candidate in &request.candidates {
         if !seen.insert(candidate.candidate_id.clone()) {
-            return Err(Error::DuplicateCandidate(candidate.candidate_id.to_string()));
+            return Err(Error::DuplicateCandidate(
+                candidate.candidate_id.to_string(),
+            ));
         }
         if candidate.support_digest.is_zero() {
             return Err(Error::EmptyDigest("candidate support"));
@@ -146,12 +146,7 @@ pub fn decide(mut request: DecisionRequest) -> Result<IntuitionDecisionReceipt, 
         Decision::Selected(_) => ProbabilityQ32::ZERO,
         Decision::Abstained(_) => ProbabilityQ32::ONE,
     };
-    let receipt_digest = digest_receipt(
-        &request,
-        &decision,
-        &propensities,
-        abstain_probability,
-    );
+    let receipt_digest = digest_receipt(&request, &decision, &propensities, abstain_probability);
 
     Ok(IntuitionDecisionReceipt {
         decision_id: request.decision_id,

@@ -78,7 +78,11 @@ pub fn step(
         let injected = feature
             .checked_mul(complement)
             .map_err(|_| Error::Arithmetic)?;
-        values.push(retained.checked_add(injected).map_err(|_| Error::Arithmetic)?);
+        values.push(
+            retained
+                .checked_add(injected)
+                .map_err(|_| Error::Arithmetic)?,
+        );
     }
 
     let previous_digest = previous.map_or(Digest32::ZERO, |state| state.state_digest);
@@ -134,11 +138,7 @@ fn validate_request(request: &StepRequest, previous: Option<&NeuronState>) -> Re
     Ok(())
 }
 
-fn digest_state(
-    request: &StepRequest,
-    previous_digest: Digest32,
-    values: &[FixedQ32],
-) -> Digest32 {
+fn digest_state(request: &StepRequest, previous_digest: Digest32, values: &[FixedQ32]) -> Digest32 {
     let mut bytes = Vec::new();
     bytes.extend_from_slice(b"hepta.neuron.state.v1");
     push_id(&mut bytes, &request.run_id);
@@ -153,11 +153,7 @@ fn digest_state(
     Digest32::of_bytes(&bytes)
 }
 
-fn digest_signal(
-    request: &StepRequest,
-    state_digest: Digest32,
-    values: &[FixedQ32],
-) -> Digest32 {
+fn digest_signal(request: &StepRequest, state_digest: Digest32, values: &[FixedQ32]) -> Digest32 {
     let mut bytes = Vec::new();
     bytes.extend_from_slice(b"hepta.neuron.signal.v1");
     push_id(&mut bytes, &request.run_id);

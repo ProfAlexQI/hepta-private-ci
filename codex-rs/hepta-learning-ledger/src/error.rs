@@ -69,9 +69,13 @@ impl LedgerError {
 impl fmt::Display for LedgerError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::RecordLimitExceeded => formatter.write_str("learning ledger record limit exceeded"),
+            Self::RecordLimitExceeded => {
+                formatter.write_str("learning ledger record limit exceeded")
+            }
             Self::EmptyCandidateSet => formatter.write_str("candidate set must not be empty"),
-            Self::CandidateLimitExceeded => formatter.write_str("candidate set exceeds 128 entries"),
+            Self::CandidateLimitExceeded => {
+                formatter.write_str("candidate set exceeds 128 entries")
+            }
             Self::IncompleteCandidateSet => {
                 formatter.write_str("candidate set completeness was not independently asserted")
             }
@@ -80,7 +84,10 @@ impl fmt::Display for LedgerError {
                 formatter.write_str("candidate set must contain explicit abstain")
             }
             Self::SelectedCandidateMissing(id) => {
-                write!(formatter, "selected candidate is absent from the candidate set: {id}")
+                write!(
+                    formatter,
+                    "selected candidate is absent from the candidate set: {id}"
+                )
             }
             Self::ZeroSelectedPropensity => {
                 formatter.write_str("selected propensity must be greater than zero")
@@ -104,9 +111,8 @@ impl fmt::Display for LedgerError {
             Self::CreditIdentityAlreadyExists(id) => {
                 write!(formatter, "credit identity already exists: {id}")
             }
-            Self::CreditAlreadyAssigned => formatter.write_str(
-                "credit already exists for this episode, outcome and target artifact",
-            ),
+            Self::CreditAlreadyAssigned => formatter
+                .write_str("credit already exists for this episode, outcome and target artifact"),
             Self::TargetNotFound(id) => write!(formatter, "revocation target not found: {id}"),
             Self::TargetAlreadyRevoked(id) => {
                 write!(formatter, "revocation target is already revoked: {id}")

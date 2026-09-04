@@ -100,7 +100,9 @@ pub fn optimize(mut request: OptimizationRequest) -> Result<PromptPortfolioRecei
     let mut seen = BTreeSet::new();
     for candidate in &request.candidates {
         if !seen.insert(candidate.candidate_id.clone()) {
-            return Err(Error::DuplicateCandidate(candidate.candidate_id.to_string()));
+            return Err(Error::DuplicateCandidate(
+                candidate.candidate_id.to_string(),
+            ));
         }
         if candidate.registry_digest != request.registry_snapshot_digest {
             return Err(Error::RegistrySnapshotMismatch(
@@ -150,7 +152,10 @@ pub fn optimize(mut request: OptimizationRequest) -> Result<PromptPortfolioRecei
         });
     }
 
-    let total_cost = request.budget.checked_sub(remaining).ok_or(Error::Arithmetic)?;
+    let total_cost = request
+        .budget
+        .checked_sub(remaining)
+        .ok_or(Error::Arithmetic)?;
     let receipt_digest = digest_receipt(
         &request,
         &selected,

@@ -97,7 +97,10 @@ pub fn train(mut request: TrainingRequest) -> Result<BellmanOperatorArtifact, Er
     if request.dataset.source_head_digest.is_zero() {
         return Err(Error::EmptyDigest("source head"));
     }
-    request.dataset.transitions.sort_by(|left, right| left.sample_id.cmp(&right.sample_id));
+    request
+        .dataset
+        .transitions
+        .sort_by(|left, right| left.sample_id.cmp(&right.sample_id));
     let mut seen = BTreeSet::new();
     for sample in &request.dataset.transitions {
         if !seen.insert(sample.sample_id.clone()) {
