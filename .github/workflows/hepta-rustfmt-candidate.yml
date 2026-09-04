@@ -1,0 +1,73 @@
+name: Hepta exact-head rustfmt candidate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-rustfmt-candidate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  rustfmt-candidate:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact pull-request source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-ci
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+
+      - name: Produce repository-pinned Rust formatting candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          rustfmt --version
+          cargo --version
+          (cd codex-rs && cargo fmt -- --config imports_granularity=Item)
+          mkdir -p .hepta-diagnostics
+          git diff --binary -- . ':(exclude).github/workflows/hepta-rustfmt-candidate.yml' > .hepta-diagnostics/rustfmt.patch
+          git diff --name-only --diff-filter=ACMRT -- ':(glob)**/*.rs' > .hepta-diagnostics/rustfmt-files.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          import tarfile
+
+          paths = [
+              Path(line)
+              for line in Path('.hepta-diagnostics/rustfmt-files.txt').read_text().splitlines()
+              if line
+          ]
+          if not paths:
+              raise SystemExit('rustfmt produced no changed Rust files')
+          with tarfile.open('.hepta-diagnostics/rustfmt-files.tar.gz', 'w:gz') as archive:
+              for path in paths:
+                  if not path.is_file():
+                      raise SystemExit(f'formatted path is not a file: {path}')
+                  archive.add(path, arcname=path.as_posix(), recursive=False)
+          PY
+          git diff --check
+          git diff --stat -- ':(glob)**/*.rs' > .hepta-diagnostics/rustfmt.stat
+
+      - name: Retain exact formatter candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-rustfmt-candidate-${{ github.event.pull_request.head.sha }}
+          path: |
+            .hepta-diagnostics/rustfmt.patch
+            .hepta-diagnostics/rustfmt-files.txt
+            .hepta-diagnostics/rustfmt-files.tar.gz
+            .hepta-diagnostics/rustfmt.stat
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
