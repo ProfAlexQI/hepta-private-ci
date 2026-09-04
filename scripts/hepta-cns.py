@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 import argparse
+import ast
 import hashlib
 import json
 import re
@@ -182,6 +183,11 @@ def status_text(
     arch: dict[str, Any], protocols: dict[str, Any], gaps: dict[str, Any]
 ) -> str:
     external = gaps["externalCapabilityGates"]
+    unit_vectors = sum(
+        isinstance(node, ast.FunctionDef) and node.name.startswith("test_")
+        for path in (ROOT / REFERENCE_DIR).glob("test_*.py")
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+    )
     return "\n".join(
         [
             "# Hepta CNS and Organ Reference Status",
@@ -199,7 +205,7 @@ def status_text(
             f"- Repository gaps with deterministic evidence: **{len(gaps['gaps'])}**",
             f"- External capability gates: **{len(external)}**",
             "- HNMF reference packages: **3**",
-            "- CNS deterministic unit vectors: **13**",
+            f"- CNS deterministic unit vectors: **{unit_vectors}**",
             "- Positive authority flags: **0**",
             "",
             "Repository closure covers anatomy, lifecycle, dependency/fallback, local hot paths, homeostasis, sensor staleness, body generation, action gating, reflex veto, terminal-effect observation, next-snapshot topology, role separation, consolidation/unlearning and machine validation.",
@@ -296,6 +302,16 @@ def verify() -> int:
             )
         edges += [(dep, row["id"]) for dep in row["dependencies"]]
     order = acyclic(ids, edges)
+    acyclic(ids, [(row["id"], fallback) for row in organs for fallback in row["fallbackOrgans"]])
+    ancestors = {}
+    for organ_id in order:
+        dependencies = set(by_id[organ_id]["dependencies"])
+        for dependency in by_id[organ_id]["dependencies"]:
+            dependencies.update(ancestors[dependency])
+        ancestors[organ_id] = dependencies
+    for row in organs:
+        for fallback in row["fallbackOrgans"]:
+            need(row["id"] not in ancestors[fallback], row["id"] + " fallback depends on failed organ")
     modules = load("docs/modules/MODULES.json")["modules"]
     mids = {x["id"] for x in modules}
     bound = {x for row in organs for x in row["moduleBindings"]}
@@ -520,6 +536,12 @@ def receipt_verify(kind: str, expected_sha: str, input_path: str) -> int:
         "receipt identity",
     )
     need(p.get("authorityGranted") is False, "receipt authority")
+    for field, path in [("architectureSha256", ARCH_PATH),
+                        ("protocolSha256", PROTOCOL_PATH), ("gapSha256", GAPS_PATH)]:
+        need(p.get(field) == hashlib.sha256((ROOT / path).read_bytes()).hexdigest(),
+             "receipt source digest " + field)
+    if kind == "merge-candidate":
+        need(len(parents) == 2 and len(set(parents)) == 2, "receipt synthetic merge parents")
     print("PASS_HEPTA_CNS_RECEIPT")
     return 0
 

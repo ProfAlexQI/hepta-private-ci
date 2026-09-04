@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from hashlib import sha256
 import json
+from pathlib import Path
 from typing import Iterable
 
 class ValidationError(ValueError): pass
@@ -90,12 +91,11 @@ class BodyGraph:
     generation: int
     organs: tuple[OrganManifest, ...]
     def validate(self) -> tuple[str, ...]:
-        if self.generation < 1 or not self.organs: raise ValidationError("invalid body graph")
+        if self.generation < 1 or not 1 <= len(self.organs) <= 256: raise ValidationError("invalid body graph")
         by_id={o.organ_id:o for o in self.organs}
         if len(by_id)!=len(self.organs): raise ValidationError("duplicate organ")
         for o in self.organs:
             o.validate()
-            unknown=set(o.dependencies)|set(o.fallback_organs)-set(by_id)
             if set(o.dependencies)-set(by_id) or set(o.fallback_organs)-set(by_id): raise ValidationError("unknown graph reference")
             if o.essential and not o.fallback_organs and o.organ_class not in {"constitutional_kernel","human_override"}:
                 raise ValidationError(f"essential organ {o.organ_id} requires fallback")
@@ -109,6 +109,35 @@ class BodyGraph:
                 indeg[x]-=1
                 if indeg[x]==0: ready.append(x); ready.sort()
         if len(order)!=len(by_id): raise ValidationError("body graph cycle")
+        # Dependencies and fallbacks are distinct graphs. Neither a fallback
+        # cycle nor a fallback that needs the failed organ is a safe recovery.
+        dependency_closure: dict[str, set[str]] = {}
+        for organ_id in order:
+            closure = set(by_id[organ_id].dependencies)
+            for dependency in by_id[organ_id].dependencies:
+                closure.update(dependency_closure[dependency])
+            dependency_closure[organ_id] = closure
+        for organ in self.organs:
+            if len(set(organ.dependencies)) != len(organ.dependencies) or len(set(organ.fallback_organs)) != len(organ.fallback_organs):
+                raise ValidationError("duplicate graph edge")
+            for fallback in organ.fallback_organs:
+                if organ.organ_id in dependency_closure[fallback]:
+                    raise ValidationError("fallback depends on failed organ")
+        fallback_degree = {organ_id: 0 for organ_id in by_id}
+        for organ in self.organs:
+            for fallback in organ.fallback_organs:
+                fallback_degree[fallback] += 1
+        pending = [organ_id for organ_id, degree in fallback_degree.items() if degree == 0]
+        visited = 0
+        while pending:
+            current = pending.pop()
+            visited += 1
+            for fallback in by_id[current].fallback_organs:
+                fallback_degree[fallback] -= 1
+                if fallback_degree[fallback] == 0:
+                    pending.append(fallback)
+        if visited != len(by_id):
+            raise ValidationError("fallback cycle")
         return tuple(order)
 
 @dataclass(frozen=True)
@@ -120,6 +149,7 @@ class HomeostasisController:
     def allocate(total: int, requests: Iterable[ResourceRequest]) -> dict[str,int]:
         req=sorted(requests,key=lambda r:(-r.priority,r.organ_id))
         if total < 0 or any(r.floor<0 or r.desired<r.floor for r in req): raise ValidationError("bad resource request")
+        if len({r.organ_id for r in req}) != len(req): raise ValidationError("duplicate resource organ")
         floors=sum(r.floor for r in req)
         if floors>total: raise ValidationError("essential floors exceed endowment")
         out={r.organ_id:r.floor for r in req}; remaining=total-floors
@@ -158,13 +188,47 @@ class ReflexDecision:
 
 class ReflexController:
     @staticmethod
-    def evaluate(intent:ActuationIntent, body:BodyStateEstimate, *, now_micros:int, minimum_integrity_ppm:int, maximum_uncertainty_ppm:int, human_stop:bool=False)->ReflexDecision:
-        if human_stop:return ReflexDecision(True,"human_stop")
-        if intent.body_generation!=body.generation:return ReflexDecision(True,"stale_body_generation")
-        if now_micros>intent.deadline_micros:return ReflexDecision(True,"deadline_expired")
-        if body.integrity_ppm<minimum_integrity_ppm:return ReflexDecision(True,"integrity_floor")
-        if body.uncertainty_ppm>maximum_uncertainty_ppm:return ReflexDecision(True,"uncertainty_ceiling")
-        return ReflexDecision(False,"clear")
+    def evaluate(
+        intent: ActuationIntent,
+        body: BodyStateEstimate,
+        *,
+        now_micros: int,
+        maximum_state_age_micros: int,
+        minimum_integrity_ppm: int,
+        maximum_uncertainty_ppm: int,
+        human_stop: bool = False,
+    ) -> ReflexDecision:
+        """Revalidate the current fused state at dispatch, not only at ingress.
+
+        All timestamps must belong to the same monotonic clock domain. A zero
+        age budget permits only a state observed at this exact boundary. This
+        deterministic reference does not verify physical calibration or tokens.
+        """
+        if human_stop is True:
+            return ReflexDecision(True, "human_stop")
+        profile = (now_micros, maximum_state_age_micros, minimum_integrity_ppm, maximum_uncertainty_ppm)
+        if type(human_stop) is not bool or any(type(value) is not int or value < 0 for value in profile):
+            return ReflexDecision(True, "invalid_safety_profile")
+        if minimum_integrity_ppm > 1_000_000 or maximum_uncertainty_ppm > 1_000_000:
+            return ReflexDecision(True, "invalid_safety_profile")
+        state = (body.generation, intent.body_generation, body.observed_through, intent.deadline_micros, body.integrity_ppm, body.uncertainty_ppm)
+        if any(type(value) is not int or value < 0 for value in state):
+            return ReflexDecision(True, "invalid_body_state")
+        if body.generation == 0 or intent.body_generation == 0 or body.integrity_ppm > 1_000_000 or body.uncertainty_ppm > 1_000_000:
+            return ReflexDecision(True, "invalid_body_state")
+        if intent.body_generation != body.generation:
+            return ReflexDecision(True, "stale_body_generation")
+        if now_micros >= intent.deadline_micros:
+            return ReflexDecision(True, "deadline_expired")
+        if body.observed_through > now_micros:
+            return ReflexDecision(True, "future_body_state")
+        if now_micros - body.observed_through > maximum_state_age_micros:
+            return ReflexDecision(True, "stale_body_state")
+        if body.integrity_ppm < minimum_integrity_ppm:
+            return ReflexDecision(True, "integrity_floor")
+        if body.uncertainty_ppm > maximum_uncertainty_ppm:
+            return ReflexDecision(True, "uncertainty_ceiling")
+        return ReflexDecision(False, "clear")
 
 class EffectState(str,Enum):
     ACCEPTED="accepted"; DISPATCHED="dispatched"; INDETERMINATE="indeterminate"
@@ -222,14 +286,28 @@ class EpisodeRow:
 def consolidation_candidate(rows:Iterable[EpisodeRow])->tuple[str,...]:
     return tuple(sorted(r.row_id for r in rows if not r.revoked))
 
-def default_reference_organs()->tuple[OrganManifest,...]:
-    return (
-      OrganManifest("constitutional.kernel",1,"constitutional_kernel",essential=True),
-      OrganManifest("human.override",1,"human_override",dependencies=("constitutional.kernel",),essential=True),
-      OrganManifest("brainstem.supervisor",1,"brainstem",dependencies=("constitutional.kernel",),fallback_organs=("human.override",),essential=True,local_hot_path=True),
-      OrganManifest("spinal.reflex-safety",1,"reflex_safety",dependencies=("constitutional.kernel",),fallback_organs=("human.override",),essential=True,local_hot_path=True),
-      OrganManifest("peripheral.sensor-bus",1,"sensor_bus",dependencies=("brainstem.supervisor",),fallback_organs=("human.override",),essential=True,local_hot_path=True),
-      OrganManifest("body.schema",1,"body_state",dependencies=("peripheral.sensor-bus",),fallback_organs=("peripheral.sensor-bus",),essential=True,local_hot_path=True),
-      OrganManifest("cns.executive",1,"executive_cortex",dependencies=("body.schema",),fallback_organs=("brainstem.supervisor",),essential=True),
-      OrganManifest("actuator.gateway",1,"actuator_gateway",dependencies=("cns.executive","spinal.reflex-safety"),fallback_organs=("human.override",),essential=True,local_hot_path=True,effect_boundary=True),
+def default_reference_organs() -> tuple[OrganManifest, ...]:
+    """Load the full registered anatomy; do not maintain a second toy graph.
+
+    This loader is for repository qualification only. Runtime activation still
+    requires its separately signed manifest and authority boundary.
+    """
+    path = Path(__file__).resolve().parents[2] / "docs/cns/CNS_ARCHITECTURE.json"
+    registry = json.loads(path.read_text(encoding="utf-8"))
+    rows = registry["organs"]
+    if [row["id"] for row in rows] != registry["requiredOrganRoles"]:
+        raise ValidationError("registered organ coverage mismatch")
+    return tuple(
+        OrganManifest(
+            organ_id=row["id"],
+            version=registry["schemaVersion"],
+            organ_class=row["organClass"],
+            dependencies=tuple(row["dependencies"]),
+            fallback_organs=tuple(row["fallbackOrgans"]),
+            essential=row["essential"],
+            local_hot_path=row["localHotPath"],
+            central_rpc_required=registry["organDefaults"]["centralSynchronousRpcAllowed"],
+            effect_boundary=row["effectBoundary"],
+        )
+        for row in rows
     )

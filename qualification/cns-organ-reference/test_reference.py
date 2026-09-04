@@ -7,7 +7,7 @@ H=lambda s:sha256(s.encode()).hexdigest()
 
 class ReferenceTests(unittest.TestCase):
     def test_valid_body_graph_has_deterministic_order(self):
-        g=BodyGraph(1,default_reference_organs()); a=g.validate(); b=g.validate(); self.assertEqual(a,b); self.assertEqual(len(a),8)
+        g=BodyGraph(1,default_reference_organs()); a=g.validate(); b=g.validate(); self.assertEqual(a,b); self.assertEqual(set(a), {organ.organ_id for organ in default_reference_organs()})
     def test_cycle_is_rejected(self):
         rows=(OrganManifest('a',1,'x',dependencies=('b',)),OrganManifest('b',1,'x',dependencies=('a',)))
         with self.assertRaises(ValidationError):BodyGraph(1,rows).validate()
@@ -29,8 +29,8 @@ class ReferenceTests(unittest.TestCase):
         with self.assertRaises(ValidationError):x.validate(now_micros=10,maximum_age_micros=20,calibration_generation=1,body_generation=3,scope='u')
     def test_reflex_veto_precedes_actuation(self):
         i=ActuationIntent('i',H('o'),1,'arm',H('p'),100,'k',H('a')); b=BodyStateEstimate(1,50,900000,10000,H('s'))
-        self.assertTrue(ReflexController.evaluate(i,b,now_micros=60,minimum_integrity_ppm=950000,maximum_uncertainty_ppm=50000).veto)
-        self.assertFalse(ReflexController.evaluate(i,b,now_micros=60,minimum_integrity_ppm=800000,maximum_uncertainty_ppm=50000).veto)
+        self.assertTrue(ReflexController.evaluate(i,b,now_micros=60,maximum_state_age_micros=20,minimum_integrity_ppm=950000,maximum_uncertainty_ppm=50000).veto)
+        self.assertFalse(ReflexController.evaluate(i,b,now_micros=60,maximum_state_age_micros=20,minimum_integrity_ppm=800000,maximum_uncertainty_ppm=50000).veto)
     def test_queue_ack_is_not_terminal_success(self):
         i=ActuationIntent('i',H('o'),1,'arm',H('p'),100,'k',H('a')); l=ActuationLedger()
         self.assertEqual(l.accept(i),EffectState.ACCEPTED); self.assertEqual(l.dispatch('k'),EffectState.DISPATCHED)
