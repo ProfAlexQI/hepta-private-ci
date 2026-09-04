@@ -304,3 +304,60 @@ For `intelligence.control`, this document grants no runtime, production, model, 
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+<!-- BEGIN GENERATED EXACT REGISTRY PROJECTION -->
+### Exact closed-world registry projection
+
+This generated projection binds `intelligence.control` to the current canonical contract, protocol, data, delivery and threat registries. The registries remain authoritative; this block is a digest-checked documentation projection.
+
+**Produced contracts:**
+- `IntelligenceHostEnvelopeV1`
+- `LegalActionCandidateSetV1`
+
+**Consumed contracts:**
+- `DomainRead::eligibility_trace_checkpointV1`
+- `DomainRead::ndu_preference_projectionV1`
+- `DomainRead::ndu_utility_projectionV1`
+- `DomainRead::neuron_state_checkpointV1`
+- `LearningArtifactManifestV1`
+- `ModulePort::context.compiler::intelligence.control`
+- `ModulePort::intuition.policy::intelligence.control`
+- `ModulePort::learning.eval::intelligence.control`
+- `ModulePort::neuron.runtime::intelligence.control`
+- `ModulePort::objective.compiler::intelligence.control`
+- `ModulePort::prompt.optimizer::intelligence.control`
+- `ModulePort::utility.ndu::intelligence.control`
+- `NduCoefficientManifestV1`
+- `NduUpdateReceiptV1`
+- `NduWellPosednessCertificateV1`
+- `SupportAuditReceiptV1`
+
+**Typed protocols:**
+- `LearningArtifactManifestV1`
+- `LegalActionCandidateSetV1`
+- `NduCoefficientManifestV1`
+- `NduUpdateReceiptV1`
+- `NduWellPosednessCertificateV1`
+- `SupportAuditReceiptV1`
+
+**Owned data domains:**
+- None.
+
+**Read data domains:**
+- `eligibility_trace_checkpoint`
+- `ndu_coefficient_manifest_v1`
+- `ndu_preference_projection`
+- `ndu_update_receipt_v1`
+- `ndu_utility_projection`
+- `ndu_well_posedness_certificate_v1`
+- `neuron_state_checkpoint`
+- `support_audit_receipt_v1`
+
+**Work packages:**
+- `C1-PROMPTED-MEMORY-RETRIEVAL-RANK`
+- `INT-2-AGENTD-CODEX-COMPOSITION`
+- `INTELLIGENCE-A0-Q0.63`
+
+**Owned threats:**
+- None.
+
+<!-- END GENERATED EXACT REGISTRY PROJECTION -->

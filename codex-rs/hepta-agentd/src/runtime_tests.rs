@@ -1,6 +1,6 @@
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Duration;
 #[cfg(feature = "qualification-cognitive-write")]
 use std::time::SystemTime;
@@ -21,10 +21,7 @@ use codex_hepta_fleet::WorkspaceBinding;
 use codex_hepta_memory::CognitiveRuntime;
 #[cfg(feature = "qualification-cognitive-write")]
 use codex_hepta_memory::CognitiveStore;
-#[cfg(feature = "qualification-cognitive-write")]
-use codex_hepta_memory::LogicalTurnAttemptRequest;
-#[cfg(feature = "qualification-cognitive-write")]
-use codex_hepta_memory::LogicalTurnRequest;
+use codex_hepta_memory::CognitiveStoreError;
 #[cfg(feature = "qualification-cognitive-write")]
 use codex_hepta_memory::CompactFence;
 #[cfg(feature = "qualification-cognitive-write")]
@@ -38,32 +35,35 @@ use codex_hepta_memory::LocalAdmission;
 #[cfg(feature = "qualification-cognitive-write")]
 use codex_hepta_memory::LocalTurnLifecycleBinding;
 #[cfg(feature = "qualification-cognitive-write")]
+use codex_hepta_memory::LogicalTurnAttemptRequest;
+#[cfg(feature = "qualification-cognitive-write")]
+use codex_hepta_memory::LogicalTurnRequest;
+#[cfg(feature = "qualification-cognitive-write")]
 use codex_hepta_memory::append_h7_trajectory_event_bound;
 #[cfg(feature = "qualification-cognitive-write")]
 use codex_hepta_memory::h7_trajectory_local_receipt_digest;
-use codex_hepta_memory::CognitiveStoreError;
 use codex_hepta_paths::HeptaFleetRoot;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 
+use super::AgentdIdentity;
+use super::AgentdState;
+use super::CompletedRuntimeTask;
+use super::EVENT_CAPACITY;
 use super::cleanup_runtime_tasks;
 use super::monitor_runtime;
 use super::open_automation_store_after_generation_fence;
 use super::open_cognitive_runtime_after_generation_fence;
 use super::require_cognitive_runtime_for_profile;
-use super::AgentdIdentity;
-use super::AgentdState;
-use super::CompletedRuntimeTask;
-use super::EVENT_CAPACITY;
-#[cfg(feature = "qualification-cognitive-write")]
-use crate::app_runtime::app_server_runtime_options_for_agent;
-use crate::automation::handle_automation_tick;
-use crate::automation::run_automation_scheduler;
-use crate::automation::DispatchRetryBudget;
-#[cfg(feature = "qualification-cognitive-write")]
-use crate::qualification_writer::prepare_qualification_turn_writer_input;
 use crate::AgentdMethod;
 use crate::AgentdPayload;
+#[cfg(feature = "qualification-cognitive-write")]
+use crate::app_runtime::app_server_runtime_options_for_agent;
+use crate::automation::DispatchRetryBudget;
+use crate::automation::handle_automation_tick;
+use crate::automation::run_automation_scheduler;
+#[cfg(feature = "qualification-cognitive-write")]
+use crate::qualification_writer::prepare_qualification_turn_writer_input;
 #[cfg(feature = "qualification-cognitive-write")]
 use codex_hepta_memory::LocalLeaseHeadDisposition;
 
@@ -374,9 +374,7 @@ async fn qualification_prepare_takes_over_expired_registry_head_without_evidence
     let logical = LogicalTurnRequest::new(
         format!("qualification:logical:{turn_id}"),
         "qualification:local",
-        Sha256Digest::for_bytes(
-            format!("qualification:logical-binding:v1:{turn_id}").as_bytes(),
-        ),
+        Sha256Digest::for_bytes(format!("qualification:logical-binding:v1:{turn_id}").as_bytes()),
     )
     .expect("logical request");
     let old = LogicalTurnAttemptRequest::new(
@@ -413,7 +411,11 @@ async fn qualification_prepare_takes_over_expired_registry_head_without_evidence
         .await
         .expect("inspect superseded lease");
     assert_eq!(old_head.disposition, LocalLeaseHeadDisposition::RolledBack);
-    input.lease.release().await.expect("release takeover test lease");
+    input
+        .lease
+        .release()
+        .await
+        .expect("release takeover test lease");
 }
 
 #[cfg(feature = "qualification-cognitive-write")]
@@ -444,9 +446,7 @@ async fn qualification_prepare_quarantines_expired_registry_attempt_with_h7_evid
     let logical = LogicalTurnRequest::new(
         format!("qualification:logical:{turn_id}"),
         "qualification:local",
-        Sha256Digest::for_bytes(
-            format!("qualification:logical-binding:v1:{turn_id}").as_bytes(),
-        ),
+        Sha256Digest::for_bytes(format!("qualification:logical-binding:v1:{turn_id}").as_bytes()),
     )
     .expect("logical request");
     let expires_at = SystemTime::now()
@@ -495,13 +495,13 @@ async fn qualification_prepare_quarantines_expired_registry_attempt_with_h7_evid
         attempt.generation,
         attempt.fencing_token.clone(),
     )
-        .expect("compact fence");
+    .expect("compact fence");
     let executor = store
         .open_local_compact_executor_bound(attempt.journal_id.clone(), fence, &lease)
         .await
         .expect("open compact executor");
-    let binding = LocalTurnLifecycleBinding::from_handles(turn_id, &lease, &executor)
-        .expect("binding");
+    let binding =
+        LocalTurnLifecycleBinding::from_handles(turn_id, &lease, &executor).expect("binding");
     let payload = r#"{"schema_version":1,"external_effect":false,"kg_write_authority":false,"production_caller":false}"#;
     let receipt = match lease
         .admit(
@@ -577,7 +577,10 @@ async fn qualification_prepare_quarantines_expired_registry_attempt_with_h7_evid
         turn_id.to_string(),
     )
     .await;
-    assert!(result.is_err(), "terminal recovery returns no writable input");
+    assert!(
+        result.is_err(),
+        "terminal recovery returns no writable input"
+    );
     let inspected = store
         .inspect_local_lease_head(&attempt.lease_id)
         .await
