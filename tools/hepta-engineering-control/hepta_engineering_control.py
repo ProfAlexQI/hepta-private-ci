@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Iterable
+import re
 
 MAX_PACKAGES = 4096
 MAX_LEASES = 4096
@@ -51,6 +52,16 @@ class IntegrationEvidence:
     strict_lint_ok: bool
     clean_worktree_ok: bool
     authority_delta: bool
+    # Separate source and ordered synthetic-merge identities, collected from
+    # their actual Git objects. Empty legacy fields deliberately fail closed.
+    base_head: str = ""
+    source_tree: str = ""
+    exact_head_tree: str = ""
+    merge_candidate_tree: str = ""
+    expected_merge_tree: str = ""
+    merge_candidate_parents: tuple[str, ...] = ()
+    source_execution_ok: bool = False
+    merge_execution_ok: bool = False
 
 
 @dataclass(frozen=True)
@@ -119,9 +130,25 @@ def decide_integration(evidence: IntegrationEvidence) -> IntegrationDecision:
     reasons: list[str] = []
     if evidence.candidate_head != evidence.exact_head:
         reasons.append("exact_head_mismatch")
-    if evidence.candidate_head != evidence.merge_candidate_head:
-        reasons.append("merge_candidate_head_mismatch")
+    if not isinstance(evidence.merge_candidate_parents, tuple) or len(evidence.merge_candidate_parents) != 2:
+        return IntegrationDecision(False, tuple(reasons + ["merge_parent_mismatch"]))
+    identities = (evidence.candidate_head, evidence.exact_head, evidence.base_head,
+                  evidence.source_tree, evidence.exact_head_tree,
+                  evidence.merge_candidate_head, evidence.merge_candidate_tree,
+                  evidence.expected_merge_tree, *evidence.merge_candidate_parents)
+    if any(not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None or value == "0" * 40 for value in identities):
+        return IntegrationDecision(False, tuple(reasons + ["invalid_git_identity"]))
+    if evidence.source_tree != evidence.exact_head_tree:
+        reasons.append("source_tree_mismatch")
+    if evidence.merge_candidate_head in {evidence.candidate_head, evidence.base_head}:
+        reasons.append("synthetic_merge_not_distinct")
+    if evidence.merge_candidate_parents != (evidence.base_head, evidence.candidate_head):
+        reasons.append("merge_parent_mismatch")
+    if evidence.merge_candidate_tree != evidence.expected_merge_tree:
+        reasons.append("merge_tree_mismatch")
     checks = {
+        "source_execution": evidence.source_execution_ok,
+        "merge_execution": evidence.merge_execution_ok,
         "source_inventory": evidence.source_inventory_ok,
         "static_verification": evidence.static_verification_ok,
         "focused_tests": evidence.focused_tests_ok,
@@ -130,8 +157,8 @@ def decide_integration(evidence: IntegrationEvidence) -> IntegrationDecision:
         "strict_lint": evidence.strict_lint_ok,
         "clean_worktree": evidence.clean_worktree_ok,
     }
-    reasons.extend(name for name, passed in checks.items() if not passed)
-    if evidence.authority_delta:
+    reasons.extend(name for name, passed in checks.items() if passed is not True)
+    if evidence.authority_delta is not False:
         reasons.append("authority_delta")
     return IntegrationDecision(not reasons, tuple(reasons))
 

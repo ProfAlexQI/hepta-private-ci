@@ -38,9 +38,17 @@ class EngineeringControlTests(unittest.TestCase):
 
     def test_integration_eligibility_grants_no_merge_authority(self) -> None:
         evidence = IntegrationEvidence(
-            candidate_head="abc",
-            exact_head="abc",
-            merge_candidate_head="abc",
+            candidate_head="a" * 40,
+            exact_head="a" * 40,
+            merge_candidate_head="c" * 40,
+            base_head="b" * 40,
+            source_tree="d" * 40,
+            exact_head_tree="d" * 40,
+            merge_candidate_tree="e" * 40,
+            expected_merge_tree="e" * 40,
+            merge_candidate_parents=("b" * 40, "a" * 40),
+            source_execution_ok=True,
+            merge_execution_ok=True,
             source_inventory_ok=True,
             static_verification_ok=True,
             focused_tests_ok=True,
@@ -57,9 +65,17 @@ class EngineeringControlTests(unittest.TestCase):
 
     def test_authority_delta_fails_closed(self) -> None:
         evidence = IntegrationEvidence(
-            candidate_head="abc",
-            exact_head="abc",
-            merge_candidate_head="abc",
+            candidate_head="a" * 40,
+            exact_head="a" * 40,
+            merge_candidate_head="c" * 40,
+            base_head="b" * 40,
+            source_tree="d" * 40,
+            exact_head_tree="d" * 40,
+            merge_candidate_tree="e" * 40,
+            expected_merge_tree="e" * 40,
+            merge_candidate_parents=("b" * 40, "a" * 40),
+            source_execution_ok=True,
+            merge_execution_ok=True,
             source_inventory_ok=True,
             static_verification_ok=True,
             focused_tests_ok=True,
