@@ -10,6 +10,9 @@ import sys
 import tomllib
 from pathlib import Path
 
+from hepta_source_registry_closure import normalize as normalize_source_registries
+from hepta_source_registry_closure import verify as verify_source_registries
+
 ROOT = Path(__file__).resolve().parents[1]
 CARGO_MANIFEST = ROOT / "codex-rs" / "Cargo.toml"
 QUALIFICATION_MANIFEST = ROOT / "qualification" / "gap-closure" / "MANIFEST.json"
@@ -39,6 +42,8 @@ REQUIRED_OTHER_FILES = (
     "tools/hepta-engineering-control/test_hepta_engineering_control.py",
     "docs/readiness/GAP_CLOSURE_IMPLEMENTATION.md",
     "qualification/gap-closure/MANIFEST.json",
+    "qualification/gap-closure/PLAN_AUDIT.json",
+    "scripts/hepta_source_registry_closure.py",
 )
 
 DENIED_AUTHORITY_FLAGS = (
@@ -143,7 +148,8 @@ def normalize_ndu_helpers() -> bool:
 def normalize_source() -> bool:
     workspace_changed = normalize_workspace()
     ndu_changed = normalize_ndu_helpers()
-    return workspace_changed or ndu_changed
+    registry_changed = normalize_source_registries()
+    return workspace_changed or ndu_changed or registry_changed
 
 
 def verify() -> list[str]:
@@ -219,10 +225,13 @@ def verify() -> list[str]:
             if sorted(manifest.get("source_roots", ())) != sorted(expected_roots):
                 failures.append("qualification source inventory is not closed-world")
 
+    failures.extend(verify_source_registries())
+
     for relative in (
         "tools/hepta-engineering-control/hepta_engineering_control.py",
         "tools/hepta-engineering-control/test_hepta_engineering_control.py",
         "scripts/hepta-gap-closure.py",
+        "scripts/hepta_source_registry_closure.py",
     ):
         path = ROOT / relative
         if path.is_file():
