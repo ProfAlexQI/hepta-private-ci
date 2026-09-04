@@ -1,0 +1,207 @@
+name: Hepta V8 all-source exact-head qualification
+
+on:
+  push:
+    branches:
+      - "codex/hepta-v8-gap-closure-20260905"
+    paths:
+      - "qualification/gap-closure/WAVE2_EXACT_HEAD_REQUEST.json"
+      - "qualification/gap-closure/MANIFEST.json"
+      - "qualification/gap-closure/PLAN_AUDIT.json"
+      - "docs/modules/MODULES.json"
+      - "docs/modules/SOURCE_BINDINGS.json"
+      - "docs/delivery/WORK_PACKAGES.json"
+      - "docs/modules/*/TECHNICAL.md"
+      - "codex-rs/Cargo.toml"
+      - "codex-rs/Cargo.lock"
+      - "codex-rs/hepta-authbus/**"
+      - "codex-rs/hepta-authbus-p1-3-qualification/**"
+      - "codex-rs/hepta-bao-adapter/**"
+      - "codex-rs/hepta-cognitive-read/**"
+      - "codex-rs/hepta-cognitive-store/**"
+      - "codex-rs/hepta-cognitive-types/**"
+      - "codex-rs/hepta-codex-adapter/**"
+      - "codex-rs/hepta-compact-engine/**"
+      - "codex-rs/hepta-context-compiler/**"
+      - "codex-rs/hepta-control-plane/**"
+      - "codex-rs/hepta-infer-core/**"
+      - "codex-rs/hepta-inferd/**"
+      - "codex-rs/hepta-intelligence/**"
+      - "codex-rs/hepta-kg/**"
+      - "codex-rs/hepta-memory-federation/**"
+      - "codex-rs/hepta-memory-retrieval/**"
+      - "codex-rs/codex-app-server/**"
+      - "apps/hepta-browser/**"
+      - "apps/hepta-native/**"
+      - "external/HeptaBao/**"
+      - "third_party/servo-patches/**"
+  pull_request:
+    paths:
+      - "qualification/gap-closure/**"
+      - "docs/modules/**"
+      - "docs/delivery/WORK_PACKAGES.json"
+      - "codex-rs/hepta-*/**"
+      - "codex-rs/codex-app-server/**"
+      - "apps/hepta-browser/**"
+      - "apps/hepta-native/**"
+      - "external/HeptaBao/**"
+      - "third_party/servo-patches/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-v8-all-source-exact-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact candidate without persisted credentials
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up repository CI toolchain
+        uses: ./.github/actions/setup-ci
+
+      - name: Verify closed-world source and registry state
+        run: |
+          python3 scripts/hepta_wave2_primary_gate_patch.py verify
+          python3 scripts/hepta-wave2-materialize.py verify
+          python3 scripts/hepta-gap-closure.py verify
+          python3 .github/scripts/verify_cargo_workspace_manifests.py
+          git diff --check
+
+      - name: Format-check all implemented Rust packages
+        working-directory: codex-rs
+        run: |
+          packages=(
+            codex-hepta-objective
+            codex-hepta-ndu
+            codex-hepta-learning-ledger
+            codex-hepta-learning-artifacts
+            codex-hepta-bellman-operator
+            codex-hepta-intelligence-eval
+            codex-hepta-neuron
+            codex-hepta-intuition
+            codex-hepta-prompt-registry
+            codex-hepta-prompt-optimizer
+            codex-hepta-plasticity
+            codex-hepta-infer-worker-host
+            codex-hepta-cognitive-types
+            codex-hepta-cognitive-store
+            codex-hepta-cognitive-read
+            codex-hepta-memory-retrieval
+            codex-hepta-memory-federation
+            codex-hepta-kg
+            codex-hepta-compact-engine
+            codex-hepta-context-compiler
+            codex-hepta-authbus
+            codex-hepta-authbus-p1-3-qualification
+            codex-hepta-control-plane
+            codex-hepta-infer-core
+            codex-hepta-inferd
+            codex-hepta-intelligence
+            codex-hepta-codex-adapter
+            codex-hepta-bao-adapter
+          )
+          args=()
+          for package in "${packages[@]}"; do
+            args+=(--package "$package")
+          done
+          cargo fmt --check "${args[@]}"
+
+      - name: Check and test all implemented Rust packages
+        working-directory: codex-rs
+        run: |
+          packages=(
+            codex-hepta-objective
+            codex-hepta-ndu
+            codex-hepta-learning-ledger
+            codex-hepta-learning-artifacts
+            codex-hepta-bellman-operator
+            codex-hepta-intelligence-eval
+            codex-hepta-neuron
+            codex-hepta-intuition
+            codex-hepta-prompt-registry
+            codex-hepta-prompt-optimizer
+            codex-hepta-plasticity
+            codex-hepta-infer-worker-host
+            codex-hepta-cognitive-types
+            codex-hepta-cognitive-store
+            codex-hepta-cognitive-read
+            codex-hepta-memory-retrieval
+            codex-hepta-memory-federation
+            codex-hepta-kg
+            codex-hepta-compact-engine
+            codex-hepta-context-compiler
+            codex-hepta-authbus
+            codex-hepta-authbus-p1-3-qualification
+            codex-hepta-control-plane
+            codex-hepta-infer-core
+            codex-hepta-inferd
+            codex-hepta-intelligence
+            codex-hepta-codex-adapter
+            codex-hepta-bao-adapter
+          )
+          args=()
+          for package in "${packages[@]}"; do
+            args+=(--package "$package")
+          done
+          cargo check --locked "${args[@]}" --all-targets
+          cargo test --locked "${args[@]}"
+          cargo test --locked --package codex-hepta-shadow-qualification value_learning
+
+      - name: Strict-Clippy all implemented Rust packages
+        working-directory: codex-rs
+        run: |
+          packages=(
+            codex-hepta-objective
+            codex-hepta-ndu
+            codex-hepta-learning-ledger
+            codex-hepta-learning-artifacts
+            codex-hepta-bellman-operator
+            codex-hepta-intelligence-eval
+            codex-hepta-neuron
+            codex-hepta-intuition
+            codex-hepta-prompt-registry
+            codex-hepta-prompt-optimizer
+            codex-hepta-plasticity
+            codex-hepta-infer-worker-host
+            codex-hepta-cognitive-types
+            codex-hepta-cognitive-store
+            codex-hepta-cognitive-read
+            codex-hepta-memory-retrieval
+            codex-hepta-memory-federation
+            codex-hepta-kg
+            codex-hepta-compact-engine
+            codex-hepta-context-compiler
+            codex-hepta-authbus
+            codex-hepta-authbus-p1-3-qualification
+            codex-hepta-control-plane
+            codex-hepta-infer-core
+            codex-hepta-inferd
+            codex-hepta-intelligence
+            codex-hepta-codex-adapter
+            codex-hepta-bao-adapter
+          )
+          args=()
+          for package in "${packages[@]}"; do
+            args+=(--package "$package")
+          done
+          cargo clippy --locked "${args[@]}" --all-targets -- -D warnings
+
+      - name: Run presentation and engineering tests
+        run: |
+          node --test apps/hepta-control-ui/test/*.test.js
+          node --test apps/hepta-browser/test/*.test.js
+          node --test apps/hepta-native/test/*.test.js
+          (cd tools/hepta-engineering-control && python3 -m unittest -v test_hepta_engineering_control.py)
+
+      - name: Require exact clean candidate
+        run: |
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
