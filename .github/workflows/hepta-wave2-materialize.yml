@@ -1,0 +1,203 @@
+name: Hepta V8 remaining-source materializer
+
+on:
+  push:
+    branches:
+      - "codex/hepta-v8-gap-closure-20260905"
+    paths:
+      - ".github/workflows/hepta-wave2-materialize.yml"
+      - "scripts/hepta-wave2-materialize.py"
+      - "scripts/hepta_remaining_source_wave.py"
+      - "scripts/hepta_wave2_primary_gate_patch.py"
+      - "scripts/hepta_wave2_memory_sources.py"
+      - "scripts/hepta_wave2_control_sources.py"
+      - "scripts/hepta_wave2_external_sources.py"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-v8-wave2-materialize-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  materialize:
+    if: ${{ !contains(github.event.head_commit.message, '[wave2-materialized]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact source-definition commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up repository CI toolchain
+        uses: ./.github/actions/setup-ci
+
+      - name: Patch primary gate and materialize remaining roots
+        run: |
+          python3 scripts/hepta_wave2_primary_gate_patch.py normalize
+          python3 scripts/hepta-wave2-materialize.py normalize
+          python3 .github/scripts/verify_cargo_workspace_manifests.py
+
+      - name: Check remaining Rust packages
+        working-directory: codex-rs
+        run: |
+          packages=(
+            codex-hepta-cognitive-types
+            codex-hepta-cognitive-store
+            codex-hepta-cognitive-read
+            codex-hepta-memory-retrieval
+            codex-hepta-memory-federation
+            codex-hepta-kg
+            codex-hepta-compact-engine
+            codex-hepta-context-compiler
+            codex-hepta-authbus
+            codex-hepta-authbus-p1-3-qualification
+            codex-hepta-control-plane
+            codex-hepta-infer-core
+            codex-hepta-inferd
+            codex-hepta-intelligence
+            codex-hepta-codex-adapter
+            codex-hepta-bao-adapter
+          )
+          args=()
+          for package in "${packages[@]}"; do
+            args+=(--package "$package")
+          done
+          cargo fmt --check "${args[@]}"
+          cargo check "${args[@]}" --all-targets
+
+      - name: Run remaining Rust tests
+        working-directory: codex-rs
+        run: |
+          packages=(
+            codex-hepta-cognitive-types
+            codex-hepta-cognitive-store
+            codex-hepta-cognitive-read
+            codex-hepta-memory-retrieval
+            codex-hepta-memory-federation
+            codex-hepta-kg
+            codex-hepta-compact-engine
+            codex-hepta-context-compiler
+            codex-hepta-authbus
+            codex-hepta-authbus-p1-3-qualification
+            codex-hepta-control-plane
+            codex-hepta-infer-core
+            codex-hepta-inferd
+            codex-hepta-intelligence
+            codex-hepta-codex-adapter
+            codex-hepta-bao-adapter
+          )
+          args=()
+          for package in "${packages[@]}"; do
+            args+=(--package "$package")
+          done
+          cargo test --locked "${args[@]}"
+          cargo test --locked --package codex-hepta-shadow-qualification value_learning
+
+      - name: Run strict remaining-package Clippy
+        working-directory: codex-rs
+        run: |
+          packages=(
+            codex-hepta-cognitive-types
+            codex-hepta-cognitive-store
+            codex-hepta-cognitive-read
+            codex-hepta-memory-retrieval
+            codex-hepta-memory-federation
+            codex-hepta-kg
+            codex-hepta-compact-engine
+            codex-hepta-context-compiler
+            codex-hepta-authbus
+            codex-hepta-authbus-p1-3-qualification
+            codex-hepta-control-plane
+            codex-hepta-infer-core
+            codex-hepta-inferd
+            codex-hepta-intelligence
+            codex-hepta-codex-adapter
+            codex-hepta-bao-adapter
+          )
+          args=()
+          for package in "${packages[@]}"; do
+            args+=(--package "$package")
+          done
+          cargo clippy --locked "${args[@]}" --all-targets -- -D warnings
+
+      - name: Run browser and native shell tests
+        run: |
+          node --test apps/hepta-browser/test/*.test.js
+          node --test apps/hepta-native/test/*.test.js
+          node --test apps/hepta-control-ui/test/*.test.js
+
+      - name: Run engineering-control tests
+        working-directory: tools/hepta-engineering-control
+        run: python3 -m unittest -v test_hepta_engineering_control.py
+
+      - name: Verify complete source and registry closure
+        run: |
+          python3 scripts/hepta_wave2_primary_gate_patch.py verify
+          python3 scripts/hepta-wave2-materialize.py verify
+          python3 scripts/hepta-gap-closure.py verify
+          python3 .github/scripts/verify_cargo_workspace_manifests.py
+          git diff --check
+
+      - name: Enforce materialization path envelope
+        run: |
+          git add -A
+          python3 - <<'PY'
+          import subprocess
+
+          allowed_exact = {
+              "codex-rs/Cargo.lock",
+              "codex-rs/Cargo.toml",
+              "docs/delivery/WORK_PACKAGES.json",
+              "docs/modules/MODULES.json",
+              "docs/modules/SOURCE_BINDINGS.json",
+              "qualification/gap-closure/MANIFEST.json",
+              "qualification/gap-closure/PLAN_AUDIT.json",
+              "scripts/hepta-gap-closure.py",
+          }
+          allowed_prefixes = (
+              "apps/hepta-browser/",
+              "apps/hepta-native/",
+              "codex-rs/codex-app-server/",
+              "codex-rs/hepta-",
+              "docs/modules/",
+              "external/HeptaBao/",
+              "third_party/servo-patches/",
+          )
+          output = subprocess.check_output(
+              ["git", "diff", "--cached", "--name-only", "-z"]
+          )
+          paths = [
+              item.decode("utf-8")
+              for item in output.split(b"\0")
+              if item
+          ]
+          rejected = [
+              path
+              for path in paths
+              if path not in allowed_exact
+              and not any(path.startswith(prefix) for prefix in allowed_prefixes)
+          ]
+          if rejected:
+              raise SystemExit(
+                  "materializer attempted out-of-envelope writes: "
+                  + ", ".join(rejected)
+              )
+          if not paths:
+              raise SystemExit("materializer produced no source changes")
+          print(f"materialization_paths={len(paths)}")
+          PY
+
+      - name: Commit and re-verify materialized candidate
+        run: |
+          git config user.name "hepta-ci-bot"
+          git config user.email "hepta-ci-bot@users.noreply.github.com"
+          git commit -m "feat(hepta): materialize all remaining V8 source roots [wave2-materialized]"
+          python3 scripts/hepta-wave2-materialize.py verify
+          python3 scripts/hepta-gap-closure.py verify
+          python3 .github/scripts/verify_cargo_workspace_manifests.py
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
+      - name: Push exact materialized commit
+        run: git push origin "HEAD:${GITHUB_REF_NAME}"
