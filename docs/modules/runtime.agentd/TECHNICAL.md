@@ -199,7 +199,7 @@ For `runtime.agentd`, this document grants no runtime, production, model, provid
 
 #### `P0.8B-READINESS`
 
-- State: `open`; priority: `1`; parallel class: `contract_coordinated`.
+- State: `source_implemented_execution_pending`; priority: `1`; parallel class: `contract_coordinated`.
 - Owner/deputy: `runtime-control` / `fleet-runtime`.
 - Allowed write paths:
 - `codex-rs/hepta-supervisor/**`
@@ -230,7 +230,7 @@ For `runtime.agentd`, this document grants no runtime, production, model, provid
 
 #### `P0.8D-VERTICAL-SLICE`
 
-- State: `open`; priority: `1`; parallel class: `contract_coordinated`.
+- State: `source_implemented_execution_pending`; priority: `1`; parallel class: `contract_coordinated`.
 - Owner/deputy: `agent-runtime` / `runtime-control`.
 - Allowed write paths:
 - `codex-rs/hepta-agentd/**`

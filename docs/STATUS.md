@@ -27,10 +27,9 @@ Dynamic Git, CI, review, operator, selection, promotion and release facts are ex
 | State | Count |
 |---|---:|
 | `blocked_external` | 2 |
-| `open` | 7 |
-| `planned` | 56 |
+| `planned` | 55 |
 | `source_implemented` | 7 |
-| `source_implemented_execution_pending` | 8 |
+| `source_implemented_execution_pending` | 16 |
 | `source_implemented_semantic_review_pending` | 1 |
 
 ## Baseline claims

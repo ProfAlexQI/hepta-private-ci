@@ -1095,7 +1095,7 @@
       "id": "P0.7B-B4-CALLSITE-PROOF",
       "module": "kernel.authority",
       "priority": 1,
-      "state": "open",
+      "state": "source_implemented_execution_pending",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -5126,7 +5126,7 @@
       "id": "P0.7D-FAULT-MATRIX",
       "module": "kernel.operations",
       "priority": 1,
-      "state": "open",
+      "state": "source_implemented_execution_pending",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -5242,7 +5242,7 @@
       "id": "P0.7E-DEPENDENCY-INVERSION",
       "module": "platform.wire",
       "priority": 1,
-      "state": "open",
+      "state": "source_implemented_execution_pending",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -5346,7 +5346,7 @@
       "id": "P0.8A-AST-RATCHET",
       "module": "kernel.authority",
       "priority": 1,
-      "state": "open",
+      "state": "source_implemented_execution_pending",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -5457,7 +5457,7 @@
       "id": "P0.8B-READINESS",
       "module": "runtime.supervisor",
       "priority": 1,
-      "state": "open",
+      "state": "source_implemented_execution_pending",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -5582,7 +5582,7 @@
       "id": "P0.8C-RESOURCE-BUDGETS",
       "module": "runtime.supervisor",
       "priority": 1,
-      "state": "open",
+      "state": "source_implemented_execution_pending",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -5916,7 +5916,7 @@
       "id": "P0.8D-VERTICAL-SLICE",
       "module": "runtime.agentd",
       "priority": 1,
-      "state": "open",
+      "state": "source_implemented_execution_pending",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -8095,7 +8095,7 @@
       "id": "PLATFORM-0-TYPE-BOUNDARY",
       "module": "platform.types",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented_execution_pending",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [

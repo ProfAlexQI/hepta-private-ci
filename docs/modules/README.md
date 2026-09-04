@@ -4,10 +4,10 @@ This directory contains exactly one stable implementation guide for every module
 
 ## Guides
 
-- [`platform.types`](platform.types/TECHNICAL.md) — `existing_legacy_aggregate`, bootstrap `PLATFORM-0-TYPE-BOUNDARY`.
-- [`platform.wire`](platform.wire/TECHNICAL.md) — `existing_legacy_aggregate`, bootstrap `P0.7E-DEPENDENCY-INVERSION`.
+- [`platform.types`](platform.types/TECHNICAL.md) — `existing_bound`, bootstrap `PLATFORM-0-TYPE-BOUNDARY`.
+- [`platform.wire`](platform.wire/TECHNICAL.md) — `existing_bound`, bootstrap `P0.7E-DEPENDENCY-INVERSION`.
 - [`kernel.authority`](kernel.authority/TECHNICAL.md) — `existing_bound`, bootstrap `P0.7B-B0-VERIFIED-USE`.
-- [`kernel.operations`](kernel.operations/TECHNICAL.md) — `existing_legacy_aggregate`, bootstrap `P0.7D-FAULT-MATRIX`.
+- [`kernel.operations`](kernel.operations/TECHNICAL.md) — `existing_bound`, bootstrap `P0.7D-FAULT-MATRIX`.
 - [`kernel.evidence`](kernel.evidence/TECHNICAL.md) — `existing_bound`, bootstrap `P0.9-EXTERNAL-GATES`.
 - [`runtime.supervisor`](runtime.supervisor/TECHNICAL.md) — `existing_bound`, bootstrap `P0.7A-RUNTIME-BOOTSTRAP`.
 - [`runtime.fleet`](runtime.fleet/TECHNICAL.md) — `existing_bound`, bootstrap `FLEET-1-ALLOCATION-CONTRACT`.

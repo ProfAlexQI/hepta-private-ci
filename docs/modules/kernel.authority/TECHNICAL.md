@@ -289,7 +289,7 @@ For `kernel.authority`, this document grants no runtime, production, model, prov
 
 #### `P0.7B-B4-CALLSITE-PROOF`
 
-- State: `open`; priority: `1`; parallel class: `contract_coordinated`.
+- State: `source_implemented_execution_pending`; priority: `1`; parallel class: `contract_coordinated`.
 - Owner/deputy: `security-authority` / `kernel-contracts`.
 - Allowed write paths:
 - `scripts/verify_hepta_callers.py`
@@ -325,7 +325,7 @@ For `kernel.authority`, this document grants no runtime, production, model, prov
 
 #### `P0.8A-AST-RATCHET`
 
-- State: `open`; priority: `1`; parallel class: `contract_coordinated`.
+- State: `source_implemented_execution_pending`; priority: `1`; parallel class: `contract_coordinated`.
 - Owner/deputy: `security-authority` / `kernel-contracts`.
 - Allowed write paths:
 - `scripts/verify_hepta_callers.py`
