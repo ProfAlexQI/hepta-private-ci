@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: hepta-wave1-install-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   materialize:
@@ -53,6 +53,24 @@ jobs:
         run: |
           tar --extract --gzip --file /tmp/hepta-wave1.tar.gz --directory .
           rm -rf qualification/value-learning/bootstrap
+          python3 - <<'PY'
+          from pathlib import Path
+
+          manifest = Path('codex-rs/Cargo.toml')
+          text = manifest.read_text(encoding='utf-8')
+          members = (
+              '    "hepta-learning-artifacts",\n'
+              '    "hepta-learning-ledger",\n'
+              '    "hepta-ndu",\n'
+              '    "hepta-objective",\n'
+          )
+          if '    "hepta-objective",\n' not in text:
+              anchor = '    "hepta-evidence",\n'
+              if anchor not in text:
+                  raise SystemExit('workspace member insertion anchor missing')
+              text = text.replace(anchor, anchor + members, 1)
+              manifest.write_text(text, encoding='utf-8')
+          PY
           python3 scripts/hepta-value-learning.py verify
           python3 .github/scripts/verify_cargo_workspace_manifests.py
 
