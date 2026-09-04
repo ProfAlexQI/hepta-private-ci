@@ -1,0 +1,58 @@
+name: Hepta offline Rust qualification tools (read-only)
+on:
+  push:
+    branches: [diagnostic/hepta-offline-rust-20260905]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: '5926feb1cdb38f814ea2e888ea0597ebd437874c'
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Install pinned repository test tools
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: just@1.51.0,nextest@0.9.103
+      - name: Populate public dependency cache without changing source
+        working-directory: codex-rs
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets -p codex-hepta-types -p codex-hepta-neuron -p codex-hepta-bellman-operator -p codex-hepta-ndu -p codex-hepta-intelligence-eval -p codex-hepta-learning-ledger -p codex-hepta-learning-artifacts
+          git diff --exit-code
+      - name: Export only tool binaries and public dependency sources
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/hepta-offline-tools"
+          mkdir -p "$OUT" "$RUNNER_TEMP/hepta-test-tools"
+          SYSROOT=$(rustc --print sysroot)
+          rustc -vV > "$OUT/identity.txt"
+          cargo -vV >> "$OUT/identity.txt"
+          git rev-parse HEAD HEAD^{tree} >> "$OUT/identity.txt"
+          tar -czf "$OUT/toolchain.tar.gz" --exclude=lib/rustlib/src -C "$SYSROOT" bin lib
+          cp "$(command -v just)" "$RUNNER_TEMP/hepta-test-tools/just"
+          cp "$(command -v cargo-nextest)" "$RUNNER_TEMP/hepta-test-tools/cargo-nextest"
+          tar -czf "$OUT/test-tools.tar.gz" -C "$RUNNER_TEMP/hepta-test-tools" .
+          CACHE=${CARGO_HOME:-$HOME/.cargo}
+          ITEMS=()
+          for name in registry git; do
+            if test -d "$CACHE/$name"; then ITEMS+=("$name"); fi
+          done
+          tar -czf "$OUT/public-cargo-cache.tar.gz" -C "$CACHE" "${ITEMS[@]}"
+          (cd "$OUT" && sha256sum *.tar.gz > SHA256SUMS)
+          git diff --exit-code
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-offline-rust-1.95.0
+          path: ${{ runner.temp }}/hepta-offline-tools/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
