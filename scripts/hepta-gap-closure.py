@@ -73,6 +73,79 @@ def normalize_workspace() -> bool:
     return True
 
 
+def normalize_ndu_helpers() -> bool:
+    changed = False
+    digest_path = ROOT / "codex-rs" / "hepta-ndu" / "src" / "evaluation_digest.rs"
+    digest_text = digest_path.read_text(encoding="utf-8")
+    public_axis_helper = "pub(crate) fn push_axis_values(bytes: &mut Vec<u8>, values: &[AxisValue])"
+    if public_axis_helper not in digest_text:
+        private_axis_helper = "fn push_axis_values(bytes: &mut Vec<u8>, values: &[AxisValue])"
+        if private_axis_helper not in digest_text:
+            raise RuntimeError("NDU axis digest helper signature is missing")
+        digest_text = digest_text.replace(private_axis_helper, public_axis_helper, 1)
+        changed = True
+    if "\nfn push_id(bytes: &mut Vec<u8>, value: &StableId)" not in digest_text:
+        digest_text += (
+            "\nfn push_id(bytes: &mut Vec<u8>, value: &StableId) {\n"
+            "    let raw = value.as_str().as_bytes();\n"
+            "    push_len(bytes, raw.len());\n"
+            "    bytes.extend_from_slice(raw);\n"
+            "}\n\n"
+            "fn push_len(bytes: &mut Vec<u8>, value: usize) {\n"
+            "    let converted = u32::try_from(value).unwrap_or(u32::MAX);\n"
+            "    bytes.extend_from_slice(&converted.to_be_bytes());\n"
+            "}\n"
+        )
+        changed = True
+    digest_path.write_text(digest_text, encoding="utf-8")
+
+    evaluator_path = ROOT / "codex-rs" / "hepta-ndu" / "src" / "evaluator.rs"
+    evaluator_text = evaluator_path.read_text(encoding="utf-8")
+    if "use crate::AxisLimit;\n" not in evaluator_text:
+        anchor = "use crate::AxisDirection;\n"
+        if anchor not in evaluator_text:
+            raise RuntimeError("NDU AxisDirection import anchor is missing")
+        evaluator_text = evaluator_text.replace(anchor, anchor + "use crate::AxisLimit;\n", 1)
+        changed = True
+    if "use crate::evaluation_digest::push_axis_values;\n" not in evaluator_text:
+        anchor = "use crate::evaluation_digest::digest_profile;\n"
+        if anchor not in evaluator_text:
+            raise RuntimeError("NDU digest import anchor is missing")
+        evaluator_text = evaluator_text.replace(
+            anchor,
+            anchor + "use crate::evaluation_digest::push_axis_values;\n",
+            1,
+        )
+        changed = True
+    public_normalizer = "pub(crate) fn normalize_axis_values(values: &mut [AxisValue])"
+    if public_normalizer not in evaluator_text:
+        private_normalizer = "fn normalize_axis_values(values: &mut [AxisValue])"
+        if private_normalizer not in evaluator_text:
+            raise RuntimeError("NDU axis normalizer signature is missing")
+        evaluator_text = evaluator_text.replace(private_normalizer, public_normalizer, 1)
+        changed = True
+    evaluator_path.write_text(evaluator_text, encoding="utf-8")
+
+    scoring_path = ROOT / "codex-rs" / "hepta-ndu" / "src" / "scoring.rs"
+    scoring_text = scoring_path.read_text(encoding="utf-8")
+    normalizer_import = "use crate::evaluator::normalize_axis_values;\n"
+    if normalizer_import not in scoring_text:
+        anchor = "use crate::mul_q32_ties_even;\n"
+        if anchor not in scoring_text:
+            raise RuntimeError("NDU scoring import anchor is missing")
+        scoring_text = scoring_text.replace(anchor, anchor + normalizer_import, 1)
+        scoring_path.write_text(scoring_text, encoding="utf-8")
+        changed = True
+
+    return changed
+
+
+def normalize_source() -> bool:
+    workspace_changed = normalize_workspace()
+    ndu_changed = normalize_ndu_helpers()
+    return workspace_changed or ndu_changed
+
+
 def verify() -> list[str]:
     failures: list[str] = []
     try:
@@ -183,7 +256,7 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        changed = normalize_workspace() if args.command == "normalize" else False
+        changed = normalize_source() if args.command == "normalize" else False
     except (OSError, RuntimeError) as error:
         print(error, file=sys.stderr)
         return 1
@@ -195,7 +268,7 @@ def main() -> int:
         return 1
     emit_status()
     if args.command == "normalize":
-        print(json.dumps({"workspace_changed": changed}, sort_keys=True))
+        print(json.dumps({"source_changed": changed}, sort_keys=True))
     return 0
 
 
