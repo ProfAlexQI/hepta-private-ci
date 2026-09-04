@@ -53,6 +53,11 @@ jobs:
         run: |
           tar --extract --gzip --file /tmp/hepta-wave1.tar.gz --directory .
           rm -rf qualification/value-learning/bootstrap
+          # The job token intentionally lacks workflow-write authority. The
+          # authenticated source payload is committed first; workflow files are
+          # installed separately by the reviewed GitHub connector.
+          rm -f .github/workflows/hepta-value-learning-core.yml
+          rm -f .github/workflows/hepta-wave1-bootstrap.yml
           python3 - <<'PY'
           from pathlib import Path
 
