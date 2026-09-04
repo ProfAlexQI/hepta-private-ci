@@ -22,6 +22,14 @@ REMOTE_EXECUTION_CONFIGS = {
     "--config=ci-v8",
     "--config=ci-windows-cross",
 }
+# A keyless Windows cross build must reconstruct the local half of the split
+# declared by `ci-windows-cross`: MSVC executes host-loaded actions while the
+# target remains GNU LLVM. The custom test toolchain is required because Bazel
+# otherwise insists that a test's execution and target platforms are equal.
+LOCAL_WINDOWS_MSVC_EXEC_PLATFORM = "//:windows_x86_64_msvc"
+LOCAL_WINDOWS_GNULLVM_TEST_TOOLCHAIN = (
+    "//:windows_gnullvm_tests_on_msvc_host_toolchain"
+)
 # Honor either explicit setting so the wrapper never overrides the caller's
 # choice when it supplies the CI default below.
 REMOTE_REPO_CONTENTS_CACHE_STARTUP_OPTIONS = {
@@ -115,6 +123,19 @@ def remote_config(args: Sequence[str], env: Mapping[str, str]) -> str | None:
     return config
 
 
+def option_contains_value(args: Sequence[str], option: str, value: str) -> bool:
+    """Return whether a repeatable Bazel option already contains `value`."""
+    for idx, arg in enumerate(args):
+        encoded: str | None = None
+        if arg == option and idx + 1 < len(args):
+            encoded = args[idx + 1]
+        elif arg.startswith(f"{option}="):
+            encoded = arg.split("=", 1)[1]
+        if encoded is not None and value in encoded.split(","):
+            return True
+    return False
+
+
 def bazel_args_without_remote_execution(
     args: Sequence[str], env: Mapping[str, str]
 ) -> list[str]:
@@ -169,6 +190,12 @@ def bazel_args_without_remote_execution(
         ):
             if not any(arg == option or arg.startswith(f"{option}=") for arg in prefix):
                 injected_args.append(f"{option}={platform}")
+        for option, value in (
+            ("--extra_execution_platforms", LOCAL_WINDOWS_MSVC_EXEC_PLATFORM),
+            ("--extra_toolchains", LOCAL_WINDOWS_GNULLVM_TEST_TOOLCHAIN),
+        ):
+            if not option_contains_value(prefix, option, value):
+                injected_args.append(f"{option}={value}")
 
     # Put defaults before caller options so a CI config cannot override an
     # explicit per-job cache path (or other later command-line setting).
