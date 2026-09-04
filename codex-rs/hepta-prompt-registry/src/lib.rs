@@ -144,7 +144,7 @@ impl PromptRegistry {
             if factor.source == FactorSource::ExternalUntrusted {
                 return Err(Error::ExternalSelfAdmission);
             }
-            if factor.proposer_id == *reviewer_id {
+            if &factor.proposer_id == reviewer_id {
                 return Err(Error::SelfReview);
             }
             if factor.lifecycle != Lifecycle::Draft {
@@ -255,7 +255,7 @@ impl PromptRegistry {
 
     fn disable_realizations(&mut self, factor_id: &StableId) {
         for realization in self.realizations.values_mut() {
-            if realization.factor_id == *factor_id {
+            if &realization.factor_id == factor_id {
                 realization.active = false;
             }
         }
