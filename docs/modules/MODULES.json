@@ -641,11 +641,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_unmaterialized",
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "sourceStatus": "existing_bound",
+      "sourceEvidenceRoots": [
         "codex-rs/hepta-infer-worker-host"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "INFER-V4-T4",
       "technicalDocument": "docs/modules/inference.worker/TECHNICAL.md",
       "documentationReady": true
@@ -685,11 +685,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_unmaterialized",
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "sourceStatus": "existing_bound",
+      "sourceEvidenceRoots": [
         "codex-rs/hepta-objective"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "OBJ-0-OBJECTIVE-CONTRACTS",
       "technicalDocument": "docs/modules/objective.compiler/TECHNICAL.md",
       "documentationReady": true
@@ -735,11 +735,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_unmaterialized",
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "sourceStatus": "existing_bound",
+      "sourceEvidenceRoots": [
         "codex-rs/hepta-ndu"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "NDU-0-PREFERENCE-UTILITY-CONTRACTS",
       "technicalDocument": "docs/modules/utility.ndu/TECHNICAL.md",
       "documentationReady": true
@@ -785,11 +785,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_unmaterialized",
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "sourceStatus": "existing_bound",
+      "sourceEvidenceRoots": [
         "codex-rs/hepta-neuron"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "BIO-0-NEURON-INTUITION-CONTRACTS",
       "technicalDocument": "docs/modules/neuron.runtime/TECHNICAL.md",
       "documentationReady": true
@@ -833,11 +833,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_unmaterialized",
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "sourceStatus": "existing_bound",
+      "sourceEvidenceRoots": [
         "codex-rs/hepta-intuition"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "INT-1-CALIBRATED-INTUITION-POLICY",
       "technicalDocument": "docs/modules/intuition.policy/TECHNICAL.md",
       "documentationReady": true
@@ -881,11 +881,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_unmaterialized",
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "sourceStatus": "existing_bound",
+      "sourceEvidenceRoots": [
         "codex-rs/hepta-prompt-registry"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "PIM-0-PROMPT-INTERVENTION-CONTRACTS",
       "technicalDocument": "docs/modules/prompt.registry/TECHNICAL.md",
       "documentationReady": true
@@ -929,11 +929,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_unmaterialized",
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "sourceStatus": "existing_bound",
+      "sourceEvidenceRoots": [
         "codex-rs/hepta-prompt-optimizer"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "PIM-2-PROMPT-PRICING-PORTFOLIO-SHADOW",
       "technicalDocument": "docs/modules/prompt.optimizer/TECHNICAL.md",
       "documentationReady": true
@@ -1416,11 +1416,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_unmaterialized",
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "sourceStatus": "existing_bound",
+      "sourceEvidenceRoots": [
         "codex-rs/hepta-learning-ledger"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "LRN-0-CAUSAL-LEARNING-CONTRACTS",
       "technicalDocument": "docs/modules/learning.ledger/TECHNICAL.md",
       "documentationReady": true
@@ -1462,11 +1462,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_unmaterialized",
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "sourceStatus": "existing_bound",
+      "sourceEvidenceRoots": [
         "codex-rs/hepta-bellman-operator"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "HBO-0-BELLMAN-OPERATOR-CONTRACTS",
       "technicalDocument": "docs/modules/learning.operator/TECHNICAL.md",
       "documentationReady": true
@@ -1508,11 +1508,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_unmaterialized",
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "sourceStatus": "existing_bound",
+      "sourceEvidenceRoots": [
         "codex-rs/hepta-intelligence-eval"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "LRN-2-CAUSAL-EVALUATION",
       "technicalDocument": "docs/modules/learning.eval/TECHNICAL.md",
       "documentationReady": true
@@ -1555,11 +1555,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_unmaterialized",
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "sourceStatus": "existing_bound",
+      "sourceEvidenceRoots": [
         "codex-rs/hepta-learning-artifacts"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "ART-1-LEARNING-ARTIFACT-REGISTRY",
       "technicalDocument": "docs/modules/learning.artifacts/TECHNICAL.md",
       "documentationReady": true
@@ -1603,11 +1603,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_unmaterialized",
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "sourceStatus": "existing_bound",
+      "sourceEvidenceRoots": [
         "codex-rs/hepta-plasticity"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "PLS-1-PARAMETER-PLASTICITY",
       "technicalDocument": "docs/modules/learning.plasticity/TECHNICAL.md",
       "documentationReady": true
@@ -1799,11 +1799,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_unmaterialized",
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "sourceStatus": "existing_bound",
+      "sourceEvidenceRoots": [
         "apps/hepta-control-ui"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "UI-V5",
       "technicalDocument": "docs/modules/ui.control/TECHNICAL.md",
       "documentationReady": true
@@ -1941,11 +1941,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_unmaterialized",
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "sourceStatus": "existing_bound",
+      "sourceEvidenceRoots": [
         "tools/hepta-engineering-control"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "ECP-1-ENGINEERING-CONTROL-PLANE",
       "technicalDocument": "docs/modules/control.engineering/TECHNICAL.md",
       "documentationReady": true

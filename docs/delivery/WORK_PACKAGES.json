@@ -1796,7 +1796,7 @@
       "id": "INFER-V4-T4",
       "module": "inference.worker",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -1992,7 +1992,7 @@
       "id": "UI-V5",
       "module": "ui.control",
       "priority": 2,
-      "state": "source_implemented_execution_pending",
+      "state": "source_implemented",
       "parallelClass": "independent_source_preparation",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -2905,7 +2905,7 @@
       "id": "OBJ-0-OBJECTIVE-CONTRACTS",
       "module": "objective.compiler",
       "priority": 1,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_first_parallel",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -3004,7 +3004,7 @@
       "id": "LRN-0-CAUSAL-LEARNING-CONTRACTS",
       "module": "learning.ledger",
       "priority": 1,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_first_parallel",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -3137,7 +3137,7 @@
       "id": "NDU-0-PREFERENCE-UTILITY-CONTRACTS",
       "module": "utility.ndu",
       "priority": 1,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_first_parallel",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -3271,7 +3271,7 @@
       "id": "PIM-0-PROMPT-INTERVENTION-CONTRACTS",
       "module": "prompt.registry",
       "priority": 1,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_first_parallel",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -3395,7 +3395,7 @@
       "id": "HBO-0-BELLMAN-OPERATOR-CONTRACTS",
       "module": "learning.operator",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_first_parallel",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -3514,7 +3514,7 @@
       "id": "BIO-0-NEURON-INTUITION-CONTRACTS",
       "module": "neuron.runtime",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_first_parallel",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -3877,7 +3877,7 @@
       "id": "ART-1-LEARNING-ARTIFACT-REGISTRY",
       "module": "learning.artifacts",
       "priority": 1,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -4758,7 +4758,7 @@
       "id": "INT-1-CALIBRATED-INTUITION-POLICY",
       "module": "intuition.policy",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -4878,7 +4878,7 @@
       "id": "PIM-2-PROMPT-PRICING-PORTFOLIO-SHADOW",
       "module": "prompt.optimizer",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -5704,7 +5704,7 @@
       "id": "ECP-1-ENGINEERING-CONTROL-PLANE",
       "module": "control.engineering",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "independent_engineering_tooling",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -6166,7 +6166,7 @@
       "id": "LRN-2-CAUSAL-EVALUATION",
       "module": "learning.eval",
       "priority": 1,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -7491,7 +7491,7 @@
       "id": "PLS-1-PARAMETER-PLASTICITY",
       "module": "learning.plasticity",
       "priority": 3,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [

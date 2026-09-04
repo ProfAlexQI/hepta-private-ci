@@ -10,7 +10,7 @@
 
 **Lifecycle:** `target`
 
-**Source status:** `target_unmaterialized`
+**Source status:** `existing_bound`
 
 **Bootstrap work package:** `ECP-1-ENGINEERING-CONTROL-PLANE`
 
@@ -32,7 +32,7 @@ Declared exclusive target roots:
 
 Existing declared roots at this exact source snapshot:
 
-None.
+- `tools/hepta-engineering-control`
 
 Non-authoritative implementation evidence roots:
 
@@ -40,9 +40,9 @@ None.
 
 Declared roots not yet present:
 
-- `tools/hepta-engineering-control`
+None.
 
-`target_unmaterialized` is a source-location fact. For a target or unbound module, development begins with `ECP-1-ENGINEERING-CONTROL-PLANE` and materializes the declared root before source completion. Aggregate evidence roots are read-only decomposition evidence; they transfer no ownership and cannot become a second permanent implementation. A source move updates `MODULES.json`, `SOURCE_BINDINGS.json` and this guide in one candidate.
+`existing_bound` is a source-location fact. The declared roots above are materialized in the bounded V8 source candidate and are covered by the dedicated closed-world inventory, focused tests, all-target compilation, strict lint and exact-head qualification. This status does not activate `control.engineering`, create a production caller, grant runtime or effect authority, issue independent acceptance, select or promote a candidate, or authorize release. Any later source move updates `MODULES.json`, `SOURCE_BINDINGS.json` and this guide in one candidate.
 
 ## 3. Boundary, responsibilities and non-goals
 
@@ -536,3 +536,11 @@ The following additional work packages are source-planning envelopes introduced 
 - `ASM-1-DISCOVERY-MANIFEST`
 - `ASM-2-DEBIAN-BRIDGE-SANDBOX`
 - `DOC-3E-PRECODING-READINESS-CLOSED-WORLD`
+
+## 17. Source implementation receipt
+
+The bootstrap source-location obligation for `control.engineering` is implemented by work package `ECP-1-ENGINEERING-CONTROL-PLANE` in:
+
+- `tools/hepta-engineering-control`
+
+The source candidate is checked by `.github/workflows/hepta-gap-closure.yml`, including closed-world inventory, package tests, all-target compilation, strict Clippy and clean tracked state. This receipt is source implementation evidence only. It grants no runtime, production-writer, model-provider, external-effect, independent-acceptance, selection, promotion, merge or release authority.

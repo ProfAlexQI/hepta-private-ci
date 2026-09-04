@@ -10,7 +10,7 @@
 
 **Lifecycle:** `target`
 
-**Source status:** `target_unmaterialized`
+**Source status:** `existing_bound`
 
 **Bootstrap work package:** `PIM-0-PROMPT-INTERVENTION-CONTRACTS`
 
@@ -32,7 +32,7 @@ Declared exclusive target roots:
 
 Existing declared roots at this exact source snapshot:
 
-None.
+- `codex-rs/hepta-prompt-registry`
 
 Non-authoritative implementation evidence roots:
 
@@ -40,9 +40,9 @@ None.
 
 Declared roots not yet present:
 
-- `codex-rs/hepta-prompt-registry`
+None.
 
-`target_unmaterialized` is a source-location fact. For a target or unbound module, development begins with `PIM-0-PROMPT-INTERVENTION-CONTRACTS` and materializes the declared root before source completion. Aggregate evidence roots are read-only decomposition evidence; they transfer no ownership and cannot become a second permanent implementation. A source move updates `MODULES.json`, `SOURCE_BINDINGS.json` and this guide in one candidate.
+`existing_bound` is a source-location fact. The declared roots above are materialized in the bounded V8 source candidate and are covered by the dedicated closed-world inventory, focused tests, all-target compilation, strict lint and exact-head qualification. This status does not activate `prompt.registry`, create a production caller, grant runtime or effect authority, issue independent acceptance, select or promote a candidate, or authorize release. Any later source move updates `MODULES.json`, `SOURCE_BINDINGS.json` and this guide in one candidate.
 
 ## 3. Boundary, responsibilities and non-goals
 
@@ -315,3 +315,11 @@ Consumed readiness protocols:
 - None.
 
 Coding begins only with a current `CanonicalSourceReceiptV1`, a frozen contract/readiness digest, the existing bounded work-package envelope, defined mandatory fixtures, deterministic fallback and zero authority delta. This overlay closes documentation ambiguity only; it does not change source status, activation, acceptance, selection, promotion or release.
+
+## 17. Source implementation receipt
+
+The bootstrap source-location obligation for `prompt.registry` is implemented by work package `PIM-0-PROMPT-INTERVENTION-CONTRACTS` in:
+
+- `codex-rs/hepta-prompt-registry`
+
+The source candidate is checked by `.github/workflows/hepta-gap-closure.yml`, including closed-world inventory, package tests, all-target compilation, strict Clippy and clean tracked state. This receipt is source implementation evidence only. It grants no runtime, production-writer, model-provider, external-effect, independent-acceptance, selection, promotion, merge or release authority.
