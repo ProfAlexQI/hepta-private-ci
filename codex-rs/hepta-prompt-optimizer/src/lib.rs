@@ -116,46 +116,40 @@ pub fn optimize(mut request: OptimizationRequest) -> Result<PromptPortfolioRecei
     }
 
     let mut selected = Vec::new();
-    let mut selected_set = BTreeSet::new();
+    let mut decisions = Vec::with_capacity(request.candidates.len());
     let mut remaining = request.budget;
     let mut total_gain = FixedQ32::ZERO;
     let mut marginal_excluded_gain = FixedQ32::ZERO;
 
     for candidate in &request.candidates {
-        if !candidate.admitted
-            || !candidate.legal
-            || candidate.expected_gain <= FixedQ32::ZERO
-        {
-            continue;
-        }
-        if selected.len() >= request.maximum_selected || candidate.cost > remaining {
+        let disposition = if !candidate.admitted {
+            CandidateDisposition::NotAdmitted
+        } else if !candidate.legal {
+            CandidateDisposition::Illegal
+        } else if candidate.expected_gain <= FixedQ32::ZERO {
+            CandidateDisposition::NonPositiveGain
+        } else if selected.len() >= request.maximum_selected {
             marginal_excluded_gain = marginal_excluded_gain.max(candidate.expected_gain);
-            continue;
-        }
-        remaining = remaining
-            .checked_sub(candidate.cost)
-            .ok_or(Error::Arithmetic)?;
-        total_gain = total_gain
-            .checked_add(candidate.expected_gain)
-            .map_err(|_| Error::Arithmetic)?;
-        selected_set.insert(candidate.candidate_id.clone());
-        selected.push(candidate.candidate_id.clone());
+            CandidateDisposition::SelectionLimit
+        } else if candidate.cost > remaining {
+            marginal_excluded_gain = marginal_excluded_gain.max(candidate.expected_gain);
+            CandidateDisposition::OverBudget
+        } else {
+            remaining = remaining
+                .checked_sub(candidate.cost)
+                .ok_or(Error::Arithmetic)?;
+            total_gain = total_gain
+                .checked_add(candidate.expected_gain)
+                .map_err(|_| Error::Arithmetic)?;
+            selected.push(candidate.candidate_id.clone());
+            CandidateDisposition::Selected
+        };
+        decisions.push(CandidateDecision {
+            candidate_id: candidate.candidate_id.clone(),
+            disposition,
+        });
     }
 
-    let decisions = request
-        .candidates
-        .iter()
-        .map(|candidate| CandidateDecision {
-            candidate_id: candidate.candidate_id.clone(),
-            disposition: disposition(
-                candidate,
-                &selected_set,
-                request.maximum_selected,
-                selected.len(),
-                request.budget,
-            ),
-        })
-        .collect::<Vec<_>>();
     let total_cost = request.budget.checked_sub(remaining).ok_or(Error::Arithmetic)?;
     let receipt_digest = digest_receipt(
         &request,
@@ -196,30 +190,6 @@ fn validate_request(request: &OptimizationRequest) -> Result<(), Error> {
         return Err(Error::EmptyDigest("registry snapshot"));
     }
     Ok(())
-}
-
-fn disposition(
-    candidate: &PromptCandidate,
-    selected: &BTreeSet<StableId>,
-    maximum_selected: usize,
-    selected_count: usize,
-    budget: u64,
-) -> CandidateDisposition {
-    if selected.contains(&candidate.candidate_id) {
-        CandidateDisposition::Selected
-    } else if !candidate.admitted {
-        CandidateDisposition::NotAdmitted
-    } else if !candidate.legal {
-        CandidateDisposition::Illegal
-    } else if candidate.expected_gain <= FixedQ32::ZERO {
-        CandidateDisposition::NonPositiveGain
-    } else if selected_count >= maximum_selected {
-        CandidateDisposition::SelectionLimit
-    } else if candidate.cost > budget {
-        CandidateDisposition::OverBudget
-    } else {
-        CandidateDisposition::OverBudget
-    }
 }
 
 fn digest_receipt(
