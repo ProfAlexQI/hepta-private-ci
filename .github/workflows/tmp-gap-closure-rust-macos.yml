@@ -1,0 +1,48 @@
+name: Temporary Hepta gap-closure Rust macOS
+
+on:
+  push:
+    branches:
+      - codex/hepta-gap-closure-diagnostics-20260904
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-gap-closure-rust-macos
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Verify new product crates
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          cargo metadata --manifest-path codex-rs/Cargo.toml --locked --format-version 1 --no-deps >/tmp/metadata.json
+          cargo fmt --manifest-path codex-rs/Cargo.toml \
+            --package codex-hepta-types \
+            --package codex-hepta-wire \
+            --package codex-hepta-operations \
+            -- --check
+          cargo test --manifest-path codex-rs/Cargo.toml --locked \
+            -p codex-hepta-types -p codex-hepta-wire -p codex-hepta-operations
+          cargo check --manifest-path codex-rs/Cargo.toml --locked --all-targets \
+            -p codex-hepta-types -p codex-hepta-wire -p codex-hepta-operations
+          cargo clippy --manifest-path codex-rs/Cargo.toml --locked --all-targets \
+            -p codex-hepta-types -p codex-hepta-wire -p codex-hepta-operations -- -D warnings
