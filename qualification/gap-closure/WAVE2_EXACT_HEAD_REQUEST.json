@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "materialized_parent": "698c1bd3267521af483428b934a956ccd9a8e924",
+  "candidate_branch": "codex/hepta-v8-gap-closure-20260905",
+  "implemented_module_count": 30,
+  "bound_module_count": 40,
+  "unresolved_source_binding_count": 0,
+  "requested_checks": [
+    "closed_world_source_inventory",
+    "canonical_source_bindings",
+    "cargo_workspace_policy",
+    "all_implemented_rust_format",
+    "all_implemented_rust_check",
+    "all_implemented_rust_tests",
+    "all_implemented_strict_clippy",
+    "value_learning_vertical_slice",
+    "browser_tests",
+    "native_shell_tests",
+    "control_ui_tests",
+    "engineering_control_tests",
+    "external_source_pins",
+    "clean_exact_head"
+  ],
+  "authority_granted": false,
+  "purpose": "trigger read-only exact-head qualification without changing source or registry semantics"
+}
