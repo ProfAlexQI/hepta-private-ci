@@ -1,0 +1,69 @@
+name: Hepta audit remediation (read-only)
+
+on:
+  push:
+    branches:
+      - "codex/hepta-audit-remediation-20260905"
+  pull_request:
+    paths:
+      - "qualification/cns-organ-reference/**"
+      - "tools/hepta-engineering-control/**"
+      - "scripts/hepta-cns.py"
+      - "docs/cns/**"
+      - "codex-rs/hepta-intelligence-eval/**"
+      - ".github/workflows/hepta-audit-remediation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-audit-remediation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact source without retained credentials
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Bind immutable source evidence
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          mkdir -p "$RUNNER_TEMP/hepta-audit-source"
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/hepta-audit-source/source.tar.gz"
+          git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/hepta-audit-source/identity.txt"
+          (cd "$RUNNER_TEMP/hepta-audit-source" && sha256sum source.tar.gz > SHA256SUMS)
+
+      - name: Retain immutable source for reproducible local checks
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-audit-source-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/hepta-audit-source/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Run existing CNS boundary tests
+        working-directory: qualification/cns-organ-reference
+        run: python3 -m unittest discover -v
+
+      - name: Run engineering-control tests
+        working-directory: tools/hepta-engineering-control
+        run: python3 -m unittest discover -v
+
+      - name: Require unmodified tracked source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain --untracked-files=no)"
