@@ -16,13 +16,13 @@ This directory contains exactly one stable implementation guide for every module
 - [`auth.authbus`](auth.authbus/TECHNICAL.md) — `existing_legacy_aggregate`, bootstrap `AUTHBUS-P1.3-V12`.
 - [`secrets.heptabao`](secrets.heptabao/TECHNICAL.md) — `external_with_adapter_target`, bootstrap `HEPTABAO-1-SECRET-BOUNDARY`.
 - [`inference.control`](inference.control/TECHNICAL.md) — `existing_legacy_aggregate`, bootstrap `P0.7B-B1A-PROVIDER-BOUNDARY`.
-- [`inference.worker`](inference.worker/TECHNICAL.md) — `target_unmaterialized`, bootstrap `INFER-V4-T4`.
-- [`objective.compiler`](objective.compiler/TECHNICAL.md) — `target_unmaterialized`, bootstrap `OBJ-0-OBJECTIVE-CONTRACTS`.
-- [`utility.ndu`](utility.ndu/TECHNICAL.md) — `target_unmaterialized`, bootstrap `NDU-0-PREFERENCE-UTILITY-CONTRACTS`.
-- [`neuron.runtime`](neuron.runtime/TECHNICAL.md) — `target_unmaterialized`, bootstrap `BIO-0-NEURON-INTUITION-CONTRACTS`.
-- [`intuition.policy`](intuition.policy/TECHNICAL.md) — `target_unmaterialized`, bootstrap `INT-1-CALIBRATED-INTUITION-POLICY`.
-- [`prompt.registry`](prompt.registry/TECHNICAL.md) — `target_unmaterialized`, bootstrap `PIM-0-PROMPT-INTERVENTION-CONTRACTS`.
-- [`prompt.optimizer`](prompt.optimizer/TECHNICAL.md) — `target_unmaterialized`, bootstrap `PIM-2-PROMPT-PRICING-PORTFOLIO-SHADOW`.
+- [`inference.worker`](inference.worker/TECHNICAL.md) — `existing_bound`, bootstrap `INFER-V4-T4`.
+- [`objective.compiler`](objective.compiler/TECHNICAL.md) — `existing_bound`, bootstrap `OBJ-0-OBJECTIVE-CONTRACTS`.
+- [`utility.ndu`](utility.ndu/TECHNICAL.md) — `existing_bound`, bootstrap `NDU-0-PREFERENCE-UTILITY-CONTRACTS`.
+- [`neuron.runtime`](neuron.runtime/TECHNICAL.md) — `existing_bound`, bootstrap `BIO-0-NEURON-INTUITION-CONTRACTS`.
+- [`intuition.policy`](intuition.policy/TECHNICAL.md) — `existing_bound`, bootstrap `INT-1-CALIBRATED-INTUITION-POLICY`.
+- [`prompt.registry`](prompt.registry/TECHNICAL.md) — `existing_bound`, bootstrap `PIM-0-PROMPT-INTERVENTION-CONTRACTS`.
+- [`prompt.optimizer`](prompt.optimizer/TECHNICAL.md) — `existing_bound`, bootstrap `PIM-2-PROMPT-PRICING-PORTFOLIO-SHADOW`.
 - [`context.compiler`](context.compiler/TECHNICAL.md) — `target_partially_materialized`, bootstrap `CTX-1-CONTEXT-COMPILER`.
 - [`intelligence.control`](intelligence.control/TECHNICAL.md) — `target_partially_materialized`, bootstrap `INTELLIGENCE-A0-Q0.63`.
 - [`cognitive.types`](cognitive.types/TECHNICAL.md) — `target_partially_materialized`, bootstrap `MEM-0-TYPES`.
@@ -32,18 +32,18 @@ This directory contains exactly one stable implementation guide for every module
 - [`memory.federation`](memory.federation/TECHNICAL.md) — `target_partially_materialized`, bootstrap `MEM-3-FEDERATION`.
 - [`knowledge.graph`](knowledge.graph/TECHNICAL.md) — `target_partially_materialized`, bootstrap `MEM-4-KG`.
 - [`compact.engine`](compact.engine/TECHNICAL.md) — `target_partially_materialized`, bootstrap `MEM-5-COMPACT`.
-- [`learning.ledger`](learning.ledger/TECHNICAL.md) — `target_unmaterialized`, bootstrap `LRN-0-CAUSAL-LEARNING-CONTRACTS`.
-- [`learning.operator`](learning.operator/TECHNICAL.md) — `target_unmaterialized`, bootstrap `HBO-0-BELLMAN-OPERATOR-CONTRACTS`.
-- [`learning.eval`](learning.eval/TECHNICAL.md) — `target_unmaterialized`, bootstrap `LRN-2-CAUSAL-EVALUATION`.
-- [`learning.artifacts`](learning.artifacts/TECHNICAL.md) — `target_unmaterialized`, bootstrap `ART-1-LEARNING-ARTIFACT-REGISTRY`.
-- [`learning.plasticity`](learning.plasticity/TECHNICAL.md) — `target_unmaterialized`, bootstrap `PLS-1-PARAMETER-PLASTICITY`.
+- [`learning.ledger`](learning.ledger/TECHNICAL.md) — `existing_bound`, bootstrap `LRN-0-CAUSAL-LEARNING-CONTRACTS`.
+- [`learning.operator`](learning.operator/TECHNICAL.md) — `existing_bound`, bootstrap `HBO-0-BELLMAN-OPERATOR-CONTRACTS`.
+- [`learning.eval`](learning.eval/TECHNICAL.md) — `existing_bound`, bootstrap `LRN-2-CAUSAL-EVALUATION`.
+- [`learning.artifacts`](learning.artifacts/TECHNICAL.md) — `existing_bound`, bootstrap `ART-1-LEARNING-ARTIFACT-REGISTRY`.
+- [`learning.plasticity`](learning.plasticity/TECHNICAL.md) — `existing_bound`, bootstrap `PLS-1-PARAMETER-PLASTICITY`.
 - [`automation.taskflow`](automation.taskflow/TECHNICAL.md) — `existing_bound`, bootstrap `TASKFLOW-1-EXECUTION-BOUNDARY`.
 - [`channel.matrix`](channel.matrix/TECHNICAL.md) — `existing_bound`, bootstrap `MATRIX-1-CHANNEL-BOUNDARY`.
 - [`browser.servo`](browser.servo/TECHNICAL.md) — `existing_declared_unbound`, bootstrap `BROWSER-WEB-C1`.
-- [`ui.control`](ui.control/TECHNICAL.md) — `target_unmaterialized`, bootstrap `UI-V5`.
+- [`ui.control`](ui.control/TECHNICAL.md) — `existing_bound`, bootstrap `UI-V5`.
 - [`ui.native`](ui.native/TECHNICAL.md) — `target_partially_materialized`, bootstrap `UI-NATIVE-1-SHELL`.
 - [`control.runtime`](control.runtime/TECHNICAL.md) — `target_partially_materialized`, bootstrap `RCP-1-RUNTIME-CONTROL-PLANE`.
-- [`control.engineering`](control.engineering/TECHNICAL.md) — `target_unmaterialized`, bootstrap `ECP-1-ENGINEERING-CONTROL-PLANE`.
+- [`control.engineering`](control.engineering/TECHNICAL.md) — `existing_bound`, bootstrap `ECP-1-ENGINEERING-CONTROL-PLANE`.
 
 ## Adaptive algorithm overlay
 

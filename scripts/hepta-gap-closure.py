@@ -6,9 +6,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
+
+from hepta_module_doc_metadata import synchronize as synchronize_module_metadata
 
 from hepta_source_registry_closure import normalize as normalize_source_registries
 from hepta_source_registry_closure import verify as verify_source_registries
@@ -149,7 +152,8 @@ def normalize_source() -> bool:
     workspace_changed = normalize_workspace()
     ndu_changed = normalize_ndu_helpers()
     registry_changed = normalize_source_registries()
-    return workspace_changed or ndu_changed or registry_changed
+    metadata_changed = bool(synchronize_module_metadata(ROOT, write=True))
+    return workspace_changed or ndu_changed or registry_changed or metadata_changed
 
 
 def verify() -> list[str]:
@@ -226,6 +230,14 @@ def verify() -> list[str]:
                 failures.append("qualification source inventory is not closed-world")
 
     failures.extend(verify_source_registries())
+
+    # Source presence cannot hide stale guides or a broken full module index.
+    document_check = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/hepta-module-docs.py"), "verify"],
+        cwd=ROOT, text=True, capture_output=True, check=False,
+    )
+    if document_check.returncode:
+        failures.append("module document integrity: " + (document_check.stderr or document_check.stdout).strip())
 
     for relative in (
         "tools/hepta-engineering-control/hepta_engineering_control.py",
