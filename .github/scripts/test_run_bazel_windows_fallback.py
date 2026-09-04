@@ -28,6 +28,8 @@ class WindowsLocalFallbackTest(unittest.TestCase):
                         "--config=ci-windows",
                         "--host_platform=//:local_windows_msvc",
                         "--platforms=//:windows_x86_64_gnullvm",
+                        "--extra_execution_platforms=//:windows_x86_64_msvc",
+                        "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain",
                         "--",
                         "target",
                     ],
@@ -42,6 +44,13 @@ class WindowsLocalFallbackTest(unittest.TestCase):
         self.assertIn('@llvm//constraints/windows/abi:msvc', build)
         self.assertIn('name = "windows_x86_64_gnullvm"', build)
         self.assertIn('@llvm//constraints/windows/abi:gnullvm', build)
+        self.assertIn(
+            'name = "windows_gnullvm_tests_on_msvc_host_toolchain"', build
+        )
+        self.assertIn(
+            'toolchain_type = "@bazel_tools//tools/test:default_test_toolchain_type"',
+            build,
+        )
         self.assertIn('exec_triple = "x86_64-pc-windows-msvc"', module)
         self.assertIn('target_triple = "x86_64-pc-windows-gnullvm"', module)
 
@@ -56,6 +65,8 @@ class WindowsLocalFallbackTest(unittest.TestCase):
                 "--config=ci-windows",
                 "--host_platform=//:local_windows_msvc",
                 "--platforms=//:windows_x86_64_gnullvm",
+                "--extra_execution_platforms=//:windows_x86_64_msvc",
+                "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain",
                 "--config=clippy",
                 "//...",
             ],
@@ -79,6 +90,8 @@ class WindowsLocalFallbackTest(unittest.TestCase):
                 "--config=ci-windows",
                 "--host_platform=//:local_windows_msvc",
                 "--platforms=//:windows_x86_64_gnullvm",
+                "--extra_execution_platforms=//:windows_x86_64_msvc",
+                "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain",
                 *args[3:],
             ],
         )
@@ -94,8 +107,35 @@ class WindowsLocalFallbackTest(unittest.TestCase):
                         ["build", "--config=ci-windows-cross", *platforms, "//..."],
                         {"RUNNER_OS": "Windows"},
                     ),
-                    ["build", "--config=ci-windows", *platforms, "//..."],
+                    [
+                        "build",
+                        "--config=ci-windows",
+                        "--extra_execution_platforms=//:windows_x86_64_msvc",
+                        "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain",
+                        *platforms,
+                        "//...",
+                    ],
                 )
+
+    def test_explicit_local_split_support_is_not_duplicated(self) -> None:
+        support = [
+            "--extra_execution_platforms=//:custom,//:windows_x86_64_msvc",
+            "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain",
+        ]
+        self.assertEqual(
+            wrapper.bazel_args_with_remote_config(
+                ["test", "--config=ci-windows-cross", *support, "//..."],
+                {"RUNNER_OS": "Windows"},
+            ),
+            [
+                "test",
+                "--config=ci-windows",
+                "--host_platform=//:local_windows_msvc",
+                "--platforms=//:windows_x86_64_gnullvm",
+                *support,
+                "//...",
+            ],
+        )
 
     def test_explicit_msvc_host_is_not_silently_reinterpreted(self) -> None:
         self.assertEqual(
@@ -119,6 +159,8 @@ class WindowsLocalFallbackTest(unittest.TestCase):
                 "build",
                 "--host_platform=//:local_windows_msvc",
                 "--platforms=//:windows_x86_64_gnullvm",
+                "--extra_execution_platforms=//:windows_x86_64_msvc",
+                "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain",
                 "--config=ci-windows",
                 "//...",
             ],
@@ -151,6 +193,8 @@ class WindowsLocalFallbackTest(unittest.TestCase):
                 "--config=ci-windows",
                 "--host_platform=//:local_windows_msvc",
                 "--platforms=//:windows_x86_64_gnullvm",
+                "--extra_execution_platforms=//:windows_x86_64_msvc",
+                "--extra_toolchains=//:windows_gnullvm_tests_on_msvc_host_toolchain",
                 "//:tool",
                 "--",
                 *payload,
