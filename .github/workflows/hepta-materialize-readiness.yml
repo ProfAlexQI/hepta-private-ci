@@ -42,6 +42,9 @@ jobs:
           bash /tmp/hepta-materializer/run.sh "$GITHUB_WORKSPACE"
           rm -rf .hepta-materializer
           rm -f .github/workflows/hepta-materialize-readiness.yml
+          # Freeze the intended final candidate in the index so generated-file
+          # checks compare against the materialized bytes rather than the old base.
+          git add -A
 
       - name: Verify the complete repository-addressable closure
         shell: bash
