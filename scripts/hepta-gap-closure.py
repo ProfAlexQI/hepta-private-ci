@@ -10,8 +10,20 @@ import sys
 import tomllib
 from pathlib import Path
 
+from hepta_remaining_source_wave import (
+    RUST_PACKAGES as REMAINING_RUST_PACKAGES,
+)
+from hepta_remaining_source_wave import (
+    SOURCE_ROOTS as REMAINING_SOURCE_ROOTS,
+)
+from hepta_remaining_source_wave import format_and_stage as format_remaining_and_stage
+from hepta_remaining_source_wave import normalize_files as normalize_remaining_files
+from hepta_remaining_source_wave import verify as verify_remaining_sources
+from hepta_source_registry_closure import SOURCE_ROOTS as REGISTRY_SOURCE_ROOTS
 from hepta_source_registry_closure import normalize as normalize_source_registries
 from hepta_source_registry_closure import verify as verify_source_registries
+
+REGISTRY_SOURCE_ROOTS.update(REMAINING_SOURCE_ROOTS)
 
 ROOT = Path(__file__).resolve().parents[1]
 CARGO_MANIFEST = ROOT / "codex-rs" / "Cargo.toml"
@@ -33,6 +45,7 @@ RUST_PACKAGES = {
     "hepta-prompt-optimizer": "codex-hepta-prompt-optimizer",
     "hepta-prompt-registry": "codex-hepta-prompt-registry",
 }
+RUST_PACKAGES.update(REMAINING_RUST_PACKAGES)
 
 REQUIRED_OTHER_FILES = (
     "apps/hepta-control-ui/package.json",
@@ -44,6 +57,10 @@ REQUIRED_OTHER_FILES = (
     "qualification/gap-closure/MANIFEST.json",
     "qualification/gap-closure/PLAN_AUDIT.json",
     "scripts/hepta_source_registry_closure.py",
+    "scripts/hepta_remaining_source_wave.py",
+    "scripts/hepta_wave2_memory_sources.py",
+    "scripts/hepta_wave2_control_sources.py",
+    "scripts/hepta_wave2_external_sources.py",
 )
 
 DENIED_AUTHORITY_FLAGS = (
@@ -146,10 +163,18 @@ def normalize_ndu_helpers() -> bool:
 
 
 def normalize_source() -> bool:
+    remaining_files_changed = normalize_remaining_files()
     workspace_changed = normalize_workspace()
+    remaining_format_changed = format_remaining_and_stage()
     ndu_changed = normalize_ndu_helpers()
     registry_changed = normalize_source_registries()
-    return workspace_changed or ndu_changed or registry_changed
+    return (
+        remaining_files_changed
+        or workspace_changed
+        or remaining_format_changed
+        or ndu_changed
+        or registry_changed
+    )
 
 
 def verify() -> list[str]:
@@ -218,13 +243,20 @@ def verify() -> list[str]:
                 for flag in DENIED_AUTHORITY_FLAGS:
                     if authority.get(flag) is not False:
                         failures.append(f"authority flag must remain false: {flag}")
-            expected_roots = sorted(f"codex-rs/{name}" for name in RUST_PACKAGES)
-            expected_roots.extend(
-                ["apps/hepta-control-ui", "tools/hepta-engineering-control"]
+            expected_roots = {
+                *(f"codex-rs/{name}" for name in RUST_PACKAGES),
+                "apps/hepta-control-ui",
+                "tools/hepta-engineering-control",
+            }
+            expected_roots.update(
+                root
+                for roots in REMAINING_SOURCE_ROOTS.values()
+                for root in roots
             )
             if sorted(manifest.get("source_roots", ())) != sorted(expected_roots):
                 failures.append("qualification source inventory is not closed-world")
 
+    failures.extend(verify_remaining_sources())
     failures.extend(verify_source_registries())
 
     for relative in (
@@ -232,6 +264,10 @@ def verify() -> list[str]:
         "tools/hepta-engineering-control/test_hepta_engineering_control.py",
         "scripts/hepta-gap-closure.py",
         "scripts/hepta_source_registry_closure.py",
+        "scripts/hepta_remaining_source_wave.py",
+        "scripts/hepta_wave2_memory_sources.py",
+        "scripts/hepta_wave2_control_sources.py",
+        "scripts/hepta_wave2_external_sources.py",
     ):
         path = ROOT / relative
         if path.is_file():

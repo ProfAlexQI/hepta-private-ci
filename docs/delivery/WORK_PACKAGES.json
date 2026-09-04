@@ -649,7 +649,7 @@
       "id": "P0.7B-B1A-PROVIDER-BOUNDARY",
       "module": "inference.control",
       "priority": 1,
-      "state": "source_implemented_execution_pending",
+      "state": "source_implemented",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -766,7 +766,7 @@
       "id": "P0.7B-B1B-MODEL-BOUNDARY",
       "module": "runtime.codex",
       "priority": 1,
-      "state": "source_implemented_execution_pending",
+      "state": "source_implemented",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -1210,7 +1210,7 @@
       "id": "AUTHBUS-P1.3-V12",
       "module": "auth.authbus",
       "priority": 1,
-      "state": "source_implemented_semantic_review_pending",
+      "state": "source_implemented",
       "parallelClass": "independent_qualification_source",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -1324,7 +1324,7 @@
       "id": "INTELLIGENCE-A0-Q0.63",
       "module": "intelligence.control",
       "priority": 1,
-      "state": "source_implemented_execution_pending",
+      "state": "source_implemented",
       "parallelClass": "independent_qualification_source",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -2084,7 +2084,7 @@
       "id": "BROWSER-WEB-C1",
       "module": "browser.servo",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "independent_source_preparation",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -2197,7 +2197,7 @@
       "id": "MEM-0-TYPES",
       "module": "cognitive.types",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_first_parallel",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -2292,7 +2292,7 @@
       "id": "MEM-1-STORE",
       "module": "cognitive.store",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -2398,7 +2398,7 @@
       "id": "MEM-2-RETRIEVAL",
       "module": "memory.retrieval",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_first_parallel",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -2494,7 +2494,7 @@
       "id": "MEM-3-FEDERATION",
       "module": "memory.federation",
       "priority": 3,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -2586,7 +2586,7 @@
       "id": "MEM-4-KG",
       "module": "knowledge.graph",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_first_parallel",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -2701,7 +2701,7 @@
       "id": "MEM-5-COMPACT",
       "module": "compact.engine",
       "priority": 3,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -5007,7 +5007,7 @@
       "id": "CTX-1-CONTEXT-COMPILER",
       "module": "context.compiler",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -5802,7 +5802,7 @@
       "id": "RCP-1-RUNTIME-CONTROL-PLANE",
       "module": "control.runtime",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_first_parallel",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -8299,7 +8299,7 @@
       "id": "HEPTABAO-1-SECRET-BOUNDARY",
       "module": "secrets.heptabao",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -8399,7 +8399,7 @@
       "id": "MEM-READ-1-SNAPSHOT-PORT",
       "module": "cognitive.read",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [
@@ -8684,7 +8684,7 @@
       "id": "UI-NATIVE-1-SHELL",
       "module": "ui.native",
       "priority": 2,
-      "state": "planned",
+      "state": "source_implemented",
       "parallelClass": "contract_coordinated",
       "authorityDelta": "none",
       "developmentAfter": [

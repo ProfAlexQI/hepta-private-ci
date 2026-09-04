@@ -4,14 +4,80 @@
   "planId": "HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN",
   "planVersion": "8.0.0",
   "candidateBranch": "codex/hepta-v8-gap-closure-20260905",
-  "implementedModuleCount": 14,
+  "implementedModuleCount": 30,
   "implementedModules": [
+    {
+      "module": "auth.authbus",
+      "sourceRoots": [
+        "codex-rs/hepta-authbus",
+        "codex-rs/hepta-authbus-p1-3-qualification"
+      ],
+      "bootstrapWorkPackage": "AUTHBUS-P1.3-V12"
+    },
+    {
+      "module": "browser.servo",
+      "sourceRoots": [
+        "apps/hepta-browser",
+        "third_party/servo-patches"
+      ],
+      "bootstrapWorkPackage": "BROWSER-WEB-C1"
+    },
+    {
+      "module": "cognitive.read",
+      "sourceRoots": [
+        "codex-rs/hepta-cognitive-read"
+      ],
+      "bootstrapWorkPackage": "MEM-READ-1-SNAPSHOT-PORT"
+    },
+    {
+      "module": "cognitive.store",
+      "sourceRoots": [
+        "codex-rs/hepta-cognitive-store"
+      ],
+      "bootstrapWorkPackage": "MEM-1-STORE"
+    },
+    {
+      "module": "cognitive.types",
+      "sourceRoots": [
+        "codex-rs/hepta-cognitive-types"
+      ],
+      "bootstrapWorkPackage": "MEM-0-TYPES"
+    },
+    {
+      "module": "compact.engine",
+      "sourceRoots": [
+        "codex-rs/hepta-compact-engine"
+      ],
+      "bootstrapWorkPackage": "MEM-5-COMPACT"
+    },
+    {
+      "module": "context.compiler",
+      "sourceRoots": [
+        "codex-rs/hepta-context-compiler"
+      ],
+      "bootstrapWorkPackage": "CTX-1-CONTEXT-COMPILER"
+    },
     {
       "module": "control.engineering",
       "sourceRoots": [
         "tools/hepta-engineering-control"
       ],
       "bootstrapWorkPackage": "ECP-1-ENGINEERING-CONTROL-PLANE"
+    },
+    {
+      "module": "control.runtime",
+      "sourceRoots": [
+        "codex-rs/hepta-control-plane"
+      ],
+      "bootstrapWorkPackage": "RCP-1-RUNTIME-CONTROL-PLANE"
+    },
+    {
+      "module": "inference.control",
+      "sourceRoots": [
+        "codex-rs/hepta-infer-core",
+        "codex-rs/hepta-inferd"
+      ],
+      "bootstrapWorkPackage": "P0.7B-B1A-PROVIDER-BOUNDARY"
     },
     {
       "module": "inference.worker",
@@ -21,11 +87,25 @@
       "bootstrapWorkPackage": "INFER-V4-T4"
     },
     {
+      "module": "intelligence.control",
+      "sourceRoots": [
+        "codex-rs/hepta-intelligence"
+      ],
+      "bootstrapWorkPackage": "INTELLIGENCE-A0-Q0.63"
+    },
+    {
       "module": "intuition.policy",
       "sourceRoots": [
         "codex-rs/hepta-intuition"
       ],
       "bootstrapWorkPackage": "INT-1-CALIBRATED-INTUITION-POLICY"
+    },
+    {
+      "module": "knowledge.graph",
+      "sourceRoots": [
+        "codex-rs/hepta-kg"
+      ],
+      "bootstrapWorkPackage": "MEM-4-KG"
     },
     {
       "module": "learning.artifacts",
@@ -63,6 +143,20 @@
       "bootstrapWorkPackage": "PLS-1-PARAMETER-PLASTICITY"
     },
     {
+      "module": "memory.federation",
+      "sourceRoots": [
+        "codex-rs/hepta-memory-federation"
+      ],
+      "bootstrapWorkPackage": "MEM-3-FEDERATION"
+    },
+    {
+      "module": "memory.retrieval",
+      "sourceRoots": [
+        "codex-rs/hepta-memory-retrieval"
+      ],
+      "bootstrapWorkPackage": "MEM-2-RETRIEVAL"
+    },
+    {
       "module": "neuron.runtime",
       "sourceRoots": [
         "codex-rs/hepta-neuron"
@@ -91,11 +185,34 @@
       "bootstrapWorkPackage": "PIM-0-PROMPT-INTERVENTION-CONTRACTS"
     },
     {
+      "module": "runtime.codex",
+      "sourceRoots": [
+        "codex-rs/codex-app-server",
+        "codex-rs/hepta-codex-adapter"
+      ],
+      "bootstrapWorkPackage": "P0.7B-B1B-MODEL-BOUNDARY"
+    },
+    {
+      "module": "secrets.heptabao",
+      "sourceRoots": [
+        "external/HeptaBao",
+        "codex-rs/hepta-bao-adapter"
+      ],
+      "bootstrapWorkPackage": "HEPTABAO-1-SECRET-BOUNDARY"
+    },
+    {
       "module": "ui.control",
       "sourceRoots": [
         "apps/hepta-control-ui"
       ],
       "bootstrapWorkPackage": "UI-V5"
+    },
+    {
+      "module": "ui.native",
+      "sourceRoots": [
+        "apps/hepta-native"
+      ],
+      "bootstrapWorkPackage": "UI-NATIVE-1-SHELL"
     },
     {
       "module": "utility.ndu",
@@ -106,163 +223,21 @@
     }
   ],
   "moduleSourceStatusCounts": {
-    "existing_bound": 24,
-    "existing_declared_unbound": 1,
-    "existing_legacy_aggregate": 3,
-    "external_with_adapter_target": 1,
-    "target_partially_materialized": 11
+    "existing_bound": 40
   },
   "sourceBindingStatusCounts": {
-    "existing_bound": 24,
-    "existing_declared_unbound": 1,
-    "existing_legacy_aggregate": 3,
-    "external_with_adapter_target": 1,
-    "target_partially_materialized": 11
+    "existing_bound": 40
   },
-  "unresolvedSourceBindingCount": 16,
-  "unresolvedSourceBindings": [
-    {
-      "module": "auth.authbus",
-      "sourceStatus": "existing_legacy_aggregate",
-      "missingDeclaredRoots": [
-        "codex-rs/hepta-authbus",
-        "codex-rs/hepta-authbus-p1-3-qualification"
-      ],
-      "bootstrapWorkPackage": "AUTHBUS-P1.3-V12"
-    },
-    {
-      "module": "browser.servo",
-      "sourceStatus": "existing_declared_unbound",
-      "missingDeclaredRoots": [
-        "apps/hepta-browser",
-        "third_party/servo-patches"
-      ],
-      "bootstrapWorkPackage": "BROWSER-WEB-C1"
-    },
-    {
-      "module": "cognitive.read",
-      "sourceStatus": "target_partially_materialized",
-      "missingDeclaredRoots": [
-        "codex-rs/hepta-cognitive-read"
-      ],
-      "bootstrapWorkPackage": "MEM-READ-1-SNAPSHOT-PORT"
-    },
-    {
-      "module": "cognitive.store",
-      "sourceStatus": "target_partially_materialized",
-      "missingDeclaredRoots": [
-        "codex-rs/hepta-cognitive-store"
-      ],
-      "bootstrapWorkPackage": "MEM-1-STORE"
-    },
-    {
-      "module": "cognitive.types",
-      "sourceStatus": "target_partially_materialized",
-      "missingDeclaredRoots": [
-        "codex-rs/hepta-cognitive-types"
-      ],
-      "bootstrapWorkPackage": "MEM-0-TYPES"
-    },
-    {
-      "module": "compact.engine",
-      "sourceStatus": "target_partially_materialized",
-      "missingDeclaredRoots": [
-        "codex-rs/hepta-compact-engine"
-      ],
-      "bootstrapWorkPackage": "MEM-5-COMPACT"
-    },
-    {
-      "module": "context.compiler",
-      "sourceStatus": "target_partially_materialized",
-      "missingDeclaredRoots": [
-        "codex-rs/hepta-context-compiler"
-      ],
-      "bootstrapWorkPackage": "CTX-1-CONTEXT-COMPILER"
-    },
-    {
-      "module": "control.runtime",
-      "sourceStatus": "target_partially_materialized",
-      "missingDeclaredRoots": [
-        "codex-rs/hepta-control-plane"
-      ],
-      "bootstrapWorkPackage": "RCP-1-RUNTIME-CONTROL-PLANE"
-    },
-    {
-      "module": "inference.control",
-      "sourceStatus": "existing_legacy_aggregate",
-      "missingDeclaredRoots": [
-        "codex-rs/hepta-infer-core",
-        "codex-rs/hepta-inferd"
-      ],
-      "bootstrapWorkPackage": "P0.7B-B1A-PROVIDER-BOUNDARY"
-    },
-    {
-      "module": "intelligence.control",
-      "sourceStatus": "target_partially_materialized",
-      "missingDeclaredRoots": [
-        "codex-rs/hepta-intelligence"
-      ],
-      "bootstrapWorkPackage": "INTELLIGENCE-A0-Q0.63"
-    },
-    {
-      "module": "knowledge.graph",
-      "sourceStatus": "target_partially_materialized",
-      "missingDeclaredRoots": [
-        "codex-rs/hepta-kg"
-      ],
-      "bootstrapWorkPackage": "MEM-4-KG"
-    },
-    {
-      "module": "memory.federation",
-      "sourceStatus": "target_partially_materialized",
-      "missingDeclaredRoots": [
-        "codex-rs/hepta-memory-federation"
-      ],
-      "bootstrapWorkPackage": "MEM-3-FEDERATION"
-    },
-    {
-      "module": "memory.retrieval",
-      "sourceStatus": "target_partially_materialized",
-      "missingDeclaredRoots": [
-        "codex-rs/hepta-memory-retrieval"
-      ],
-      "bootstrapWorkPackage": "MEM-2-RETRIEVAL"
-    },
-    {
-      "module": "runtime.codex",
-      "sourceStatus": "existing_legacy_aggregate",
-      "missingDeclaredRoots": [
-        "codex-rs/codex-app-server",
-        "codex-rs/hepta-codex-adapter"
-      ],
-      "bootstrapWorkPackage": "P0.7B-B1B-MODEL-BOUNDARY"
-    },
-    {
-      "module": "secrets.heptabao",
-      "sourceStatus": "external_with_adapter_target",
-      "missingDeclaredRoots": [
-        "external/HeptaBao",
-        "codex-rs/hepta-bao-adapter"
-      ],
-      "bootstrapWorkPackage": "HEPTABAO-1-SECRET-BOUNDARY"
-    },
-    {
-      "module": "ui.native",
-      "sourceStatus": "target_partially_materialized",
-      "missingDeclaredRoots": [
-        "apps/hepta-native"
-      ],
-      "bootstrapWorkPackage": "UI-NATIVE-1-SHELL"
-    }
-  ],
+  "unresolvedSourceBindingCount": 0,
+  "unresolvedSourceBindings": [],
   "workPackageStateCounts": {
     "blocked_external": 2,
-    "planned": 51,
-    "source_implemented": 21,
-    "source_implemented_execution_pending": 15,
-    "source_implemented_semantic_review_pending": 2
+    "planned": 39,
+    "source_implemented": 37,
+    "source_implemented_execution_pending": 12,
+    "source_implemented_semantic_review_pending": 1
   },
-  "unresolvedWorkPackageCount": 70,
+  "unresolvedWorkPackageCount": 54,
   "unresolvedWorkPackages": [
     {
       "id": "ART-2-NEXT-SNAPSHOT-RELOAD-ROLLBACK",
@@ -301,12 +276,6 @@
       "qualificationProfile": "physical"
     },
     {
-      "id": "AUTHBUS-P1.3-V12",
-      "module": "auth.authbus",
-      "state": "source_implemented_semantic_review_pending",
-      "qualificationProfile": "durable"
-    },
-    {
       "id": "BIO-1-ELIGIBILITY-HOMEOSTASIS",
       "module": "neuron.runtime",
       "state": "planned",
@@ -325,20 +294,8 @@
       "qualificationProfile": "adaptive"
     },
     {
-      "id": "BROWSER-WEB-C1",
-      "module": "browser.servo",
-      "state": "planned",
-      "qualificationProfile": "physical"
-    },
-    {
       "id": "C1-PROMPTED-MEMORY-RETRIEVAL-RANK",
       "module": "intelligence.control",
-      "state": "planned",
-      "qualificationProfile": "contracts"
-    },
-    {
-      "id": "CTX-1-CONTEXT-COMPILER",
-      "module": "context.compiler",
       "state": "planned",
       "qualificationProfile": "contracts"
     },
@@ -397,12 +354,6 @@
       "qualificationProfile": "adaptive"
     },
     {
-      "id": "HEPTABAO-1-SECRET-BOUNDARY",
-      "module": "secrets.heptabao",
-      "state": "planned",
-      "qualificationProfile": "durable"
-    },
-    {
       "id": "INFER-V4-T1",
       "module": "inference.control",
       "state": "planned",
@@ -430,12 +381,6 @@
       "id": "INT-2-AGENTD-CODEX-COMPOSITION",
       "module": "intelligence.control",
       "state": "planned",
-      "qualificationProfile": "contracts"
-    },
-    {
-      "id": "INTELLIGENCE-A0-Q0.63",
-      "module": "intelligence.control",
-      "state": "source_implemented_execution_pending",
       "qualificationProfile": "contracts"
     },
     {
@@ -469,52 +414,10 @@
       "qualificationProfile": "physical"
     },
     {
-      "id": "MEM-0-TYPES",
-      "module": "cognitive.types",
-      "state": "planned",
-      "qualificationProfile": "contracts"
-    },
-    {
-      "id": "MEM-1-STORE",
-      "module": "cognitive.store",
-      "state": "planned",
-      "qualificationProfile": "durable"
-    },
-    {
-      "id": "MEM-2-RETRIEVAL",
-      "module": "memory.retrieval",
-      "state": "planned",
-      "qualificationProfile": "contracts"
-    },
-    {
-      "id": "MEM-3-FEDERATION",
-      "module": "memory.federation",
-      "state": "planned",
-      "qualificationProfile": "physical"
-    },
-    {
-      "id": "MEM-4-KG",
-      "module": "knowledge.graph",
-      "state": "planned",
-      "qualificationProfile": "contracts"
-    },
-    {
-      "id": "MEM-5-COMPACT",
-      "module": "compact.engine",
-      "state": "planned",
-      "qualificationProfile": "contracts"
-    },
-    {
       "id": "MEM-8-PRODUCTION-WRITER",
       "module": "cognitive.store",
       "state": "planned",
       "qualificationProfile": "durable"
-    },
-    {
-      "id": "MEM-READ-1-SNAPSHOT-PORT",
-      "module": "cognitive.read",
-      "state": "planned",
-      "qualificationProfile": "contracts"
     },
     {
       "id": "NDU-1-DETERMINISTIC-UTILITY-BASELINE",
@@ -557,18 +460,6 @@
       "module": "kernel.authority",
       "state": "source_implemented_execution_pending",
       "qualificationProfile": "durable"
-    },
-    {
-      "id": "P0.7B-B1A-PROVIDER-BOUNDARY",
-      "module": "inference.control",
-      "state": "source_implemented_execution_pending",
-      "qualificationProfile": "contracts"
-    },
-    {
-      "id": "P0.7B-B1B-MODEL-BOUNDARY",
-      "module": "runtime.codex",
-      "state": "source_implemented_execution_pending",
-      "qualificationProfile": "contracts"
     },
     {
       "id": "P0.7B-B2-TOOL-NET-FS",
@@ -661,12 +552,6 @@
       "qualificationProfile": "adaptive"
     },
     {
-      "id": "RCP-1-RUNTIME-CONTROL-PLANE",
-      "module": "control.runtime",
-      "state": "planned",
-      "qualificationProfile": "contracts"
-    },
-    {
       "id": "SELF-1-CODE-CANDIDATE-PIPELINE",
       "module": "control.engineering",
       "state": "planned",
@@ -675,12 +560,6 @@
     {
       "id": "TASKFLOW-1-EXECUTION-BOUNDARY",
       "module": "automation.taskflow",
-      "state": "planned",
-      "qualificationProfile": "contracts"
-    },
-    {
-      "id": "UI-NATIVE-1-SHELL",
-      "module": "ui.native",
       "state": "planned",
       "qualificationProfile": "contracts"
     }

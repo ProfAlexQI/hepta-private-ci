@@ -10,7 +10,7 @@
 
 **Lifecycle:** `target`
 
-**Source status:** `target_partially_materialized`
+**Source status:** `existing_bound`
 
 **Bootstrap work package:** `MEM-READ-1-SNAPSHOT-PORT`
 
@@ -32,18 +32,17 @@ Declared exclusive target roots:
 
 Existing declared roots at this exact source snapshot:
 
-None.
+- `codex-rs/hepta-cognitive-read`
 
 Non-authoritative implementation evidence roots:
 
-- `codex-rs/hepta-memory`
-- `codex-rs/ext/hepta-memory`
+None.
 
 Declared roots not yet present:
 
-- `codex-rs/hepta-cognitive-read`
+None.
 
-`target_partially_materialized` is a source-location fact. For a target or unbound module, development begins with `MEM-READ-1-SNAPSHOT-PORT` and materializes the declared root before source completion. Aggregate evidence roots are read-only decomposition evidence; they transfer no ownership and cannot become a second permanent implementation. A source move updates `MODULES.json`, `SOURCE_BINDINGS.json` and this guide in one candidate.
+`existing_bound` is a source-location fact. The declared roots above are materialized in the bounded V8 source candidate and are covered by the dedicated closed-world inventory, focused tests, all-target compilation, strict lint and exact-head qualification. This status does not activate `cognitive.read`, create a production caller, grant runtime or effect authority, issue independent acceptance, select or promote a candidate, or authorize release. Any later source move updates `MODULES.json`, `SOURCE_BINDINGS.json` and this guide in one candidate.
 
 ## 3. Boundary, responsibilities and non-goals
 
@@ -231,3 +230,11 @@ Coding begins only with a current `CanonicalSourceReceiptV1`, a frozen contract/
 The following additional work packages are source-planning envelopes introduced by the readiness overlay; they do not imply implementation or activation:
 
 - `EMB-1-SENSOR-BUS-BODY-SCHEMA`
+
+## 17. Source implementation receipt
+
+The bootstrap source-location obligation for `cognitive.read` is implemented by work package `MEM-READ-1-SNAPSHOT-PORT` in:
+
+- `codex-rs/hepta-cognitive-read`
+
+The source candidate is checked by `.github/workflows/hepta-gap-closure.yml`, including closed-world inventory, package tests, all-target compilation, strict Clippy and clean tracked state. This receipt is source implementation evidence only. It grants no runtime, production-writer, model-provider, external-effect, independent-acceptance, selection, promotion, merge or release authority.
