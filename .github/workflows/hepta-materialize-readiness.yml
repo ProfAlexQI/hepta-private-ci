@@ -1,4 +1,4 @@
-name: Hepta one-shot readiness materializer
+name: Hepta one-shot readiness formatter
 
 on:
   push:
@@ -9,95 +9,49 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-one-shot-readiness-materializer
+  group: hepta-one-shot-readiness-formatter
   cancel-in-progress: false
 
 jobs:
-  materialize:
+  format-and-publish:
     if: github.repository == 'TrillionniumFoundation/hepta-private-ci'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
-      - name: Check out bootstrap candidate
+      - name: Check out exact readiness candidate
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.sha }}
+          ref: codex/hepta-v8-readiness-closure-20260904
           fetch-depth: 0
 
-      - name: Reconstruct digest-bound materializer
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat .hepta-materializer/part-*.b64 | base64 --decode > /tmp/hepta-materializer-package.tar.gz
-          echo "2ca95c86a853c55904a4d92a9ce5b302e57e94128718e1742e5d35fc458a3f36  /tmp/hepta-materializer-package.tar.gz" | sha256sum -c -
-          rm -rf /tmp/hepta-materializer
-          mkdir -p /tmp/hepta-materializer
-          tar -xzf /tmp/hepta-materializer-package.tar.gz -C /tmp/hepta-materializer
-          test -x /tmp/hepta-materializer/run.sh
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v7.6.0
+        with:
+          version: 0.11.3
 
-      - name: Materialize final candidate and remove bootstrap payload
+      - name: Apply and verify the canonical Python formatter
         shell: bash
         run: |
           set -euo pipefail
-          bash /tmp/hepta-materializer/run.sh "$GITHUB_WORKSPACE"
-          rm -rf .hepta-materializer
-          rm -f .github/workflows/hepta-materialize-readiness.yml
-          # Freeze the intended final candidate in the index so generated-file
-          # checks compare against the materialized bytes rather than the old base.
-          git add -A
-
-      - name: Verify the complete repository-addressable closure
-        shell: bash
-        run: |
-          set -euo pipefail
+          uv run --frozen --project scripts ruff format scripts/hepta-readiness.py
+          uv run --frozen --project scripts ruff format --check scripts/hepta-readiness.py
           python3 scripts/hepta-readiness.py self-test
           python3 scripts/hepta-readiness.py generate-status --check
           python3 scripts/hepta-readiness.py verify
-          python3 scripts/hepta-module-docs.py self-test
-          python3 scripts/hepta-module-docs.py verify
-          python3 scripts/hepta-algorithm-docs.py self-test
-          python3 scripts/hepta-algorithm-docs.py verify-sources
-          python3 scripts/hepta-algorithm-docs.py generate-status --check
-          python3 scripts/hepta-algorithm-docs.py verify
-          python3 scripts/hepta-cns.py self-test
-          python3 scripts/hepta-cns.py generate-status --check
-          python3 scripts/hepta-cns.py verify
-          python3 scripts/hepta-hnmf.py self-test
-          python3 scripts/hepta-hnmf.py verify
-          python3 scripts/hepta-docs.py self-test
-          python3 scripts/hepta-docs.py inventory-legacy
-          python3 scripts/hepta-docs.py generate-status
-          git diff --exit-code -- docs/STATUS.md
-          python3 scripts/hepta-docs.py verify
           git diff --check
 
-      - name: Publish direct-child final candidate
+      - name: Publish formatting-only correction
         shell: bash
         env:
-          EXACT_PARENT: 9d6a3552bde9d10d91bcb526e115f4b55c33aaf1
           FINAL_BRANCH: codex/hepta-v8-readiness-closure-20260904
-          TEMP_BRANCH: codex/tmp-materialize-readiness-20260904
         run: |
           set -euo pipefail
-          git cat-file -e "$EXACT_PARENT^{commit}"
-          git add -A
+          changed="$(git diff --name-only)"
+          test "$changed" = "scripts/hepta-readiness.py"
+          git config user.name "Hepta Readiness Formatter"
+          git config user.email "hepta-readiness@users.noreply.github.com"
+          git add scripts/hepta-readiness.py
           git diff --cached --check
-          tree="$(git write-tree)"
-          [[ "$tree" =~ ^[0-9a-f]{40}$ ]]
-          export GIT_AUTHOR_NAME="Hepta Readiness Closure"
-          export GIT_AUTHOR_EMAIL="hepta-readiness@users.noreply.github.com"
-          export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
-          export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
-          export GIT_AUTHOR_DATE="2026-09-04T13:00:00Z"
-          export GIT_COMMITTER_DATE="$GIT_AUTHOR_DATE"
-          commit="$({
-            printf '%s\n\n' 'docs(v8): close all pre-coding readiness blockers'
-            printf '%s\n' 'Materialize nine implementation-readiness specifications, 31 typed protocols, 54 closed documentation gaps, coding-entry bindings for all 40 modules, a 91-package conflict-free DAG, simulator-first embodiment, and explicitly authorized Debian/POSIX assimilation.'
-            printf '\n%s\n' 'Authority delta: none. Source implementation, hardware evidence, future-time efficacy, independent acceptance, selection, promotion and release remain separate evidence gates.'
-          } | git commit-tree "$tree" -p "$EXACT_PARENT")"
-          [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
-          test "$(git rev-parse "$commit^{tree}")" = "$tree"
-          test "$(git rev-list --parents -n 1 "$commit")" = "$commit $EXACT_PARENT"
-          git push --force origin "$commit:refs/heads/$FINAL_BRANCH"
-          git push origin --delete "$TEMP_BRANCH" || true
-          printf 'final_commit=%s\nfinal_tree=%s\n' "$commit" "$tree" | tee "$GITHUB_STEP_SUMMARY"
+          git commit -m "style(readiness): apply canonical ruff formatting" \
+            -m "Authority delta: none."
+          git push origin "HEAD:refs/heads/$FINAL_BRANCH"
