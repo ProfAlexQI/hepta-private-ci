@@ -84,10 +84,13 @@ def verify() -> list[str]:
     members = set(workspace.get("members", ())) if isinstance(workspace, dict) else set()
     for root_name, package_name in RUST_PACKAGES.items():
         root = ROOT / "codex-rs" / root_name
-        for relative in ("Cargo.toml", "BUILD.bazel", "src/lib.rs", "src/lib_tests.rs"):
+        for relative in ("Cargo.toml", "BUILD.bazel", "src/lib.rs"):
             path = root / relative
             if not path.is_file():
                 failures.append(f"missing source file: {path.relative_to(ROOT)}")
+        test_files = tuple((root / "src").glob("*_tests.rs"))
+        if not test_files:
+            failures.append(f"missing focused Rust tests under: {root.relative_to(ROOT)}")
         manifest_path = root / "Cargo.toml"
         if manifest_path.is_file():
             try:
