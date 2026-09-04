@@ -1,4 +1,4 @@
-name: Hepta one-shot readiness formatter
+name: Hepta one-shot V8.2 source merge on macOS
 
 on:
   push:
@@ -9,49 +9,105 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-one-shot-readiness-formatter
-  cancel-in-progress: false
+  group: hepta-one-shot-v82-source-merge-macos
+  cancel-in-progress: true
 
 jobs:
-  format-and-publish:
+  materialize:
     if: github.repository == 'TrillionniumFoundation/hepta-private-ci'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    runs-on: macos-15
+    timeout-minutes: 45
     steps:
-      - name: Check out exact readiness candidate
+      - name: Check out exact transport head from final candidate branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: codex/hepta-v8-readiness-closure-20260904
           fetch-depth: 0
+          persist-credentials: true
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v7.6.0
+      - name: Install exact Rust toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
-          version: 0.11.3
+          toolchain: "1.95.0"
 
-      - name: Apply and verify the canonical Python formatter
+      - name: Materialize digest-bound combined source candidate
         shell: bash
         run: |
           set -euo pipefail
-          uv run --frozen --project scripts ruff format scripts/hepta-readiness.py
-          uv run --frozen --project scripts ruff format --check scripts/hepta-readiness.py
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/codex/hepta-v8-readiness-closure-20260904)"
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          import bz2
+          import hashlib
+
+          paths = sorted(Path('.hepta-merge').glob('part*.b64'))
+          expected_lengths = [5000, 5000, 5000, 5000, 5000, 3668]
+          if len(paths) != len(expected_lengths):
+              raise SystemExit(f'expected {len(expected_lengths)} payload parts, found {len(paths)}')
+          parts = [path.read_text(encoding='ascii').strip() for path in paths]
+          lengths = [len(part) for part in parts]
+          if lengths != expected_lengths:
+              raise SystemExit(f'payload part length mismatch: {lengths}')
+          patch = bz2.decompress(base64.b64decode(''.join(parts), validate=True))
+          expected = '6f1d5c791be2a97c1ada7f879eccbb999682d934d26c92425438add308b4c25d'
+          actual = hashlib.sha256(patch).hexdigest()
+          if actual != expected:
+              raise SystemExit(f'combined patch digest mismatch: {actual}')
+          Path('/tmp/hepta-v82-source-readiness.patch').write_bytes(patch)
+          PY
+          git apply --index /tmp/hepta-v82-source-readiness.patch
+          rm -rf .hepta-merge
+          git add -A
+          test ! -e .hepta-merge
+          git diff --cached --check
+
+      - name: Verify merged repository-owned closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m compileall -q scripts qa
+          python3 scripts/verify_hepta_callers.py self-test
+          python3 scripts/verify_hepta_callers.py verify
+          python3 -m unittest discover -s qa/b4-no-bypass -p 'test_*.py'
+          python3 -m unittest discover -s qa/fault-matrix -p 'test_*.py'
+          python3 -m unittest discover -s qa/performance -p 'test_*.py'
+          python3 -m unittest discover -s qa/vertical-slice -p 'test_*.py'
+          python3 .github/scripts/verify_cargo_workspace_manifests.py
+          python3 scripts/hepta-module-docs.py self-test
+          python3 scripts/hepta-module-docs.py verify
+          python3 scripts/hepta-algorithm-docs.py self-test
+          python3 scripts/hepta-algorithm-docs.py verify-sources
+          python3 scripts/hepta-algorithm-docs.py generate-status --check
+          python3 scripts/hepta-algorithm-docs.py verify
+          python3 scripts/hepta-hnmf.py verify
+          python3 scripts/hepta-cns.py generate-status --check
+          python3 scripts/hepta-cns.py verify
           python3 scripts/hepta-readiness.py self-test
           python3 scripts/hepta-readiness.py generate-status --check
           python3 scripts/hepta-readiness.py verify
-          git diff --check
+          python3 scripts/hepta-docs.py self-test
+          python3 scripts/hepta-docs.py generate-status
+          git diff --exit-code -- docs/STATUS.md
+          python3 scripts/hepta-docs.py verify
+          cargo test --manifest-path codex-rs/Cargo.toml --locked \
+            -p codex-hepta-types \
+            -p codex-hepta-wire \
+            -p codex-hepta-operations
+          git diff --cached --check
 
-      - name: Publish formatting-only correction
+      - name: Commit ordinary source without workflow mutation
         shell: bash
-        env:
-          FINAL_BRANCH: codex/hepta-v8-readiness-closure-20260904
         run: |
           set -euo pipefail
-          changed="$(git diff --name-only)"
-          test "$changed" = "scripts/hepta-readiness.py"
-          git config user.name "Hepta Readiness Formatter"
-          git config user.email "hepta-readiness@users.noreply.github.com"
-          git add scripts/hepta-readiness.py
-          git diff --cached --check
-          git commit -m "style(readiness): apply canonical ruff formatting" \
-            -m "Authority delta: none."
-          git push origin "HEAD:refs/heads/$FINAL_BRANCH"
+          changed="$(git diff --cached --name-only)"
+          test -n "$changed"
+          if printf '%s\n' "$changed" | grep -E '^\.github/workflows/'; then
+            echo 'Digest-bound source patch unexpectedly mutates workflow files.' >&2
+            exit 1
+          fi
+          git config user.name 'Hepta V8.2 Source Closure'
+          git config user.email 'hepta-v82-closure@users.noreply.github.com'
+          git commit -m 'feat(hepta): merge source closure into V8.2 readiness' \
+            -m 'Authority delta: none. Selection, promotion and release remain separate.'
+          git push origin 'HEAD:refs/heads/codex/hepta-v8-readiness-closure-20260904'
