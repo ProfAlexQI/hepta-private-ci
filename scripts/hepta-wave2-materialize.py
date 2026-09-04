@@ -21,6 +21,7 @@ CARGO_MANIFEST = ROOT / "codex-rs" / "Cargo.toml"
 BINDINGS_PATH = ROOT / "docs" / "modules" / "SOURCE_BINDINGS.json"
 AUDIT_PATH = ROOT / "qualification" / "gap-closure" / "PLAN_AUDIT.json"
 QUALIFICATION_MANIFEST = ROOT / "qualification" / "gap-closure" / "MANIFEST.json"
+EXACT_WORKFLOW = ROOT / ".github" / "workflows" / "hepta-wave2-qualification.yml"
 
 source_registry.SOURCE_ROOTS.update(SOURCE_ROOTS)
 
@@ -125,6 +126,17 @@ def verify() -> list[str]:
             failures.append("plan audit implemented-module count is stale")
         if audit.get("unresolvedSourceBindingCount") != 0:
             failures.append("plan audit still reports unresolved source bindings")
+
+    if not EXACT_WORKFLOW.is_file():
+        failures.append("read-only exact-head qualification workflow is missing")
+    else:
+        workflow = EXACT_WORKFLOW.read_text(encoding="utf-8")
+        if "permissions:\n  contents: read" not in workflow:
+            failures.append("exact-head qualification does not use read-only contents permission")
+        if "persist-credentials: false" not in workflow:
+            failures.append("exact-head qualification persists checkout credentials")
+        if "git push" in workflow or "git commit" in workflow:
+            failures.append("exact-head qualification contains a repository write command")
 
     return failures
 
