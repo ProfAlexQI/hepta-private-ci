@@ -9,6 +9,7 @@
   "nodes": [
     "DOC-0-CANONICAL-DOCUMENT-CONSOLIDATION",
     "DOC-1-V8-SEMANTIC-UPGRADE",
+    "DOC-3D-ADAPTIVE-ALGORITHM-DOC-CLOSED-WORLD",
     "DOC-2-DEFAULT-BRANCH-SELECTION",
     "P0.7A-RUNTIME-BOOTSTRAP",
     "P0.7B-B0-VERIFIED-USE",
@@ -86,7 +87,17 @@
     "DOC-REGISTRY-CLOSED-WORLD",
     "DOC-3A-SOURCE-BINDING-RECONCILIATION",
     "DOC-3B-MODULE-TECHNICAL-DOCUMENTS",
-    "DOC-3C-MODULE-DOC-CLOSED-WORLD"
+    "DOC-3C-MODULE-DOC-CLOSED-WORLD",
+    "DOC-3E-PRECODING-READINESS-CLOSED-WORLD",
+    "EMB-0-EMBODIED-CONTRACTS",
+    "EMB-1-SENSOR-BUS-BODY-SCHEMA",
+    "EMB-2-REFLEX-MOTOR-ACTUATION",
+    "EMB-3-HIL-SIM-TO-REAL-QUALIFICATION",
+    "ASM-0-EXTERNAL-SYSTEM-CONTRACTS",
+    "ASM-1-DISCOVERY-MANIFEST",
+    "ASM-2-DEBIAN-BRIDGE-SANDBOX",
+    "ASM-3-STATE-MIGRATION-QUALIFICATION",
+    "ASM-4-FEDERATED-ORGAN-ENROLLMENT"
   ],
   "edges": [
     {
@@ -94,11 +105,19 @@
       "to": "DOC-1-V8-SEMANTIC-UPGRADE"
     },
     {
+      "from": "DOC-3C-MODULE-DOC-CLOSED-WORLD",
+      "to": "DOC-3D-ADAPTIVE-ALGORITHM-DOC-CLOSED-WORLD"
+    },
+    {
       "from": "DOC-1-V8-SEMANTIC-UPGRADE",
       "to": "DOC-2-DEFAULT-BRANCH-SELECTION"
     },
     {
       "from": "DOC-3C-MODULE-DOC-CLOSED-WORLD",
+      "to": "DOC-2-DEFAULT-BRANCH-SELECTION"
+    },
+    {
+      "from": "DOC-3D-ADAPTIVE-ALGORITHM-DOC-CLOSED-WORLD",
       "to": "DOC-2-DEFAULT-BRANCH-SELECTION"
     },
     {
@@ -648,6 +667,102 @@
     {
       "from": "DOC-3B-MODULE-TECHNICAL-DOCUMENTS",
       "to": "DOC-3C-MODULE-DOC-CLOSED-WORLD"
+    },
+    {
+      "from": "DOC-3D-ADAPTIVE-ALGORITHM-DOC-CLOSED-WORLD",
+      "to": "DOC-3E-PRECODING-READINESS-CLOSED-WORLD"
+    },
+    {
+      "from": "DOC-2-DEFAULT-BRANCH-SELECTION",
+      "to": "EMB-0-EMBODIED-CONTRACTS"
+    },
+    {
+      "from": "PLATFORM-0-TYPE-BOUNDARY",
+      "to": "EMB-0-EMBODIED-CONTRACTS"
+    },
+    {
+      "from": "P0.7B-B0-VERIFIED-USE",
+      "to": "EMB-0-EMBODIED-CONTRACTS"
+    },
+    {
+      "from": "EMB-0-EMBODIED-CONTRACTS",
+      "to": "EMB-1-SENSOR-BUS-BODY-SCHEMA"
+    },
+    {
+      "from": "MEM-1-STORE",
+      "to": "EMB-1-SENSOR-BUS-BODY-SCHEMA"
+    },
+    {
+      "from": "MEM-READ-1-SNAPSHOT-PORT",
+      "to": "EMB-1-SENSOR-BUS-BODY-SCHEMA"
+    },
+    {
+      "from": "EMB-1-SENSOR-BUS-BODY-SCHEMA",
+      "to": "EMB-2-REFLEX-MOTOR-ACTUATION"
+    },
+    {
+      "from": "RCP-1-RUNTIME-CONTROL-PLANE",
+      "to": "EMB-2-REFLEX-MOTOR-ACTUATION"
+    },
+    {
+      "from": "P0.7B-B4-CALLSITE-PROOF",
+      "to": "EMB-2-REFLEX-MOTOR-ACTUATION"
+    },
+    {
+      "from": "EMB-2-REFLEX-MOTOR-ACTUATION",
+      "to": "EMB-3-HIL-SIM-TO-REAL-QUALIFICATION"
+    },
+    {
+      "from": "P0.9-EXTERNAL-GATES",
+      "to": "EMB-3-HIL-SIM-TO-REAL-QUALIFICATION"
+    },
+    {
+      "from": "DOC-2-DEFAULT-BRANCH-SELECTION",
+      "to": "ASM-0-EXTERNAL-SYSTEM-CONTRACTS"
+    },
+    {
+      "from": "PLATFORM-0-TYPE-BOUNDARY",
+      "to": "ASM-0-EXTERNAL-SYSTEM-CONTRACTS"
+    },
+    {
+      "from": "P0.7B-B0-VERIFIED-USE",
+      "to": "ASM-0-EXTERNAL-SYSTEM-CONTRACTS"
+    },
+    {
+      "from": "ASM-0-EXTERNAL-SYSTEM-CONTRACTS",
+      "to": "ASM-1-DISCOVERY-MANIFEST"
+    },
+    {
+      "from": "ECP-1-ENGINEERING-CONTROL-PLANE",
+      "to": "ASM-1-DISCOVERY-MANIFEST"
+    },
+    {
+      "from": "ASM-1-DISCOVERY-MANIFEST",
+      "to": "ASM-2-DEBIAN-BRIDGE-SANDBOX"
+    },
+    {
+      "from": "P0.7B-B4-CALLSITE-PROOF",
+      "to": "ASM-2-DEBIAN-BRIDGE-SANDBOX"
+    },
+    {
+      "from": "P0.9-EXTERNAL-GATES",
+      "to": "ASM-2-DEBIAN-BRIDGE-SANDBOX"
+    },
+    {
+      "from": "ASM-2-DEBIAN-BRIDGE-SANDBOX",
+      "to": "ASM-3-STATE-MIGRATION-QUALIFICATION"
+    },
+    {
+      "from": "P0.9-EXTERNAL-GATES",
+      "to": "ASM-3-STATE-MIGRATION-QUALIFICATION"
+    },
+    {
+      "from": "ASM-3-STATE-MIGRATION-QUALIFICATION",
+      "to": "ASM-4-FEDERATED-ORGAN-ENROLLMENT"
+    },
+    {
+      "from": "P0.9-EXTERNAL-GATES",
+      "to": "ASM-4-FEDERATED-ORGAN-ENROLLMENT"
     }
   ],
   "acyclicRequired": true,

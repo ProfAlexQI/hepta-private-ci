@@ -270,3 +270,32 @@ For `control.runtime`, this document grants no runtime, production, model, provi
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+## 16. V8.2 pre-coding implementation-readiness overlay
+
+The canonical readiness overlay binds `control.runtime` to primary lane `LANE-D-OBJECTIVE-VALUE`. The following implementation-level specifications are mandatory alongside Sections 1–15:
+
+- [`RDY-SRC`](../../readiness/SOURCE_BASELINE_AND_BRANCH_POLICY.md)
+- [`RDY-PAR`](../../readiness/PARALLEL_DEVELOPMENT.md)
+- [`RDY-NDU`](../../readiness/NDU_SYSTEM_EXECUTION.md)
+- [`RDY-EMB`](../../readiness/EMBODIED_RUNTIME_EXECUTION.md)
+
+Owned readiness protocols:
+
+- `RealTimeLoopProfileV1`
+
+Consumed readiness protocols:
+
+- `EmergencyStopReceiptV1`
+- `NduConvergenceCertificateV1`
+- `NduIterationReceiptV1`
+- `ObjectiveConstraintSetV1`
+- `SensorCalibrationManifestV1`
+- `UtilityContributionV1`
+
+Coding begins only with a current `CanonicalSourceReceiptV1`, a frozen contract/readiness digest, the existing bounded work-package envelope, defined mandatory fixtures, deterministic fallback and zero authority delta. This overlay closes documentation ambiguity only; it does not change source status, activation, acceptance, selection, promotion or release.
+
+### Readiness implementation work packages
+
+The following additional work packages are source-planning envelopes introduced by the readiness overlay; they do not imply implementation or activation:
+
+- `EMB-2-REFLEX-MOTOR-ACTUATION`

@@ -4,10 +4,10 @@ This directory contains exactly one stable implementation guide for every module
 
 ## Guides
 
-- [`platform.types`](platform.types/TECHNICAL.md) — `existing_legacy_aggregate`, bootstrap `PLATFORM-0-TYPE-BOUNDARY`.
-- [`platform.wire`](platform.wire/TECHNICAL.md) — `existing_legacy_aggregate`, bootstrap `P0.7E-DEPENDENCY-INVERSION`.
+- [`platform.types`](platform.types/TECHNICAL.md) — `existing_bound`, bootstrap `PLATFORM-0-TYPE-BOUNDARY`.
+- [`platform.wire`](platform.wire/TECHNICAL.md) — `existing_bound`, bootstrap `P0.7E-DEPENDENCY-INVERSION`.
 - [`kernel.authority`](kernel.authority/TECHNICAL.md) — `existing_bound`, bootstrap `P0.7B-B0-VERIFIED-USE`.
-- [`kernel.operations`](kernel.operations/TECHNICAL.md) — `existing_legacy_aggregate`, bootstrap `P0.7D-FAULT-MATRIX`.
+- [`kernel.operations`](kernel.operations/TECHNICAL.md) — `existing_bound`, bootstrap `P0.7D-FAULT-MATRIX`.
 - [`kernel.evidence`](kernel.evidence/TECHNICAL.md) — `existing_bound`, bootstrap `P0.9-EXTERNAL-GATES`.
 - [`runtime.supervisor`](runtime.supervisor/TECHNICAL.md) — `existing_bound`, bootstrap `P0.7A-RUNTIME-BOOTSTRAP`.
 - [`runtime.fleet`](runtime.fleet/TECHNICAL.md) — `existing_bound`, bootstrap `FLEET-1-ALLOCATION-CONTRACT`.
@@ -44,3 +44,11 @@ This directory contains exactly one stable implementation guide for every module
 - [`ui.native`](ui.native/TECHNICAL.md) — `target_partially_materialized`, bootstrap `UI-NATIVE-1-SHELL`.
 - [`control.runtime`](control.runtime/TECHNICAL.md) — `target_partially_materialized`, bootstrap `RCP-1-RUNTIME-CONTROL-PLANE`.
 - [`control.engineering`](control.engineering/TECHNICAL.md) — `target_unmaterialized`, bootstrap `ECP-1-ENGINEERING-CONTROL-PLANE`.
+
+## Adaptive algorithm overlay
+
+The module guides above define ownership, boundaries and delivery envelopes. Implementation-level mathematics, algorithms, data lineage and quantitative acceptance gates for the fourteen adaptive modules are closed separately in [`../learning/README.md`](../learning/README.md) and bound by [`../learning/ALGORITHM_SPECS.json`](../learning/ALGORITHM_SPECS.json). This overlay does not change any module source status or capability claim.
+
+## Pre-coding readiness overlay
+
+Every guide now includes Section 16, which binds the module to one primary implementation lane and the exact specifications and typed protocols in [`../readiness/README.md`](../readiness/README.md). The overlay closes implementation ambiguity but does not change source or capability status.

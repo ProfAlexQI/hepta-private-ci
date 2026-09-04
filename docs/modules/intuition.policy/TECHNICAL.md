@@ -278,3 +278,96 @@ For `intuition.policy`, this document grants no runtime, production, model, prov
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+<!-- BEGIN GENERATED EXACT REGISTRY PROJECTION -->
+### Exact closed-world registry projection
+
+This generated projection binds `intuition.policy` to the current canonical contract, protocol, data, delivery and threat registries. The registries remain authoritative; this block is a digest-checked documentation projection.
+
+**Produced contracts:**
+- `IntuitionDecisionReceiptV1`
+- `ModulePort::intuition.policy::context.compiler`
+- `ModulePort::intuition.policy::intelligence.control`
+
+**Consumed contracts:**
+- `CandidateSetCompletenessReceiptV1`
+- `DomainRead::eligibility_trace_checkpointV1`
+- `DomainRead::learning_artifact_registryV1`
+- `DomainRead::ndu_preference_projectionV1`
+- `DomainRead::ndu_utility_projectionV1`
+- `DomainRead::neuron_state_checkpointV1`
+- `DomainRead::operator_sensor_core_registryV1`
+- `LegalActionCandidateSetV1`
+- `ModulePort::learning.artifacts::intuition.policy`
+- `ModulePort::neuron.runtime::intuition.policy`
+- `ModulePort::platform.types::intuition.policy`
+- `ModulePort::utility.ndu::intuition.policy`
+- `NduPreferenceStateV1`
+- `NeuronCheckpointV1`
+- `NeuronSignalReceiptV1`
+- `ObjectiveFunctionV1`
+- `OperatorApplicabilityCertificateV1`
+- `OperatorSensorCoreManifestV1`
+- `RegularityProfileV1`
+- `RunStartSnapshotV1`
+
+**Typed protocols:**
+- `CandidateSetCompletenessReceiptV1`
+- `IntuitionDecisionReceiptV1`
+- `LegalActionCandidateSetV1`
+- `NduPreferenceStateV1`
+- `NeuronCheckpointV1`
+- `NeuronSignalReceiptV1`
+- `ObjectiveFunctionV1`
+- `OperatorApplicabilityCertificateV1`
+- `OperatorSensorCoreManifestV1`
+- `RegularityProfileV1`
+- `RunStartSnapshotV1`
+
+**Owned data domains:**
+- None.
+
+**Read data domains:**
+- `candidate_set_completeness_receipt_v1`
+- `eligibility_trace_checkpoint`
+- `learning_artifact_registry`
+- `ndu_preference_projection`
+- `ndu_utility_projection`
+- `neuron_checkpoint_v1`
+- `neuron_state_checkpoint`
+- `operator_applicability_certificate_v1`
+- `operator_sensor_core_manifest_v1`
+- `operator_sensor_core_registry`
+- `regularity_profile_v1`
+
+**Work packages:**
+- `BIO-0-NEURON-INTUITION-CONTRACTS`
+- `INT-1-CALIBRATED-INTUITION-POLICY`
+
+**Owned threats:**
+- `intuition_propensity_omission`
+- `intuition_unsupported_action`
+
+<!-- END GENERATED EXACT REGISTRY PROJECTION -->
+
+## 16. V8.2 pre-coding implementation-readiness overlay
+
+The canonical readiness overlay binds `intuition.policy` to primary lane `LANE-F-ADAPTIVE-POLICY`. The following implementation-level specifications are mandatory alongside Sections 1–15:
+
+- [`RDY-SRC`](../../readiness/SOURCE_BASELINE_AND_BRANCH_POLICY.md)
+- [`RDY-PAR`](../../readiness/PARALLEL_DEVELOPMENT.md)
+- [`RDY-NDU`](../../readiness/NDU_SYSTEM_EXECUTION.md)
+- [`RDY-NEU`](../../readiness/NEURON_RUNTIME_EXECUTION.md)
+
+Owned readiness protocols:
+
+- None.
+
+Consumed readiness protocols:
+
+- `NeuronRuntimeConfigV1`
+- `NeuronTickInputV1`
+- `NeuronTickReceiptV1`
+- `ObjectiveConstraintSetV1`
+- `UtilityContributionV1`
+
+Coding begins only with a current `CanonicalSourceReceiptV1`, a frozen contract/readiness digest, the existing bounded work-package envelope, defined mandatory fixtures, deterministic fallback and zero authority delta. This overlay closes documentation ambiguity only; it does not change source status, activation, acceptance, selection, promotion or release.

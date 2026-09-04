@@ -5,10 +5,6 @@ name = "codex-hepta-matrix-sdk"
 version.workspace = true
 publish = false
 
-[features]
-default = []
-qualification-failpoints = []
-
 [lib]
 name = "codex_hepta_matrix_sdk"
 path = "src/lib.rs"
@@ -22,7 +18,6 @@ codex-hepta-contracts = { workspace = true }
 codex-hepta-matrix-protocol = { workspace = true }
 codex-hepta-matrix-store = { workspace = true }
 codex-hepta-paths = { workspace = true }
-futures = { workspace = true }
 matrix-sdk = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

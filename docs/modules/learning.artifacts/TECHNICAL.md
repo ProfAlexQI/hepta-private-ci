@@ -312,3 +312,118 @@ For `learning.artifacts`, this document grants no runtime, production, model, pr
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+<!-- BEGIN GENERATED EXACT REGISTRY PROJECTION -->
+### Exact closed-world registry projection
+
+This generated projection binds `learning.artifacts` to the current canonical contract, protocol, data, delivery and threat registries. The registries remain authoritative; this block is a digest-checked documentation projection.
+
+**Produced contracts:**
+- `DomainRead::learning_artifact_registryV1`
+- `DomainRead::operator_sensor_core_registryV1`
+- `LearningArtifactManifestV1`
+- `ModulePort::learning.artifacts::intuition.policy`
+- `ModulePort::learning.artifacts::learning.eval`
+- `ModulePort::learning.artifacts::learning.operator`
+- `ModulePort::learning.artifacts::learning.plasticity`
+- `ModulePort::learning.artifacts::neuron.runtime`
+- `ModulePort::learning.artifacts::prompt.optimizer`
+- `ModulePort::learning.artifacts::utility.ndu`
+- `OperatorSensorCoreManifestV1`
+
+**Consumed contracts:**
+- `AlgorithmFaultReceiptV1`
+- `BellmanOperatorArtifactV1`
+- `CandidateEvaluationReceiptV1`
+- `ConformanceReceiptV1`
+- `DatasetSnapshotV1`
+- `DomainRead::cross_owner_outboxV1`
+- `DomainRead::operation_ledgerV1`
+- `EvaluationReceiptV1`
+- `IndependentDecisionReceiptV1`
+- `IterationCandidateV1`
+- `LongitudinalEvaluationReceiptV1`
+- `ModulePort::kernel.operations::learning.artifacts`
+- `ModulePort::platform.types::learning.artifacts`
+- `NduCoefficientManifestV1`
+- `NduWellPosednessCertificateV1`
+- `OperatorApplicabilityCertificateV1`
+- `PlasticityProposalV1`
+- `RegularityProfileV1`
+- `SupportAuditReceiptV1`
+- `TopologyProposalV1`
+- `UnlearningComplianceReceiptV1`
+
+**Typed protocols:**
+- `AlgorithmFaultReceiptV1`
+- `CandidateEvaluationReceiptV1`
+- `ConformanceReceiptV1`
+- `DatasetSnapshotV1`
+- `EvaluationReceiptV1`
+- `IndependentDecisionReceiptV1`
+- `IterationCandidateV1`
+- `LearningArtifactManifestV1`
+- `LongitudinalEvaluationReceiptV1`
+- `NduCoefficientManifestV1`
+- `NduWellPosednessCertificateV1`
+- `OperatorApplicabilityCertificateV1`
+- `OperatorSensorCoreManifestV1`
+- `PlasticityProposalV1`
+- `RegularityProfileV1`
+- `SupportAuditReceiptV1`
+- `TopologyProposalV1`
+- `UnlearningComplianceReceiptV1`
+
+**Owned data domains:**
+- `learning_artifact_registry`
+- `operator_sensor_core_manifest_v1`
+- `operator_sensor_core_registry`
+
+**Read data domains:**
+- `algorithm_fault_receipt_v1`
+- `candidate_evaluation_receipt_v1`
+- `conformance_receipt_v1`
+- `cross_owner_outbox`
+- `independent_decision_receipt_v1`
+- `iteration_candidate_v1`
+- `ndu_coefficient_manifest_v1`
+- `ndu_well_posedness_certificate_v1`
+- `operation_ledger`
+- `operator_applicability_certificate_v1`
+- `plasticity_proposal_v1`
+- `regularity_profile_v1`
+- `support_audit_receipt_v1`
+- `topology_proposal_v1`
+
+**Work packages:**
+- `ART-1-LEARNING-ARTIFACT-REGISTRY`
+- `ART-2-NEXT-SNAPSHOT-RELOAD-ROLLBACK`
+- `HBO-1-OPERATOR-SENSOR-CORE`
+
+**Owned threats:**
+- `artifact_lineage_break`
+- `current_run_artifact_swap`
+- `operator_sensor_clustering`
+
+<!-- END GENERATED EXACT REGISTRY PROJECTION -->
+
+## 16. V8.2 pre-coding implementation-readiness overlay
+
+The canonical readiness overlay binds `learning.artifacts` to primary lane `LANE-E-LEARNING`. The following implementation-level specifications are mandatory alongside Sections 1–15:
+
+- [`RDY-SRC`](../../readiness/SOURCE_BASELINE_AND_BRANCH_POLICY.md)
+- [`RDY-PAR`](../../readiness/PARALLEL_DEVELOPMENT.md)
+- [`RDY-NEU`](../../readiness/NEURON_RUNTIME_EXECUTION.md)
+- [`RDY-LRN`](../../readiness/LEARNING_EVALUATION_EXECUTION.md)
+- [`RDY-SI`](../../readiness/SELF_ITERATION_EXECUTION.md)
+
+Owned readiness protocols:
+
+- `CandidateLineageV1`
+
+Consumed readiness protocols:
+
+- `EvaluationPlanV1`
+- `NduConvergenceCertificateV1`
+- `RetentionSliceReceiptV1`
+
+Coding begins only with a current `CanonicalSourceReceiptV1`, a frozen contract/readiness digest, the existing bounded work-package envelope, defined mandatory fixtures, deterministic fallback and zero authority delta. This overlay closes documentation ambiguity only; it does not change source status, activation, acceptance, selection, promotion or release.

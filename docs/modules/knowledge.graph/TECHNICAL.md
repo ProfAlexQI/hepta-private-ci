@@ -230,3 +230,20 @@ For `knowledge.graph`, this document grants no runtime, production, model, provi
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+## 16. V8.2 pre-coding implementation-readiness overlay
+
+The canonical readiness overlay binds `knowledge.graph` to primary lane `LANE-C-MEMORY`. The following implementation-level specifications are mandatory alongside Sections 1–15:
+
+- [`RDY-SRC`](../../readiness/SOURCE_BASELINE_AND_BRANCH_POLICY.md)
+- [`RDY-PAR`](../../readiness/PARALLEL_DEVELOPMENT.md)
+- [`RDY-EMB`](../../readiness/EMBODIED_RUNTIME_EXECUTION.md)
+
+Owned readiness protocols:
+
+- None.
+
+Consumed readiness protocols:
+
+- None.
+
+Coding begins only with a current `CanonicalSourceReceiptV1`, a frozen contract/readiness digest, the existing bounded work-package envelope, defined mandatory fixtures, deterministic fallback and zero authority delta. This overlay closes documentation ambiguity only; it does not change source status, activation, acceptance, selection, promotion or release.

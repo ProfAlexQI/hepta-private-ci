@@ -388,3 +388,101 @@ For `learning.operator`, this document grants no runtime, production, model, pro
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+<!-- BEGIN GENERATED EXACT REGISTRY PROJECTION -->
+### Exact closed-world registry projection
+
+This generated projection binds `learning.operator` to the current canonical contract, protocol, data, delivery and threat registries. The registries remain authoritative; this block is a digest-checked documentation projection.
+
+**Produced contracts:**
+- `BellmanOperatorArtifactV1`
+
+**Consumed contracts:**
+- `CandidateSetCompletenessReceiptV1`
+- `CreditAssignmentReceiptV1`
+- `DatasetSnapshotV1`
+- `DomainRead::learning_artifact_registryV1`
+- `DomainRead::learning_credit_ledgerV1`
+- `DomainRead::learning_episode_ledgerV1`
+- `DomainRead::learning_unlearning_lineageV1`
+- `DomainRead::operator_sensor_core_registryV1`
+- `DomainRead::qualification_evidenceV1`
+- `GoldenFixtureManifestV1`
+- `LearningDecisionV1`
+- `LearningEpisodeV1`
+- `ModulePort::kernel.evidence::learning.operator`
+- `ModulePort::learning.artifacts::learning.operator`
+- `ModulePort::learning.ledger::learning.operator`
+- `ModulePort::platform.types::learning.operator`
+- `OperatorApplicabilityCertificateV1`
+- `OperatorSensorCoreManifestV1`
+- `OutcomeReceiptV1`
+- `OutcomeWatermarkV1`
+- `RandomStreamManifestV1`
+- `RegularityProfileV1`
+- `SupportAuditReceiptV1`
+
+**Typed protocols:**
+- `CandidateSetCompletenessReceiptV1`
+- `CreditAssignmentReceiptV1`
+- `DatasetSnapshotV1`
+- `GoldenFixtureManifestV1`
+- `LearningDecisionV1`
+- `LearningEpisodeV1`
+- `OperatorApplicabilityCertificateV1`
+- `OperatorSensorCoreManifestV1`
+- `OutcomeReceiptV1`
+- `OutcomeWatermarkV1`
+- `RandomStreamManifestV1`
+- `RegularityProfileV1`
+- `SupportAuditReceiptV1`
+
+**Owned data domains:**
+- None.
+
+**Read data domains:**
+- `candidate_set_completeness_receipt_v1`
+- `golden_fixture_manifest_v1`
+- `learning_artifact_registry`
+- `learning_credit_ledger`
+- `learning_episode_ledger`
+- `learning_unlearning_lineage`
+- `operator_applicability_certificate_v1`
+- `operator_sensor_core_manifest_v1`
+- `operator_sensor_core_registry`
+- `outcome_watermark_v1`
+- `qualification_evidence`
+- `random_stream_manifest_v1`
+- `regularity_profile_v1`
+- `support_audit_receipt_v1`
+
+**Work packages:**
+- `BIO-2-REPLAY-CONSOLIDATION`
+- `BIO-3-WORLD-MODEL-PREDICTION-ERROR`
+- `HBO-0-BELLMAN-OPERATOR-CONTRACTS`
+- `HBO-1-OPERATOR-SENSOR-CORE`
+- `HBO-2-BELLMAN-OPERATOR-SHADOW`
+
+**Owned threats:**
+- `Bellman_error_amplification`
+- `off_policy_residual_blowup`
+- `replay_contamination`
+
+<!-- END GENERATED EXACT REGISTRY PROJECTION -->
+
+## 16. V8.2 pre-coding implementation-readiness overlay
+
+The canonical readiness overlay binds `learning.operator` to primary lane `LANE-E-LEARNING`. The following implementation-level specifications are mandatory alongside Sections 1–15:
+
+- [`RDY-SRC`](../../readiness/SOURCE_BASELINE_AND_BRANCH_POLICY.md)
+- [`RDY-PAR`](../../readiness/PARALLEL_DEVELOPMENT.md)
+- [`RDY-LRN`](../../readiness/LEARNING_EVALUATION_EXECUTION.md)
+
+Owned readiness protocols:
+
+- None.
+
+Consumed readiness protocols:
+
+- None.
+
+Coding begins only with a current `CanonicalSourceReceiptV1`, a frozen contract/readiness digest, the existing bounded work-package envelope, defined mandatory fixtures, deterministic fallback and zero authority delta. This overlay closes documentation ambiguity only; it does not change source status, activation, acceptance, selection, promotion or release.

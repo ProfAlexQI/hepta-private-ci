@@ -3,7 +3,7 @@
 **Plan ID:** `HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN`
 **Version:** `8.0.0`
 **Date:** 2026-09-01
-**Status:** canonical V8 content is mirrored on `main`; GitHub still names `integration/vnext-main-20260811` as the default branch, so default-branch selection remains an external repository-administration gate.
+**Status:** canonical policy and static registries are defined by this document set; live branch, pull-request, CI, selection and default-branch facts are resolved only from current exact-candidate receipts and are never cached here.
 
 This is the only global human-readable development authority in the working tree. Machine registries own bounded facts and `docs/STATUS.md` is generated. This document grants no runtime, model, provider, tool, network, filesystem, secret, Matrix, fleet, operator, promotion, or release authority.
 
@@ -32,15 +32,19 @@ Completion requires one selected linear source stack, current exact-candidate ev
 
 Read in this order:
 
-1. `docs/CURRENT.json` — time-bounded repository and candidate observations;
+1. `docs/CURRENT.json` — static source-selection policy and explicit prohibition on cached dynamic candidate facts;
 2. this document — global requirements and delivery policy;
 3. `docs/architecture/ARCHITECTURE.json` — non-negotiable architecture invariants;
 4. `docs/modules/MODULES.json`, `docs/contracts/*` and `docs/data/DATA_AUTHORITY.json`;
 5. `docs/delivery/WORK_PACKAGES.json`, `PATH_OWNERSHIP.json` and the three DAGs;
 6. `docs/control-plane/OBJECTIVES.json`, `NDU.json` and `OPTIMIZATION.json`;
-7. `docs/intelligence/PROMPT_INTERVENTIONS.json` and `docs/learning/*`;
-8. `docs/evidence/CLAIMS.json`, `QUALIFICATION.json`, `INDEX.json` and exact external receipts;
-9. `docs/security/THREAT_MODEL.json` and independently issued decisions.
+7. `docs/intelligence/PROMPT_INTERVENTIONS.json`, `docs/learning/ALGORITHM_SPECS.json`, `PAPER_TRACEABILITY.json` and the six implementation-level adaptive specifications;
+8. `docs/readiness/README.md`, `READINESS.json`, `PROTOCOLS.json`, `GAPS.json` and the nine pre-coding execution specifications;
+9. `docs/cns/README.md`, `CNS_ARCHITECTURE.json`, `ORGAN_PROTOCOLS.json` and the deterministic CNS reference;
+10. `docs/hnmf/README.md`, `HNMF.json`, `TECHNICAL.md` and the three HNMF qualification references;
+11. `docs/learning/LEARNING_SYSTEM.json`, `EXPERIMENTS.json`, `ARTIFACTS.json` and the generated `ALGORITHM_STATUS.md`;
+12. `docs/evidence/CLAIMS.json`, `QUALIFICATION.json`, `INDEX.json` and exact external receipts;
+13. `docs/security/THREAT_MODEL.json` and independently issued decisions.
 
 Stable paths are updated in place. Version numbers live inside documents, never in filenames. Historical plans, status snapshots, current-plan pointers, gap ledgers, tranche narratives, Dropbox exports and in-tree archives are prohibited. Git history and immutable content-addressed external evidence preserve provenance.
 
@@ -50,11 +54,11 @@ The pre-selection baseline contained 143 historical development paths. V8 delete
 
 ## 3. Current truthful baseline
 
-The selected V8 content is present on both `main` and `integration/vnext-main-20260811` at the same exact tip. Every one of the 789 pre-consolidation branch tips is reachable from that line as Git ancestry; obsolete branch trees were not overlaid. All 64 outstanding pull requests were closed as superseded, and all 787 other branch refs were removed by a bounded operation after exact ancestry verification.
+No branch name, pull-request number, queued workflow, cached check result or prose claim is source-selection authority. `docs/CURRENT.json` records only the static repository identity, cleanup baseline, claim levels and dynamic-observation policy. The current source head, source tree, target branch, merge candidate, CI, review and operator decisions must be resolved from a fresh `CanonicalSourceReceiptV1` or the exact external receipt defined by the global verifier.
 
-GitHub still reports `integration/vnext-main-20260811` as the repository default because the Actions integration is not permitted to mutate repository administration settings. Therefore `DOC-2-DEFAULT-BRANCH-SELECTION` remains `blocked_external`. The final administrative transition is to select the existing `main` ref as default and then delete the old default ref. Until that observable state exists, canonical registries must not claim that `main` is already the GitHub default branch.
+The static repository policy records `integration/vnext-main-20260811` as the observed administrative default at the V8 cleanup baseline. `DOC-2-DEFAULT-BRANCH-SELECTION` remains `blocked_external` until a current repository-administration observation proves a different state. The document tree must not infer that `main`, the recorded default, or any candidate branch is selected merely because equivalent bytes exist or a pull request is open.
 
-Exact live head, tree, CI, review and operator facts remain dynamic evidence and must be resolved from current external receipts. This consolidation grants no runtime, model, provider, tool, network, filesystem, secret, Matrix, fleet, operator, promotion or release authority.
+Historical cleanup remains bound to the exact head/tree and 143-path deletion inventory in `DOCUMENT_SYSTEM.json`. Live branch counts, pull-request counts and branch-tip relationships are deliberately excluded from canonical files because they can change after a commit. This posture grants no runtime, model, provider, tool, network, filesystem, secret, Matrix, fleet, operator, acceptance, selection, promotion or release authority.
 
 ## 4. Immutable execution, authority and data invariants
 
@@ -100,6 +104,20 @@ Each module has a primary owner, deputy, exclusive roots, dependencies, data aut
 Every one of the forty registered modules has one stable implementation guide at `docs/modules/<module-id>/TECHNICAL.md`. `docs/modules/MODULE_DOCS.json` binds each guide to its exact digest, contracts, protocols, data domains, threats and work packages. `docs/modules/SOURCE_BINDINGS.json` separates declared target roots from existing implementation evidence, missing roots and the bootstrap package that must materialize each target.
 
 Source states are deliberately truthful: a module may be `existing_bound`, `existing_legacy_aggregate`, `existing_declared_unbound`, `target_partially_materialized`, `target_unmaterialized` or `external_with_adapter_target`. Documentation readiness never changes a source, activation, acceptance, promotion or release claim. `python3 scripts/hepta-module-docs.py verify` fails unless all forty guides, bindings and registry references are closed.
+
+## 5B. Adaptive algorithm closed world
+
+The implementation-level adaptive document set is globally governed, not an independent prose island. `docs/learning/ALGORITHM_SPECS.json` binds the six specifications, exact Git blob identities, paper claim anchors, canonical contracts and protocol schemas, data-authority domains, quantitative experiments, artifact lifecycle, work package `DOC-3D-ADAPTIVE-ALGORITHM-DOC-CLOSED-WORLD`, and both read-only CI workflows.
+
+`python3 scripts/hepta-algorithm-docs.py verify` is necessary but cannot self-certify closure. `python3 scripts/hepta-docs.py verify` must load the algorithm registry, invoke the dedicated verifier, confirm every adaptive path is in `DOCUMENT_SYSTEM.json`, and confirm the package and Development/Activation/Evidence DAG edges. Both exact source and deterministic synthetic merge candidates must pass. Temporary installers, split payloads, `contents: write`, branch pushes, and workflow-generated source mutations are forbidden in the final document tree.
+
+## 5C. Pre-coding implementation-readiness closed world
+
+`docs/readiness/READINESS.json` binds nine implementation-level execution specifications, 31 bounded typed protocols, 54 closed documentation gaps, all 40 modules, seven primary implementation lanes, three cross-lane integration tracks and nine explicitly authorized external-system assimilation components. `docs/readiness/GAPS.json` separately names nine capability or evidence gates that repository documentation may never self-certify.
+
+Every module guide includes Section 16 and maps the module to exactly one primary lane, the applicable readiness specifications, its owned and consumed readiness protocols and a common coding-entry gate. The gate requires a current exact source receipt, frozen contract/readiness digests, an existing bounded work-package envelope, deterministic fallback, declared fixtures, rollback and zero authority delta. The new embodiment and assimilation work packages define source paths and predecessors without claiming that those paths are materialized.
+
+`python3 scripts/hepta-readiness.py verify` checks document depth, protocol bounds and ownership, gap traceability, module/lane closure, package references, assimilation target-root ownership, generated status and the read-only source-head/synthetic-merge workflow. The global verifier invokes the readiness, CNS and HNMF verifiers; no subordinate layer may certify itself as globally complete. Documentation closure permits contract-first coding to begin through the declared lanes, but it does not imply source implementation, real model use, future-time efficacy, biomimicry, physical safety, external-system owner consent, operator acceptance, selection, promotion or release.
 
 ## 6. Objective compilation
 
@@ -362,6 +380,14 @@ Close causal evaluation, signed next-snapshot reload/rollback, future-time holdo
 
 Add eligibility/homeostasis, replay consolidation, world-model prediction error, parameter plasticity, PromptFactor evolution and code candidate generation. Structural topology proposals and canary are last, never prerequisites for the first learning loop.
 
+### P7 — simulator-first embodiment
+
+Implement `EMB-0` through `EMB-3`: shared sensor/body/reflex/actuation types, coherent body-state storage, deterministic local control, terminal effect reconciliation and independent simulator or hardware-in-loop qualification. Real physical activation remains blocked until target-host timing, emergency-stop and safety evidence exist.
+
+### P8 — explicitly authorized external-system assimilation
+
+Implement `ASM-0` through `ASM-4` against an owner-authorized, non-privileged Debian/POSIX fixture. Progress from read-only discovery to manifest/contract synthesis, credential-free sandboxing, reversible migration and explicit host enrollment. Cross-host or autonomous propagation is prohibited.
+
 ## 20. First vertical learning slice
 
 `C1-PROMPTED-MEMORY-RETRIEVAL-RANK` executes:
@@ -431,20 +457,20 @@ promotion != release
 
 ## 23. Immediate queue
 
-1. Materialize the V8 overlay as one exact commit on `b621768…`; purge all forbidden legacy documents.
-2. Run document inventory, schema, module/writer, Development/Activation/Evidence DAG and generated-status gates.
-3. Obtain exact-head and merge-candidate execution, independent review and default-branch selection.
-4. Restack #83 → #272 → #273 → #280 → #281 → #282 without legacy document reintroduction.
-5. Complete AuthBus semantic review, Browser identity reconciliation and B4 call-site proof.
-6. Begin contract-first Objective, Learning, NDU, Prompt, Bellman and Neuron/Intuition work in parallel while activation remains blocked.
-7. Close Memory/KG extraction, fault/dependency/readiness/resource work, then the real-process base vertical slice.
-8. Build the durable learning stores and shadow intelligence components.
-9. Execute the first read-only prompted-retrieval loop and causal evaluation.
-10. Require longitudinal and unlearning evidence before any biomimicry or structural-plasticity claim.
+1. Qualify `DOC-3E-PRECODING-READINESS-CLOSED-WORLD` through the dedicated and global exact-source and synthetic-merge jobs, then obtain independent semantic review.
+2. Resolve the current canonical source and target branch only from fresh receipts; do not reuse a cached pull-request number or historical branch relationship.
+3. Begin `LANE-A-FOUNDATION`, `LANE-C-MEMORY` and `LANE-G-ENGINEERING` contract-first packages against frozen readiness and contract digests.
+4. Close AuthBus semantic review, Browser identity reconciliation, dependency inversion, runtime bootstrap, B4 call-site proof and common fault/resource gates.
+5. Materialize Objective, deterministic NDU, episode ledger, artifact registry, PromptFactor registry and the first read-only vertical slice.
+6. Add Bellman, Neuron, Intuition and prompt optimization only in shadow mode after immutable stores and independent evaluation exist.
+7. Require future-window, retention, rollback and unlearning evidence before any longitudinal, biomimicry or structural-plasticity claim.
+8. Start `EMB-0` through `EMB-3` in simulator-only mode; real sensors, actuators and hardware-in-loop acceptance remain external gates.
+9. Start `ASM-0` through `ASM-4` only with explicit external-system owner consent and a non-privileged Debian/POSIX fixture; autonomous propagation remains forbidden.
+10. Keep acceptance, selection, merge, promotion and release in distinct identities and receipts.
 
 All authority flags remain false in this document set.
 
-## 21. V8 audit closure and executable document integrity
+## 24. V8 audit closure and executable document integrity
 
 V8 closes the remaining V8.1 review gaps rather than merely adding prose:
 
@@ -458,6 +484,12 @@ V8 closes the remaining V8.1 review gaps rather than merely adding prose:
 - pull-request qualification executes separate source-head and synthetic-merge jobs with explicit refs and retained receipts;
 - Prompt assignment, compilation, provider delivery, token position and causal effect remain separate claims;
 - longitudinal claims require at least three independently identified snapshots spanning at least two calendar windows;
-- current-run replacement, online topology activation, self-review, self-selection, self-merge and self-promotion remain forbidden.
+- current-run replacement, online topology activation, self-review, self-selection, self-merge and self-promotion remain forbidden;
+- adaptive algorithms are bound to canonical protocols, data writers, exact golden vectors, paper source locks and the global document verifier;
+- nine coding-level readiness specifications close objective, NDU, neuron, evaluation, self-iteration, embodiment, assimilation, source and parallel-lane ambiguities;
+- 31 readiness protocols have registered module owners and consumers, bounded fields, canonical encoding and zero authority delta;
+- all 40 modules are projected into exactly one acyclic primary implementation lane and every guide carries its coding-entry binding;
+- embodiment and authorized Debian/POSIX assimilation have bounded source work packages, target roots, predecessors, rollback and independent evidence gates;
+- the global document system invokes module, adaptive, readiness, CNS and HNMF verifiers and binds their digests into exact-candidate receipts.
 
 The documentation gate is necessary but does not waive unrelated repository failures. A failed repository check must be attributed and closed or explicitly excluded by an independent policy authority; documentation source success cannot turn a red product matrix green.

@@ -289,7 +289,7 @@ For `kernel.authority`, this document grants no runtime, production, model, prov
 
 #### `P0.7B-B4-CALLSITE-PROOF`
 
-- State: `open`; priority: `1`; parallel class: `contract_coordinated`.
+- State: `source_implemented_execution_pending`; priority: `1`; parallel class: `contract_coordinated`.
 - Owner/deputy: `security-authority` / `kernel-contracts`.
 - Allowed write paths:
 - `scripts/verify_hepta_callers.py`
@@ -325,7 +325,7 @@ For `kernel.authority`, this document grants no runtime, production, model, prov
 
 #### `P0.8A-AST-RATCHET`
 
-- State: `open`; priority: `1`; parallel class: `contract_coordinated`.
+- State: `source_implemented_execution_pending`; priority: `1`; parallel class: `contract_coordinated`.
 - Owner/deputy: `security-authority` / `kernel-contracts`.
 - Allowed write paths:
 - `scripts/verify_hepta_callers.py`
@@ -355,3 +355,31 @@ For `kernel.authority`, this document grants no runtime, production, model, prov
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+## 16. V8.2 pre-coding implementation-readiness overlay
+
+The canonical readiness overlay binds `kernel.authority` to primary lane `LANE-A-FOUNDATION`. The following implementation-level specifications are mandatory alongside Sections 1–15:
+
+- [`RDY-SRC`](../../readiness/SOURCE_BASELINE_AND_BRANCH_POLICY.md)
+- [`RDY-PAR`](../../readiness/PARALLEL_DEVELOPMENT.md)
+- [`RDY-OBJ`](../../readiness/OBJECTIVE_COMPILER_EXECUTION.md)
+- [`RDY-EMB`](../../readiness/EMBODIED_RUNTIME_EXECUTION.md)
+- [`RDY-ASM`](../../readiness/EXTERNAL_SYSTEM_ASSIMILATION.md)
+
+Owned readiness protocols:
+
+- `CapabilityBoundaryV1`
+- `EmergencyStopReceiptV1`
+
+Consumed readiness protocols:
+
+- None.
+
+Coding begins only with a current `CanonicalSourceReceiptV1`, a frozen contract/readiness digest, the existing bounded work-package envelope, defined mandatory fixtures, deterministic fallback and zero authority delta. This overlay closes documentation ambiguity only; it does not change source status, activation, acceptance, selection, promotion or release.
+
+### Readiness implementation work packages
+
+The following additional work packages are source-planning envelopes introduced by the readiness overlay; they do not imply implementation or activation:
+
+- `ASM-2-DEBIAN-BRIDGE-SANDBOX`
+- `ASM-4-FEDERATED-ORGAN-ENROLLMENT`
+- `EMB-2-REFLEX-MOTOR-ACTUATION`

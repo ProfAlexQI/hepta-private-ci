@@ -437,3 +437,102 @@ None.
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+<!-- BEGIN GENERATED EXACT REGISTRY PROJECTION -->
+### Exact closed-world registry projection
+
+This generated projection binds `control.engineering` to the current canonical contract, protocol, data, delivery and threat registries. The registries remain authoritative; this block is a digest-checked documentation projection.
+
+**Produced contracts:**
+- `DomainRead::integration_decisionV1`
+- `DomainRead::work_assignment_projectionV1`
+- `GoldenFixtureManifestV1`
+- `IterationEnvelopeV1`
+
+**Consumed contracts:**
+- `CandidateEvaluationReceiptV1`
+- `DomainRead::qualification_evidenceV1`
+- `IndependentDecisionReceiptV1`
+- `IterationCandidateV1`
+- `ModulePort::kernel.evidence::control.engineering`
+- `PlasticityProposalV1`
+- `TopologyProposalV1`
+
+**Typed protocols:**
+- `CandidateEvaluationReceiptV1`
+- `GoldenFixtureManifestV1`
+- `IndependentDecisionReceiptV1`
+- `IterationCandidateV1`
+- `IterationEnvelopeV1`
+- `PlasticityProposalV1`
+- `TopologyProposalV1`
+
+**Owned data domains:**
+- `golden_fixture_manifest_v1`
+- `integration_decision`
+- `iteration_envelope_v1`
+- `work_assignment_projection`
+
+**Read data domains:**
+- `candidate_evaluation_receipt_v1`
+- `independent_decision_receipt_v1`
+- `iteration_candidate_v1`
+- `plasticity_proposal_v1`
+- `qualification_evidence`
+- `topology_proposal_v1`
+
+**Work packages:**
+- `DOC-0-CANONICAL-DOCUMENT-CONSOLIDATION`
+- `DOC-1-V8-SEMANTIC-UPGRADE`
+- `DOC-2-DEFAULT-BRANCH-SELECTION`
+- `DOC-3A-SOURCE-BINDING-RECONCILIATION`
+- `DOC-3B-MODULE-TECHNICAL-DOCUMENTS`
+- `DOC-3C-MODULE-DOC-CLOSED-WORLD`
+- `DOC-3D-ADAPTIVE-ALGORITHM-DOC-CLOSED-WORLD`
+- `DOC-REGISTRY-CLOSED-WORLD`
+- `ECP-1-ENGINEERING-CONTROL-PLANE`
+- `SELF-1-CODE-CANDIDATE-PIPELINE`
+
+**Owned threats:**
+- `self_review_or_self_merge`
+
+<!-- END GENERATED EXACT REGISTRY PROJECTION -->
+
+## 16. V8.2 pre-coding implementation-readiness overlay
+
+The canonical readiness overlay binds `control.engineering` to primary lane `LANE-G-ENGINEERING`. The following implementation-level specifications are mandatory alongside Sections 1–15:
+
+- [`RDY-SRC`](../../readiness/SOURCE_BASELINE_AND_BRANCH_POLICY.md)
+- [`RDY-PAR`](../../readiness/PARALLEL_DEVELOPMENT.md)
+- [`RDY-SI`](../../readiness/SELF_ITERATION_EXECUTION.md)
+- [`RDY-ASM`](../../readiness/EXTERNAL_SYSTEM_ASSIMILATION.md)
+
+Owned readiness protocols:
+
+- `AssimilationProposalV1`
+- `BranchPurposeManifestV1`
+- `IntegrationCheckpointV1`
+- `MutationGrammarManifestV1`
+- `ParallelLaneEnvelopeV1`
+- `SandboxExecutionReceiptV1`
+
+Consumed readiness protocols:
+
+- `AssimilationQualificationReceiptV1`
+- `CandidateLineageV1`
+- `CanonicalSourceReceiptV1`
+- `CapabilityBoundaryV1`
+- `EvaluatorIndependenceReceiptV1`
+- `ExternalSystemManifestV1`
+- `MigrationPlanV1`
+- `RollbackPointV1`
+- `ServiceGraphV1`
+
+Coding begins only with a current `CanonicalSourceReceiptV1`, a frozen contract/readiness digest, the existing bounded work-package envelope, defined mandatory fixtures, deterministic fallback and zero authority delta. This overlay closes documentation ambiguity only; it does not change source status, activation, acceptance, selection, promotion or release.
+
+### Readiness implementation work packages
+
+The following additional work packages are source-planning envelopes introduced by the readiness overlay; they do not imply implementation or activation:
+
+- `ASM-1-DISCOVERY-MANIFEST`
+- `ASM-2-DEBIAN-BRIDGE-SANDBOX`
+- `DOC-3E-PRECODING-READINESS-CLOSED-WORLD`

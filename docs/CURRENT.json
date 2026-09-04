@@ -1,8 +1,8 @@
 {
-  "schema": "hepta.selected-development-source.v2",
-  "schemaVersion": 2,
+  "schema": "hepta.selected-development-source.v3",
+  "schemaVersion": 3,
   "documentClass": "canonical_registry",
-  "authorityScope": "selected_static_development_source_identity_only",
+  "authorityScope": "selected_static_development_source_policy_no_cached_dynamic_candidate_facts",
   "planId": "HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN",
   "planVersion": "8.0.0",
   "repository": {
@@ -13,14 +13,14 @@
     "exactBaseTree": "f2e82fd525d337efae355adf6f19398812d4180c"
   },
   "candidate": {
-    "pullRequest": 286,
-    "targetBranch": "main",
-    "sourceHead": "resolved_by_exact_main_default_mirror_receipt",
-    "sourceTree": "resolved_by_exact_main_default_mirror_receipt",
-    "mergeCandidate": "not_applicable_after_ancestry_consolidation",
-    "relationship": "main_and_current_default_same_tip_pending_repository_admin_switch"
+    "pullRequest": null,
+    "targetBranch": "resolved_by_external_exact_candidate_receipt",
+    "sourceHead": "resolved_by_external_exact_candidate_receipt",
+    "sourceTree": "resolved_by_external_exact_candidate_receipt",
+    "mergeCandidate": "resolved_by_external_exact_candidate_receipt",
+    "relationship": "not_cached_dynamic_external_receipt_required"
   },
-  "currentWorkPackage": "DOC-2-DEFAULT-BRANCH-SELECTION",
+  "currentWorkPackage": "DOC-3E-PRECODING-READINESS-CLOSED-WORLD",
   "baselineClaims": {
     "systemLearning": "L0_STATIC",
     "ndu": "D0_SPECIFIED_ONLY",

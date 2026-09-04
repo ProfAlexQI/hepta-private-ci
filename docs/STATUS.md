@@ -4,32 +4,39 @@
 
 **Plan:** `HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN` v8.0.0
 **Repository:** `TrillionniumFoundation/hepta-private-ci`
-**Exact base:** `b621768b70a09d56626bb8a2c331e3dc424e6a4d` / `f2e82fd525d337efae355adf6f19398812d4180c`
-**Target branch:** `main`
-**Current package:** `DOC-2-DEFAULT-BRANCH-SELECTION`
+**Exact cleanup base:** `b621768b70a09d56626bb8a2c331e3dc424e6a4d` / `f2e82fd525d337efae355adf6f19398812d4180c`
+**Live source and target:** `external exact-candidate receipt required`
+**Current package:** `DOC-3E-PRECODING-READINESS-CLOSED-WORLD`
 
-Dynamic Git, CI, review, operator, selection, promotion and release facts are external exact-candidate receipts and are not cached in this file.
+Dynamic Git, branch, pull-request, CI, review, operator, selection, promotion and release facts are external exact-candidate receipts and are not cached in this file.
 
 ## Registry closure
 
 - Modules: **40**
-- Contracts: **178**
-- Critical protocols: **29**
-- Durable data domains: **47**
-- Work packages: **80**
+- Contracts: **194**
+- Critical protocols: **46**
+- Durable data domains: **67**
+- Work packages: **91**
 - Module technical guides: **40**
 - Source bindings: **40**
+- Adaptive algorithm specifications: **6**
+- Paper source locks: **4**
+- Pre-coding readiness specifications: **9**
+- Readiness protocols: **31**
+- Closed readiness documentation gaps: **54**
+- CNS functional organs: **24**
+- CNS repository reference gaps: **22**
+- HNMF reference gaps: **18**
 
 ## Work-package states
 
 | State | Count |
 |---|---:|
 | `blocked_external` | 2 |
-| `open` | 7 |
-| `planned` | 56 |
-| `source_implemented` | 6 |
-| `source_implemented_execution_pending` | 8 |
-| `source_implemented_semantic_review_pending` | 1 |
+| `planned` | 64 |
+| `source_implemented` | 7 |
+| `source_implemented_execution_pending` | 16 |
+| `source_implemented_semantic_review_pending` | 2 |
 
 ## Baseline claims
 
@@ -48,4 +55,4 @@ Dynamic Git, CI, review, operator, selection, promotion and release facts are ex
 
 ## Authority posture
 
-Every canonical authority flag is present and false. Source presence, a generated file, a queued workflow or a fixture is not selection, merge, operator acceptance, promotion or release.
+Every canonical and subordinate authority flag is present and false. Documentation readiness, source presence, a generated file, a queued workflow or a fixture is not runtime activation, efficacy, selection, merge, operator acceptance, promotion or release.

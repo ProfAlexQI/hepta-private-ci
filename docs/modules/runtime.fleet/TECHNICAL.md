@@ -215,3 +215,27 @@ For `runtime.fleet`, this document grants no runtime, production, model, provide
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+## 16. V8.2 pre-coding implementation-readiness overlay
+
+The canonical readiness overlay binds `runtime.fleet` to primary lane `LANE-B-RUNTIME`. The following implementation-level specifications are mandatory alongside Sections 1–15:
+
+- [`RDY-SRC`](../../readiness/SOURCE_BASELINE_AND_BRANCH_POLICY.md)
+- [`RDY-PAR`](../../readiness/PARALLEL_DEVELOPMENT.md)
+- [`RDY-ASM`](../../readiness/EXTERNAL_SYSTEM_ASSIMILATION.md)
+- [`RDY-EMB`](../../readiness/EMBODIED_RUNTIME_EXECUTION.md)
+
+Owned readiness protocols:
+
+- None.
+
+Consumed readiness protocols:
+
+- None.
+
+Coding begins only with a current `CanonicalSourceReceiptV1`, a frozen contract/readiness digest, the existing bounded work-package envelope, defined mandatory fixtures, deterministic fallback and zero authority delta. This overlay closes documentation ambiguity only; it does not change source status, activation, acceptance, selection, promotion or release.
+
+### Readiness implementation work packages
+
+The following additional work packages are source-planning envelopes introduced by the readiness overlay; they do not imply implementation or activation:
+
+- `ASM-4-FEDERATED-ORGAN-ENROLLMENT`

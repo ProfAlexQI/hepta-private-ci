@@ -10,7 +10,7 @@
 
 **Lifecycle:** `existing`
 
-**Source status:** `existing_legacy_aggregate`
+**Source status:** `existing_bound`
 
 **Bootstrap work package:** `P0.7E-DEPENDENCY-INVERSION`
 
@@ -32,18 +32,17 @@ Declared exclusive target roots:
 
 Existing declared roots at this exact source snapshot:
 
-None.
+- `codex-rs/hepta-wire`
 
-Non-authoritative implementation evidence roots:
-
-- `codex-rs/hepta-agent-protocol`
-- `codex-rs/app-server-protocol`
-
-Declared roots not yet present:
+Source implementation evidence roots:
 
 - `codex-rs/hepta-wire`
 
-`existing_legacy_aggregate` is a source-location fact. For a target or unbound module, development begins with `P0.7E-DEPENDENCY-INVERSION` and materializes the declared root before source completion. Aggregate evidence roots are read-only decomposition evidence; they transfer no ownership and cannot become a second permanent implementation. A source move updates `MODULES.json`, `SOURCE_BINDINGS.json` and this guide in one candidate.
+Declared roots not yet present:
+
+None.
+
+`existing_bound` is a source-location fact: the declared target root now contains a bounded implementation and focused tests. It does not imply activation, operator acceptance, promotion or release. Source moves must update `MODULES.json`, `SOURCE_BINDINGS.json`, the Cargo/Bazel workspace and this guide in one exact candidate.
 
 ## 3. Boundary, responsibilities and non-goals
 
@@ -185,7 +184,7 @@ For `platform.wire`, this document grants no runtime, production, model, provide
 
 #### `P0.7E-DEPENDENCY-INVERSION`
 
-- State: `open`; priority: `1`; parallel class: `contract_coordinated`.
+- State: `source_implemented_execution_pending`; priority: `1`; parallel class: `contract_coordinated`.
 - Owner/deputy: `kernel-contracts` / `integration`.
 - Allowed write paths:
 - `codex-rs/hepta-wire/**`
@@ -221,3 +220,29 @@ For `platform.wire`, this document grants no runtime, production, model, provide
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+## 16. V8.2 pre-coding implementation-readiness overlay
+
+The canonical readiness overlay binds `platform.wire` to primary lane `LANE-A-FOUNDATION`. The following implementation-level specifications are mandatory alongside Sections 1–15:
+
+- [`RDY-SRC`](../../readiness/SOURCE_BASELINE_AND_BRANCH_POLICY.md)
+- [`RDY-PAR`](../../readiness/PARALLEL_DEVELOPMENT.md)
+- [`RDY-ASM`](../../readiness/EXTERNAL_SYSTEM_ASSIMILATION.md)
+- [`RDY-EMB`](../../readiness/EMBODIED_RUNTIME_EXECUTION.md)
+
+Owned readiness protocols:
+
+- `ServiceGraphV1`
+
+Consumed readiness protocols:
+
+- None.
+
+Coding begins only with a current `CanonicalSourceReceiptV1`, a frozen contract/readiness digest, the existing bounded work-package envelope, defined mandatory fixtures, deterministic fallback and zero authority delta. This overlay closes documentation ambiguity only; it does not change source status, activation, acceptance, selection, promotion or release.
+
+### Readiness implementation work packages
+
+The following additional work packages are source-planning envelopes introduced by the readiness overlay; they do not imply implementation or activation:
+
+- `ASM-0-EXTERNAL-SYSTEM-CONTRACTS`
+- `ASM-1-DISCOVERY-MANIFEST`
+- `EMB-0-EMBODIED-CONTRACTS`

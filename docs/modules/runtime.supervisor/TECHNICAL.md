@@ -235,7 +235,7 @@ For `runtime.supervisor`, this document grants no runtime, production, model, pr
 
 #### `P0.8B-READINESS`
 
-- State: `open`; priority: `1`; parallel class: `contract_coordinated`.
+- State: `source_implemented_execution_pending`; priority: `1`; parallel class: `contract_coordinated`.
 - Owner/deputy: `runtime-control` / `fleet-runtime`.
 - Allowed write paths:
 - `codex-rs/hepta-supervisor/**`
@@ -266,7 +266,7 @@ For `runtime.supervisor`, this document grants no runtime, production, model, pr
 
 #### `P0.8C-RESOURCE-BUDGETS`
 
-- State: `open`; priority: `1`; parallel class: `contract_coordinated`.
+- State: `source_implemented_execution_pending`; priority: `1`; parallel class: `contract_coordinated`.
 - Owner/deputy: `runtime-control` / `fleet-runtime`.
 - Allowed write paths:
 - `codex-rs/hepta-supervisor/**`
@@ -294,3 +294,40 @@ For `runtime.supervisor`, this document grants no runtime, production, model, pr
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+## 16. V8.2 pre-coding implementation-readiness overlay
+
+The canonical readiness overlay binds `runtime.supervisor` to primary lane `LANE-B-RUNTIME`. The following implementation-level specifications are mandatory alongside Sections 1–15:
+
+- [`RDY-SRC`](../../readiness/SOURCE_BASELINE_AND_BRANCH_POLICY.md)
+- [`RDY-PAR`](../../readiness/PARALLEL_DEVELOPMENT.md)
+- [`RDY-EMB`](../../readiness/EMBODIED_RUNTIME_EXECUTION.md)
+- [`RDY-ASM`](../../readiness/EXTERNAL_SYSTEM_ASSIMILATION.md)
+
+Owned readiness protocols:
+
+- None.
+
+Consumed readiness protocols:
+
+- `ActuatorReconciliationReceiptV1`
+- `AssimilationProposalV1`
+- `AssimilationQualificationReceiptV1`
+- `BranchPurposeManifestV1`
+- `CanonicalSourceReceiptV1`
+- `EmergencyStopReceiptV1`
+- `ExternalSystemManifestV1`
+- `IntegrationCheckpointV1`
+- `RealTimeLoopProfileV1`
+- `RollbackPointV1`
+- `SensorCalibrationManifestV1`
+- `ServiceGraphV1`
+
+Coding begins only with a current `CanonicalSourceReceiptV1`, a frozen contract/readiness digest, the existing bounded work-package envelope, defined mandatory fixtures, deterministic fallback and zero authority delta. This overlay closes documentation ambiguity only; it does not change source status, activation, acceptance, selection, promotion or release.
+
+### Readiness implementation work packages
+
+The following additional work packages are source-planning envelopes introduced by the readiness overlay; they do not imply implementation or activation:
+
+- `ASM-1-DISCOVERY-MANIFEST`
+- `ASM-2-DEBIAN-BRIDGE-SANDBOX`
+- `EMB-2-REFLEX-MOTOR-ACTUATION`
