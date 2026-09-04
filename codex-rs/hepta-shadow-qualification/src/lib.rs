@@ -53,6 +53,9 @@ mod transport_tests;
 mod trial;
 #[cfg(test)]
 mod trial_tests;
+#[cfg(test)]
+#[path = "value_learning_tests.rs"]
+mod value_learning_tests;
 mod verification_primitives;
 
 #[derive(Debug, thiserror::Error)]
