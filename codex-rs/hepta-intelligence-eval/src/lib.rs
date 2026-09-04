@@ -7,6 +7,10 @@ use std::fmt;
 
 use codex_hepta_types::{Digest32, FixedQ32, StableId};
 
+mod ope;
+
+pub use ope::{OpeAction, OpeError, OpeEstimate, OpePlan, OpeRow, estimate_ope};
+
 const MAX_METRICS: usize = 128;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
