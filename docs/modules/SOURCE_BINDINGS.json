@@ -16,41 +16,38 @@
     {
       "module": "platform.types",
       "lifecycle": "existing",
-      "sourceStatus": "existing_legacy_aggregate",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "codex-rs/hepta-types"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/hepta-contracts",
-        "codex-rs/hepta-agent-protocol",
-        "codex-rs/hepta-paths"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "codex-rs/hepta-types"
       ],
+      "sourceEvidenceRoots": [
+        "codex-rs/hepta-types"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "PLATFORM-0-TYPE-BOUNDARY",
       "technicalDocument": "docs/modules/platform.types/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_and_release_remain_separate"
     },
     {
       "module": "platform.wire",
       "lifecycle": "existing",
-      "sourceStatus": "existing_legacy_aggregate",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "codex-rs/hepta-wire"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/hepta-agent-protocol",
-        "codex-rs/app-server-protocol"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "codex-rs/hepta-wire"
       ],
+      "sourceEvidenceRoots": [
+        "codex-rs/hepta-wire"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "P0.7E-DEPENDENCY-INVERSION",
       "technicalDocument": "docs/modules/platform.wire/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_and_release_remain_separate"
     },
     {
       "module": "kernel.authority",
@@ -74,21 +71,20 @@
     {
       "module": "kernel.operations",
       "lifecycle": "existing",
-      "sourceStatus": "existing_legacy_aggregate",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "codex-rs/hepta-operations"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/hepta-evidence",
-        "codex-rs/ext/hepta-governance"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "codex-rs/hepta-operations"
       ],
+      "sourceEvidenceRoots": [
+        "codex-rs/hepta-operations"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "P0.7D-FAULT-MATRIX",
       "technicalDocument": "docs/modules/kernel.operations/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_and_release_remain_separate"
     },
     {
       "module": "kernel.evidence",

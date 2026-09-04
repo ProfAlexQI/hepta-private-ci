@@ -55,15 +55,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "existing_legacy_aggregate",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/hepta-contracts",
-        "codex-rs/hepta-agent-protocol",
-        "codex-rs/hepta-paths"
-      ],
-      "missingDeclaredRoots": [
         "codex-rs/hepta-types"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "PLATFORM-0-TYPE-BOUNDARY",
       "technicalDocument": "docs/modules/platform.types/TECHNICAL.md",
       "documentationReady": true
@@ -103,14 +99,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "existing_legacy_aggregate",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/hepta-agent-protocol",
-        "codex-rs/app-server-protocol"
-      ],
-      "missingDeclaredRoots": [
         "codex-rs/hepta-wire"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "P0.7E-DEPENDENCY-INVERSION",
       "technicalDocument": "docs/modules/platform.wire/TECHNICAL.md",
       "documentationReady": true
@@ -199,14 +192,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "existing_legacy_aggregate",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/hepta-evidence",
-        "codex-rs/ext/hepta-governance"
-      ],
-      "missingDeclaredRoots": [
         "codex-rs/hepta-operations"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "P0.7D-FAULT-MATRIX",
       "technicalDocument": "docs/modules/kernel.operations/TECHNICAL.md",
       "documentationReady": true

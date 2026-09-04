@@ -10,7 +10,7 @@
 
 **Lifecycle:** `existing`
 
-**Source status:** `existing_legacy_aggregate`
+**Source status:** `existing_bound`
 
 **Bootstrap work package:** `PLATFORM-0-TYPE-BOUNDARY`
 
@@ -32,19 +32,17 @@ Declared exclusive target roots:
 
 Existing declared roots at this exact source snapshot:
 
-None.
+- `codex-rs/hepta-types`
 
-Non-authoritative implementation evidence roots:
-
-- `codex-rs/hepta-contracts`
-- `codex-rs/hepta-agent-protocol`
-- `codex-rs/hepta-paths`
-
-Declared roots not yet present:
+Source implementation evidence roots:
 
 - `codex-rs/hepta-types`
 
-`existing_legacy_aggregate` is a source-location fact. For a target or unbound module, development begins with `PLATFORM-0-TYPE-BOUNDARY` and materializes the declared root before source completion. Aggregate evidence roots are read-only decomposition evidence; they transfer no ownership and cannot become a second permanent implementation. A source move updates `MODULES.json`, `SOURCE_BINDINGS.json` and this guide in one candidate.
+Declared roots not yet present:
+
+None.
+
+`existing_bound` is a source-location fact: the declared target root now contains a bounded implementation and focused tests. It does not imply activation, operator acceptance, promotion or release. Source moves must update `MODULES.json`, `SOURCE_BINDINGS.json`, the Cargo/Bazel workspace and this guide in one exact candidate.
 
 ## 3. Boundary, responsibilities and non-goals
 
@@ -294,7 +292,7 @@ For `platform.types`, this document grants no runtime, production, model, provid
 
 #### `P0.7E-DEPENDENCY-INVERSION`
 
-- State: `open`; priority: `1`; parallel class: `contract_coordinated`.
+- State: `source_implemented_execution_pending`; priority: `1`; parallel class: `contract_coordinated`.
 - Owner/deputy: `kernel-contracts` / `integration`.
 - Allowed write paths:
 - `codex-rs/hepta-wire/**`
@@ -430,7 +428,7 @@ For `platform.types`, this document grants no runtime, production, model, provid
 
 #### `PLATFORM-0-TYPE-BOUNDARY`
 
-- State: `planned`; priority: `2`; parallel class: `contract_coordinated`.
+- State: `source_implemented_execution_pending`; priority: `2`; parallel class: `contract_coordinated`.
 - Owner/deputy: `kernel-contracts` / `architecture`.
 - Allowed write paths:
 - `codex-rs/hepta-types/**`
@@ -464,3 +462,52 @@ For `platform.types`, this document grants no runtime, production, model, provid
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+<!-- BEGIN GENERATED EXACT REGISTRY PROJECTION -->
+### Exact closed-world registry projection
+
+This generated projection binds `platform.types` to the current canonical contract, protocol, data, delivery and threat registries. The registries remain authoritative; this block is a digest-checked documentation projection.
+
+**Produced contracts:**
+- `ModulePort::platform.types::cognitive.types`
+- `ModulePort::platform.types::context.compiler`
+- `ModulePort::platform.types::intuition.policy`
+- `ModulePort::platform.types::kernel.authority`
+- `ModulePort::platform.types::kernel.evidence`
+- `ModulePort::platform.types::kernel.operations`
+- `ModulePort::platform.types::learning.artifacts`
+- `ModulePort::platform.types::learning.ledger`
+- `ModulePort::platform.types::learning.operator`
+- `ModulePort::platform.types::neuron.runtime`
+- `ModulePort::platform.types::objective.compiler`
+- `ModulePort::platform.types::platform.wire`
+- `ModulePort::platform.types::prompt.optimizer`
+- `ModulePort::platform.types::prompt.registry`
+- `ModulePort::platform.types::utility.ndu`
+- `RandomStreamManifestV1`
+
+**Consumed contracts:**
+- None.
+
+**Typed protocols:**
+- `RandomStreamManifestV1`
+
+**Owned data domains:**
+- `random_stream_manifest_v1`
+
+**Read data domains:**
+- None.
+
+**Work packages:**
+- `BIO-0-NEURON-INTUITION-CONTRACTS`
+- `HBO-0-BELLMAN-OPERATOR-CONTRACTS`
+- `LRN-0-CAUSAL-LEARNING-CONTRACTS`
+- `NDU-0-PREFERENCE-UTILITY-CONTRACTS`
+- `OBJ-0-OBJECTIVE-CONTRACTS`
+- `P0.7E-DEPENDENCY-INVERSION`
+- `PIM-0-PROMPT-INTERVENTION-CONTRACTS`
+- `PLATFORM-0-TYPE-BOUNDARY`
+
+**Owned threats:**
+- None.
+
+<!-- END GENERATED EXACT REGISTRY PROJECTION -->

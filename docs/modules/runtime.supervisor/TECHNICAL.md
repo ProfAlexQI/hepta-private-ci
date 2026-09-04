@@ -235,7 +235,7 @@ For `runtime.supervisor`, this document grants no runtime, production, model, pr
 
 #### `P0.8B-READINESS`
 
-- State: `open`; priority: `1`; parallel class: `contract_coordinated`.
+- State: `source_implemented_execution_pending`; priority: `1`; parallel class: `contract_coordinated`.
 - Owner/deputy: `runtime-control` / `fleet-runtime`.
 - Allowed write paths:
 - `codex-rs/hepta-supervisor/**`
@@ -266,7 +266,7 @@ For `runtime.supervisor`, this document grants no runtime, production, model, pr
 
 #### `P0.8C-RESOURCE-BUDGETS`
 
-- State: `open`; priority: `1`; parallel class: `contract_coordinated`.
+- State: `source_implemented_execution_pending`; priority: `1`; parallel class: `contract_coordinated`.
 - Owner/deputy: `runtime-control` / `fleet-runtime`.
 - Allowed write paths:
 - `codex-rs/hepta-supervisor/**`

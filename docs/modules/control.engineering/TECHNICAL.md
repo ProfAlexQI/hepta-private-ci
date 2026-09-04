@@ -437,3 +437,62 @@ None.
 - `cross_owner_write`
 - `unbounded_resource_or_retry`
 
+<!-- BEGIN GENERATED EXACT REGISTRY PROJECTION -->
+### Exact closed-world registry projection
+
+This generated projection binds `control.engineering` to the current canonical contract, protocol, data, delivery and threat registries. The registries remain authoritative; this block is a digest-checked documentation projection.
+
+**Produced contracts:**
+- `DomainRead::integration_decisionV1`
+- `DomainRead::work_assignment_projectionV1`
+- `GoldenFixtureManifestV1`
+- `IterationEnvelopeV1`
+
+**Consumed contracts:**
+- `CandidateEvaluationReceiptV1`
+- `DomainRead::qualification_evidenceV1`
+- `IndependentDecisionReceiptV1`
+- `IterationCandidateV1`
+- `ModulePort::kernel.evidence::control.engineering`
+- `PlasticityProposalV1`
+- `TopologyProposalV1`
+
+**Typed protocols:**
+- `CandidateEvaluationReceiptV1`
+- `GoldenFixtureManifestV1`
+- `IndependentDecisionReceiptV1`
+- `IterationCandidateV1`
+- `IterationEnvelopeV1`
+- `PlasticityProposalV1`
+- `TopologyProposalV1`
+
+**Owned data domains:**
+- `golden_fixture_manifest_v1`
+- `integration_decision`
+- `iteration_envelope_v1`
+- `work_assignment_projection`
+
+**Read data domains:**
+- `candidate_evaluation_receipt_v1`
+- `independent_decision_receipt_v1`
+- `iteration_candidate_v1`
+- `plasticity_proposal_v1`
+- `qualification_evidence`
+- `topology_proposal_v1`
+
+**Work packages:**
+- `DOC-0-CANONICAL-DOCUMENT-CONSOLIDATION`
+- `DOC-1-V8-SEMANTIC-UPGRADE`
+- `DOC-2-DEFAULT-BRANCH-SELECTION`
+- `DOC-3A-SOURCE-BINDING-RECONCILIATION`
+- `DOC-3B-MODULE-TECHNICAL-DOCUMENTS`
+- `DOC-3C-MODULE-DOC-CLOSED-WORLD`
+- `DOC-3D-ADAPTIVE-ALGORITHM-DOC-CLOSED-WORLD`
+- `DOC-REGISTRY-CLOSED-WORLD`
+- `ECP-1-ENGINEERING-CONTROL-PLANE`
+- `SELF-1-CODE-CANDIDATE-PIPELINE`
+
+**Owned threats:**
+- `self_review_or_self_merge`
+
+<!-- END GENERATED EXACT REGISTRY PROJECTION -->

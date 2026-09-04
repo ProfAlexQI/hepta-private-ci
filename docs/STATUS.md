@@ -13,22 +13,23 @@ Dynamic Git, CI, review, operator, selection, promotion and release facts are ex
 ## Registry closure
 
 - Modules: **40**
-- Contracts: **178**
-- Critical protocols: **29**
-- Durable data domains: **47**
-- Work packages: **80**
+- Contracts: **194**
+- Critical protocols: **46**
+- Durable data domains: **67**
+- Work packages: **81**
 - Module technical guides: **40**
 - Source bindings: **40**
+- Adaptive algorithm specifications: **6**
+- Paper source locks: **4**
 
 ## Work-package states
 
 | State | Count |
 |---|---:|
 | `blocked_external` | 2 |
-| `open` | 7 |
-| `planned` | 56 |
-| `source_implemented` | 6 |
-| `source_implemented_execution_pending` | 8 |
+| `planned` | 55 |
+| `source_implemented` | 7 |
+| `source_implemented_execution_pending` | 16 |
 | `source_implemented_semantic_review_pending` | 1 |
 
 ## Baseline claims

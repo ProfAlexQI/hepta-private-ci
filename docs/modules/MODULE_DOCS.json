@@ -12,11 +12,11 @@
     {
       "module": "platform.types",
       "path": "docs/modules/platform.types/TECHNICAL.md",
-      "sourceStatus": "existing_legacy_aggregate",
+      "sourceStatus": "existing_bound",
       "bootstrapWorkPackage": "PLATFORM-0-TYPE-BOUNDARY",
-      "sha256": "cd5d013d5db1c456f29cd54f762584c5d341428cdf34f487a4ef9e276e532d65",
-      "bytes": 21036,
-      "words": 2006,
+      "sha256": "a8197dade57e207d2e1ddf395c4eef88347e6afaa0422b22243cf7251d974741",
+      "bytes": 22551,
+      "words": 2109,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
         "## 2. Source binding and implementation status",
@@ -49,11 +49,16 @@
         "ModulePort::platform.types::platform.wire",
         "ModulePort::platform.types::prompt.optimizer",
         "ModulePort::platform.types::prompt.registry",
-        "ModulePort::platform.types::utility.ndu"
+        "ModulePort::platform.types::utility.ndu",
+        "RandomStreamManifestV1"
       ],
       "consumedContracts": [],
-      "protocols": [],
-      "ownedDomains": [],
+      "protocols": [
+        "RandomStreamManifestV1"
+      ],
+      "ownedDomains": [
+        "random_stream_manifest_v1"
+      ],
       "readDomains": [],
       "workPackages": [
         "BIO-0-NEURON-INTUITION-CONTRACTS",
@@ -70,11 +75,11 @@
     {
       "module": "platform.wire",
       "path": "docs/modules/platform.wire/TECHNICAL.md",
-      "sourceStatus": "existing_legacy_aggregate",
+      "sourceStatus": "existing_bound",
       "bootstrapWorkPackage": "P0.7E-DEPENDENCY-INVERSION",
-      "sha256": "4476db9b7c4c9466256c7befa02dbdb742e7439ac7d8887ab603c71783443133",
-      "bytes": 13992,
-      "words": 1629,
+      "sha256": "befd02247983976b05967877ad5d23b714b75c8e8b2a1fe5932eae96b01b861d",
+      "bytes": 13850,
+      "words": 1618,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
         "## 2. Source binding and implementation status",
@@ -112,8 +117,8 @@
       "path": "docs/modules/kernel.authority/TECHNICAL.md",
       "sourceStatus": "existing_bound",
       "bootstrapWorkPackage": "P0.7B-B0-VERIFIED-USE",
-      "sha256": "f1cdf2b3445d62ad11bc1b4d6b84ab6193b01b347a3cad223f2d6c4f323c9ecb",
-      "bytes": 17747,
+      "sha256": "6c976c6ee3c4917e719a2287a4aa94e7d26bcadbb8d5a8f958a5769c93c5ce3e",
+      "bytes": 17811,
       "words": 1839,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
@@ -170,11 +175,11 @@
     {
       "module": "kernel.operations",
       "path": "docs/modules/kernel.operations/TECHNICAL.md",
-      "sourceStatus": "existing_legacy_aggregate",
+      "sourceStatus": "existing_bound",
       "bootstrapWorkPackage": "P0.7D-FAULT-MATRIX",
-      "sha256": "ebb98166e18ad1cbd6059fb2d688b2e343e506c14c85ebb3ae51a292866e5322",
-      "bytes": 15469,
-      "words": 1703,
+      "sha256": "b0635d73da99f8a0c0f0c7d337499a0187863ad0872b3449ea69dd3746286ebc",
+      "bytes": 15346,
+      "words": 1691,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
         "## 2. Source binding and implementation status",
@@ -233,9 +238,9 @@
       "path": "docs/modules/kernel.evidence/TECHNICAL.md",
       "sourceStatus": "existing_bound",
       "bootstrapWorkPackage": "P0.9-EXTERNAL-GATES",
-      "sha256": "be5e06fcb61922e976ce1e8b847bd0f6f1aa9fe94fc8dc49ffa9183ee84c3c5e",
-      "bytes": 14707,
-      "words": 1658,
+      "sha256": "47d83b7d938cf7bcb42d4688da91eecd99b38f3b2ee40826973b0d9d5e9216a0",
+      "bytes": 16823,
+      "words": 1786,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
         "## 2. Source binding and implementation status",
@@ -255,6 +260,7 @@
       ],
       "producedContracts": [
         "DomainRead::qualification_evidenceV1",
+        "IndependentDecisionReceiptV1",
         "ModulePort::kernel.evidence::control.engineering",
         "ModulePort::kernel.evidence::control.runtime",
         "ModulePort::kernel.evidence::learning.eval",
@@ -262,6 +268,9 @@
         "ModulePort::kernel.evidence::learning.plasticity"
       ],
       "consumedContracts": [
+        "AlgorithmFaultReceiptV1",
+        "CandidateEvaluationReceiptV1",
+        "ConformanceReceiptV1",
         "DomainRead::automation_occurrenceV1",
         "DomainRead::automation_scheduleV1",
         "DomainRead::browser_profile_stateV1",
@@ -284,15 +293,24 @@
         "UnlearningComplianceReceiptV1"
       ],
       "protocols": [
+        "AlgorithmFaultReceiptV1",
+        "CandidateEvaluationReceiptV1",
+        "ConformanceReceiptV1",
         "EvaluationReceiptV1",
+        "IndependentDecisionReceiptV1",
         "LocalModelRuntimeReceiptV1",
         "LongitudinalEvaluationReceiptV1",
         "UnlearningComplianceReceiptV1"
       ],
       "ownedDomains": [
+        "independent_decision_receipt_v1",
         "qualification_evidence"
       ],
-      "readDomains": [],
+      "readDomains": [
+        "algorithm_fault_receipt_v1",
+        "candidate_evaluation_receipt_v1",
+        "conformance_receipt_v1"
+      ],
       "workPackages": [
         "P0.9-EXTERNAL-GATES"
       ],
@@ -303,8 +321,8 @@
       "path": "docs/modules/runtime.supervisor/TECHNICAL.md",
       "sourceStatus": "existing_bound",
       "bootstrapWorkPackage": "P0.7A-RUNTIME-BOOTSTRAP",
-      "sha256": "0d83b02f0fb571204961a04ad38e68856f1cd37265601a130ff4e31be2c083c3",
-      "bytes": 16014,
+      "sha256": "83d1399d5ddc29909a9eb82e639b63ff6cdd4db6e5b113a04d82fec553f79b3e",
+      "bytes": 16078,
       "words": 1745,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
@@ -424,8 +442,8 @@
       "path": "docs/modules/runtime.agentd/TECHNICAL.md",
       "sourceStatus": "existing_bound",
       "bootstrapWorkPackage": "P0.8B-READINESS",
-      "sha256": "8c2a8f4aa9d23a8802473e93c2268985bccb8305c00ea175448104a4ea291939",
-      "bytes": 15087,
+      "sha256": "e8e92b757109eeb47ede81df810761b3fe295dd717ed714b236af503ea3a7081",
+      "bytes": 15151,
       "words": 1699,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
@@ -817,9 +835,9 @@
       "path": "docs/modules/utility.ndu/TECHNICAL.md",
       "sourceStatus": "target_unmaterialized",
       "bootstrapWorkPackage": "NDU-0-PREFERENCE-UTILITY-CONTRACTS",
-      "sha256": "c8b15c1e963c9395af9a9c4f78afbe8c110b75079240f776d0d79f2ff231405d",
-      "bytes": 17214,
-      "words": 1773,
+      "sha256": "b0216357d6ab45c65e1bfdf68c73dc89e9260d2b6966efd592230ba38528fa96",
+      "bytes": 19622,
+      "words": 1910,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
         "## 2. Source binding and implementation status",
@@ -845,8 +863,10 @@
         "ModulePort::utility.ndu::intuition.policy",
         "ModulePort::utility.ndu::prompt.optimizer",
         "NduBoundaryConditionV1",
+        "NduCoefficientManifestV1",
         "NduPreferenceStateV1",
-        "NduSummaryReceiptV1"
+        "NduSummaryReceiptV1",
+        "NduUpdateReceiptV1"
       ],
       "consumedContracts": [
         "DomainRead::learning_artifact_registryV1",
@@ -854,31 +874,47 @@
         "DomainRead::learning_episode_ledgerV1",
         "DomainRead::learning_unlearning_lineageV1",
         "DomainRead::operator_sensor_core_registryV1",
+        "GoldenFixtureManifestV1",
         "ModulePort::cognitive.read::utility.ndu",
         "ModulePort::learning.artifacts::utility.ndu",
         "ModulePort::learning.ledger::utility.ndu",
         "ModulePort::platform.types::utility.ndu",
         "NduBoundaryConditionV1",
+        "NduWellPosednessCertificateV1",
         "ObjectiveFunctionV1",
+        "OutcomeWatermarkV1",
+        "RandomStreamManifestV1",
         "RunStartSnapshotV1"
       ],
       "protocols": [
+        "GoldenFixtureManifestV1",
         "NduBoundaryConditionV1",
+        "NduCoefficientManifestV1",
         "NduPreferenceStateV1",
         "NduSummaryReceiptV1",
+        "NduUpdateReceiptV1",
+        "NduWellPosednessCertificateV1",
         "ObjectiveFunctionV1",
+        "OutcomeWatermarkV1",
+        "RandomStreamManifestV1",
         "RunStartSnapshotV1"
       ],
       "ownedDomains": [
+        "ndu_coefficient_manifest_v1",
         "ndu_preference_projection",
+        "ndu_update_receipt_v1",
         "ndu_utility_projection"
       ],
       "readDomains": [
+        "golden_fixture_manifest_v1",
         "learning_artifact_registry",
         "learning_credit_ledger",
         "learning_episode_ledger",
         "learning_unlearning_lineage",
-        "operator_sensor_core_registry"
+        "ndu_well_posedness_certificate_v1",
+        "operator_sensor_core_registry",
+        "outcome_watermark_v1",
+        "random_stream_manifest_v1"
       ],
       "workPackages": [
         "NDU-0-PREFERENCE-UTILITY-CONTRACTS",
@@ -896,9 +932,9 @@
       "path": "docs/modules/neuron.runtime/TECHNICAL.md",
       "sourceStatus": "target_unmaterialized",
       "bootstrapWorkPackage": "BIO-0-NEURON-INTUITION-CONTRACTS",
-      "sha256": "1b88ba5b851f6741fc4ef8090ea50e6180738bebd1f343f68df4c5a7452cdd82",
-      "bytes": 17868,
-      "words": 1817,
+      "sha256": "1452952e86166f616ee2dfe4f0f382be70251a8f66911a076595b60b3a7f2065",
+      "bytes": 19837,
+      "words": 1936,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
         "## 2. Source binding and implementation status",
@@ -922,6 +958,7 @@
         "LocalModelRuntimeReceiptV1",
         "ModulePort::neuron.runtime::intelligence.control",
         "ModulePort::neuron.runtime::intuition.policy",
+        "NeuronCheckpointV1",
         "NeuronSignalReceiptV1"
       ],
       "consumedContracts": [
@@ -930,27 +967,35 @@
         "DomainRead::inference_reservationV1",
         "DomainRead::learning_artifact_registryV1",
         "DomainRead::operator_sensor_core_registryV1",
+        "GoldenFixtureManifestV1",
         "ModulePort::cognitive.read::neuron.runtime",
         "ModulePort::inference.control::neuron.runtime",
         "ModulePort::learning.artifacts::neuron.runtime",
         "ModulePort::platform.types::neuron.runtime",
+        "RandomStreamManifestV1",
         "RunStartSnapshotV1"
       ],
       "protocols": [
+        "GoldenFixtureManifestV1",
         "LocalModelRuntimeReceiptV1",
+        "NeuronCheckpointV1",
         "NeuronSignalReceiptV1",
+        "RandomStreamManifestV1",
         "RunStartSnapshotV1"
       ],
       "ownedDomains": [
         "eligibility_trace_checkpoint",
+        "neuron_checkpoint_v1",
         "neuron_state_checkpoint"
       ],
       "readDomains": [
+        "golden_fixture_manifest_v1",
         "inference_receipt",
         "inference_request",
         "inference_reservation",
         "learning_artifact_registry",
-        "operator_sensor_core_registry"
+        "operator_sensor_core_registry",
+        "random_stream_manifest_v1"
       ],
       "workPackages": [
         "BIO-0-NEURON-INTUITION-CONTRACTS",
@@ -970,9 +1015,9 @@
       "path": "docs/modules/intuition.policy/TECHNICAL.md",
       "sourceStatus": "target_unmaterialized",
       "bootstrapWorkPackage": "INT-1-CALIBRATED-INTUITION-POLICY",
-      "sha256": "2ae2e8174931340d84f6369c813decf724bc3dd4123f3b650313425c20a9f096",
-      "bytes": 15937,
-      "words": 1711,
+      "sha256": "6b84809e1a57280b7a45bc12c2fad4c4cd2c2139344239b4952ae07c4d3c766f",
+      "bytes": 18178,
+      "words": 1836,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
         "## 2. Source binding and implementation status",
@@ -996,6 +1041,7 @@
         "ModulePort::intuition.policy::intelligence.control"
       ],
       "consumedContracts": [
+        "CandidateSetCompletenessReceiptV1",
         "DomainRead::eligibility_trace_checkpointV1",
         "DomainRead::learning_artifact_registryV1",
         "DomainRead::ndu_preference_projectionV1",
@@ -1008,26 +1054,40 @@
         "ModulePort::platform.types::intuition.policy",
         "ModulePort::utility.ndu::intuition.policy",
         "NduPreferenceStateV1",
+        "NeuronCheckpointV1",
         "NeuronSignalReceiptV1",
         "ObjectiveFunctionV1",
+        "OperatorApplicabilityCertificateV1",
+        "OperatorSensorCoreManifestV1",
+        "RegularityProfileV1",
         "RunStartSnapshotV1"
       ],
       "protocols": [
+        "CandidateSetCompletenessReceiptV1",
         "IntuitionDecisionReceiptV1",
         "LegalActionCandidateSetV1",
         "NduPreferenceStateV1",
+        "NeuronCheckpointV1",
         "NeuronSignalReceiptV1",
         "ObjectiveFunctionV1",
+        "OperatorApplicabilityCertificateV1",
+        "OperatorSensorCoreManifestV1",
+        "RegularityProfileV1",
         "RunStartSnapshotV1"
       ],
       "ownedDomains": [],
       "readDomains": [
+        "candidate_set_completeness_receipt_v1",
         "eligibility_trace_checkpoint",
         "learning_artifact_registry",
         "ndu_preference_projection",
         "ndu_utility_projection",
+        "neuron_checkpoint_v1",
         "neuron_state_checkpoint",
-        "operator_sensor_core_registry"
+        "operator_applicability_certificate_v1",
+        "operator_sensor_core_manifest_v1",
+        "operator_sensor_core_registry",
+        "regularity_profile_v1"
       ],
       "workPackages": [
         "BIO-0-NEURON-INTUITION-CONTRACTS",
@@ -1105,9 +1165,9 @@
       "path": "docs/modules/prompt.optimizer/TECHNICAL.md",
       "sourceStatus": "target_unmaterialized",
       "bootstrapWorkPackage": "PIM-2-PROMPT-PRICING-PORTFOLIO-SHADOW",
-      "sha256": "7da040c0b1ce3a6ed48076b1d37df22b7c0896282063b53f439ccab2a0050483",
-      "bytes": 17313,
-      "words": 1779,
+      "sha256": "00669701dc95a8ed577be9f314e67ecd7e8918f04313eabc59dc89849490f025",
+      "bytes": 19438,
+      "words": 1903,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
         "## 2. Source binding and implementation status",
@@ -1134,6 +1194,7 @@
         "PromptPricingReceiptV1"
       ],
       "consumedContracts": [
+        "CandidateSetCompletenessReceiptV1",
         "DomainRead::learning_artifact_registryV1",
         "DomainRead::ndu_preference_projectionV1",
         "DomainRead::ndu_utility_projectionV1",
@@ -1152,6 +1213,7 @@
         "PromptRealizationV1"
       ],
       "protocols": [
+        "CandidateSetCompletenessReceiptV1",
         "NduPreferenceStateV1",
         "ObjectiveFunctionV1",
         "PromptCandidateSetReceiptV1",
@@ -1163,6 +1225,7 @@
       ],
       "ownedDomains": [],
       "readDomains": [
+        "candidate_set_completeness_receipt_v1",
         "learning_artifact_registry",
         "ndu_preference_projection",
         "ndu_utility_projection",
@@ -1250,9 +1313,9 @@
       "path": "docs/modules/intelligence.control/TECHNICAL.md",
       "sourceStatus": "target_partially_materialized",
       "bootstrapWorkPackage": "INTELLIGENCE-A0-Q0.63",
-      "sha256": "d5bc64a6317045d2c1715bed4e4059f41f12dd7f2837602fa8429f725301ad1f",
-      "bytes": 16673,
-      "words": 1758,
+      "sha256": "5478763dc3998e5ffd92da86835c68a06f39553ecdbe88a1137e2c81d4f72841",
+      "bytes": 18497,
+      "words": 1870,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
         "## 2. Source binding and implementation status",
@@ -1286,18 +1349,30 @@
         "ModulePort::neuron.runtime::intelligence.control",
         "ModulePort::objective.compiler::intelligence.control",
         "ModulePort::prompt.optimizer::intelligence.control",
-        "ModulePort::utility.ndu::intelligence.control"
+        "ModulePort::utility.ndu::intelligence.control",
+        "NduCoefficientManifestV1",
+        "NduUpdateReceiptV1",
+        "NduWellPosednessCertificateV1",
+        "SupportAuditReceiptV1"
       ],
       "protocols": [
         "LearningArtifactManifestV1",
-        "LegalActionCandidateSetV1"
+        "LegalActionCandidateSetV1",
+        "NduCoefficientManifestV1",
+        "NduUpdateReceiptV1",
+        "NduWellPosednessCertificateV1",
+        "SupportAuditReceiptV1"
       ],
       "ownedDomains": [],
       "readDomains": [
         "eligibility_trace_checkpoint",
+        "ndu_coefficient_manifest_v1",
         "ndu_preference_projection",
+        "ndu_update_receipt_v1",
         "ndu_utility_projection",
-        "neuron_state_checkpoint"
+        "ndu_well_posedness_certificate_v1",
+        "neuron_state_checkpoint",
+        "support_audit_receipt_v1"
       ],
       "workPackages": [
         "C1-PROMPTED-MEMORY-RETRIEVAL-RANK",
@@ -1645,9 +1720,9 @@
       "path": "docs/modules/learning.ledger/TECHNICAL.md",
       "sourceStatus": "target_unmaterialized",
       "bootstrapWorkPackage": "LRN-0-CAUSAL-LEARNING-CONTRACTS",
-      "sha256": "40c82d5f87a9855bb8d10079f581b2d4a9719c2a68854342c16ee5ba1aecb143",
-      "bytes": 16376,
-      "words": 1731,
+      "sha256": "babf23e721546dbe5812b7bf8926b0e2fc2dbfd3a033400211e72c638901e683",
+      "bytes": 19006,
+      "words": 1874,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
         "## 2. Source binding and implementation status",
@@ -1666,6 +1741,7 @@
         "## 15. Definition of module completion"
       ],
       "producedContracts": [
+        "CandidateSetCompletenessReceiptV1",
         "CreditAssignmentReceiptV1",
         "DatasetSnapshotV1",
         "DomainRead::learning_credit_ledgerV1",
@@ -1676,7 +1752,8 @@
         "ModulePort::learning.ledger::learning.eval",
         "ModulePort::learning.ledger::learning.operator",
         "ModulePort::learning.ledger::utility.ndu",
-        "OutcomeReceiptV1"
+        "OutcomeReceiptV1",
+        "OutcomeWatermarkV1"
       ],
       "consumedContracts": [
         "ContextCompilationReceiptV1",
@@ -1689,6 +1766,7 @@
         "ModulePort::platform.types::learning.ledger",
         "NduPreferenceStateV1",
         "NduSummaryReceiptV1",
+        "NduUpdateReceiptV1",
         "NeuronSignalReceiptV1",
         "ObjectiveFunctionV1",
         "PromptCandidateSetReceiptV1",
@@ -1699,6 +1777,7 @@
         "RunStartSnapshotV1"
       ],
       "protocols": [
+        "CandidateSetCompletenessReceiptV1",
         "ContextCompilationReceiptV1",
         "CreditAssignmentReceiptV1",
         "DatasetSnapshotV1",
@@ -1708,9 +1787,11 @@
         "LegalActionCandidateSetV1",
         "NduPreferenceStateV1",
         "NduSummaryReceiptV1",
+        "NduUpdateReceiptV1",
         "NeuronSignalReceiptV1",
         "ObjectiveFunctionV1",
         "OutcomeReceiptV1",
+        "OutcomeWatermarkV1",
         "PromptCandidateSetReceiptV1",
         "PromptDeliveryObservationV1",
         "PromptExerciseDecisionV1",
@@ -1719,12 +1800,15 @@
         "RunStartSnapshotV1"
       ],
       "ownedDomains": [
+        "candidate_set_completeness_receipt_v1",
         "learning_credit_ledger",
         "learning_episode_ledger",
-        "learning_unlearning_lineage"
+        "learning_unlearning_lineage",
+        "outcome_watermark_v1"
       ],
       "readDomains": [
         "cross_owner_outbox",
+        "ndu_update_receipt_v1",
         "operation_ledger"
       ],
       "workPackages": [
@@ -1745,9 +1829,9 @@
       "path": "docs/modules/learning.operator/TECHNICAL.md",
       "sourceStatus": "target_unmaterialized",
       "bootstrapWorkPackage": "HBO-0-BELLMAN-OPERATOR-CONTRACTS",
-      "sha256": "fecef3d6281fb4ea99eee03981c8c7c5d542dc0c60df0e642112137e9bb44cf0",
-      "bytes": 18955,
-      "words": 1864,
+      "sha256": "1cd096c97e52ab01abcfd719d1e709dc649fe98eda404f854c6b3b1e5555904b",
+      "bytes": 21410,
+      "words": 1995,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
         "## 2. Source binding and implementation status",
@@ -1766,10 +1850,10 @@
         "## 15. Definition of module completion"
       ],
       "producedContracts": [
-        "BellmanOperatorArtifactV1",
-        "RegularityProfileV1"
+        "BellmanOperatorArtifactV1"
       ],
       "consumedContracts": [
+        "CandidateSetCompletenessReceiptV1",
         "CreditAssignmentReceiptV1",
         "DatasetSnapshotV1",
         "DomainRead::learning_artifact_registryV1",
@@ -1778,32 +1862,52 @@
         "DomainRead::learning_unlearning_lineageV1",
         "DomainRead::operator_sensor_core_registryV1",
         "DomainRead::qualification_evidenceV1",
+        "GoldenFixtureManifestV1",
         "LearningDecisionV1",
         "LearningEpisodeV1",
         "ModulePort::kernel.evidence::learning.operator",
         "ModulePort::learning.artifacts::learning.operator",
         "ModulePort::learning.ledger::learning.operator",
         "ModulePort::platform.types::learning.operator",
-        "OperatorSensorCoreManifestV1",
-        "OutcomeReceiptV1"
-      ],
-      "protocols": [
-        "CreditAssignmentReceiptV1",
-        "DatasetSnapshotV1",
-        "LearningDecisionV1",
-        "LearningEpisodeV1",
+        "OperatorApplicabilityCertificateV1",
         "OperatorSensorCoreManifestV1",
         "OutcomeReceiptV1",
-        "RegularityProfileV1"
+        "OutcomeWatermarkV1",
+        "RandomStreamManifestV1",
+        "RegularityProfileV1",
+        "SupportAuditReceiptV1"
+      ],
+      "protocols": [
+        "CandidateSetCompletenessReceiptV1",
+        "CreditAssignmentReceiptV1",
+        "DatasetSnapshotV1",
+        "GoldenFixtureManifestV1",
+        "LearningDecisionV1",
+        "LearningEpisodeV1",
+        "OperatorApplicabilityCertificateV1",
+        "OperatorSensorCoreManifestV1",
+        "OutcomeReceiptV1",
+        "OutcomeWatermarkV1",
+        "RandomStreamManifestV1",
+        "RegularityProfileV1",
+        "SupportAuditReceiptV1"
       ],
       "ownedDomains": [],
       "readDomains": [
+        "candidate_set_completeness_receipt_v1",
+        "golden_fixture_manifest_v1",
         "learning_artifact_registry",
         "learning_credit_ledger",
         "learning_episode_ledger",
         "learning_unlearning_lineage",
+        "operator_applicability_certificate_v1",
+        "operator_sensor_core_manifest_v1",
         "operator_sensor_core_registry",
-        "qualification_evidence"
+        "outcome_watermark_v1",
+        "qualification_evidence",
+        "random_stream_manifest_v1",
+        "regularity_profile_v1",
+        "support_audit_receipt_v1"
       ],
       "workPackages": [
         "BIO-2-REPLAY-CONSOLIDATION",
@@ -1823,9 +1927,9 @@
       "path": "docs/modules/learning.eval/TECHNICAL.md",
       "sourceStatus": "target_unmaterialized",
       "bootstrapWorkPackage": "LRN-2-CAUSAL-EVALUATION",
-      "sha256": "bd599a11ed3779240a84e2969faafd7010296e488545cd8070842a6251c767ed",
-      "bytes": 18186,
-      "words": 1829,
+      "sha256": "2ec089304b7fbfebf7fd3a18d5d32b07f848d5ba598d2da2bc9fddc9f3559170",
+      "bytes": 21939,
+      "words": 2007,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
         "## 2. Source binding and implementation status",
@@ -1844,14 +1948,22 @@
         "## 15. Definition of module completion"
       ],
       "producedContracts": [
+        "AlgorithmFaultReceiptV1",
+        "CandidateEvaluationReceiptV1",
+        "ConformanceReceiptV1",
         "EvaluationReceiptV1",
         "LongitudinalEvaluationReceiptV1",
         "ModulePort::learning.eval::intelligence.control",
         "ModulePort::learning.eval::learning.plasticity",
+        "NduWellPosednessCertificateV1",
+        "OperatorApplicabilityCertificateV1",
+        "RegularityProfileV1",
+        "SupportAuditReceiptV1",
         "UnlearningComplianceReceiptV1"
       ],
       "consumedContracts": [
         "BellmanOperatorArtifactV1",
+        "CandidateSetCompletenessReceiptV1",
         "CreditAssignmentReceiptV1",
         "DatasetSnapshotV1",
         "DomainRead::learning_artifact_registryV1",
@@ -1860,6 +1972,9 @@
         "DomainRead::learning_unlearning_lineageV1",
         "DomainRead::operator_sensor_core_registryV1",
         "DomainRead::qualification_evidenceV1",
+        "GoldenFixtureManifestV1",
+        "IterationCandidateV1",
+        "IterationEnvelopeV1",
         "LearningArtifactManifestV1",
         "LearningDecisionV1",
         "LearningEpisodeV1",
@@ -1867,39 +1982,79 @@
         "ModulePort::kernel.evidence::learning.eval",
         "ModulePort::learning.artifacts::learning.eval",
         "ModulePort::learning.ledger::learning.eval",
+        "NduCoefficientManifestV1",
+        "NduUpdateReceiptV1",
+        "NeuronCheckpointV1",
         "OperatorSensorCoreManifestV1",
         "OutcomeReceiptV1",
+        "OutcomeWatermarkV1",
         "PlasticityProposalV1",
         "PromptCandidateSetReceiptV1",
         "PromptDeliveryObservationV1",
-        "RegularityProfileV1",
+        "RandomStreamManifestV1",
         "TopologyProposalV1"
       ],
       "protocols": [
+        "AlgorithmFaultReceiptV1",
+        "CandidateEvaluationReceiptV1",
+        "CandidateSetCompletenessReceiptV1",
+        "ConformanceReceiptV1",
         "CreditAssignmentReceiptV1",
         "DatasetSnapshotV1",
         "EvaluationReceiptV1",
+        "GoldenFixtureManifestV1",
+        "IterationCandidateV1",
+        "IterationEnvelopeV1",
         "LearningArtifactManifestV1",
         "LearningDecisionV1",
         "LearningEpisodeV1",
         "LocalModelRuntimeReceiptV1",
         "LongitudinalEvaluationReceiptV1",
+        "NduCoefficientManifestV1",
+        "NduUpdateReceiptV1",
+        "NduWellPosednessCertificateV1",
+        "NeuronCheckpointV1",
+        "OperatorApplicabilityCertificateV1",
         "OperatorSensorCoreManifestV1",
         "OutcomeReceiptV1",
+        "OutcomeWatermarkV1",
+        "PlasticityProposalV1",
         "PromptCandidateSetReceiptV1",
         "PromptDeliveryObservationV1",
+        "RandomStreamManifestV1",
         "RegularityProfileV1",
+        "SupportAuditReceiptV1",
         "TopologyProposalV1",
         "UnlearningComplianceReceiptV1"
       ],
-      "ownedDomains": [],
+      "ownedDomains": [
+        "algorithm_fault_receipt_v1",
+        "candidate_evaluation_receipt_v1",
+        "conformance_receipt_v1",
+        "ndu_well_posedness_certificate_v1",
+        "operator_applicability_certificate_v1",
+        "regularity_profile_v1",
+        "support_audit_receipt_v1"
+      ],
       "readDomains": [
+        "candidate_set_completeness_receipt_v1",
+        "golden_fixture_manifest_v1",
+        "iteration_candidate_v1",
+        "iteration_envelope_v1",
         "learning_artifact_registry",
         "learning_credit_ledger",
         "learning_episode_ledger",
         "learning_unlearning_lineage",
+        "ndu_coefficient_manifest_v1",
+        "ndu_update_receipt_v1",
+        "neuron_checkpoint_v1",
+        "operator_sensor_core_manifest_v1",
         "operator_sensor_core_registry",
-        "qualification_evidence"
+        "outcome_watermark_v1",
+        "plasticity_proposal_v1",
+        "qualification_evidence",
+        "random_stream_manifest_v1",
+        "topology_proposal_v1"
       ],
       "workPackages": [
         "LONG-1-TEMPORAL-HOLDOUT",
@@ -1917,9 +2072,9 @@
       "path": "docs/modules/learning.artifacts/TECHNICAL.md",
       "sourceStatus": "target_unmaterialized",
       "bootstrapWorkPackage": "ART-1-LEARNING-ARTIFACT-REGISTRY",
-      "sha256": "87f8d384867167d5d44a1b7f133e6fe8b67aaf9d3fd380374e257cb6c6914916",
-      "bytes": 16931,
-      "words": 1765,
+      "sha256": "eec60d97b81ab3a1335829dea2350d8c2c6dc295befd7a30648635af3a7eaf30",
+      "bytes": 19898,
+      "words": 1917,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
         "## 2. Source binding and implementation status",
@@ -1951,34 +2106,68 @@
         "OperatorSensorCoreManifestV1"
       ],
       "consumedContracts": [
+        "AlgorithmFaultReceiptV1",
         "BellmanOperatorArtifactV1",
+        "CandidateEvaluationReceiptV1",
+        "ConformanceReceiptV1",
         "DatasetSnapshotV1",
         "DomainRead::cross_owner_outboxV1",
         "DomainRead::operation_ledgerV1",
         "EvaluationReceiptV1",
+        "IndependentDecisionReceiptV1",
+        "IterationCandidateV1",
         "LongitudinalEvaluationReceiptV1",
         "ModulePort::kernel.operations::learning.artifacts",
         "ModulePort::platform.types::learning.artifacts",
+        "NduCoefficientManifestV1",
+        "NduWellPosednessCertificateV1",
+        "OperatorApplicabilityCertificateV1",
         "PlasticityProposalV1",
         "RegularityProfileV1",
+        "SupportAuditReceiptV1",
+        "TopologyProposalV1",
         "UnlearningComplianceReceiptV1"
       ],
       "protocols": [
+        "AlgorithmFaultReceiptV1",
+        "CandidateEvaluationReceiptV1",
+        "ConformanceReceiptV1",
         "DatasetSnapshotV1",
         "EvaluationReceiptV1",
+        "IndependentDecisionReceiptV1",
+        "IterationCandidateV1",
         "LearningArtifactManifestV1",
         "LongitudinalEvaluationReceiptV1",
+        "NduCoefficientManifestV1",
+        "NduWellPosednessCertificateV1",
+        "OperatorApplicabilityCertificateV1",
         "OperatorSensorCoreManifestV1",
+        "PlasticityProposalV1",
         "RegularityProfileV1",
+        "SupportAuditReceiptV1",
+        "TopologyProposalV1",
         "UnlearningComplianceReceiptV1"
       ],
       "ownedDomains": [
         "learning_artifact_registry",
+        "operator_sensor_core_manifest_v1",
         "operator_sensor_core_registry"
       ],
       "readDomains": [
+        "algorithm_fault_receipt_v1",
+        "candidate_evaluation_receipt_v1",
+        "conformance_receipt_v1",
         "cross_owner_outbox",
-        "operation_ledger"
+        "independent_decision_receipt_v1",
+        "iteration_candidate_v1",
+        "ndu_coefficient_manifest_v1",
+        "ndu_well_posedness_certificate_v1",
+        "operation_ledger",
+        "operator_applicability_certificate_v1",
+        "plasticity_proposal_v1",
+        "regularity_profile_v1",
+        "support_audit_receipt_v1",
+        "topology_proposal_v1"
       ],
       "workPackages": [
         "ART-1-LEARNING-ARTIFACT-REGISTRY",
@@ -1996,9 +2185,9 @@
       "path": "docs/modules/learning.plasticity/TECHNICAL.md",
       "sourceStatus": "target_unmaterialized",
       "bootstrapWorkPackage": "PLS-1-PARAMETER-PLASTICITY",
-      "sha256": "befa18895ae069386ef76033812483d028f4287d96baeaabce410ac28427aa6c",
-      "bytes": 16398,
-      "words": 1743,
+      "sha256": "6243d8a60bff193ee0d0b18b4338a2732b993d57ffe8a559e22c8644113469d6",
+      "bytes": 17979,
+      "words": 1843,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
         "## 2. Source binding and implementation status",
@@ -2018,6 +2207,7 @@
       ],
       "producedContracts": [
         "DomainRead::plasticity_proposal_registryV1",
+        "IterationCandidateV1",
         "PlasticityProposalV1",
         "TopologyProposalV1"
       ],
@@ -2025,20 +2215,34 @@
         "DomainRead::learning_artifact_registryV1",
         "DomainRead::operator_sensor_core_registryV1",
         "DomainRead::qualification_evidenceV1",
+        "IterationEnvelopeV1",
         "ModulePort::kernel.evidence::learning.plasticity",
         "ModulePort::learning.artifacts::learning.plasticity",
-        "ModulePort::learning.eval::learning.plasticity"
+        "ModulePort::learning.eval::learning.plasticity",
+        "NeuronCheckpointV1",
+        "RandomStreamManifestV1"
       ],
       "protocols": [
+        "IterationCandidateV1",
+        "IterationEnvelopeV1",
+        "NeuronCheckpointV1",
+        "PlasticityProposalV1",
+        "RandomStreamManifestV1",
         "TopologyProposalV1"
       ],
       "ownedDomains": [
-        "plasticity_proposal_registry"
+        "iteration_candidate_v1",
+        "plasticity_proposal_registry",
+        "plasticity_proposal_v1",
+        "topology_proposal_v1"
       ],
       "readDomains": [
+        "iteration_envelope_v1",
         "learning_artifact_registry",
+        "neuron_checkpoint_v1",
         "operator_sensor_core_registry",
-        "qualification_evidence"
+        "qualification_evidence",
+        "random_stream_manifest_v1"
       ],
       "workPackages": [
         "PLS-1-PARAMETER-PLASTICITY",
@@ -2362,9 +2566,9 @@
       "path": "docs/modules/control.engineering/TECHNICAL.md",
       "sourceStatus": "target_unmaterialized",
       "bootstrapWorkPackage": "ECP-1-ENGINEERING-CONTROL-PLANE",
-      "sha256": "073eaef1bb0cde8e58ec6e457485b761878015d9196e6f188fc50caeed4c3911",
-      "bytes": 20541,
-      "words": 1963,
+      "sha256": "07295860d87bd9271f36ef16803954922ded2d9f45201c5e8ed3f31ede23d9ee",
+      "bytes": 22329,
+      "words": 2064,
       "requiredSections": [
         "## 1. Identity, mission and ownership",
         "## 2. Source binding and implementation status",
@@ -2384,22 +2588,41 @@
       ],
       "producedContracts": [
         "DomainRead::integration_decisionV1",
-        "DomainRead::work_assignment_projectionV1"
+        "DomainRead::work_assignment_projectionV1",
+        "GoldenFixtureManifestV1",
+        "IterationEnvelopeV1"
       ],
       "consumedContracts": [
+        "CandidateEvaluationReceiptV1",
         "DomainRead::qualification_evidenceV1",
+        "IndependentDecisionReceiptV1",
+        "IterationCandidateV1",
         "ModulePort::kernel.evidence::control.engineering",
+        "PlasticityProposalV1",
         "TopologyProposalV1"
       ],
       "protocols": [
+        "CandidateEvaluationReceiptV1",
+        "GoldenFixtureManifestV1",
+        "IndependentDecisionReceiptV1",
+        "IterationCandidateV1",
+        "IterationEnvelopeV1",
+        "PlasticityProposalV1",
         "TopologyProposalV1"
       ],
       "ownedDomains": [
+        "golden_fixture_manifest_v1",
         "integration_decision",
+        "iteration_envelope_v1",
         "work_assignment_projection"
       ],
       "readDomains": [
-        "qualification_evidence"
+        "candidate_evaluation_receipt_v1",
+        "independent_decision_receipt_v1",
+        "iteration_candidate_v1",
+        "plasticity_proposal_v1",
+        "qualification_evidence",
+        "topology_proposal_v1"
       ],
       "workPackages": [
         "DOC-0-CANONICAL-DOCUMENT-CONSOLIDATION",
@@ -2408,6 +2631,7 @@
         "DOC-3A-SOURCE-BINDING-RECONCILIATION",
         "DOC-3B-MODULE-TECHNICAL-DOCUMENTS",
         "DOC-3C-MODULE-DOC-CLOSED-WORLD",
+        "DOC-3D-ADAPTIVE-ALGORITHM-DOC-CLOSED-WORLD",
         "DOC-REGISTRY-CLOSED-WORLD",
         "ECP-1-ENGINEERING-CONTROL-PLANE",
         "SELF-1-CODE-CANDIDATE-PIPELINE"

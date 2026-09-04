@@ -122,19 +122,23 @@ impl LocalTurnLifecycleContributor {
         // transactions remains replayable and no intent is stranded behind a
         // terminal fence.
         let settled = match action {
-            TerminalAction::Stop => tokio::time::timeout(
-                LOCAL_LIFECYCLE_IO_TIMEOUT,
-                lease.rollback_occurrence(
-                    occurrence_key.clone(),
-                    "local_turn_stopped_without_external_dispatch",
-                ),
-            )
-            .await,
-            TerminalAction::Indeterminate(reason) => tokio::time::timeout(
-                LOCAL_LIFECYCLE_IO_TIMEOUT,
-                lease.mark_indeterminate(occurrence_key.clone(), reason),
-            )
-            .await,
+            TerminalAction::Stop => {
+                tokio::time::timeout(
+                    LOCAL_LIFECYCLE_IO_TIMEOUT,
+                    lease.rollback_occurrence(
+                        occurrence_key.clone(),
+                        "local_turn_stopped_without_external_dispatch",
+                    ),
+                )
+                .await
+            }
+            TerminalAction::Indeterminate(reason) => {
+                tokio::time::timeout(
+                    LOCAL_LIFECYCLE_IO_TIMEOUT,
+                    lease.mark_indeterminate(occurrence_key.clone(), reason),
+                )
+                .await
+            }
         };
         if match settled {
             Ok(result) => result.is_err(),
