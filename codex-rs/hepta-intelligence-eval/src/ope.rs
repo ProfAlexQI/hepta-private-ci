@@ -117,7 +117,11 @@ pub fn estimate_ope(plan: &OpePlan, rows: &[OpeRow]) -> Result<OpeEstimate, OpeE
     let mut digest_bytes = b"hepta.ope.point-estimate.v1".to_vec();
     digest_bytes.extend_from_slice(plan.plan_digest.as_array());
     digest_bytes.extend_from_slice(&plan.outcome_watermark.to_be_bytes());
-    digest_bytes.extend_from_slice(&u64::try_from(plan.minimum_rows).map_err(|_| OpeError::Arithmetic)?.to_be_bytes());
+    digest_bytes.extend_from_slice(
+        &u64::try_from(plan.minimum_rows)
+            .map_err(|_| OpeError::Arithmetic)?
+            .to_be_bytes(),
+    );
     digest_bytes.extend_from_slice(&plan.minimum_ess.raw().to_be_bytes());
     digest_bytes.extend_from_slice(&plan.maximum_weight.raw().to_be_bytes());
     // Hash each row separately so retained receipt input is O(n), not O(n*k).
@@ -128,7 +132,10 @@ pub fn estimate_ope(plan: &OpePlan, rows: &[OpeRow]) -> Result<OpeEstimate, OpeE
         prior = Some(&row.decision_id);
         let (weight, weighted_outcome, dr, row_digest) = estimate_row(plan, row)?;
         weight_sum = checked_add(weight_sum, weight)?;
-        weight_square_sum = checked_add(weight_square_sum, weight.checked_mul(weight).ok_or(OpeError::Arithmetic)?)?;
+        weight_square_sum = checked_add(
+            weight_square_sum,
+            weight.checked_mul(weight).ok_or(OpeError::Arithmetic)?,
+        )?;
         weighted_outcome_sum = checked_add(weighted_outcome_sum, weighted_outcome)?;
         dr_sum = checked_add(dr_sum, dr)?;
         max_weight = max_weight.max(weight);
@@ -137,21 +144,41 @@ pub fn estimate_ope(plan: &OpePlan, rows: &[OpeRow]) -> Result<OpeEstimate, OpeE
     if weight_sum == 0 || weight_square_sum == 0 {
         return Err(OpeError::InsufficientSupport);
     }
-    let ess = scaled_ratio(weight_sum.checked_mul(weight_sum).ok_or(OpeError::Arithmetic)?, weight_square_sum)?;
+    let ess = scaled_ratio(
+        weight_sum
+            .checked_mul(weight_sum)
+            .ok_or(OpeError::Arithmetic)?,
+        weight_square_sum,
+    )?;
     if ess < i128::from(plan.minimum_ess.raw()) {
         return Err(OpeError::InsufficientSupport);
     }
     let count = i128::try_from(rows.len()).map_err(|_| OpeError::Arithmetic)?;
     let ips = fixed(round_ratio(weighted_outcome_sum, count)?)?;
-    let snips = fixed(round_ratio(weighted_outcome_sum.checked_mul(SCALE).ok_or(OpeError::Arithmetic)?, weight_sum)?)?;
+    let snips = fixed(round_ratio(
+        weighted_outcome_sum
+            .checked_mul(SCALE)
+            .ok_or(OpeError::Arithmetic)?,
+        weight_sum,
+    )?)?;
     let doubly_robust = fixed(round_ratio(dr_sum, count)?)?;
     let effective_sample_size = fixed(ess)?;
     let maximum_observed_weight = fixed(max_weight)?;
-    for value in [ips, snips, doubly_robust, effective_sample_size, maximum_observed_weight] {
+    for value in [
+        ips,
+        snips,
+        doubly_robust,
+        effective_sample_size,
+        maximum_observed_weight,
+    ] {
         digest_bytes.extend_from_slice(&value.raw().to_be_bytes());
     }
     Ok(OpeEstimate {
-        rows: rows.len(), ips, snips, doubly_robust, effective_sample_size,
+        rows: rows.len(),
+        ips,
+        snips,
+        doubly_robust,
+        effective_sample_size,
         maximum_observed_weight,
         evidence_digest: Digest32::of_bytes(&digest_bytes),
         authority: AuthorityPosture::DENY_ALL,
@@ -220,13 +247,19 @@ fn estimate_row(plan: &OpePlan, row: &OpeRow) -> Result<(i128, i128, i128, Diges
     if behavior == 0 {
         return Err(OpeError::UnsupportedAction);
     }
-    let weight = round_ratio(i128::from(chosen.evaluation_probability.raw()) * SCALE, behavior)?;
+    let weight = round_ratio(
+        i128::from(chosen.evaluation_probability.raw()) * SCALE,
+        behavior,
+    )?;
     if weight > i128::from(plan.maximum_weight.raw()) {
         return Err(OpeError::WeightLimit);
     }
     let weighted_outcome = round_ratio(weight * i128::from(outcome.raw()), SCALE)?;
     let residual = i128::from(outcome.raw()) - i128::from(chosen.predicted_outcome.raw());
-    let dr = checked_add(round_ratio(direct_sum, SCALE)?, round_ratio(weight * residual, SCALE)?)?;
+    let dr = checked_add(
+        round_ratio(direct_sum, SCALE)?,
+        round_ratio(weight * residual, SCALE)?,
+    )?;
     Ok((weight, weighted_outcome, dr, Digest32::of_bytes(&bytes)))
 }
 
@@ -235,7 +268,9 @@ fn checked_add(left: i128, right: i128) -> Result<i128, OpeError> {
 }
 
 fn fixed(raw: i128) -> Result<FixedQ32, OpeError> {
-    i64::try_from(raw).map(FixedQ32::from_raw).map_err(|_| OpeError::Arithmetic)
+    i64::try_from(raw)
+        .map(FixedQ32::from_raw)
+        .map_err(|_| OpeError::Arithmetic)
 }
 
 // Compute a nonnegative rational in Q32 without overflowing a Q96 numerator.
@@ -273,7 +308,10 @@ fn round_ratio(numerator: i128, denominator: i128) -> Result<i128, OpeError> {
     }
     let quotient = numerator / denominator;
     let remainder = numerator % denominator;
-    let twice = remainder.checked_abs().and_then(|value| value.checked_mul(2)).ok_or(OpeError::Arithmetic)?;
+    let twice = remainder
+        .checked_abs()
+        .and_then(|value| value.checked_mul(2))
+        .ok_or(OpeError::Arithmetic)?;
     if twice > denominator || (twice == denominator && quotient % 2 != 0) {
         checked_add(quotient, numerator.signum())
     } else {

@@ -10,8 +10,13 @@ on:
       - "tools/hepta-engineering-control/**"
       - "scripts/hepta-cns.py"
       - "scripts/hepta-module-docs.py"
+      - "scripts/hepta_module_doc_metadata.py"
+      - "scripts/test_hepta_module_doc_metadata.py"
+      - "scripts/hepta-gap-closure.py"
       - "docs/cns/**"
       - "docs/modules/**"
+      - "docs/STATUS.md"
+      - "docs/readiness/GAP_CLOSURE_IMPLEMENTATION.md"
       - "codex-rs/hepta-intelligence-eval/**"
       - ".github/workflows/hepta-audit-remediation.yml"
 
@@ -65,7 +70,10 @@ jobs:
       - name: Verify full module and CNS document integrity
         run: |
           set -euo pipefail
+          python3 -m unittest discover -s scripts -p test_hepta_module_doc_metadata.py -v
+          python3 scripts/hepta_module_doc_metadata.py
           python3 scripts/hepta-module-docs.py verify
+          python3 scripts/hepta-gap-closure.py verify
           python3 scripts/hepta-cns.py generate-status --check
           python3 scripts/hepta-cns.py verify
 
@@ -113,10 +121,22 @@ jobs:
           test "$(git rev-parse "$MERGE^{tree}")" = "$TREE"
           git checkout --detach "$MERGE"
 
-      - name: Install test runner and just
+      - name: Verify Python and document changes at this exact Git identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s qualification/cns-organ-reference -v
+          python3 -m unittest discover -s tools/hepta-engineering-control -v
+          python3 -m unittest discover -s scripts -p test_hepta_module_doc_metadata.py -v
+          python3 scripts/hepta_module_doc_metadata.py
+          python3 scripts/hepta-gap-closure.py verify
+          python3 scripts/hepta-cns.py verify
+          python3 scripts/hepta-docs.py verify
+
+      - name: Install pinned test runner and just
         uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
         with:
-          tool: just@1.51.0,cargo-nextest
+          tool: just@1.51.0,nextest@0.9.103
 
       - name: Check selected package without changing the lockfile
         working-directory: codex-rs

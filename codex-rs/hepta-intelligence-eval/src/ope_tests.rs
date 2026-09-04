@@ -45,7 +45,11 @@ fn fixture() -> (OpePlan, Vec<OpeRow>) {
                     predicted_outcome: FixedQ32::ZERO,
                 },
             ],
-            finalized_outcome: Some(if success { FixedQ32::ONE } else { FixedQ32::ZERO }),
+            finalized_outcome: Some(if success {
+                FixedQ32::ONE
+            } else {
+                FixedQ32::ZERO
+            }),
             outcome_observed_at: 50,
             outcome_evidence: Digest32::of_bytes(b"independent-outcome"),
             outcome_model_evidence: Digest32::of_bytes(b"zero-tabular-baseline"),
@@ -58,9 +62,16 @@ fn fixture() -> (OpePlan, Vec<OpeRow>) {
 fn documented_ope_golden_vector_is_exact() {
     let (plan, rows) = fixture();
     let result = must(estimate_ope(&plan, &rows));
-    assert_eq!((result.ips.raw(), result.snips.raw(), result.doubly_robust.raw(),
-                result.effective_sample_size.raw(), result.maximum_observed_weight.raw()),
-               (3221225472, 2576980378, 3221225472, 12632256753, 8589934592));
+    assert_eq!(
+        (
+            result.ips.raw(),
+            result.snips.raw(),
+            result.doubly_robust.raw(),
+            result.effective_sample_size.raw(),
+            result.maximum_observed_weight.raw()
+        ),
+        (3221225472, 2576980378, 3221225472, 12632256753, 8589934592)
+    );
     assert_eq!(result.authority, AuthorityPosture::DENY_ALL);
 }
 
@@ -99,7 +110,10 @@ fn pending_outcome_is_not_zero_reward() {
 fn outcome_after_frozen_watermark_is_rejected() {
     let (plan, mut rows) = fixture();
     rows[0].outcome_observed_at = 101;
-    assert_eq!(estimate_ope(&plan, &rows), Err(OpeError::OutcomeAfterWatermark));
+    assert_eq!(
+        estimate_ope(&plan, &rows),
+        Err(OpeError::OutcomeAfterWatermark)
+    );
 }
 
 #[test]
@@ -114,10 +128,16 @@ fn unsupported_unchosen_action_is_also_rejected() {
 fn incomplete_candidates_and_unknown_choice_are_rejected() {
     let (plan, mut rows) = fixture();
     rows[0].complete_candidates = false;
-    assert_eq!(estimate_ope(&plan, &rows), Err(OpeError::IncompleteCandidates));
+    assert_eq!(
+        estimate_ope(&plan, &rows),
+        Err(OpeError::IncompleteCandidates)
+    );
     rows[0].complete_candidates = true;
     rows[0].chosen_action = id("not-in-set");
-    assert_eq!(estimate_ope(&plan, &rows), Err(OpeError::UnknownChosenAction));
+    assert_eq!(
+        estimate_ope(&plan, &rows),
+        Err(OpeError::UnknownChosenAction)
+    );
 }
 
 #[test]
@@ -131,7 +151,10 @@ fn duplicate_observations_cannot_inflate_sample_count() {
 fn distribution_and_weight_gates_are_enforced() {
     let (mut plan, mut rows) = fixture();
     rows[0].actions[1].behavior_probability = ProbabilityQ32::ONE;
-    assert_eq!(estimate_ope(&plan, &rows), Err(OpeError::InvalidDistribution));
+    assert_eq!(
+        estimate_ope(&plan, &rows),
+        Err(OpeError::InvalidDistribution)
+    );
     let (_, rows) = fixture();
     plan.maximum_weight = FixedQ32::ONE;
     assert_eq!(estimate_ope(&plan, &rows), Err(OpeError::WeightLimit));
@@ -141,7 +164,10 @@ fn distribution_and_weight_gates_are_enforced() {
 fn effective_sample_size_cannot_be_replaced_by_raw_row_count() {
     let (mut plan, rows) = fixture();
     plan.minimum_ess = FixedQ32::from_raw(3 << 32);
-    assert_eq!(estimate_ope(&plan, &rows), Err(OpeError::InsufficientSupport));
+    assert_eq!(
+        estimate_ope(&plan, &rows),
+        Err(OpeError::InsufficientSupport)
+    );
 }
 
 #[test]
