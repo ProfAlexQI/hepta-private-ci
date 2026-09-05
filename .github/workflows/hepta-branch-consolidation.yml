@@ -18,7 +18,7 @@ concurrency:
 jobs:
   consolidate-to-single-main:
     if: github.repository == 'TrillionniumFoundation/hepta-private-ci' && github.ref == 'refs/heads/main'
-    runs-on: macos-15
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -91,91 +91,45 @@ jobs:
           compression-level: 0
           if-no-files-found: error
 
-      - name: Make main the live default
+      - name: Make main the live default, with reversible rename fallback
         env:
-          TOKEN_HEPTA_ADMIN: ${{ secrets.HEPTA_ADMIN_TOKEN }}
-          TOKEN_GH_ADMIN: ${{ secrets.GH_ADMIN_TOKEN }}
-          TOKEN_REPO_ADMIN: ${{ secrets.REPO_ADMIN_TOKEN }}
-          TOKEN_ADMIN_GITHUB: ${{ secrets.ADMIN_GITHUB_TOKEN }}
-          TOKEN_GH_PAT: ${{ secrets.GH_PAT }}
-          TOKEN_GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
-          TOKEN_PAT: ${{ secrets.PAT }}
-          TOKEN_BUILTIN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           root="$RUNNER_TEMP/hepta-single-main"
-          default_before="$(GH_TOKEN="$TOKEN_BUILTIN" gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)"
+          default_before="$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)"
           main_sha="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
           test -n "$main_sha"
-          default_sha="$(git ls-remote --heads origin "refs/heads/$default_before" | awk '{print $1}')"
-          [[ "$default_before" == main || "$default_sha" == "$main_sha" ]]
-
-          token_names=(TOKEN_HEPTA_ADMIN TOKEN_GH_ADMIN TOKEN_REPO_ADMIN TOKEN_ADMIN_GITHUB TOKEN_GH_PAT TOKEN_GITHUB_PAT TOKEN_PAT TOKEN_BUILTIN)
-          selected=""
           method=already_main
+
           if [[ "$default_before" != main ]]; then
-            for token_name in "${token_names[@]}"; do
-              eval "candidate=\${$token_name:-}"
-              [[ -n "$candidate" ]] || continue
-              echo "::add-mask::$candidate"
-              if GH_TOKEN="$candidate" gh api --method PATCH "repos/$GITHUB_REPOSITORY" -f default_branch=main >"$root/default-api.json" 2>"$root/default-api.err"; then
-                selected="$candidate"
-                method=repository_patch
-                break
-              fi
-            done
-
-            if [[ -z "$selected" ]]; then
-              local_token="$(env -u GH_TOKEN -u GITHUB_TOKEN gh auth token 2>/dev/null || true)"
-              if [[ -n "$local_token" ]]; then
-                echo "::add-mask::$local_token"
-                if GH_TOKEN="$local_token" gh api --method PATCH "repos/$GITHUB_REPOSITORY" -f default_branch=main >"$root/default-api.json" 2>"$root/default-api.err"; then
-                  selected="$local_token"
-                  method=runner_credential_patch
-                fi
-              fi
-            fi
-
-            if [[ -z "$selected" ]]; then
-              # Reversible fallback: the two refs are byte-identical. Remove only main
-              # under an exact lease, rename the live default to main, and immediately
-              # restore main if every available administration credential is refused.
+            default_sha="$(git ls-remote --heads origin "refs/heads/$default_before" | awk '{print $1}')"
+            [[ -n "$default_sha" && "$default_sha" == "$main_sha" ]]
+            if gh api --method PATCH "repos/$GITHUB_REPOSITORY" -f default_branch=main >"$root/default-api.json" 2>"$root/default-api.err"; then
+              method=repository_patch
+            else
               git push --porcelain --force-with-lease="refs/heads/main:$main_sha" origin :refs/heads/main
               encoded_default="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe=""))' "$default_before")"
-              for token_name in "${token_names[@]}"; do
-                eval "candidate=\${$token_name:-}"
-                [[ -n "$candidate" ]] || continue
-                if GH_TOKEN="$candidate" gh api --method POST "repos/$GITHUB_REPOSITORY/branches/$encoded_default/rename" -f new_name=main >"$root/default-api.json" 2>"$root/default-api.err"; then
-                  selected="$candidate"
-                  method=default_branch_rename
-                  break
-                fi
-              done
-              if [[ -z "$selected" && -n "${local_token:-}" ]]; then
-                if GH_TOKEN="$local_token" gh api --method POST "repos/$GITHUB_REPOSITORY/branches/$encoded_default/rename" -f new_name=main >"$root/default-api.json" 2>"$root/default-api.err"; then
-                  selected="$local_token"
-                  method=runner_credential_rename
-                fi
-              fi
-              if [[ -z "$selected" ]]; then
+              set +e
+              gh api --method POST "repos/$GITHUB_REPOSITORY/branches/$encoded_default/rename" -f new_name=main >"$root/default-api.json" 2>>"$root/default-api.err"
+              rename_rc=$?
+              set -e
+              if [[ $rename_rc -ne 0 ]]; then
                 git push --porcelain origin "$main_sha:refs/heads/main"
-                echo 'No available credential may change or rename the default branch; main restored unchanged.' >&2
+                echo 'Default-branch change was refused; main restored and deletion aborted.' >&2
                 exit 1
               fi
+              method=default_branch_rename
             fi
-          else
-            selected="$TOKEN_BUILTIN"
           fi
 
-          echo "::add-mask::$selected"
           for _ in $(seq 1 40); do
-            live_default="$(GH_TOKEN="$selected" gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)"
+            live_default="$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)"
             live_main="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
             if [[ "$live_default" == main && "$live_main" == "$main_sha" ]]; then
               jq -n --arg method "$method" --arg prior "$default_before" --arg default "$live_default" --arg sha "$live_main" \
                 '{method:$method,priorDefault:$prior,defaultBranch:$default,main:$sha}' > "$root/default-result.json"
-              printf 'SELECTED_ADMIN_TOKEN=%s\n' "$selected" >> "$GITHUB_ENV"
               exit 0
             fi
             sleep 3
@@ -185,7 +139,7 @@ jobs:
 
       - name: Delete every non-main ref with exact leases
         env:
-          GH_TOKEN: ${{ env.SELECTED_ADMIN_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
