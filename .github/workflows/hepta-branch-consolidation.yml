@@ -1,4 +1,4 @@
-name: Hepta retire all non-default duplicate branches
+name: Hepta final default-alias retirement
 
 on:
   push:
@@ -16,10 +16,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  retire-duplicate-branches:
+  retire-default-alias:
     if: github.repository == 'TrillionniumFoundation/hepta-private-ci' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -27,129 +27,89 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Freeze and verify all live refs
-        id: freeze
+      - name: Freeze the final two byte-identical refs
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          root="$RUNNER_TEMP/hepta-branch-retirement"
+          root="$RUNNER_TEMP/hepta-final-alias"
           mkdir -p "$root"
           git fetch --prune --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          mapfile -t rows < <(git ls-remote --heads origin)
+          [[ ${#rows[@]} -eq 2 ]]
           main_sha="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
           default_branch="$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)"
+          [[ "$default_branch" != main ]]
           default_sha="$(git ls-remote --heads origin "refs/heads/$default_branch" | awk '{print $1}')"
-          test -n "$main_sha"
-          test -n "$default_sha"
-          [[ "$default_sha" == "$main_sha" ]]
+          [[ -n "$main_sha" && "$default_sha" == "$main_sha" ]]
           git cat-file -e "$main_sha^{commit}"
           git merge-base --is-ancestor "$GITHUB_SHA" "$main_sha"
-          export MAIN_SHA="$main_sha" DEFAULT_BRANCH="$default_branch" OUT="$root/frozen-refs.json"
-          python3 - <<'PY'
-          import json, os, subprocess
-          main = os.environ['MAIN_SHA']
-          default = os.environ['DEFAULT_BRANCH']
-          rows = []
-          raw = subprocess.check_output(['git','ls-remote','--heads','origin'], text=True)
-          for line in raw.splitlines():
-              sha, ref = line.split('\t', 1)
-              name = ref.removeprefix('refs/heads/')
-              retained = subprocess.run(['git','merge-base','--is-ancestor',sha,main]).returncode == 0
-              if name != 'main' and not retained:
-                  raise SystemExit(f'unretained live branch: {name} {sha}')
-              rows.append({'name':name,'sha':sha,'retainedByMain':retained,'protectedFromThisPass':name in {'main',default}})
-          if sum(row['name']=='main' for row in rows) != 1 or sum(row['name']==default for row in rows) != 1:
-              raise SystemExit('main/default inventory mismatch')
-          payload={
-              'schema':'hepta.duplicate-branch-retirement-freeze.v1',
-              'repository':os.environ['GITHUB_REPOSITORY'],
-              'workflowHead':os.environ['GITHUB_SHA'],
-              'main':main,
-              'defaultBranch':default,
-              'branchCount':len(rows),
-              'allNonMainHeadsRetainedByMain':True,
-              'branches':rows,
-          }
-          with open(os.environ['OUT'],'w') as f:
-              json.dump(payload,f,indent=2,sort_keys=True); f.write('\n')
-          print(json.dumps({'branchCount':len(rows),'main':main,'defaultBranch':default}))
-          PY
-          printf 'main_sha=%s\n' "$main_sha" >> "$GITHUB_OUTPUT"
-          printf 'default_branch=%s\n' "$default_branch" >> "$GITHUB_OUTPUT"
-
-      - name: Verify retained external all-branch recovery bundle
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          root="$RUNNER_TEMP/hepta-branch-retirement"
           gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/9967303182" > "$root/external-backup.json"
-          jq -e '.expired == false' "$root/external-backup.json" >/dev/null
-          jq -e '.digest == "sha256:f93b0efabf9c8db7a50ae8381c2995f9f6ab2f439e7b235bc83ef48541759211"' "$root/external-backup.json" >/dev/null
+          jq -e '.expired == false and .digest == "sha256:f93b0efabf9c8db7a50ae8381c2995f9f6ab2f439e7b235bc83ef48541759211"' "$root/external-backup.json" >/dev/null
+          jq -n --arg main "$main_sha" --arg default "$default_branch" --arg defaultSha "$default_sha" \
+            '{schema:"hepta.final-default-alias-freeze.v1",main:$main,defaultBranch:$default,defaultSha:$defaultSha,branchCount:2,byteIdentical:true,externalRecoveryBundleVerified:true}' \
+            > "$root/pre-attempt.json"
+          printf 'MAIN_SHA=%s\nDEFAULT_BRANCH=%s\n' "$main_sha" "$default_branch" >> "$GITHUB_ENV"
 
-      - name: Retain exact pre-delete ref inventory
+      - name: Retain the final pre-attempt receipt
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: hepta-pre-delete-duplicate-refs-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/hepta-branch-retirement
+          name: hepta-final-alias-pre-attempt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hepta-final-alias
           retention-days: 30
           compression-level: 0
           if-no-files-found: error
 
-      - name: Delete all refs except main and the live default
+      - name: Ask GitHub to delete the byte-identical current default alias
+        id: deletion
+        shell: bash
+        run: |
+          set -uo pipefail
+          root="$RUNNER_TEMP/hepta-final-alias"
+          set +e
+          git push --porcelain \
+            --force-with-lease="refs/heads/$DEFAULT_BRANCH:$MAIN_SHA" \
+            origin ":refs/heads/$DEFAULT_BRANCH" \
+            >"$root/delete-default.stdout" 2>"$root/delete-default.stderr"
+          rc=$?
+          set -e
+          status=rejected
+          [[ $rc -eq 0 ]] && status=deleted
+          jq -n --arg status "$status" --argjson exitCode "$rc" --arg main "$MAIN_SHA" --arg alias "$DEFAULT_BRANCH" \
+            '{schema:"hepta.final-default-alias-attempt.v1",status:$status,exitCode:$exitCode,main:$main,alias:$alias}' \
+            > "$root/delete-default-result.json"
+          printf 'delete_rc=%s\n' "$rc" >> "$GITHUB_OUTPUT"
+
+      - name: Verify single-main result when deletion is accepted
+        if: steps.deletion.outputs.delete_rc == '0'
         env:
-          MAIN_SHA: ${{ steps.freeze.outputs.main_sha }}
-          DEFAULT_BRANCH: ${{ steps.freeze.outputs.default_branch }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          root="$RUNNER_TEMP/hepta-branch-retirement"
-          git fetch --prune --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          root="$RUNNER_TEMP/hepta-final-alias"
+          mapfile -t remaining < <(git ls-remote --heads origin | awk '{sub("refs/heads/", "", $2); print $2}')
+          [[ ${#remaining[@]} -eq 1 && "${remaining[0]}" == main ]]
           live_main="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
           [[ "$live_main" == "$MAIN_SHA" ]]
-
-          leases=()
-          deletes=()
-          deleted_names=()
-          while IFS=$'\t' read -r sha ref; do
-            name="${ref#refs/heads/}"
-            [[ "$name" == main || "$name" == "$DEFAULT_BRANCH" ]] && continue
-            git cat-file -e "$sha^{commit}"
-            git merge-base --is-ancestor "$sha" "$MAIN_SHA"
-            leases+=("--force-with-lease=refs/heads/$name:$sha")
-            deletes+=(":refs/heads/$name")
-            deleted_names+=("$name")
-          done < <(git ls-remote --heads origin)
-
-          if ((${#deletes[@]})); then
-            git push --atomic --porcelain "${leases[@]}" origin "${deletes[@]}" | tee "$root/delete-output.txt"
-          fi
-          printf '%s\n' "${deleted_names[@]}" > "$root/deleted-branches.txt"
-
-          mapfile -t remaining < <(git ls-remote --heads origin | awk '{sub("refs/heads/", "", $2); print $2}' | sort)
-          mapfile -t expected < <(printf '%s\n' main "$DEFAULT_BRANCH" | sort -u)
-          [[ ${#remaining[@]} -eq ${#expected[@]} ]]
-          [[ "${remaining[*]}" == "${expected[*]}" ]]
-          remaining_main="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
-          remaining_default="$(git ls-remote --heads origin "refs/heads/$DEFAULT_BRANCH" | awk '{print $1}')"
-          [[ "$remaining_main" == "$MAIN_SHA" && "$remaining_default" == "$MAIN_SHA" ]]
-
-          jq -n \
-            --arg main "$MAIN_SHA" \
-            --arg default "$DEFAULT_BRANCH" \
-            --argjson deleted "${#deleted_names[@]}" \
-            --argjson remaining "${#remaining[@]}" \
-            '{singleWorkingTreeVerified:true,main:$main,defaultBranch:$default,deletedBranchCount:$deleted,remainingBranchCount:$remaining,remainingRefs:["main",$default],defaultBranchAdministrativeRenameStillRequired:($default != "main")}' \
+          live_default="$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)"
+          jq -n --arg main "$live_main" --arg default "$live_default" \
+            '{singleMainRefVerified:true,main:$main,reportedDefaultBranch:$default,remainingRefs:["main"]}' \
             > "$root/final-receipt.json"
 
-      - name: Retain final deletion receipt
+      - name: Retain the server decision
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: hepta-duplicate-ref-retirement-result-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/hepta-branch-retirement
+          name: hepta-final-alias-result-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hepta-final-alias
           retention-days: 30
           compression-level: 0
-          if-no-files-found: warn
+          if-no-files-found: error
+
+      - name: Fail truthfully when GitHub protects the current default
+        if: steps.deletion.outputs.delete_rc != '0'
+        run: |
+          cat "$RUNNER_TEMP/hepta-final-alias/delete-default.stderr" >&2
+          exit 1
