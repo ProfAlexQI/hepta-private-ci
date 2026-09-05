@@ -91,10 +91,14 @@ fn fit_binary_fixture(ledger: &LearningLedger) -> Vec<u8> {
 /// generator-provided outcome enters this oracle; identity authentication is not
 /// tested by a local fixture and real efficacy is not inferred from this score.
 fn held_out_oracle(policy: &[u8]) -> u64 {
-    [b"fresh".as_slice(), b"fresh".as_slice(), b"fresh".as_slice()]
-        .iter()
-        .map(|expected| u64::from(*expected == policy))
-        .sum()
+    [
+        b"fresh".as_slice(),
+        b"fresh".as_slice(),
+        b"fresh".as_slice(),
+    ]
+    .iter()
+    .map(|expected| u64::from(*expected == policy))
+    .sum()
 }
 
 fn register(
@@ -220,7 +224,8 @@ fn durable_experience_candidate_reopen_next_snapshot_and_revocation_safe_rollbac
     let existing_run =
         read_candidate_payload(open_readonly(&baseline_path), &registry, &id("baseline")).unwrap();
     let next_run =
-        read_candidate_payload(open_readonly(&candidate_path), &registry, &id("candidate")).unwrap();
+        read_candidate_payload(open_readonly(&candidate_path), &registry, &id("candidate"))
+            .unwrap();
     assert_eq!(existing_run, b"stale");
     assert_eq!(next_run, b"fresh");
     assert_eq!(existing_run, baseline); // Current run is unchanged.
