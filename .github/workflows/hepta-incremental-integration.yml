@@ -1,0 +1,102 @@
+name: Hepta incremental integration preparation
+on:
+  push:
+    branches: [admin/full-gap-closure-audit-export-20260902]
+    paths: [.github/workflows/hepta-incremental-integration.yml]
+permissions:
+  contents: read
+concurrency:
+  group: hepta-incremental-integration-preparation
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Compose explicitly selected source deltas
+        shell: bash
+        run: |
+          set -euo pipefail
+          export OUT="$RUNNER_TEMP/hepta-integration"
+          mkdir -p "$OUT"
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,subprocess
+          out=pathlib.Path(os.environ['OUT'])
+          main='9ae34b276ab8f23382cc371a15c0d036c32b5dd9'
+          source='7e6391d0567150da6a97e857dcb692010a583d38'
+          common='ca8e8f11b682e25cbd8bb07093edf59a2c53790d'
+          def git(*args): return subprocess.check_output(['git',*args])
+          assert git('merge-base',main,source).decode().strip()==common
+          roots=['codex-rs/'+x for x in ['hepta-authbus','hepta-authbus-p1-3-qualification','hepta-bao-adapter','hepta-codex-adapter','hepta-cognitive-types','hepta-cognitive-store','hepta-cognitive-read','hepta-compact-engine','hepta-context-compiler','hepta-control-plane','hepta-infer-core','hepta-inferd','hepta-intelligence','hepta-kg','hepta-memory-federation','hepta-memory-retrieval','codex-app-server']]
+          roots+=['apps/hepta-browser','apps/hepta-native','external/HeptaBao','third_party/servo-patches']
+          exact=['codex-rs/Cargo.toml','codex-rs/Cargo.lock','docs/delivery/WORK_PACKAGES.json','docs/modules/MODULES.json','docs/modules/SOURCE_BINDINGS.json']
+          modules=['auth.authbus','browser.servo','cognitive.read','cognitive.store','cognitive.types','compact.engine','context.compiler','control.runtime','inference.control','intelligence.control','knowledge.graph','memory.federation','memory.retrieval','runtime.codex','secrets.heptabao','ui.native']
+          guides=['docs/modules/'+m+'/TECHNICAL.md' for m in modules]
+          for path in exact+guides:
+              assert git('rev-parse',common+':'+path)==git('rev-parse',main+':'+path), 'overlapping update: '+path
+          for root in roots:
+              assert not git('ls-tree',main,'--',root), 'existing target root: '+root
+          subprocess.run(['git','checkout','--detach',main],check=True)
+          subprocess.run(['git','checkout',source,'--',*(roots+exact+guides)],check=True)
+          # Existing source-location declarations are not production completion.
+          for path in guides:
+              p=pathlib.Path(path); text=p.read_text()
+              needle='and are covered by the dedicated closed-world inventory, focused tests, all-target compilation, strict lint and exact-head qualification.'
+              if needle in text:
+                  text=text.replace(needle,'and require dedicated closed-world inventory, focused tests, all-target compilation, strict lint and exact-head qualification on the integrated candidate. No previous branch result is transferred to this candidate.')
+              p.write_text(text)
+          subprocess.run(['python3','scripts/hepta_module_doc_metadata.py','--write'],check=True)
+          subprocess.run(['git','add','--',*(roots+exact+guides), 'docs/modules/MODULE_DOCS.json','docs/modules/README.md'],check=True)
+          tree=git('write-tree').decode().strip()
+          changed=git('diff','--cached','--name-only','-z').decode().split('\0')
+          changed=[p for p in changed if p]
+          receipts=[]
+          files=out/'files'; files.mkdir()
+          for path in changed:
+              data=pathlib.Path(path).read_bytes()
+              dst=files/path; dst.parent.mkdir(parents=True,exist_ok=True); dst.write_bytes(data)
+              receipts.append({'path':path,'gitBlob':git('rev-parse',':'+path).decode().strip(),'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()})
+          (out/'merge-source.json').write_text(json.dumps({'main':main,'source':source,'common':common,'tree':tree,'files':receipts,'remoteWrites':False,'qualificationPassed':False},indent=2)+'\n')
+          (out/'integration.patch').write_bytes(git('diff','--cached','--binary'))
+          print('integration_tree='+tree)
+          print('changed_files='+str(len(changed)))
+          PY
+      - name: Existing document and candidate checks
+        id: checks
+        shell: bash
+        run: |
+          set -uo pipefail
+          out="$RUNNER_TEMP/hepta-integration"
+          failure=0
+          for check in \
+            'python3 scripts/hepta_module_doc_metadata.py' \
+            'python3 scripts/hepta-module-docs.py verify' \
+            'python3 scripts/hepta-docs.py verify' \
+            'python3 scripts/hepta-algorithm-docs.py verify' \
+            'python3 scripts/hepta-cns.py verify' \
+            'python3 scripts/hepta-paper-evidence.py verify' \
+            'python3 .github/scripts/verify_cargo_workspace_manifests.py' \
+            'node --test apps/hepta-browser/test/browser.test.js' \
+            'node --test apps/hepta-native/test/native.test.js' \
+            'git diff --cached --check'; do
+            printf '\nCOMMAND %s\n' "$check" | tee -a "$out/checks.log"
+            bash -c "$check" >> "$out/checks.log" 2>&1
+            result=$?
+            printf 'EXIT %s\n' "$result" | tee -a "$out/checks.log"
+            if [ "$result" -ne 0 ]; then failure=1; fi
+          done
+          cat "$out/checks.log"
+          printf '%s\n' "$failure" > "$out/checks-exit-code.txt"
+          exit "$failure"
+      - name: Export candidate only, never update refs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-incremental-integration-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-integration
+          if-no-files-found: error
+          retention-days: 30
