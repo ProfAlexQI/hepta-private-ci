@@ -1,7 +1,8 @@
 //! Deterministic, bounded temporal signal runtime for qualification use.
 //!
-//! The runtime emits state and signal receipts only. It owns no facts, model
-//! dispatch, physical effect, selection, promotion or release authority.
+//! Pure mechanisms emit state and signal receipts. An optional host-authorized
+//! journal persists owned checkpoints; it grants no model dispatch, physical
+//! effect, selection, promotion or release authority.
 
 #![forbid(unsafe_code)]
 
@@ -10,8 +11,12 @@ use std::fmt;
 
 use codex_hepta_types::{AuthorityPosture, Digest32, FixedQ32, Generation, StableId};
 
+mod journal;
 mod sparse;
 
+pub use journal::JournalError;
+pub use journal::JournalScope;
+pub use journal::SparseJournal;
 pub use sparse::{
     InhibitoryEdge, SparseCheckpoint, SparseConfig, SparseError, SparseSignalReceipt, SparseTick,
     sparse_tick,
