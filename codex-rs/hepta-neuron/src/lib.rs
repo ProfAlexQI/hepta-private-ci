@@ -14,6 +14,7 @@ use codex_hepta_types::{AuthorityPosture, Digest32, FixedQ32, Generation, Stable
 mod journal;
 mod sparse;
 
+pub use journal::JournalAnchor;
 pub use journal::JournalError;
 pub use journal::JournalScope;
 pub use journal::SparseJournal;
