@@ -413,6 +413,11 @@ def verify_legacy(system, paths):
     need(not hits, "dangling legacy references " + repr(hits[:20]))
 
 
+def deleted_json_basename_pattern(old_path):
+    basename = re.escape(Path(old_path).name)
+    return re.compile(rf"(?<![A-Za-z0-9_.-]){basename}(?![A-Za-z0-9_.-])")
+
+
 def verify_cleanup_base(system):
     policy = system["knownLegacyDeletion"]
     probe = subprocess.run(
@@ -510,9 +515,9 @@ def verify_cleanup_base(system):
     for old_path in expected:
         if not old_path.lower().endswith(".json"):
             continue
-        terms = (old_path, Path(old_path).name)
+        basename_pattern = deleted_json_basename_pattern(old_path)
         for path, text in retained:
-            if any(term in text for term in terms):
+            if old_path in text or basename_pattern.search(text):
                 consumer_hits.append({"retainedPath": path, "deletedJson": old_path})
     need(not consumer_hits, "deleted JSON consumer " + repr(consumer_hits[:10]))
     ancestor = subprocess.run(
@@ -1395,6 +1400,12 @@ def self_test():
         list({k: False for k in AUTHORITY_KEYS}) == AUTHORITY_KEYS, "authority fixture"
     )
     cases.append("authority")
+    fixture_name = "hepta-cleanup-fixture-7c3d.json"
+    basename_pattern = deleted_json_basename_pattern("legacy/" + fixture_name)
+    need(basename_pattern.search('"' + fixture_name + '"'), "deleted JSON reference")
+    for text in ["bazel_" + fixture_name, fixture_name + ".backup"]:
+        need(not basename_pattern.search(text), "deleted JSON basename boundary")
+    cases.append("deleted_json_basename_boundary")
     fixed = datetime(2026, 9, 1, tzinfo=timezone.utc)
     policy = {
         "futureTimestampAllowed": False,
