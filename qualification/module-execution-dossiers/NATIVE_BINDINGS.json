@@ -1,0 +1,76 @@
+{
+  "schema": "hepta.native-source-observations.v1",
+  "schemaVersion": 1,
+  "planId": "HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN",
+  "planVersion": "8.0.0",
+  "sourceSnapshot": "22f463f551ec79fab95954e5a34729ed58b4af39",
+  "evidenceClass": "source_observation_only",
+  "productExecutionProved": false,
+  "observations": [
+    {
+      "module": "utility.ndu",
+      "path": "codex-rs/hepta-ndu/src/lib.rs",
+      "blobSha": "532b519fc2ec73fb89c9bfe9c77ca7e9a1ac41d3",
+      "exports": [
+        "evaluate_candidates",
+        "solve_preference_target",
+        "validate_staged_updates",
+        "evaluate_recursive_utility",
+        "mul_q32_ties_even"
+      ],
+      "interpretation": "Existing deterministic exports; no stochastic solver or production caller is inferred."
+    },
+    {
+      "module": "learning.ledger",
+      "path": "codex-rs/hepta-learning-ledger/src/lib.rs",
+      "blobSha": "c17b62a0d408b0366cba9923b74e7af1c5bc596b",
+      "exports": [
+        "DurableLedger",
+        "LedgerAnchor",
+        "LedgerRecovery",
+        "inspect_ledger",
+        "LearningLedger"
+      ],
+      "interpretation": "Pure core and opt-in host-authorized durable adapter; real observer authentication and host composition remain separate."
+    },
+    {
+      "module": "cognitive.store",
+      "path": "codex-rs/hepta-cognitive-store/src/lib.rs",
+      "blobSha": "5cb5a717526e51696c1e2cbd3af4f0cd45966e25",
+      "exports": [
+        "CognitiveStore",
+        "append",
+        "snapshot_records",
+        "BTreeMap"
+      ],
+      "interpretation": "This observed implementation is in-memory. The proposed SQL adapter is not an existing native durable backend. Check counter-overflow failure atomicity before admission."
+    },
+    {
+      "module": "neuron.runtime",
+      "path": "codex-rs/hepta-neuron/src/lib.rs",
+      "blobSha": "0630fd43b70768f7b9ffdf0bd1b27d78f2acf171",
+      "exports": [
+        "SparseJournal",
+        "JournalAnchor",
+        "SparseCheckpoint",
+        "SparseSignalReceipt",
+        "sparse_tick"
+      ],
+      "interpretation": "Sparse mechanisms and optional checkpoint journal; the distinct legacy step profile and a model digest do not prove real encoder use."
+    },
+    {
+      "module": "learning.artifacts",
+      "path": "codex-rs/hepta-learning-artifacts/src/lib.rs",
+      "blobSha": "46ab265223a43845247e4a6012ccbda14c9e98f1",
+      "exports": [
+        "ArtifactRegistry",
+        "write_candidate_payload",
+        "read_candidate_payload",
+        "write_registry_snapshot",
+        "read_registry_snapshot",
+        "prepare_dataset_revocation"
+      ],
+      "interpretation": "Existing artifact storage and eligibility exports do not prove selection, new-process loading or release."
+    }
+  ]
+}

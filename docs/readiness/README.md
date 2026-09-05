@@ -1,12 +1,12 @@
 # Hepta implementation-readiness closure
 
-This directory closes the remaining pre-coding documentation blockers for the Hepta V8 architecture. It is a canonical subordinate specification layer under `docs/DEVELOPMENT.md`; it does not claim source implementation, runtime activation, longitudinal efficacy, biological equivalence, physical safety, autonomous propagation, acceptance, selection, merge, promotion or release.
+This directory closes the registered pre-coding documentation requirements for the Hepta V8 architecture. It is a canonical subordinate specification layer under `docs/DEVELOPMENT.md`; it does not claim source implementation, runtime activation, longitudinal efficacy, biological equivalence, physical safety, autonomous propagation, acceptance, selection, merge, promotion or release.
 
 ## Read order
 
 1. [`READINESS.json`](READINESS.json) — closed-world document, module, lane, integration and assimilation bindings.
 2. [`PROTOCOLS.json`](PROTOCOLS.json) — 31 implementation-level typed protocols.
-3. [`GAPS.json`](GAPS.json) — 54 documentation gaps closed at specification level and separately named external gates.
+3. [`GAPS.json`](GAPS.json) — 54 bounded documentation requirements and separately named external gates.
 4. [`SOURCE_BASELINE_AND_BRANCH_POLICY.md`](SOURCE_BASELINE_AND_BRANCH_POLICY.md) — exact source, branch purpose, merge identity and base-drift rules.
 5. [`OBJECTIVE_COMPILER_EXECUTION.md`](OBJECTIVE_COMPILER_EXECUTION.md) — bounded objective grammar, precedence, canonicalization and fixtures.
 6. [`NDU_SYSTEM_EXECUTION.md`](NDU_SYSTEM_EXECUTION.md) — cross-organ utility, Pareto policy, deterministic hierarchy and convergence.
@@ -16,15 +16,18 @@ This directory closes the remaining pre-coding documentation blockers for the He
 10. [`EMBODIED_RUNTIME_EXECUTION.md`](EMBODIED_RUNTIME_EXECUTION.md) — timing, calibration, body generation, reflex, actuation and HIL semantics.
 11. [`EXTERNAL_SYSTEM_ASSIMILATION.md`](EXTERNAL_SYSTEM_ASSIMILATION.md) — explicitly authorized Debian/POSIX discovery, wrapping, migration, qualification and federation.
 12. [`PARALLEL_DEVELOPMENT.md`](PARALLEL_DEVELOPMENT.md) — all-40-module lane plan, execution matrix and integration checkpoints.
-13. [`../../qualification/module-execution-dossiers/TECHNICAL.md`](../../qualification/module-execution-dossiers/TECHNICAL.md) — all-module entrypoint, persistence, fault, performance, NDU, evolution, embodiment and assimilation execution semantics.
+13. [`../../qualification/module-execution-dossiers/TECHNICAL.md`](../../qualification/module-execution-dossiers/TECHNICAL.md) — all-module entrypoint, persistence, fault, performance, NDU, evolution, embodiment and assimilation semantics.
 14. [`../../qualification/module-execution-dossiers/MODULE_DOSSIERS.json`](../../qualification/module-execution-dossiers/MODULE_DOSSIERS.json) — exact execution dossier for every registered module.
-15. [`STATUS.md`](STATUS.md) — deterministic generated readiness closure status.
-16. [`../../qualification/module-execution-dossiers/STATUS.md`](../../qualification/module-execution-dossiers/STATUS.md) — deterministic generated execution-depth status.
-17. [`../../qualification/module-execution-dossiers/README.md`](../../qualification/module-execution-dossiers/README.md) — forty module-specific implementation designs, with explicit proposed operations, logical records, algorithms, capacity and named native acceptance cases.
-18. [`../../qualification/module-execution-dossiers/DETAILS.json`](../../qualification/module-execution-dossiers/DETAILS.json) — exact design hashes, existing guide/root/package references and primary lanes.
-19. [`../../qualification/module-execution-dossiers/EXECUTION_SEMANTICS.md`](../../qualification/module-execution-dossiers/EXECUTION_SEMANTICS.md) — pilot refinements for objective conflict complexity, NDU covariance, sequential evaluation, numerical profiles, cumulative thresholds, writer handoff and organ evolution.
-20. [`../../qualification/module-execution-dossiers/STATE_HANDOFF.schema.json`](../../qualification/module-execution-dossiers/STATE_HANDOFF.schema.json) — qualification handoff evidence schema; canonical native protocol admission remains a separate integration gate.
-21. [`../../qualification/module-execution-dossiers/DETAIL_GAPS.json`](../../qualification/module-execution-dossiers/DETAIL_GAPS.json) — enumerated audit/module dispositions and unresolved integration/external gates.
+15. [`STATUS.md`](STATUS.md) — generated registered readiness status.
+16. [`../../qualification/module-execution-dossiers/STATUS.md`](../../qualification/module-execution-dossiers/STATUS.md) — generated execution-depth projection.
+17. [`../../qualification/module-execution-dossiers/README.md`](../../qualification/module-execution-dossiers/README.md) — forty module-specific design index and detailed implementation reading sequence.
+18. [`../../qualification/module-execution-dossiers/DETAILS.json`](../../qualification/module-execution-dossiers/DETAILS.json) — exact detail hashes, existing guide/root/package references and primary lanes.
+19. [`../../qualification/module-execution-dossiers/EXECUTION_SEMANTICS.md`](../../qualification/module-execution-dossiers/EXECUTION_SEMANTICS.md) — objective conflict complexity, conditional covariance, sequential evaluation, numerical profiles, thresholds and handoff.
+20. [`../../qualification/module-execution-dossiers/STATE_HANDOFF.schema.json`](../../qualification/module-execution-dossiers/STATE_HANDOFF.schema.json) — qualification handoff schema; native production admission is separate.
+21. [`../../qualification/module-execution-dossiers/DETAIL_GAPS.json`](../../qualification/module-execution-dossiers/DETAIL_GAPS.json) — bounded dispositions and unresolved integration/external gates.
+22. [`../../qualification/module-execution-dossiers/IMPLEMENTATION_CONTRACTS.md`](../../qualification/module-execution-dossiers/IMPLEMENTATION_CONTRACTS.md) — concrete coding contracts, true native evidence and final-gate ordering.
+23. [`../../qualification/module-execution-dossiers/IMPLEMENTATION_PROFILES.json`](../../qualification/module-execution-dossiers/IMPLEMENTATION_PROFILES.json) — all forty module API, encoding, concurrency/recovery, algorithm and acceptance profiles.
+24. [`../../qualification/module-execution-dossiers/IMPLEMENTATION_COMPLETION.json`](../../qualification/module-execution-dossiers/IMPLEMENTATION_COMPLETION.json) — sixteen further implementation-design dispositions, their documents and remaining evidence.
 
 ## Validation
 
@@ -37,15 +40,19 @@ python3 scripts/hepta-implementation-dossiers.py generate-status --check
 python3 scripts/hepta-implementation-dossiers.py verify
 python3 scripts/hepta-technical-closure.py self-test
 python3 scripts/hepta-technical-closure.py verify
+python3 qualification/module-execution-dossiers/implementation_contracts.py self-test
+python3 qualification/module-execution-dossiers/implementation_contracts.py verify-repository
 python3 scripts/hepta-docs.py verify
 ```
 
-The first implementation slice remains deterministic and read-only. Adaptive, structural, physical and external-system changes are candidates until separate evidence and independent decisions exist. The execution dossier closes documentation depth only; the nine `RDY-EXT-*` capability and evidence gates remain external and non-self-certifiable.
+The first implementation slice remains deterministic and read-only with respect to user-domain/external effects; necessary authorized learning-ledger writes are explicitly recorded and are not described as zero I/O. Adaptive, structural, physical and external-system changes remain candidates until separate evidence and decisions exist. The nine `RDY-EXT-*` capability and evidence gates remain external and non-self-certifiable.
 
 ## Detailed-design interpretation and coding gates
 
-The forty detailed designs are mandatory companion reading for the Section 16 module-guide overlay and parallel lane envelopes. They refine the pilot implementation without creating a competing global plan, changing canonical data ownership or granting runtime authority. Their proposed operation names must be mapped to actual native symbols and consumers by each work package; their 160 named acceptance cases are test designs, not pass receipts.
+Read the stable module guide, Section 16 readiness overlay, existing detail and matching implementation profile together. Proposed operation names must map to actual native symbols and consumers within an existing work package. The original 160 named acceptance cases are test designs, not pass receipts. Five exact source observations in `NATIVE_BINDINGS.json` are neither forty complete native mappings nor production-call evidence.
 
-Use the explicit covariance convention for stochastic NDU regression, distinguish inclusion-minimal conflict extraction from minimum-cardinality optimization, and do not promote a single-decision OPE estimate to a sequential policy-value certificate. Numeric profiles and threshold composition are explicit. State handoff separates valid writer leases from open business admission and preserves current revocations. These refinements do not retroactively change existing artifact bytes or wire versions: incompatibility blocks admission until a reviewed native protocol/profile migration exists.
+General stochastic NDU regression now has one corrected authoritative formula in [`../learning/NDU_FBSDE_SPEC.md`](../learning/NDU_FBSDE_SPEC.md): centered conditional moments solve `Z Sigma = B`. The time-only simplification needs its covariance assumption. This document correction does not reinterpret old artifact bytes; any new coefficient profile/wire field requires versioned native admission.
 
-The original 54-item closed specification surface is bounded to its registered requirements. It is not evidence that all later-discovered gaps are closed. The detailed requirement companion retains `allGapsClosed=false` until native handoff registration, actual implementation/deployment bindings, current source/merge CI, independent semantic review and applicable capability gates have real evidence. Coding-entry design, integration evidence and capability/release evidence remain different gates.
+Distinguish inclusion-minimal objective conflicts from minimum-cardinality optimization. Do not promote single-decision OPE to sequential policy value. Numeric conversion and threshold intersection are explicit; writer validity and business admission differ. The companion's new persistence, organ evolution, C1, longitudinal experiment, concrete simulator and authorized service specifications are indexed in its README and preserve canonical ownership and DAG predecessors.
+
+The original 54-item closed specification surface is bounded to its registered requirements. It is not evidence that later-discovered gaps are closed. Native handoff registration, actual stores/callers/deployments, full current source/merge CI, distinct semantic review and applicable capability gates require real evidence. Coding design, integration readiness and capability/release evidence remain different gates; overall `allGapsClosed=false` is retained.
