@@ -427,16 +427,12 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "existing_legacy_aggregate",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/app-server",
-        "codex-rs/core",
-        "codex-rs/ext/hepta-governance"
-      ],
-      "missingDeclaredRoots": [
         "codex-rs/codex-app-server",
         "codex-rs/hepta-codex-adapter"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "P0.7B-B1B-MODEL-BOUNDARY",
       "technicalDocument": "docs/modules/runtime.codex/TECHNICAL.md",
       "documentationReady": true
@@ -485,15 +481,12 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "existing_legacy_aggregate",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/hepta-contracts",
-        "codex-rs/ext/hepta-governance"
-      ],
-      "missingDeclaredRoots": [
         "codex-rs/hepta-authbus",
         "codex-rs/hepta-authbus-p1-3-qualification"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "AUTHBUS-P1.3-V12",
       "technicalDocument": "docs/modules/auth.authbus/TECHNICAL.md",
       "documentationReady": true
@@ -540,12 +533,12 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "external_with_adapter_target",
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "sourceStatus": "existing_bound",
+      "sourceEvidenceRoots": [
         "external/HeptaBao",
         "codex-rs/hepta-bao-adapter"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "HEPTABAO-1-SECRET-BOUNDARY",
       "technicalDocument": "docs/modules/secrets.heptabao/TECHNICAL.md",
       "documentationReady": true
@@ -593,15 +586,12 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "existing_legacy_aggregate",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/core",
-        "codex-rs/ext/hepta-governance"
-      ],
-      "missingDeclaredRoots": [
         "codex-rs/hepta-infer-core",
         "codex-rs/hepta-inferd"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "P0.7B-B1A-PROVIDER-BOUNDARY",
       "technicalDocument": "docs/modules/inference.control/TECHNICAL.md",
       "documentationReady": true
@@ -977,14 +967,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/context-fragments",
-        "codex-rs/core"
-      ],
-      "missingDeclaredRoots": [
         "codex-rs/hepta-context-compiler"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "CTX-1-CONTEXT-COMPILER",
       "technicalDocument": "docs/modules/context.compiler/TECHNICAL.md",
       "documentationReady": true
@@ -1030,13 +1017,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/ext/hepta-governance"
-      ],
-      "missingDeclaredRoots": [
         "codex-rs/hepta-intelligence"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "INTELLIGENCE-A0-Q0.63",
       "technicalDocument": "docs/modules/intelligence.control/TECHNICAL.md",
       "documentationReady": true
@@ -1075,13 +1060,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/hepta-memory"
-      ],
-      "missingDeclaredRoots": [
         "codex-rs/hepta-cognitive-types"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "MEM-0-TYPES",
       "technicalDocument": "docs/modules/cognitive.types/TECHNICAL.md",
       "documentationReady": true
@@ -1125,14 +1108,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/hepta-memory",
-        "codex-rs/ext/hepta-memory"
-      ],
-      "missingDeclaredRoots": [
         "codex-rs/hepta-cognitive-store"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "MEM-1-STORE",
       "technicalDocument": "docs/modules/cognitive.store/TECHNICAL.md",
       "documentationReady": true
@@ -1170,14 +1150,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/hepta-memory",
-        "codex-rs/ext/hepta-memory"
-      ],
-      "missingDeclaredRoots": [
         "codex-rs/hepta-cognitive-read"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "MEM-READ-1-SNAPSHOT-PORT",
       "technicalDocument": "docs/modules/cognitive.read/TECHNICAL.md",
       "documentationReady": true
@@ -1217,14 +1194,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/hepta-memory",
-        "codex-rs/ext/hepta-memory"
-      ],
-      "missingDeclaredRoots": [
         "codex-rs/hepta-memory-retrieval"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "MEM-2-RETRIEVAL",
       "technicalDocument": "docs/modules/memory.retrieval/TECHNICAL.md",
       "documentationReady": true
@@ -1264,14 +1238,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/hepta-memory",
-        "codex-rs/ext/hepta-memory"
-      ],
-      "missingDeclaredRoots": [
         "codex-rs/hepta-memory-federation"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "MEM-3-FEDERATION",
       "technicalDocument": "docs/modules/memory.federation/TECHNICAL.md",
       "documentationReady": true
@@ -1316,14 +1287,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/hepta-memory",
-        "codex-rs/ext/hepta-memory"
-      ],
-      "missingDeclaredRoots": [
         "codex-rs/hepta-kg"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "MEM-4-KG",
       "technicalDocument": "docs/modules/knowledge.graph/TECHNICAL.md",
       "documentationReady": true
@@ -1364,13 +1332,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/core"
-      ],
-      "missingDeclaredRoots": [
         "codex-rs/hepta-compact-engine"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "MEM-5-COMPACT",
       "technicalDocument": "docs/modules/compact.engine/TECHNICAL.md",
       "documentationReady": true
@@ -1755,12 +1721,12 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "existing_declared_unbound",
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "sourceStatus": "existing_bound",
+      "sourceEvidenceRoots": [
         "apps/hepta-browser",
         "third_party/servo-patches"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "BROWSER-WEB-C1",
       "technicalDocument": "docs/modules/browser.servo/TECHNICAL.md",
       "documentationReady": true
@@ -1842,13 +1808,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/hepta-native-gateway"
-      ],
-      "missingDeclaredRoots": [
         "apps/hepta-native"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "UI-NATIVE-1-SHELL",
       "technicalDocument": "docs/modules/ui.native/TECHNICAL.md",
       "documentationReady": true
@@ -1893,13 +1857,11 @@
         "denyUnknownCriticalFields": true,
         "rawModelOrSecretPayloadExportAllowed": false
       },
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "sourceEvidenceRoots": [
-        "codex-rs/hepta-runtime"
-      ],
-      "missingDeclaredRoots": [
         "codex-rs/hepta-control-plane"
       ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "RCP-1-RUNTIME-CONTROL-PLANE",
       "technicalDocument": "docs/modules/control.runtime/TECHNICAL.md",
       "documentationReady": true

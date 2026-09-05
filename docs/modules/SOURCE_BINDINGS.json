@@ -161,84 +161,86 @@
     {
       "module": "runtime.codex",
       "lifecycle": "existing",
-      "sourceStatus": "existing_legacy_aggregate",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "codex-rs/codex-app-server",
         "codex-rs/hepta-codex-adapter"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/app-server",
-        "codex-rs/core",
-        "codex-rs/ext/hepta-governance"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "codex-rs/codex-app-server",
         "codex-rs/hepta-codex-adapter"
       ],
+      "sourceEvidenceRoots": [
+        "codex-rs/codex-app-server",
+        "codex-rs/hepta-codex-adapter"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "P0.7B-B1B-MODEL-BOUNDARY",
       "technicalDocument": "docs/modules/runtime.codex/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
     },
     {
       "module": "auth.authbus",
       "lifecycle": "existing",
-      "sourceStatus": "existing_legacy_aggregate",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "codex-rs/hepta-authbus",
         "codex-rs/hepta-authbus-p1-3-qualification"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/hepta-contracts",
-        "codex-rs/ext/hepta-governance"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "codex-rs/hepta-authbus",
         "codex-rs/hepta-authbus-p1-3-qualification"
       ],
+      "sourceEvidenceRoots": [
+        "codex-rs/hepta-authbus",
+        "codex-rs/hepta-authbus-p1-3-qualification"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "AUTHBUS-P1.3-V12",
       "technicalDocument": "docs/modules/auth.authbus/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
     },
     {
       "module": "secrets.heptabao",
       "lifecycle": "existing",
-      "sourceStatus": "external_with_adapter_target",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "external/HeptaBao",
         "codex-rs/hepta-bao-adapter"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "external/HeptaBao",
         "codex-rs/hepta-bao-adapter"
       ],
+      "sourceEvidenceRoots": [
+        "external/HeptaBao",
+        "codex-rs/hepta-bao-adapter"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "HEPTABAO-1-SECRET-BOUNDARY",
       "technicalDocument": "docs/modules/secrets.heptabao/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
     },
     {
       "module": "inference.control",
       "lifecycle": "existing",
-      "sourceStatus": "existing_legacy_aggregate",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "codex-rs/hepta-infer-core",
         "codex-rs/hepta-inferd"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/core",
-        "codex-rs/ext/hepta-governance"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "codex-rs/hepta-infer-core",
         "codex-rs/hepta-inferd"
       ],
+      "sourceEvidenceRoots": [
+        "codex-rs/hepta-infer-core",
+        "codex-rs/hepta-inferd"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "P0.7B-B1A-PROVIDER-BOUNDARY",
       "technicalDocument": "docs/modules/inference.control/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
     },
     {
       "module": "inference.worker",
@@ -369,170 +371,164 @@
     {
       "module": "context.compiler",
       "lifecycle": "target",
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "codex-rs/hepta-context-compiler"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/context-fragments",
-        "codex-rs/core"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "codex-rs/hepta-context-compiler"
       ],
+      "sourceEvidenceRoots": [
+        "codex-rs/hepta-context-compiler"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "CTX-1-CONTEXT-COMPILER",
       "technicalDocument": "docs/modules/context.compiler/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
     },
     {
       "module": "intelligence.control",
       "lifecycle": "target",
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "codex-rs/hepta-intelligence"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/ext/hepta-governance"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "codex-rs/hepta-intelligence"
       ],
+      "sourceEvidenceRoots": [
+        "codex-rs/hepta-intelligence"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "INTELLIGENCE-A0-Q0.63",
       "technicalDocument": "docs/modules/intelligence.control/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
     },
     {
       "module": "cognitive.types",
       "lifecycle": "target",
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "codex-rs/hepta-cognitive-types"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/hepta-memory"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "codex-rs/hepta-cognitive-types"
       ],
+      "sourceEvidenceRoots": [
+        "codex-rs/hepta-cognitive-types"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "MEM-0-TYPES",
       "technicalDocument": "docs/modules/cognitive.types/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
     },
     {
       "module": "cognitive.store",
       "lifecycle": "target",
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "codex-rs/hepta-cognitive-store"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/hepta-memory",
-        "codex-rs/ext/hepta-memory"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "codex-rs/hepta-cognitive-store"
       ],
+      "sourceEvidenceRoots": [
+        "codex-rs/hepta-cognitive-store"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "MEM-1-STORE",
       "technicalDocument": "docs/modules/cognitive.store/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
     },
     {
       "module": "cognitive.read",
       "lifecycle": "target",
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "codex-rs/hepta-cognitive-read"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/hepta-memory",
-        "codex-rs/ext/hepta-memory"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "codex-rs/hepta-cognitive-read"
       ],
+      "sourceEvidenceRoots": [
+        "codex-rs/hepta-cognitive-read"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "MEM-READ-1-SNAPSHOT-PORT",
       "technicalDocument": "docs/modules/cognitive.read/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
     },
     {
       "module": "memory.retrieval",
       "lifecycle": "target",
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "codex-rs/hepta-memory-retrieval"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/hepta-memory",
-        "codex-rs/ext/hepta-memory"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "codex-rs/hepta-memory-retrieval"
       ],
+      "sourceEvidenceRoots": [
+        "codex-rs/hepta-memory-retrieval"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "MEM-2-RETRIEVAL",
       "technicalDocument": "docs/modules/memory.retrieval/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
     },
     {
       "module": "memory.federation",
       "lifecycle": "target",
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "codex-rs/hepta-memory-federation"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/hepta-memory",
-        "codex-rs/ext/hepta-memory"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "codex-rs/hepta-memory-federation"
       ],
+      "sourceEvidenceRoots": [
+        "codex-rs/hepta-memory-federation"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "MEM-3-FEDERATION",
       "technicalDocument": "docs/modules/memory.federation/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
     },
     {
       "module": "knowledge.graph",
       "lifecycle": "target",
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "codex-rs/hepta-kg"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/hepta-memory",
-        "codex-rs/ext/hepta-memory"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "codex-rs/hepta-kg"
       ],
+      "sourceEvidenceRoots": [
+        "codex-rs/hepta-kg"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "MEM-4-KG",
       "technicalDocument": "docs/modules/knowledge.graph/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
     },
     {
       "module": "compact.engine",
       "lifecycle": "target",
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "codex-rs/hepta-compact-engine"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/core"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "codex-rs/hepta-compact-engine"
       ],
+      "sourceEvidenceRoots": [
+        "codex-rs/hepta-compact-engine"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "MEM-5-COMPACT",
       "technicalDocument": "docs/modules/compact.engine/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
     },
     {
       "module": "learning.ledger",
@@ -668,20 +664,23 @@
     {
       "module": "browser.servo",
       "lifecycle": "existing",
-      "sourceStatus": "existing_declared_unbound",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "apps/hepta-browser",
         "third_party/servo-patches"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "apps/hepta-browser",
         "third_party/servo-patches"
       ],
+      "sourceEvidenceRoots": [
+        "apps/hepta-browser",
+        "third_party/servo-patches"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "BROWSER-WEB-C1",
       "technicalDocument": "docs/modules/browser.servo/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
     },
     {
       "module": "ui.control",
@@ -704,38 +703,38 @@
     {
       "module": "ui.native",
       "lifecycle": "target",
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "apps/hepta-native"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/hepta-native-gateway"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "apps/hepta-native"
       ],
+      "sourceEvidenceRoots": [
+        "apps/hepta-native"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "UI-NATIVE-1-SHELL",
       "technicalDocument": "docs/modules/ui.native/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
     },
     {
       "module": "control.runtime",
       "lifecycle": "target",
-      "sourceStatus": "target_partially_materialized",
+      "sourceStatus": "existing_bound",
       "declaredRoots": [
         "codex-rs/hepta-control-plane"
       ],
-      "existingDeclaredRoots": [],
-      "sourceEvidenceRoots": [
-        "codex-rs/hepta-runtime"
-      ],
-      "missingDeclaredRoots": [
+      "existingDeclaredRoots": [
         "codex-rs/hepta-control-plane"
       ],
+      "sourceEvidenceRoots": [
+        "codex-rs/hepta-control-plane"
+      ],
+      "missingDeclaredRoots": [],
       "bootstrapWorkPackage": "RCP-1-RUNTIME-CONTROL-PLANE",
       "technicalDocument": "docs/modules/control.runtime/TECHNICAL.md",
-      "interpretation": "evidence_roots_are_non_authoritative_and_documentation_readiness_is_not_implementation"
+      "interpretation": "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
     },
     {
       "module": "control.engineering",
