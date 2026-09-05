@@ -15,8 +15,11 @@ This directory closes the remaining pre-coding documentation blockers for the He
 9. [`SELF_ITERATION_EXECUTION.md`](SELF_ITERATION_EXECUTION.md) — mutation grammar, protected surfaces, sandbox, lineage and rollback.
 10. [`EMBODIED_RUNTIME_EXECUTION.md`](EMBODIED_RUNTIME_EXECUTION.md) — timing, calibration, body generation, reflex, actuation and HIL semantics.
 11. [`EXTERNAL_SYSTEM_ASSIMILATION.md`](EXTERNAL_SYSTEM_ASSIMILATION.md) — explicitly authorized Debian/POSIX discovery, wrapping, migration, qualification and federation.
-12. [`PARALLEL_DEVELOPMENT.md`](PARALLEL_DEVELOPMENT.md) — all-40-module lane plan and integration checkpoints.
-13. [`STATUS.md`](STATUS.md) — deterministic generated closure status.
+12. [`PARALLEL_DEVELOPMENT.md`](PARALLEL_DEVELOPMENT.md) — all-40-module lane plan, execution matrix and integration checkpoints.
+13. [`../../qualification/module-execution-dossiers/TECHNICAL.md`](../../qualification/module-execution-dossiers/TECHNICAL.md) — all-module entrypoint, persistence, fault, performance, NDU, evolution, embodiment and assimilation execution semantics.
+14. [`../../qualification/module-execution-dossiers/MODULE_DOSSIERS.json`](../../qualification/module-execution-dossiers/MODULE_DOSSIERS.json) — exact execution dossier for every registered module.
+15. [`STATUS.md`](STATUS.md) — deterministic generated readiness closure status.
+16. [`../../qualification/module-execution-dossiers/STATUS.md`](../../qualification/module-execution-dossiers/STATUS.md) — deterministic generated execution-depth status.
 
 ## Validation
 
@@ -24,7 +27,10 @@ This directory closes the remaining pre-coding documentation blockers for the He
 python3 scripts/hepta-readiness.py self-test
 python3 scripts/hepta-readiness.py generate-status --check
 python3 scripts/hepta-readiness.py verify
+python3 scripts/hepta-implementation-dossiers.py self-test
+python3 scripts/hepta-implementation-dossiers.py generate-status --check
+python3 scripts/hepta-implementation-dossiers.py verify
 python3 scripts/hepta-docs.py verify
 ```
 
-The first implementation slice remains deterministic and read-only. Adaptive, structural, physical and external-system changes are candidates until separate evidence and independent decisions exist.
+The first implementation slice remains deterministic and read-only. Adaptive, structural, physical and external-system changes are candidates until separate evidence and independent decisions exist. The execution dossier closes documentation depth only; the nine `RDY-EXT-*` capability and evidence gates remain external and non-self-certifiable.
