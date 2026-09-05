@@ -13,6 +13,16 @@ It loads the predecessor through CURRENT registry eligibility to exercise rollba
 Then it persists revocation, rejects the old registry with the new witness,
 rejects revoked candidate bytes, and rejects rollback after predecessor revocation.
 
+The training/evaluation stage now opens an OS read-only file and calls the
+shared-lock `inspect_ledger` port, not writable `DurableLedger::recover`.
+The existing pure ledger rebuilds that exact validated snapshot before applying
+revocations and fitting the fixture. File bytes and the original snapshot must
+remain unchanged. Registry and payload reopens likewise use OS read-only files;
+only initial writes and newly persisted revocations obtain writable handles.
+The learner therefore receives neither a journal repair handle nor an artifact
+writer during the read stage. This is a concrete read-port consumer, not a claim
+of process/credential isolation or a continuously live writer/reader service.
+
 Run with the repository test entrypoint:
 
     just test --locked -p codex-hepta-shadow-qualification --test durable_learning_roundtrip
