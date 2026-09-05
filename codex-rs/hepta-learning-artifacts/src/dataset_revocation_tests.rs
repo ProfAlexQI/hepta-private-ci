@@ -71,8 +71,20 @@ fn head(registry: &ArtifactRegistry) -> Digest32 {
 #[test]
 fn batch_revokes_direct_targets_and_blocks_descendants_without_mutating_input() {
     let mut registry = ArtifactRegistry::new();
-    register(&mut registry, "a", /*parent*/ None, dataset(), "generator");
-    register(&mut registry, "b", /*parent*/ None, dataset(), "generator");
+    register(
+        &mut registry,
+        "a",
+        /*parent*/ None,
+        dataset(),
+        "generator",
+    );
+    register(
+        &mut registry,
+        "b",
+        /*parent*/ None,
+        dataset(),
+        "generator",
+    );
     register(
         &mut registry,
         "child",
@@ -102,7 +114,13 @@ fn batch_revokes_direct_targets_and_blocks_descendants_without_mutating_input() 
 #[test]
 fn stale_snapshot_missing_dataset_and_empty_notice_reject() {
     let mut registry = ArtifactRegistry::new();
-    register(&mut registry, "a", /*parent*/ None, dataset(), "generator");
+    register(
+        &mut registry,
+        "a",
+        /*parent*/ None,
+        dataset(),
+        "generator",
+    );
     let before = registry.snapshot();
     assert_eq!(
         prepare_dataset_revocation(&registry, Digest32::ZERO, &notice()).unwrap_err(),
@@ -125,20 +143,35 @@ fn stale_snapshot_missing_dataset_and_empty_notice_reject() {
 #[test]
 fn identical_retry_reuses_existing_events_and_history() {
     let mut registry = ArtifactRegistry::new();
-    register(&mut registry, "a", /*parent*/ None, dataset(), "generator");
+    register(
+        &mut registry,
+        "a",
+        /*parent*/ None,
+        dataset(),
+        "generator",
+    );
     let first = prepare_dataset_revocation(&registry, head(&registry), &notice()).unwrap();
     let retry =
         prepare_dataset_revocation(first.registry(), head(first.registry()), &notice()).unwrap();
     assert_eq!(retry.registry().snapshot(), first.registry().snapshot());
     assert_eq!(retry.summary().appended, 0);
     assert_eq!(retry.summary().replayed, 1);
-    assert_eq!(retry.summary().request_digest, first.summary().request_digest);
+    assert_eq!(
+        retry.summary().request_digest,
+        first.summary().request_digest
+    );
 }
 
 #[test]
 fn changed_notice_or_evaluator_under_same_operation_conflicts() {
     let mut registry = ArtifactRegistry::new();
-    register(&mut registry, "a", /*parent*/ None, dataset(), "generator");
+    register(
+        &mut registry,
+        "a",
+        /*parent*/ None,
+        dataset(),
+        "generator",
+    );
     let first = prepare_dataset_revocation(&registry, head(&registry), &notice()).unwrap();
     let before = first.registry().snapshot();
     for field in ["notice", "evaluator"] {
@@ -161,8 +194,20 @@ fn changed_notice_or_evaluator_under_same_operation_conflicts() {
 #[test]
 fn later_target_role_collision_discards_entire_preparation() {
     let mut registry = ArtifactRegistry::new();
-    register(&mut registry, "a", /*parent*/ None, dataset(), "generator");
-    register(&mut registry, "z", /*parent*/ None, dataset(), "evaluator");
+    register(
+        &mut registry,
+        "a",
+        /*parent*/ None,
+        dataset(),
+        "generator",
+    );
+    register(
+        &mut registry,
+        "z",
+        /*parent*/ None,
+        dataset(),
+        "evaluator",
+    );
     let before = registry.snapshot();
     assert!(matches!(
         prepare_dataset_revocation(&registry, head(&registry), &notice()),
@@ -177,8 +222,20 @@ fn later_target_role_collision_discards_entire_preparation() {
 #[test]
 fn quarantined_targets_revoke_and_previously_revoked_targets_are_reported() {
     let mut registry = ArtifactRegistry::new();
-    register(&mut registry, "a", /*parent*/ None, dataset(), "generator");
-    register(&mut registry, "b", /*parent*/ None, dataset(), "generator");
+    register(
+        &mut registry,
+        "a",
+        /*parent*/ None,
+        dataset(),
+        "generator",
+    );
+    register(
+        &mut registry,
+        "b",
+        /*parent*/ None,
+        dataset(),
+        "generator",
+    );
     let change = |artifact: &str| StateChange {
         event_id: id(&format!("prior-{artifact}")),
         artifact_id: id(artifact),

@@ -300,10 +300,26 @@ fn encode_snapshot(
 fn decode_event(line: &str) -> Result<ArtifactEvent, ArtifactStorageError> {
     let fields: Vec<&str> = line.split('|').collect();
     let id = |s: &str| StableId::new(s).map_err(|_| ArtifactStorageError::Corrupt);
-    let digest = |s: &str| s.parse::<Digest32>().map_err(|_| ArtifactStorageError::Corrupt);
+    let digest = |s: &str| {
+        s.parse::<Digest32>()
+            .map_err(|_| ArtifactStorageError::Corrupt)
+    };
     let number = |s: &str| s.parse::<u64>().map_err(|_| ArtifactStorageError::Corrupt);
     match fields.as_slice() {
-        ["R", event, artifact, kind, generation, predecessor, content, objective, support, producer, compatibility, size] => {
+        [
+            "R",
+            event,
+            artifact,
+            kind,
+            generation,
+            predecessor,
+            content,
+            objective,
+            support,
+            producer,
+            compatibility,
+            size,
+        ] => {
             let kind = match *kind {
                 "0" => ArtifactKind::Prompt,
                 "1" => ArtifactKind::Policy,
