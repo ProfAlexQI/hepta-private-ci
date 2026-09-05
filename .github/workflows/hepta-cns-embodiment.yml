@@ -11,6 +11,7 @@ on:
       - "scripts/hepta-cns.py"
       - "scripts/hepta-hnmf.py"
       - "scripts/hepta-paper-evidence.py"
+      - "scripts/test_hepta_paper_evidence.py"
       - ".github/workflows/hepta-cns-embodiment.yml"
       - "README.md"
   push:
@@ -27,6 +28,7 @@ on:
       - "scripts/hepta-cns.py"
       - "scripts/hepta-hnmf.py"
       - "scripts/hepta-paper-evidence.py"
+      - "scripts/test_hepta_paper_evidence.py"
       - ".github/workflows/hepta-cns-embodiment.yml"
       - "README.md"
   workflow_dispatch:
@@ -54,13 +56,12 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Fetch pinned independent paper evidence
+      - name: Verify retained independent paper evidence
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --no-tags origin \
-            +refs/heads/evidence/paper-source-locks-v1:refs/remotes/origin/evidence/paper-source-locks-v1
-          test "$(git rev-parse refs/remotes/origin/evidence/paper-source-locks-v1)" = "$PAPER_EVIDENCE_COMMIT"
+          git cat-file -e "$PAPER_EVIDENCE_COMMIT^{commit}"
+          git merge-base --is-ancestor "$PAPER_EVIDENCE_COMMIT" HEAD
 
       - name: Verify CNS, evidence and HNMF closed worlds
         env:
@@ -70,6 +71,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           python3 scripts/hepta-paper-evidence.py self-test
+          python3 -m unittest discover -s scripts -p test_hepta_paper_evidence.py -v
           python3 scripts/hepta-paper-evidence.py verify
           python3 scripts/hepta-hnmf.py self-test
           python3 scripts/hepta-hnmf.py verify
@@ -163,13 +165,12 @@ jobs:
           printf 'sha=%s\n' "$SHA" >> "$GITHUB_OUTPUT"
           printf 'tree=%s\n' "$TREE" >> "$GITHUB_OUTPUT"
 
-      - name: Fetch pinned independent paper evidence
+      - name: Verify retained independent paper evidence
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --no-tags origin \
-            +refs/heads/evidence/paper-source-locks-v1:refs/remotes/origin/evidence/paper-source-locks-v1
-          test "$(git rev-parse refs/remotes/origin/evidence/paper-source-locks-v1)" = "$PAPER_EVIDENCE_COMMIT"
+          git cat-file -e "$PAPER_EVIDENCE_COMMIT^{commit}"
+          git merge-base --is-ancestor "$PAPER_EVIDENCE_COMMIT" HEAD
 
       - name: Verify merged CNS closed world
         env:
@@ -178,6 +179,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          python3 -m unittest discover -s scripts -p test_hepta_paper_evidence.py -v
           python3 scripts/hepta-paper-evidence.py verify
           python3 scripts/hepta-hnmf.py self-test
           python3 scripts/hepta-hnmf.py verify

@@ -152,25 +152,41 @@ def verify_source(commit: str, row: dict[str, Any]) -> None:
         need("sentences" not in row, row["sourceId"] + " binary sentences")
 
 
+def verify_retained_commit(binding: dict[str, Any]) -> str:
+    """Verify the original evidence objects, retained through source ancestry.
+
+    A branch name is no longer an evidence anchor. Full-history source checkouts
+    retain the independently pinned commit through a provenance merge; merely
+    fetching an unrelated object or creating a similarly named ref is insufficient.
+    """
+    need(binding.get("retentionPolicy") == {"kind": "main_history_ancestor"},
+         "evidence retention policy")
+    need("evidenceBranch" not in binding, "obsolete mutable evidence branch")
+    policy = binding.get("verificationPolicy", {})
+    need(policy.get("pinnedEvidenceMustBeAncestorOfSource") is True,
+         "evidence ancestry policy")
+    commit = binding["evidenceCommit"]
+    need(isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit) is not None,
+         "full evidence commit identity")
+    need(git_text("rev-parse", commit + "^{commit}") == commit, "evidence commit")
+    parents = git_text("rev-list", "--parents", "-n", "1", commit).split()[1:]
+    need(parents == [binding["evidenceParentCommit"]], "evidence direct parent")
+    need(git_text("rev-parse", commit + "^{tree}") == binding["evidenceTree"],
+         "evidence tree")
+    git_text("merge-base", "--is-ancestor", commit, "HEAD")
+    return commit
+
+
 def verify() -> int:
     binding = load_path(BINDING_PATH)
     need(
-        binding.get("schema") == "hepta.paper-evidence-binding.v1"
-        and binding.get("schemaVersion") == 1,
+        binding.get("schema") == "hepta.paper-evidence-binding.v2"
+        and binding.get("schemaVersion") == 2,
         "binding schema",
     )
     need(binding.get("planVersion") == "8.1.0-cns-organ", "binding plan")
     false_authority(binding.get("authorityFlags"), "binding")
-    commit = binding["evidenceCommit"]
-    need(git_text("rev-parse", commit + "^{commit}") == commit, "evidence commit")
-    parents = git_text("rev-list", "--parents", "-n", "1", commit).split()[1:]
-    need(parents == [binding["evidenceParentCommit"]], "evidence direct parent")
-    need(
-        git_text("rev-parse", commit + "^{tree}") == binding["evidenceTree"],
-        "evidence tree",
-    )
-    remote_ref = "refs/remotes/origin/" + binding["evidenceBranch"]
-    need(git_text("rev-parse", remote_ref) == commit, "remote evidence branch head")
+    commit = verify_retained_commit(binding)
     manifest_spec = f"{commit}:{binding['manifestPath']}"
     need(
         git_text("rev-parse", manifest_spec) == binding["manifestGitBlobSha"],

@@ -1,12 +1,11 @@
 {
-  "schema": "hepta.paper-evidence-binding.v1",
-  "schemaVersion": 1,
+  "schema": "hepta.paper-evidence-binding.v2",
+  "schemaVersion": 2,
   "documentClass": "canonical_external_byte_binding",
   "planId": "HEPTA-GLOBAL-MODULAR-DEVELOPMENT-PLAN",
   "planVersion": "8.1.0-cns-organ",
   "semanticRegistry": "docs/learning/PAPER_TRACEABILITY.json",
   "evidenceRepository": "TrillionniumFoundation/hepta-private-ci",
-  "evidenceBranch": "evidence/paper-source-locks-v1",
   "evidenceCommit": "de36bedfbb2ae463e690f5737b22cb280527b142",
   "evidenceParentCommit": "891db03e056b36e5e89491bfc3d9c15cddd62e83",
   "evidenceTree": "96e4fd05be4dbbfab699af005ef0efeb033e7407",
@@ -26,7 +25,6 @@
     "PAPER-HOLDER-Q-2026-ARXIV-SOURCE"
   ],
   "verificationPolicy": {
-    "remoteEvidenceBranchMustEqualPinnedCommit": true,
     "commitParentAndTreeMustMatch": true,
     "manifestGitBlobMustMatch": true,
     "everySourceGitBlobMustMatch": true,
@@ -36,7 +34,8 @@
     "semanticRegistryDigestFieldsAreNotExternalEvidenceWithoutThisBinding": true,
     "changingRegistryAndVerifierConstantsTogetherMaySatisfyExternalEvidence": false,
     "missingEvidenceObjectMayAdvanceClaim": false,
-    "networkDiscoveryMaySubstituteForPinnedEvidence": false
+    "networkDiscoveryMaySubstituteForPinnedEvidence": false,
+    "pinnedEvidenceMustBeAncestorOfSource": true
   },
   "authorityFlags": {
     "runtimeAuthority": false,
@@ -56,5 +55,8 @@
     "operatorAcceptance": false,
     "promotion": false,
     "release": false
+  },
+  "retentionPolicy": {
+    "kind": "main_history_ancestor"
   }
 }
