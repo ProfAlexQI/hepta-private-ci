@@ -1,0 +1,48 @@
+name: Hepta reproducible source audit
+
+on:
+  push:
+    branches:
+      - codex/hepta-v8-technical-closure-20260905
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-source-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-bundle:
+    name: Retain exact committed audit source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Read exact source and retained ancestry
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export only committed Git objects
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          mkdir -p "$RUNNER_TEMP/hepta-source-audit"
+          git bundle create "$RUNNER_TEMP/hepta-source-audit/source.bundle" HEAD
+          git bundle verify "$RUNNER_TEMP/hepta-source-audit/source.bundle"
+          git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/hepta-source-audit/source.identity"
+          sha256sum "$RUNNER_TEMP/hepta-source-audit/source.bundle" > "$RUNNER_TEMP/hepta-source-audit/source.sha256"
+          test -z "$(git status --porcelain --untracked-files=no)"
+      - name: Retain audit input without granting qualification
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-audit-source-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-source-audit/*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
