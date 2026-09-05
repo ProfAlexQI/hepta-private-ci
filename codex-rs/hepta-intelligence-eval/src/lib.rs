@@ -12,8 +12,9 @@ mod temporal_evaluation;
 mod temporal_fold;
 
 pub use ope::{
-    ClusterAssignment, ClusterConfidenceError, ClusterConfidencePlan, ClusterOpeEstimate, OpeAction,
-    OpeError, OpeEstimate, OpeInterval, OpePlan, OpeRow, estimate_cluster_intervals, estimate_ope,
+    ClusterAssignment, ClusterConfidenceError, ClusterConfidencePlan, ClusterOpeEstimate,
+    OpeAction, OpeError, OpeEstimate, OpeInterval, OpePlan, OpeRow, estimate_cluster_intervals,
+    estimate_ope,
 };
 pub use temporal_evaluation::{
     TemporalEvaluationError, TemporalEvaluationPlan, TemporalEvaluationReceipt,

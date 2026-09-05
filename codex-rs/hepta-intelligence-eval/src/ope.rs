@@ -16,8 +16,8 @@ use crate::push_id;
 mod confidence;
 
 pub use confidence::{
-    ClusterAssignment, ClusterConfidenceError, ClusterConfidencePlan, ClusterOpeEstimate, OpeInterval,
-    estimate_cluster_intervals,
+    ClusterAssignment, ClusterConfidenceError, ClusterConfidencePlan, ClusterOpeEstimate,
+    OpeInterval, estimate_cluster_intervals,
 };
 
 const SCALE: i128 = 1_i128 << 32;

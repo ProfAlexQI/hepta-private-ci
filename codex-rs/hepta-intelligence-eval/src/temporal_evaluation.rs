@@ -12,10 +12,10 @@ use std::fmt;
 
 use codex_hepta_types::{AuthorityPosture, Digest32, StableId};
 
+use crate::push_id;
 use crate::{ClusterAssignment, ClusterConfidenceError, ClusterConfidencePlan, ClusterOpeEstimate};
 use crate::{HeldOutTarget, OpePlan, OpeRow, OutcomeTrainingSample};
 use crate::{TemporalFoldError, TemporalFoldPlan, estimate_cluster_intervals, fit_temporal_fold};
-use crate::push_id;
 
 const MAX_EVALUATION_ROWS: usize = 16_384;
 const MAX_ACTION_CELLS: usize = 262_144;
@@ -150,7 +150,8 @@ pub fn evaluate_temporal_holdout(
         let prediction_map: BTreeMap<_, _> = outputs.iter().cloned().collect();
         let mut action_ids = BTreeSet::new();
         for action in &observation.actions {
-            if !action_ids.insert(&action.action_id) || !prediction_map.contains_key(&action.action_id)
+            if !action_ids.insert(&action.action_id)
+                || !prediction_map.contains_key(&action.action_id)
             {
                 return Err(TemporalEvaluationError::ActionMismatch);
             }
@@ -164,7 +165,8 @@ pub fn evaluate_temporal_holdout(
         }
         bound_rows.push(row);
     }
-    let estimate = estimate_cluster_intervals(&plan.ope, &plan.confidence, &bound_rows, assignments)?;
+    let estimate =
+        estimate_cluster_intervals(&plan.ope, &plan.confidence, &bound_rows, assignments)?;
     let mut bytes = b"hepta.ope.temporal-holdout-pipeline.v1".to_vec();
     push_id(&mut bytes, &plan.evaluation_id);
     bytes.extend_from_slice(plan.objective_digest.as_array());

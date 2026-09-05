@@ -194,7 +194,9 @@ fn validation_principals_cannot_enter_training() {
     fixture.training[0].principal_lineage = fixture.targets[0].principal_lineage.clone();
     assert_eq!(
         run(&fixture),
-        Err(TemporalEvaluationError::Fold(TemporalFoldError::PrincipalLeakage))
+        Err(TemporalEvaluationError::Fold(
+            TemporalFoldError::PrincipalLeakage
+        ))
     );
 }
 
