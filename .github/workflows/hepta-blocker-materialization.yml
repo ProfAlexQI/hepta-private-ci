@@ -26,7 +26,7 @@ jobs:
         with:
           ref: 2569607012501456d290183df9e986b0a4703fe5
           persist-credentials: false
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Load exact bounded recovery source candidates
         env:
