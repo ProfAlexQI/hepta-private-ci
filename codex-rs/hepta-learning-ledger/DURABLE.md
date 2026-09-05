@@ -81,3 +81,21 @@ Linux test result. The dedicated read-only CI checks exact source and actual-bas
 synthetic merge independently. No parent work-package or capability status is
 advanced by creating this code. Rollback leaves the new file inert; never read
 an older snapshot as if it included later revocations or confirmed results.
+
+## Normal owner-drop lock lifetime
+
+Normal destruction explicitly unlocks the owned file before closing its handle.
+On Linux a temporarily duplicated or inherited open description can otherwise
+retain the lock after the owner closes, including during concurrent process
+creation. A regression retains such a duplicate, proves another writer is
+blocked while the owner lives, drops the owner, and verifies immediate recovery
+without discarding the duplicate first. Dropping the old duplicate must not
+release a newly acquired independent writer lock.
+
+The duplicate exists only inside the regression fixture. No public handle is
+exposed, and the host prohibition on shared writers or independently closing
+inherited handles is unchanged. Unlock during Drop is best effort; errors are
+not represented as successful commits, and normal file closure remains the
+fallback. Existing commit synchronization and poison/recovery behavior remain
+unchanged. Process death still requires OS handle closure and does not run Drop;
+this is not a physical power-loss or hostile-writer guarantee.

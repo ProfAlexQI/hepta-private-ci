@@ -11,6 +11,7 @@ mod evaluator;
 mod fixed;
 mod model;
 mod preference;
+mod recursive;
 mod scoring;
 
 pub use error::NduError;
@@ -39,3 +40,8 @@ pub use preference::SolveDisposition;
 pub use preference::UpdateGeneration;
 pub use preference::solve_preference_target;
 pub use preference::validate_staged_updates;
+pub use recursive::RecursiveUtilityError;
+pub use recursive::RecursiveUtilityPath;
+pub use recursive::RecursiveUtilityReceipt;
+pub use recursive::UtilityEvent;
+pub use recursive::evaluate_recursive_utility;

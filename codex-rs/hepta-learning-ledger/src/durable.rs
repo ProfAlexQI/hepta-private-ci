@@ -90,6 +90,16 @@ pub struct DurableLedger {
     poisoned: bool,
 }
 
+impl Drop for DurableLedger {
+    fn drop(&mut self) {
+        // A transient descriptor inherited during fork can outlive this owner.
+        // Unlock the owned open description now, before File closes it. This is
+        // not a durability acknowledgement; normal commit already handles sync.
+        // If unlock fails, File still closes and another opener remains fenced.
+        let _ = self.file.unlock();
+    }
+}
+
 impl DurableLedger {
     /// Create an empty store explicitly. Never use this to replace lost history.
     /// File creation and containing-directory durability are owned by the host.
