@@ -9,6 +9,7 @@
 
 mod durable;
 mod durable_codec;
+mod durable_lock;
 mod error;
 mod ledger;
 mod model;
