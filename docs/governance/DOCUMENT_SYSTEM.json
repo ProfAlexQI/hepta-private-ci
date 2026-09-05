@@ -693,7 +693,7 @@
         "bindings",
         "authorityFlags"
       ],
-      "recursiveShapeSha256": "5f01a0ab09e11305ccf8cf833948c63d87d6d29c856042536ac09f0ecc73fc0d"
+      "recursiveShapeSha256": "448ac2b44887ba71f0ad7ab7c067b1095b72a5ff6b485fd5d84d27907c631d49"
     },
     {
       "path": "docs/learning/ALGORITHM_SPECS.json",
