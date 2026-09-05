@@ -30,10 +30,28 @@ pub struct JournalScope {
     pub objective_digest: Digest32,
 }
 
+/// Minimum acknowledged history retained by a separate trusted host store.
+/// The host must authenticate and scope this witness; a supplied digest is not
+/// a credential. Do not reconstruct the witness from the file being recovered.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct JournalAnchor {
+    pub sequence: u64,
+    pub checkpoint_digest: Digest32,
+}
+
+#[derive(Clone, Copy)]
+enum RecoveryPolicy {
+    Unanchored,
+    Require(JournalAnchor),
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum JournalError {
     Busy,
     InvalidLimit,
+    InvalidAnchor,
+    AcknowledgedHistoryMissing,
+    AnchorMismatch,
     NotRegular,
     Corrupt,
     ContextMismatch,
@@ -72,17 +90,54 @@ pub struct SparseJournal {
 }
 
 impl SparseJournal {
-    /// Recover valid complete frames and discard only an incomplete final frame.
-    /// A complete corrupt frame, unknown format or wrong context is never repaired.
+    /// Bootstrap or recover without an external acknowledgement witness.
+    /// This cannot detect loss of a valid suffix or replacement with an empty file.
+    /// Use `open_anchored` when the host has previously acknowledged history.
     /// New-file directory durability must be established separately by the host.
     pub fn open(
-        mut file: File,
+        file: File,
         config: SparseConfig,
         scope: JournalScope,
         max_records: usize,
     ) -> Result<Self, JournalError> {
+        Self::open_with_policy(file, config, scope, max_records, RecoveryPolicy::Unanchored)
+    }
+
+    /// Recover at least the externally acknowledged checkpoint. A missing or
+    /// different prefix rejects before any repair or initialization. Later complete
+    /// valid frames remain eligible for lost-acknowledgement reconciliation.
+    pub fn open_anchored(
+        file: File,
+        config: SparseConfig,
+        scope: JournalScope,
+        max_records: usize,
+        anchor: JournalAnchor,
+    ) -> Result<Self, JournalError> {
+        Self::open_with_policy(
+            file,
+            config,
+            scope,
+            max_records,
+            RecoveryPolicy::Require(anchor),
+        )
+    }
+
+    fn open_with_policy(
+        mut file: File,
+        config: SparseConfig,
+        scope: JournalScope,
+        max_records: usize,
+        policy: RecoveryPolicy,
+    ) -> Result<Self, JournalError> {
         if !(1..=MAX_RECORDS).contains(&max_records) {
             return Err(JournalError::InvalidLimit);
+        }
+        if let RecoveryPolicy::Require(anchor) = policy
+            && (anchor.sequence == 0
+                || anchor.sequence > max_records as u64
+                || anchor.checkpoint_digest.is_zero())
+        {
+            return Err(JournalError::InvalidAnchor);
         }
         let config_digest = config.digest().map_err(JournalError::Mechanism)?;
         if scope.scope_digest.is_zero() || scope.objective_digest.is_zero() {
@@ -105,6 +160,9 @@ impl SparseJournal {
         let length = file.metadata()?.len();
         file.seek(SeekFrom::Start(0))?;
         if length == 0 {
+            if let RecoveryPolicy::Require(_) = policy {
+                return Err(JournalError::AcknowledgedHistoryMissing);
+            }
             file.write_all(&header)
                 .map_err(|_| JournalError::Indeterminate)?;
             file.sync_all().map_err(|_| JournalError::Indeterminate)?;
@@ -142,6 +200,11 @@ impl SparseJournal {
         if complete > max_records {
             return Err(JournalError::Capacity);
         }
+        if let RecoveryPolicy::Require(anchor) = policy
+            && complete < anchor.sequence as usize
+        {
+            return Err(JournalError::AcknowledgedHistoryMissing);
+        }
         let mut frame = vec![0; frame_len];
         for _ in 0..complete {
             journal.file.read_exact(&mut frame)?;
@@ -163,6 +226,14 @@ impl SparseJournal {
                 .entries
                 .push((Digest32::of_bytes(&encode_tick(&tick)), receipt));
             journal.current = Some(state);
+        }
+        if let RecoveryPolicy::Require(anchor) = policy
+            && journal.entries[(anchor.sequence - 1) as usize]
+                .1
+                .checkpoint_after
+                != anchor.checkpoint_digest
+        {
+            return Err(JournalError::AnchorMismatch);
         }
         if !available.is_multiple_of(frame_len) {
             journal
@@ -344,3 +415,7 @@ fn decode_tick(mut bytes: &[u8], width: usize) -> Result<SparseTick, JournalErro
 #[cfg(test)]
 #[path = "journal_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "journal_anchor_tests.rs"]
+mod anchor_tests;

@@ -16,5 +16,8 @@ fn sha256_round_trip_is_canonical() {
 fn uppercase_and_wrong_length_fail_closed() {
     assert_eq!("00".parse::<Digest32>(), Err(DigestParseError::Length(2)));
     let uppercase = "A".repeat(64);
-    assert_eq!(uppercase.parse::<Digest32>(), Err(DigestParseError::Character(0)));
+    assert_eq!(
+        uppercase.parse::<Digest32>(),
+        Err(DigestParseError::Character(0))
+    );
 }

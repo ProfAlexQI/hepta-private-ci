@@ -1,4 +1,5 @@
 """Metadata regeneration preserves source authority and never writes in check mode."""
+
 import hashlib
 import json
 from pathlib import Path
@@ -19,21 +20,48 @@ class ModuleMetadataTests(unittest.TestCase):
             path = f"docs/modules/{module_id}/TECHNICAL.md"
             target = self.root / path
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(f"# {module_id}\n\nExplicit implementation boundary.\n", encoding="utf-8")
-            modules.append({"id": module_id, "technicalDocument": path,
-                            "sourceStatus": "target_partially_materialized"})
-            rows.append({"module": module_id, "path": path, "sourceStatus": "stale",
-                         "sha256": "0" * 64, "bytes": 0, "words": 0,
-                         "producedContracts": ["PreserveContractV1"]})
-            lines.append(f"- [`{module_id}`]({module_id}/TECHNICAL.md) — `stale`, bootstrap `TEST`.\n")
+            target.write_text(
+                f"# {module_id}\n\nExplicit implementation boundary.\n",
+                encoding="utf-8",
+            )
+            modules.append(
+                {
+                    "id": module_id,
+                    "technicalDocument": path,
+                    "sourceStatus": "target_partially_materialized",
+                }
+            )
+            rows.append(
+                {
+                    "module": module_id,
+                    "path": path,
+                    "sourceStatus": "stale",
+                    "sha256": "0" * 64,
+                    "bytes": 0,
+                    "words": 0,
+                    "producedContracts": ["PreserveContractV1"],
+                }
+            )
+            lines.append(
+                f"- [`{module_id}`]({module_id}/TECHNICAL.md) — `stale`, bootstrap `TEST`.\n"
+            )
         self.source_path = self.root / "docs/modules/MODULES.json"
         self.source_path.write_text(json.dumps({"modules": modules}), encoding="utf-8")
-        (self.root / INDEX).write_text(json.dumps({"modules": rows, "authorityFlags": {"runtimeAuthority": False}}), encoding="utf-8")
+        (self.root / INDEX).write_text(
+            json.dumps(
+                {"modules": rows, "authorityFlags": {"runtimeAuthority": False}}
+            ),
+            encoding="utf-8",
+        )
         (self.root / README).write_text("".join(lines), encoding="utf-8")
 
     def test_default_mode_detects_staleness_without_writes(self):
-        before = {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
-        self.assertEqual(set(synchronize(self.root)), {self.root / INDEX, self.root / README})
+        before = {
+            path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()
+        }
+        self.assertEqual(
+            set(synchronize(self.root)), {self.root / INDEX, self.root / README}
+        )
         self.assertEqual(before, {path: path.read_bytes() for path in before})
 
     def test_explicit_write_is_idempotent_and_preserves_authority(self):
@@ -43,8 +71,18 @@ class ModuleMetadataTests(unittest.TestCase):
         self.assertEqual(source_before, self.source_path.read_bytes())
         result = json.loads((self.root / INDEX).read_text())
         self.assertEqual(result["authorityFlags"], {"runtimeAuthority": False})
-        self.assertTrue(all(row["producedContracts"] == ["PreserveContractV1"] for row in result["modules"]))
-        self.assertTrue(all(row["sourceStatus"] == "target_partially_materialized" for row in result["modules"]))
+        self.assertTrue(
+            all(
+                row["producedContracts"] == ["PreserveContractV1"]
+                for row in result["modules"]
+            )
+        )
+        self.assertTrue(
+            all(
+                row["sourceStatus"] == "target_partially_materialized"
+                for row in result["modules"]
+            )
+        )
 
     def test_guide_change_is_bound_to_exact_new_digest(self):
         synchronize(self.root, write=True)

@@ -20,17 +20,25 @@ impl FixedQ32 {
     }
 
     pub fn checked_add(self, other: Self) -> Result<Self, FixedQ32Error> {
-        self.0.checked_add(other.0).map(Self).ok_or(FixedQ32Error::Overflow)
+        self.0
+            .checked_add(other.0)
+            .map(Self)
+            .ok_or(FixedQ32Error::Overflow)
     }
 
     pub fn checked_sub(self, other: Self) -> Result<Self, FixedQ32Error> {
-        self.0.checked_sub(other.0).map(Self).ok_or(FixedQ32Error::Overflow)
+        self.0
+            .checked_sub(other.0)
+            .map(Self)
+            .ok_or(FixedQ32Error::Overflow)
     }
 
     pub fn checked_mul(self, other: Self) -> Result<Self, FixedQ32Error> {
         let product = i128::from(self.0) * i128::from(other.0);
         let scaled = product / SCALE;
-        i64::try_from(scaled).map(Self).map_err(|_| FixedQ32Error::Overflow)
+        i64::try_from(scaled)
+            .map(Self)
+            .map_err(|_| FixedQ32Error::Overflow)
     }
 
     pub fn checked_div(self, other: Self) -> Result<Self, FixedQ32Error> {
@@ -39,7 +47,9 @@ impl FixedQ32 {
         }
         let numerator = i128::from(self.0) * SCALE;
         let quotient = numerator / i128::from(other.0);
-        i64::try_from(quotient).map(Self).map_err(|_| FixedQ32Error::Overflow)
+        i64::try_from(quotient)
+            .map(Self)
+            .map_err(|_| FixedQ32Error::Overflow)
     }
 
     pub fn clamp(self, minimum: Self, maximum: Self) -> Result<Self, FixedQ32Error> {

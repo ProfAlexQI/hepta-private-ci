@@ -7,7 +7,10 @@ use codex_hepta_types::StableId;
 pub enum OperationError {
     Missing(StableId),
     Conflict(StableId),
-    InvalidTransition { from: &'static str, to: &'static str },
+    InvalidTransition {
+        from: &'static str,
+        to: &'static str,
+    },
     AuthorityRejected,
     StaleGeneration,
     Terminal,
@@ -20,7 +23,10 @@ impl fmt::Display for OperationError {
             Self::Missing(id) => write!(formatter, "operation is missing: {id}"),
             Self::Conflict(id) => write!(formatter, "operation binding conflict: {id}"),
             Self::InvalidTransition { from, to } => {
-                write!(formatter, "invalid operation transition from {from} to {to}")
+                write!(
+                    formatter,
+                    "invalid operation transition from {from} to {to}"
+                )
             }
             Self::AuthorityRejected => formatter.write_str("operation authority witness rejected"),
             Self::StaleGeneration => formatter.write_str("operation generation fence is stale"),

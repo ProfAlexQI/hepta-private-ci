@@ -19,10 +19,21 @@ use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fmt;
 
-use codex_hepta_types::{AuthorityPosture, Digest32, FixedQ32, StableId};
+use codex_hepta_types::AuthorityPosture;
+use codex_hepta_types::Digest32;
+use codex_hepta_types::FixedQ32;
+use codex_hepta_types::StableId;
 
-use super::{MAX_ROWS, OpeError, OpeEstimate, OpePlan, OpeRow, SCALE};
-use super::{estimate_ope, estimate_row, fixed, round_ratio};
+use super::MAX_ROWS;
+use super::OpeError;
+use super::OpeEstimate;
+use super::OpePlan;
+use super::OpeRow;
+use super::SCALE;
+use super::estimate_ope;
+use super::estimate_row;
+use super::fixed;
+use super::round_ratio;
 use crate::push_id;
 
 #[derive(Clone, Debug, Eq, PartialEq)]

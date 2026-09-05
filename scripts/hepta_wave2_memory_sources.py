@@ -26,7 +26,9 @@ SOURCE_ROOTS = {
 }
 
 
-def manifest(package: str, lib: str, dependencies: tuple[tuple[str, str], ...] = ()) -> str:
+def manifest(
+    package: str, lib: str, dependencies: tuple[tuple[str, str], ...] = ()
+) -> str:
     dependency_lines = ['codex-hepta-types = { path = "../hepta-types" }']
     dependency_lines.extend(
         f'{name} = {{ path = "../{path}" }}' for name, path in dependencies
@@ -69,7 +71,7 @@ FILES = {
         "codex-hepta-cognitive-types", "codex_hepta_cognitive_types"
     ),
     "codex-rs/hepta-cognitive-types/BUILD.bazel": build("hepta-cognitive-types"),
-    "codex-rs/hepta-cognitive-types/src/lib.rs": r'''//! Stable cognitive records and snapshot contracts.
+    "codex-rs/hepta-cognitive-types/src/lib.rs": r"""//! Stable cognitive records and snapshot contracts.
 //!
 //! This crate defines bounded values only. It owns no SQL, daemon, model,
 //! network, effect, selection, promotion or release authority.
@@ -257,8 +259,8 @@ fn push_id(bytes: &mut Vec<u8>, value: &StableId) {
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
-''',
-    "codex-rs/hepta-cognitive-types/src/lib_tests.rs": r'''use super::*;
+""",
+    "codex-rs/hepta-cognitive-types/src/lib_tests.rs": r"""use super::*;
 
 fn id(value: &str) -> StableId {
     let Ok(value) = StableId::new(value) else {
@@ -336,14 +338,14 @@ fn duplicate_record_revision_is_rejected() {
         Err(Error::DuplicateRecord("record:1".to_string()))
     );
 }
-''',
+""",
     "codex-rs/hepta-cognitive-store/Cargo.toml": manifest(
         "codex-hepta-cognitive-store",
         "codex_hepta_cognitive_store",
         (("codex-hepta-cognitive-types", "hepta-cognitive-types"),),
     ),
     "codex-rs/hepta-cognitive-store/BUILD.bazel": build("hepta-cognitive-store"),
-    "codex-rs/hepta-cognitive-store/src/lib.rs": r'''//! Append-only cognitive ledger with correction and tombstone lineage.
+    "codex-rs/hepta-cognitive-store/src/lib.rs": r"""//! Append-only cognitive ledger with correction and tombstone lineage.
 //!
 //! The store is the only writer of its in-memory qualification ledger. It does
 //! not perform federation, model calls, learning-policy writes or effects.
@@ -492,8 +494,8 @@ impl CognitiveStore {
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
-''',
-    "codex-rs/hepta-cognitive-store/src/lib_tests.rs": r'''use super::*;
+""",
+    "codex-rs/hepta-cognitive-store/src/lib_tests.rs": r"""use super::*;
 use codex_hepta_cognitive_types::{MemoryKind, RecordState};
 use codex_hepta_types::Revision;
 
@@ -589,14 +591,14 @@ fn identical_append_is_idempotent() {
         Ok(AppendDisposition::Unchanged)
     );
 }
-''',
+""",
     "codex-rs/hepta-cognitive-read/Cargo.toml": manifest(
         "codex-hepta-cognitive-read",
         "codex_hepta_cognitive_read",
         (("codex-hepta-cognitive-types", "hepta-cognitive-types"),),
     ),
     "codex-rs/hepta-cognitive-read/BUILD.bazel": build("hepta-cognitive-read"),
-    "codex-rs/hepta-cognitive-read/src/lib.rs": r'''//! Snapshot-bound, redaction-aware cognitive read port.
+    "codex-rs/hepta-cognitive-read/src/lib.rs": r"""//! Snapshot-bound, redaction-aware cognitive read port.
 
 #![forbid(unsafe_code)]
 
@@ -696,8 +698,8 @@ pub fn read(snapshot: &CognitiveSnapshot, request: ReadRequest) -> Result<ReadRe
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
-''',
-    "codex-rs/hepta-cognitive-read/src/lib_tests.rs": r'''use super::*;
+""",
+    "codex-rs/hepta-cognitive-read/src/lib_tests.rs": r"""use super::*;
 use codex_hepta_cognitive_types::{build_snapshot, MemoryRecord};
 use codex_hepta_types::{Generation, Revision, StableId};
 
@@ -793,14 +795,14 @@ fn bounded_result_count_is_explicit() {
     assert_eq!(receipt.records.len(), 1);
     assert_eq!(receipt.omitted_count, 2);
 }
-''',
+""",
     "codex-rs/hepta-memory-retrieval/Cargo.toml": manifest(
         "codex-hepta-memory-retrieval",
         "codex_hepta_memory_retrieval",
         (("codex-hepta-cognitive-types", "hepta-cognitive-types"),),
     ),
     "codex-rs/hepta-memory-retrieval/BUILD.bazel": build("hepta-memory-retrieval"),
-    "codex-rs/hepta-memory-retrieval/src/lib.rs": r'''//! Explainable, snapshot-revalidated local memory retrieval.
+    "codex-rs/hepta-memory-retrieval/src/lib.rs": r"""//! Explainable, snapshot-revalidated local memory retrieval.
 
 #![forbid(unsafe_code)]
 
@@ -958,8 +960,8 @@ fn push_id(bytes: &mut Vec<u8>, value: &StableId) {
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
-''',
-    "codex-rs/hepta-memory-retrieval/src/lib_tests.rs": r'''use super::*;
+""",
+    "codex-rs/hepta-memory-retrieval/src/lib_tests.rs": r"""use super::*;
 use codex_hepta_cognitive_types::{MemoryKind, RecordState};
 use codex_hepta_types::Revision;
 
@@ -1055,12 +1057,12 @@ fn result_count_is_bounded() {
     assert_eq!(receipt.results.len(), 1);
     assert_eq!(receipt.omitted_count, 1);
 }
-''',
+""",
     "codex-rs/hepta-memory-federation/Cargo.toml": manifest(
         "codex-hepta-memory-federation", "codex_hepta_memory_federation"
     ),
     "codex-rs/hepta-memory-federation/BUILD.bazel": build("hepta-memory-federation"),
-    "codex-rs/hepta-memory-federation/src/lib.rs": r'''//! Scoped, fail-closed remote cognitive read verification.
+    "codex-rs/hepta-memory-federation/src/lib.rs": r"""//! Scoped, fail-closed remote cognitive read verification.
 
 #![forbid(unsafe_code)]
 
@@ -1217,8 +1219,8 @@ fn push_id(bytes: &mut Vec<u8>, value: &StableId) {
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
-''',
-    "codex-rs/hepta-memory-federation/src/lib_tests.rs": r'''use super::*;
+""",
+    "codex-rs/hepta-memory-federation/src/lib_tests.rs": r"""use super::*;
 
 fn id(value: &str) -> StableId {
     let Ok(value) = StableId::new(value) else {
@@ -1294,14 +1296,14 @@ fn terminal_response_is_bound() {
     assert_eq!(receipt.status, FederatedStatus::Succeeded);
     assert_eq!(receipt.response_digest, Some(digest(b"response")));
 }
-''',
+""",
     "codex-rs/hepta-kg/Cargo.toml": manifest(
         "codex-hepta-kg",
         "codex_hepta_kg",
         (("codex-hepta-cognitive-types", "hepta-cognitive-types"),),
     ),
     "codex-rs/hepta-kg/BUILD.bazel": build("hepta-kg"),
-    "codex-rs/hepta-kg/src/lib.rs": r'''//! Rebuildable knowledge-graph projection.
+    "codex-rs/hepta-kg/src/lib.rs": r"""//! Rebuildable knowledge-graph projection.
 
 #![forbid(unsafe_code)]
 
@@ -1403,8 +1405,8 @@ fn push_id(bytes: &mut Vec<u8>, value: &StableId) {
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
-''',
-    "codex-rs/hepta-kg/src/lib_tests.rs": r'''use super::*;
+""",
+    "codex-rs/hepta-kg/src/lib_tests.rs": r"""use super::*;
 
 fn id(value: &str) -> StableId {
     let Ok(value) = StableId::new(value) else {
@@ -1463,14 +1465,14 @@ fn duplicate_edges_are_rejected() {
         Err(Error::DuplicateEdge("source:a".to_string()))
     );
 }
-''',
+""",
     "codex-rs/hepta-compact-engine/Cargo.toml": manifest(
         "codex-hepta-compact-engine",
         "codex_hepta_compact_engine",
         (("codex-hepta-cognitive-types", "hepta-cognitive-types"),),
     ),
     "codex-rs/hepta-compact-engine/BUILD.bazel": build("hepta-compact-engine"),
-    "codex-rs/hepta-compact-engine/src/lib.rs": r'''//! Bounded cognitive compaction checkpoint builder.
+    "codex-rs/hepta-compact-engine/src/lib.rs": r"""//! Bounded cognitive compaction checkpoint builder.
 
 #![forbid(unsafe_code)]
 
@@ -1565,8 +1567,8 @@ pub fn compact(
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
-''',
-    "codex-rs/hepta-compact-engine/src/lib_tests.rs": r'''use super::*;
+""",
+    "codex-rs/hepta-compact-engine/src/lib_tests.rs": r"""use super::*;
 use codex_hepta_cognitive_types::{MemoryKind, RecordState};
 use codex_hepta_types::Revision;
 
@@ -1652,12 +1654,12 @@ fn missing_initial_revision_is_rejected() {
         Err(Error::BrokenLineage("memory:1".to_string()))
     );
 }
-''',
+""",
     "codex-rs/hepta-context-compiler/Cargo.toml": manifest(
         "codex-hepta-context-compiler", "codex_hepta_context_compiler"
     ),
     "codex-rs/hepta-context-compiler/BUILD.bazel": build("hepta-context-compiler"),
-    "codex-rs/hepta-context-compiler/src/lib.rs": r'''//! Source-aware context compiler.
+    "codex-rs/hepta-context-compiler/src/lib.rs": r"""//! Source-aware context compiler.
 //!
 //! Trusted instructions and untrusted evidence remain separate sections. The
 //! compiler accepts digests, never raw secrets, and cannot call a model.
@@ -1818,8 +1820,8 @@ fn push_id(bytes: &mut Vec<u8>, value: &StableId) {
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
-''',
-    "codex-rs/hepta-context-compiler/src/lib_tests.rs": r'''use super::*;
+""",
+    "codex-rs/hepta-context-compiler/src/lib_tests.rs": r"""use super::*;
 
 fn id(value: &str) -> StableId {
     let Ok(value) = StableId::new(value) else {
@@ -1898,5 +1900,5 @@ fn duplicate_item_is_rejected() {
         Err(Error::DuplicateItem("item:1".to_string()))
     );
 }
-''',
+""",
 }

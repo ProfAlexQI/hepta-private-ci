@@ -83,7 +83,10 @@ impl fmt::Display for BoundedValueError {
             Self::Empty => formatter.write_str("bounded value must not be empty"),
             Self::Nul => formatter.write_str("bounded text must not contain NUL"),
             Self::TooLarge { actual, maximum } => {
-                write!(formatter, "bounded value has {actual} bytes; maximum is {maximum}")
+                write!(
+                    formatter,
+                    "bounded value has {actual} bytes; maximum is {maximum}"
+                )
             }
         }
     }

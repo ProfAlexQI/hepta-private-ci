@@ -96,8 +96,8 @@ impl WireEnvelope {
         {
             return Err(WireError::IdentityLength);
         }
-        let generation = Generation::new(read_u64(encoded, 10)?)
-            .map_err(|_| WireError::Generation)?;
+        let generation =
+            Generation::new(read_u64(encoded, 10)?).map_err(|_| WireError::Generation)?;
         let digest_start = 18;
         let digest_end = digest_start + 32;
         let mut digest = [0; 32];
@@ -209,7 +209,10 @@ impl fmt::Display for WireError {
             Self::PayloadLength => formatter.write_str("wire payload length is outside bounds"),
             Self::LengthMismatch => formatter.write_str("wire envelope length mismatch"),
             Self::DigestMismatch { expected, observed } => {
-                write!(formatter, "wire payload digest mismatch: expected {expected}, observed {observed}")
+                write!(
+                    formatter,
+                    "wire payload digest mismatch: expected {expected}, observed {observed}"
+                )
             }
         }
     }

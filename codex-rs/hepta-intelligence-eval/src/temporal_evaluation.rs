@@ -6,16 +6,28 @@
 //! constructed. Supplied lineage and observed outcomes still need authenticated
 //! provenance. Synthetic timestamps do not establish future-calendar efficacy.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::error::Error as StdError;
 use std::fmt;
 
-use codex_hepta_types::{AuthorityPosture, Digest32, StableId};
+use codex_hepta_types::AuthorityPosture;
+use codex_hepta_types::Digest32;
+use codex_hepta_types::StableId;
 
+use crate::ClusterAssignment;
+use crate::ClusterConfidenceError;
+use crate::ClusterConfidencePlan;
+use crate::ClusterOpeEstimate;
+use crate::HeldOutTarget;
+use crate::OpePlan;
+use crate::OpeRow;
+use crate::OutcomeTrainingSample;
+use crate::TemporalFoldError;
+use crate::TemporalFoldPlan;
+use crate::estimate_cluster_intervals;
+use crate::fit_temporal_fold;
 use crate::push_id;
-use crate::{ClusterAssignment, ClusterConfidenceError, ClusterConfidencePlan, ClusterOpeEstimate};
-use crate::{HeldOutTarget, OpePlan, OpeRow, OutcomeTrainingSample};
-use crate::{TemporalFoldError, TemporalFoldPlan, estimate_cluster_intervals, fit_temporal_fold};
 
 const MAX_EVALUATION_ROWS: usize = 16_384;
 const MAX_ACTION_CELLS: usize = 262_144;

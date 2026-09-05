@@ -9,18 +9,26 @@
 use std::error::Error as StdError;
 use std::fmt;
 
-use codex_hepta_types::{AuthorityPosture, Digest32, FixedQ32, Generation, StableId};
+use codex_hepta_types::AuthorityPosture;
+use codex_hepta_types::Digest32;
+use codex_hepta_types::FixedQ32;
+use codex_hepta_types::Generation;
+use codex_hepta_types::StableId;
 
 mod journal;
 mod sparse;
 
+pub use journal::JournalAnchor;
 pub use journal::JournalError;
 pub use journal::JournalScope;
 pub use journal::SparseJournal;
-pub use sparse::{
-    InhibitoryEdge, SparseCheckpoint, SparseConfig, SparseError, SparseSignalReceipt, SparseTick,
-    sparse_tick,
-};
+pub use sparse::InhibitoryEdge;
+pub use sparse::SparseCheckpoint;
+pub use sparse::SparseConfig;
+pub use sparse::SparseError;
+pub use sparse::SparseSignalReceipt;
+pub use sparse::SparseTick;
+pub use sparse::sparse_tick;
 
 const MAX_FEATURES: usize = 4_096;
 

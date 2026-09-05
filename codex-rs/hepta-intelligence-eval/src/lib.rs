@@ -5,25 +5,37 @@ use std::collections::BTreeSet;
 use std::error::Error as StdError;
 use std::fmt;
 
-use codex_hepta_types::{Digest32, FixedQ32, StableId};
+use codex_hepta_types::Digest32;
+use codex_hepta_types::FixedQ32;
+use codex_hepta_types::StableId;
 
 mod ope;
 mod temporal_evaluation;
 mod temporal_fold;
 
-pub use ope::{
-    ClusterAssignment, ClusterConfidenceError, ClusterConfidencePlan, ClusterOpeEstimate,
-    OpeAction, OpeError, OpeEstimate, OpeInterval, OpePlan, OpeRow, estimate_cluster_intervals,
-    estimate_ope,
-};
-pub use temporal_evaluation::{
-    TemporalEvaluationError, TemporalEvaluationPlan, TemporalEvaluationReceipt,
-    evaluate_temporal_holdout,
-};
-pub use temporal_fold::{
-    HeldOutPrediction, HeldOutTarget, OutcomeTrainingSample, TemporalFoldError, TemporalFoldPlan,
-    TemporalFoldReceipt, fit_temporal_fold,
-};
+pub use ope::ClusterAssignment;
+pub use ope::ClusterConfidenceError;
+pub use ope::ClusterConfidencePlan;
+pub use ope::ClusterOpeEstimate;
+pub use ope::OpeAction;
+pub use ope::OpeError;
+pub use ope::OpeEstimate;
+pub use ope::OpeInterval;
+pub use ope::OpePlan;
+pub use ope::OpeRow;
+pub use ope::estimate_cluster_intervals;
+pub use ope::estimate_ope;
+pub use temporal_evaluation::TemporalEvaluationError;
+pub use temporal_evaluation::TemporalEvaluationPlan;
+pub use temporal_evaluation::TemporalEvaluationReceipt;
+pub use temporal_evaluation::evaluate_temporal_holdout;
+pub use temporal_fold::HeldOutPrediction;
+pub use temporal_fold::HeldOutTarget;
+pub use temporal_fold::OutcomeTrainingSample;
+pub use temporal_fold::TemporalFoldError;
+pub use temporal_fold::TemporalFoldPlan;
+pub use temporal_fold::TemporalFoldReceipt;
+pub use temporal_fold::fit_temporal_fold;
 
 const MAX_METRICS: usize = 128;
 

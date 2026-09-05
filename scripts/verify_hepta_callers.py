@@ -70,8 +70,13 @@ def _boundary_rows(data: dict[str, Any]) -> tuple[Boundary, ...]:
         identifier = row.get("id")
         symbol = row.get("symbol")
         definition_path = row.get("definition_path")
-        if not all(isinstance(value, str) and value for value in (identifier, symbol, definition_path)):
-            raise VerificationFailure("boundary id, symbol and definition_path are required")
+        if not all(
+            isinstance(value, str) and value
+            for value in (identifier, symbol, definition_path)
+        ):
+            raise VerificationFailure(
+                "boundary id, symbol and definition_path are required"
+            )
         if identifier in identifiers:
             raise VerificationFailure(f"duplicate boundary id: {identifier}")
         if symbol in symbols:
@@ -93,7 +98,9 @@ def _boundary_rows(data: dict[str, Any]) -> tuple[Boundary, ...]:
 
 def _string_tuple(row: dict[str, Any], key: str) -> tuple[str, ...]:
     value = row.get(key)
-    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item for item in value
+    ):
         raise VerificationFailure(f"{key} must be a list of non-empty strings")
     return tuple(value)
 
@@ -215,10 +222,14 @@ def _source_files(root: Path, source_roots: tuple[str, ...]) -> tuple[Path, ...]
     for relative_root in source_roots:
         source_root = (root / relative_root).resolve()
         if not source_root.is_relative_to(resolved_root):
-            raise VerificationFailure(f"source root escapes repository: {relative_root}")
+            raise VerificationFailure(
+                f"source root escapes repository: {relative_root}"
+            )
         for path in source_root.rglob("*.rs"):
             if path.is_symlink():
-                raise VerificationFailure(f"Rust source symlink is not allowed: {path.relative_to(root)}")
+                raise VerificationFailure(
+                    f"Rust source symlink is not allowed: {path.relative_to(root)}"
+                )
             files.append(path)
     return tuple(sorted(files))
 
@@ -240,12 +251,16 @@ def _verify_boundary(
     definition_text = definition.read_text(encoding="utf-8")
     for marker in boundary.definition_markers:
         if marker not in definition_text:
-            raise VerificationFailure(f"{boundary.identifier}: missing definition marker {marker!r}")
+            raise VerificationFailure(
+                f"{boundary.identifier}: missing definition marker {marker!r}"
+            )
 
     symbol_pattern = re.compile(re.escape(boundary.symbol) + r"\s*\(")
     observed: set[str] = set()
     for relative, code in source_index.items():
-        if relative == boundary.definition_path or _is_ignored(relative, ignored_fragments):
+        if relative == boundary.definition_path or _is_ignored(
+            relative, ignored_fragments
+        ):
             continue
         if symbol_pattern.search(code):
             observed.add(relative)
@@ -259,7 +274,9 @@ def _verify_boundary(
     for caller in boundary.product_callers:
         caller_path = root / caller
         if not caller_path.is_file():
-            raise VerificationFailure(f"{boundary.identifier}: caller file is missing: {caller}")
+            raise VerificationFailure(
+                f"{boundary.identifier}: caller file is missing: {caller}"
+            )
         caller_text = caller_path.read_text(encoding="utf-8")
         for marker in boundary.caller_markers:
             if marker not in caller_text:
@@ -288,10 +305,14 @@ def _verify_protected_files(root: Path, data: dict[str, Any]) -> list[str]:
         text = path.read_text(encoding="utf-8")
         for marker in _string_tuple(row, "required"):
             if marker not in text:
-                raise VerificationFailure(f"{relative}: required marker missing: {marker!r}")
+                raise VerificationFailure(
+                    f"{relative}: required marker missing: {marker!r}"
+                )
         for marker in _string_tuple(row, "forbidden"):
             if marker in text:
-                raise VerificationFailure(f"{relative}: forbidden marker present: {marker!r}")
+                raise VerificationFailure(
+                    f"{relative}: forbidden marker present: {marker!r}"
+                )
         checked.append(relative)
     return checked
 
@@ -308,9 +329,12 @@ def verify(root: Path = ROOT, manifest_path: Path | None = None) -> dict[str, An
     for source_path in files:
         raw = source_path.read_text(encoding="utf-8")
         if any(symbol in raw for symbol in symbols):
-            source_index[source_path.relative_to(root).as_posix()] = _strip_rust_non_code(raw)
+            source_index[source_path.relative_to(root).as_posix()] = (
+                _strip_rust_non_code(raw)
+            )
     results = [
-        _verify_boundary(root, boundary, source_index, ignored) for boundary in boundaries
+        _verify_boundary(root, boundary, source_index, ignored)
+        for boundary in boundaries
     ]
     protected = _verify_protected_files(root, data)
     return {
@@ -325,7 +349,9 @@ def verify(root: Path = ROOT, manifest_path: Path | None = None) -> dict[str, An
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("verify", "self-test"), nargs="?", default="verify")
+    parser.add_argument(
+        "command", choices=("verify", "self-test"), nargs="?", default="verify"
+    )
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--manifest", type=Path)
     args = parser.parse_args()
@@ -335,7 +361,9 @@ def main() -> int:
         )
         if "Hidden::new" in code or "call" not in code or "real" not in code:
             raise VerificationFailure("lexical scanner self-test failed")
-        print(json.dumps({"status": "PASS_HEPTA_CALLER_PROOF_SELF_TEST"}, sort_keys=True))
+        print(
+            json.dumps({"status": "PASS_HEPTA_CALLER_PROOF_SELF_TEST"}, sort_keys=True)
+        )
         return 0
     try:
         receipt = verify(args.root.resolve(), args.manifest)

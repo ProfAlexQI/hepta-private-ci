@@ -50,13 +50,21 @@ fn payload_tamper_and_trailing_bytes_fail_closed() {
     ));
     let mut trailing = envelope.encode();
     trailing.push(0);
-    assert_eq!(WireEnvelope::decode(&trailing), Err(WireError::LengthMismatch));
+    assert_eq!(
+        WireEnvelope::decode(&trailing),
+        Err(WireError::LengthMismatch)
+    );
 }
 
 #[test]
 fn unknown_version_and_empty_payload_are_rejected() {
     assert_eq!(
-        WireEnvelope::new(id("hepta.test.v1"), id("platform.wire"), generation(), Vec::new()),
+        WireEnvelope::new(
+            id("hepta.test.v1"),
+            id("platform.wire"),
+            generation(),
+            Vec::new()
+        ),
         Err(WireError::PayloadLength)
     );
     let envelope = WireEnvelope::new(

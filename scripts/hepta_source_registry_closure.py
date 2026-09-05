@@ -36,9 +36,7 @@ SOURCE_ROOTS: dict[str, tuple[str, ...]] = {
 }
 
 SOURCE_STATUS = "existing_bound"
-SOURCE_INTERPRETATION = (
-    "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
-)
+SOURCE_INTERPRETATION = "declared_root_is_materialized_but_activation_acceptance_promotion_and_release_remain_separate"
 SECTION_TWO_HEADING = "## 2. Source binding and implementation status"
 SECTION_THREE_HEADING = "## 3. Boundary, responsibilities and non-goals"
 SOURCE_RECEIPT_HEADING = "## 17. Source implementation receipt"
@@ -52,9 +50,13 @@ def _load_json(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
-        raise RegistryClosureError(f"cannot parse {path.relative_to(ROOT)}: {error}") from error
+        raise RegistryClosureError(
+            f"cannot parse {path.relative_to(ROOT)}: {error}"
+        ) from error
     if not isinstance(value, dict):
-        raise RegistryClosureError(f"{path.relative_to(ROOT)} must contain a JSON object")
+        raise RegistryClosureError(
+            f"{path.relative_to(ROOT)} must contain a JSON object"
+        )
     return value
 
 
@@ -80,7 +82,9 @@ def _index(
                 f"{source_name} contains a record without {identity_key}"
             )
         if identity in indexed:
-            raise RegistryClosureError(f"duplicate {identity_key} in {source_name}: {identity}")
+            raise RegistryClosureError(
+                f"duplicate {identity_key} in {source_name}: {identity}"
+            )
         indexed[identity] = record
     return indexed
 
@@ -94,11 +98,15 @@ def _declared_roots(module: dict[str, Any]) -> tuple[str, ...]:
     roots: list[str] = []
     for binding in bindings:
         if not isinstance(binding, dict):
-            raise RegistryClosureError(f"module {module.get('id')} has invalid root binding")
+            raise RegistryClosureError(
+                f"module {module.get('id')} has invalid root binding"
+            )
         path = binding.get("path")
         mode = binding.get("mode")
         if not isinstance(path, str) or not path:
-            raise RegistryClosureError(f"module {module.get('id')} has invalid root path")
+            raise RegistryClosureError(
+                f"module {module.get('id')} has invalid root path"
+            )
         if mode != "exclusive":
             raise RegistryClosureError(
                 f"module {module.get('id')} root {path} is not exclusive"
@@ -162,7 +170,9 @@ def _normalize_technical_document(
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as error:
-        raise RegistryClosureError(f"cannot read {path.relative_to(ROOT)}: {error}") from error
+        raise RegistryClosureError(
+            f"cannot read {path.relative_to(ROOT)}: {error}"
+        ) from error
 
     status_pattern = re.compile(r"(?m)^\*\*Source status:\*\* `[^`]+`$")
     if not status_pattern.search(text):
@@ -178,11 +188,11 @@ def _normalize_technical_document(
         raise RegistryClosureError(
             f"source binding section is missing in {path.relative_to(ROOT)}"
         )
-    text = section_pattern.sub(_technical_section(module_id, roots) + "\n", text, count=1)
-
-    receipt_pattern = re.compile(
-        rf"(?ms)\n{re.escape(SOURCE_RECEIPT_HEADING)}\n.*\Z"
+    text = section_pattern.sub(
+        _technical_section(module_id, roots) + "\n", text, count=1
     )
+
+    receipt_pattern = re.compile(rf"(?ms)\n{re.escape(SOURCE_RECEIPT_HEADING)}\n.*\Z")
     receipt = "\n" + _source_receipt(module_id, roots, bootstrap)
     if receipt_pattern.search(text):
         text = receipt_pattern.sub(receipt, text, count=1)
@@ -199,10 +209,7 @@ def _normalize_technical_document(
 
 
 def _status_counts(records: list[dict[str, Any]], field: str) -> dict[str, int]:
-    counts = Counter(
-        str(record.get(field, "missing"))
-        for record in records
-    )
+    counts = Counter(str(record.get(field, "missing")) for record in records)
     return dict(sorted(counts.items()))
 
 
@@ -225,7 +232,9 @@ def _build_audit(
                 {
                     "module": binding.get("module"),
                     "sourceStatus": status,
-                    "missingDeclaredRoots": missing if isinstance(missing, list) else [],
+                    "missingDeclaredRoots": missing
+                    if isinstance(missing, list)
+                    else [],
                     "bootstrapWorkPackage": binding.get("bootstrapWorkPackage"),
                 }
             )
@@ -327,7 +336,9 @@ def normalize() -> bool:
         module = modules_by_id.get(module_id)
         binding = bindings_by_id.get(module_id)
         if module is None or binding is None:
-            raise RegistryClosureError(f"canonical module or binding is missing: {module_id}")
+            raise RegistryClosureError(
+                f"canonical module or binding is missing: {module_id}"
+            )
         declared = _declared_roots(module)
         if declared != expected_roots:
             raise RegistryClosureError(
@@ -352,7 +363,9 @@ def normalize() -> bool:
 
         for root in expected_roots:
             if not (ROOT / root).exists():
-                raise RegistryClosureError(f"materialized source root is missing: {root}")
+                raise RegistryClosureError(
+                    f"materialized source root is missing: {root}"
+                )
 
         module["sourceStatus"] = SOURCE_STATUS
         module["sourceEvidenceRoots"] = list(expected_roots)

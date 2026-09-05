@@ -32,19 +32,11 @@ fn claim_and_ack_are_generation_fenced() {
     assert_eq!(outbox.enqueue(intent.clone()), Ok(()));
     assert!(outbox.claim(&intent.intent_id, generation(4)).is_ok());
     assert_eq!(
-        outbox.acknowledge(
-            &intent.intent_id,
-            generation(3),
-            Digest32::of_bytes(b"ack"),
-        ),
+        outbox.acknowledge(&intent.intent_id, generation(3), Digest32::of_bytes(b"ack"),),
         Err(OperationError::StaleGeneration)
     );
     assert_eq!(
-        outbox.acknowledge(
-            &intent.intent_id,
-            generation(4),
-            Digest32::of_bytes(b"ack"),
-        ),
+        outbox.acknowledge(&intent.intent_id, generation(4), Digest32::of_bytes(b"ack"),),
         Ok(())
     );
 }
@@ -57,6 +49,12 @@ fn exact_enqueue_and_ack_replay_are_idempotent() {
     assert_eq!(outbox.enqueue(intent.clone()), Ok(()));
     assert!(outbox.claim(&intent.intent_id, generation(4)).is_ok());
     let ack = Digest32::of_bytes(b"ack");
-    assert_eq!(outbox.acknowledge(&intent.intent_id, generation(4), ack), Ok(()));
-    assert_eq!(outbox.acknowledge(&intent.intent_id, generation(4), ack), Ok(()));
+    assert_eq!(
+        outbox.acknowledge(&intent.intent_id, generation(4), ack),
+        Ok(())
+    );
+    assert_eq!(
+        outbox.acknowledge(&intent.intent_id, generation(4), ack),
+        Ok(())
+    );
 }

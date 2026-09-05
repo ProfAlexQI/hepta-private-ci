@@ -50,7 +50,10 @@ macro_rules! monotonic_identity {
             }
 
             pub fn next(self) -> Result<Self, IdentityError> {
-                self.0.checked_add(1).map(Self).ok_or(IdentityError::Overflow)
+                self.0
+                    .checked_add(1)
+                    .map(Self)
+                    .ok_or(IdentityError::Overflow)
             }
         }
     };
@@ -109,7 +112,9 @@ impl fmt::Display for IdentityError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Bounded(error) => error.fmt(formatter),
-            Self::InvalidCharacter => formatter.write_str("identifier contains an invalid character"),
+            Self::InvalidCharacter => {
+                formatter.write_str("identifier contains an invalid character")
+            }
             Self::Zero => formatter.write_str("monotonic identity must be non-zero"),
             Self::Overflow => formatter.write_str("monotonic identity overflow"),
         }

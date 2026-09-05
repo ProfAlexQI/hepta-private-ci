@@ -1,8 +1,10 @@
 use super::*;
-use codex_hepta_types::{FixedQ32, ProbabilityQ32};
+use codex_hepta_types::FixedQ32;
+use codex_hepta_types::ProbabilityQ32;
 use std::fmt::Debug;
 
-use crate::{OpeAction, estimate_ope};
+use crate::OpeAction;
+use crate::estimate_ope;
 
 fn must<T, E: Debug>(result: Result<T, E>) -> T {
     match result {

@@ -8,17 +8,23 @@ use std::collections::BTreeSet;
 use std::error::Error as StdError;
 use std::fmt;
 
-use codex_hepta_types::{AuthorityPosture, Digest32, FixedQ32, ProbabilityQ32, StableId};
+use codex_hepta_types::AuthorityPosture;
+use codex_hepta_types::Digest32;
+use codex_hepta_types::FixedQ32;
+use codex_hepta_types::ProbabilityQ32;
+use codex_hepta_types::StableId;
 
 use crate::push_id;
 
 #[path = "ope_confidence.rs"]
 mod confidence;
 
-pub use confidence::{
-    ClusterAssignment, ClusterConfidenceError, ClusterConfidencePlan, ClusterOpeEstimate,
-    OpeInterval, estimate_cluster_intervals,
-};
+pub use confidence::ClusterAssignment;
+pub use confidence::ClusterConfidenceError;
+pub use confidence::ClusterConfidencePlan;
+pub use confidence::ClusterOpeEstimate;
+pub use confidence::OpeInterval;
+pub use confidence::estimate_cluster_intervals;
 
 const SCALE: i128 = 1_i128 << 32;
 const MAX_ROWS: usize = 1_000_000;

@@ -66,18 +66,16 @@ DENIED_AUTHORITY_FLAGS = (
 
 def normalize_workspace() -> bool:
     text = CARGO_MANIFEST.read_text(encoding="utf-8")
-    missing = [
-        member
-        for member in RUST_PACKAGES
-        if f'    "{member}",\n' not in text
-    ]
+    missing = [member for member in RUST_PACKAGES if f'    "{member}",\n' not in text]
     if not missing:
         return False
     anchor = '    "hepta-evidence",\n'
     if anchor not in text:
         raise RuntimeError("workspace member insertion anchor is missing")
     insertion = "".join(f'    "{member}",\n' for member in missing)
-    CARGO_MANIFEST.write_text(text.replace(anchor, anchor + insertion, 1), encoding="utf-8")
+    CARGO_MANIFEST.write_text(
+        text.replace(anchor, anchor + insertion, 1), encoding="utf-8"
+    )
     return True
 
 
@@ -85,9 +83,13 @@ def normalize_ndu_helpers() -> bool:
     changed = False
     digest_path = ROOT / "codex-rs" / "hepta-ndu" / "src" / "evaluation_digest.rs"
     digest_text = digest_path.read_text(encoding="utf-8")
-    public_axis_helper = "pub(crate) fn push_axis_values(bytes: &mut Vec<u8>, values: &[AxisValue])"
+    public_axis_helper = (
+        "pub(crate) fn push_axis_values(bytes: &mut Vec<u8>, values: &[AxisValue])"
+    )
     if public_axis_helper not in digest_text:
-        private_axis_helper = "fn push_axis_values(bytes: &mut Vec<u8>, values: &[AxisValue])"
+        private_axis_helper = (
+            "fn push_axis_values(bytes: &mut Vec<u8>, values: &[AxisValue])"
+        )
         if private_axis_helper not in digest_text:
             raise RuntimeError("NDU axis digest helper signature is missing")
         digest_text = digest_text.replace(private_axis_helper, public_axis_helper, 1)
@@ -113,7 +115,9 @@ def normalize_ndu_helpers() -> bool:
         anchor = "use crate::AxisDirection;\n"
         if anchor not in evaluator_text:
             raise RuntimeError("NDU AxisDirection import anchor is missing")
-        evaluator_text = evaluator_text.replace(anchor, anchor + "use crate::AxisLimit;\n", 1)
+        evaluator_text = evaluator_text.replace(
+            anchor, anchor + "use crate::AxisLimit;\n", 1
+        )
         changed = True
     if "use crate::evaluation_digest::push_axis_values;\n" not in evaluator_text:
         anchor = "use crate::evaluation_digest::digest_profile;\n"
@@ -130,7 +134,9 @@ def normalize_ndu_helpers() -> bool:
         private_normalizer = "fn normalize_axis_values(values: &mut [AxisValue])"
         if private_normalizer not in evaluator_text:
             raise RuntimeError("NDU axis normalizer signature is missing")
-        evaluator_text = evaluator_text.replace(private_normalizer, public_normalizer, 1)
+        evaluator_text = evaluator_text.replace(
+            private_normalizer, public_normalizer, 1
+        )
         changed = True
     evaluator_path.write_text(evaluator_text, encoding="utf-8")
 
@@ -164,7 +170,9 @@ def verify() -> list[str]:
         return [f"cannot parse codex-rs/Cargo.toml: {error}"]
 
     workspace = workspace_manifest.get("workspace")
-    members = set(workspace.get("members", ())) if isinstance(workspace, dict) else set()
+    members = (
+        set(workspace.get("members", ())) if isinstance(workspace, dict) else set()
+    )
     for root_name, package_name in RUST_PACKAGES.items():
         root = ROOT / "codex-rs" / root_name
         for relative in ("Cargo.toml", "BUILD.bazel", "src/lib.rs"):
@@ -173,13 +181,17 @@ def verify() -> list[str]:
                 failures.append(f"missing source file: {path.relative_to(ROOT)}")
         test_files = tuple((root / "src").glob("*_tests.rs"))
         if not test_files:
-            failures.append(f"missing focused Rust tests under: {root.relative_to(ROOT)}")
+            failures.append(
+                f"missing focused Rust tests under: {root.relative_to(ROOT)}"
+            )
         manifest_path = root / "Cargo.toml"
         if manifest_path.is_file():
             try:
                 manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
             except (OSError, tomllib.TOMLDecodeError) as error:
-                failures.append(f"invalid manifest {manifest_path.relative_to(ROOT)}: {error}")
+                failures.append(
+                    f"invalid manifest {manifest_path.relative_to(ROOT)}: {error}"
+                )
             else:
                 package = manifest.get("package")
                 if not isinstance(package, dict) or package.get("name") != package_name:
@@ -212,7 +224,9 @@ def verify() -> list[str]:
             failures.append(f"invalid qualification manifest: {error}")
         else:
             if manifest.get("base_commit") != BASE_COMMIT:
-                failures.append("qualification base commit does not match the canonical source")
+                failures.append(
+                    "qualification base commit does not match the canonical source"
+                )
             if manifest.get("candidate_branch") != CANDIDATE_BRANCH:
                 failures.append("qualification candidate branch is incorrect")
             authority = manifest.get("authority")
@@ -234,10 +248,16 @@ def verify() -> list[str]:
     # Source presence cannot hide stale guides or a broken full module index.
     document_check = subprocess.run(
         [sys.executable, str(ROOT / "scripts/hepta-module-docs.py"), "verify"],
-        cwd=ROOT, text=True, capture_output=True, check=False,
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
     )
     if document_check.returncode:
-        failures.append("module document integrity: " + (document_check.stderr or document_check.stdout).strip())
+        failures.append(
+            "module document integrity: "
+            + (document_check.stderr or document_check.stdout).strip()
+        )
 
     for relative in (
         "tools/hepta-engineering-control/hepta_engineering_control.py",

@@ -39,7 +39,10 @@ impl Digest32 {
 
 impl fmt::Debug for Digest32 {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.debug_tuple("Digest32").field(&self.to_string()).finish()
+        formatter
+            .debug_tuple("Digest32")
+            .field(&self.to_string())
+            .finish()
     }
 }
 
@@ -62,7 +65,8 @@ impl FromStr for Digest32 {
         let bytes = value.as_bytes();
         let mut digest = [0; 32];
         for (index, output) in digest.iter_mut().enumerate() {
-            let high = decode_hex(bytes[index * 2]).ok_or(DigestParseError::Character(index * 2))?;
+            let high =
+                decode_hex(bytes[index * 2]).ok_or(DigestParseError::Character(index * 2))?;
             let low = decode_hex(bytes[index * 2 + 1])
                 .ok_or(DigestParseError::Character(index * 2 + 1))?;
             *output = (high << 4) | low;

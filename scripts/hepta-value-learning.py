@@ -94,7 +94,9 @@ def verify() -> None:
         module_id = item.get("module_id")
         path = item.get("path")
         package = item.get("package")
-        if not all(isinstance(value, str) and value for value in (module_id, path, package)):
+        if not all(
+            isinstance(value, str) and value for value in (module_id, path, package)
+        ):
             fail("implemented source root identity is incomplete")
         observed.add(module_id)
         cargo = ROOT / path / "Cargo.toml"
@@ -134,7 +136,9 @@ def verify() -> None:
                 continue
             source = (ROOT / relative).read_text(encoding="utf-8")
             if "unsafe" in source and "forbid(unsafe_code)" not in source:
-                fail(f"unsafe token outside explicit crate prohibition: {module_id}/{relative}")
+                fail(
+                    f"unsafe token outside explicit crate prohibition: {module_id}/{relative}"
+                )
 
     print(
         json.dumps(

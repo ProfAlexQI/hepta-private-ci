@@ -1,6 +1,8 @@
 use std::fmt::Debug;
 
-use codex_hepta_types::{Digest32, FixedQ32, StableId};
+use codex_hepta_types::Digest32;
+use codex_hepta_types::FixedQ32;
+use codex_hepta_types::StableId;
 
 use super::*;
 

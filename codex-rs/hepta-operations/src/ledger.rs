@@ -151,7 +151,10 @@ impl OperationLedger {
         self.records.is_empty()
     }
 
-    fn record_mut(&mut self, operation_id: &StableId) -> Result<&mut OperationRecord, OperationError> {
+    fn record_mut(
+        &mut self,
+        operation_id: &StableId,
+    ) -> Result<&mut OperationRecord, OperationError> {
         self.records
             .get_mut(operation_id)
             .ok_or_else(|| OperationError::Missing(operation_id.clone()))
