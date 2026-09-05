@@ -7,10 +7,10 @@ permissions:
   contents: read
 concurrency:
   group: hepta-main-consolidation-audit
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   inventory:
-    runs-on: ubuntu-24.04-arm
+    runs-on: macos-15
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
