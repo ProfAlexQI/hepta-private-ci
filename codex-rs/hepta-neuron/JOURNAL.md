@@ -65,3 +65,21 @@ independent integer/SHA256 oracle: 520 bytes, checkpoint
 `c38b12275a0b6e93855931c7da4d3af3c79ba0d5c8dc74151a3c53210b6677b3`, file digest
 `a4f3f20a33961d665b9aedd9c154e32163bf45d46de15cb64404929e611a3b44`.
 Execution results belong in exact-candidate evidence, not cached capability flags.
+
+## Normal owner-drop lock lifetime
+
+Normal destruction explicitly unlocks the owned file before closing its handle.
+On Linux a temporarily duplicated or inherited open description can otherwise
+retain the lock after the owner closes, including during concurrent process
+creation. A regression retains such a duplicate, proves another writer is
+blocked while the owner lives, drops the owner, and verifies immediate recovery
+without discarding the duplicate first. Dropping the old duplicate must not
+release a newly acquired independent writer lock.
+
+The duplicate exists only inside the regression fixture. No public handle is
+exposed, and the host prohibition on shared writers or independently closing
+inherited handles is unchanged. Unlock during Drop is best effort; errors are
+not represented as successful commits, and normal file closure remains the
+fallback. Existing commit synchronization and poison/recovery behavior remain
+unchanged. Process death still requires OS handle closure and does not run Drop;
+this is not a physical power-loss or hostile-writer guarantee.

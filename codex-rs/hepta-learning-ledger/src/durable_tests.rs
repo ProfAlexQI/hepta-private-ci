@@ -535,3 +535,26 @@ fn canonical_event_and_file_match_independent_integer_byte_oracle() {
         "eba8162e7d3f4e8eb26babe2552731774ee9c6cd04facf81a3bb2a004eefbfcf"
     );
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn owner_drop_releases_lock_with_a_transient_duplicate_alive() {
+    let fixture = Fixture::new();
+    let mut ledger = fixture.create();
+    must(ledger.append(Digest32::ZERO, decision()));
+    let snapshot = must(ledger.snapshot());
+    // Model the open-description lifetime during fork, without a child writer.
+    let transient = must(ledger.file.try_clone());
+    assert_eq!(
+        fixture.recover(anchored(&snapshot)).err(),
+        Some(DurableLedgerError::Busy)
+    );
+    drop(ledger);
+    let reopened = must(fixture.recover(anchored(&snapshot)));
+    assert_eq!(must(reopened.snapshot()), snapshot);
+    drop(transient);
+    assert_eq!(
+        fixture.recover(anchored(&snapshot)).err(),
+        Some(DurableLedgerError::Busy)
+    );
+}

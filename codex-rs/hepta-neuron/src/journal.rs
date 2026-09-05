@@ -89,6 +89,16 @@ pub struct SparseJournal {
     poisoned: bool,
 }
 
+impl Drop for SparseJournal {
+    fn drop(&mut self) {
+        // A transient descriptor inherited during fork can outlive this owner.
+        // Unlock the owned open description now, before File closes it. This is
+        // not a durability acknowledgement; normal commit already handles sync.
+        // If unlock fails, File still closes and another opener remains fenced.
+        let _ = self.file.unlock();
+    }
+}
+
 impl SparseJournal {
     /// Bootstrap or recover without an external acknowledgement witness.
     /// This cannot detect loss of a valid suffix or replacement with an empty file.

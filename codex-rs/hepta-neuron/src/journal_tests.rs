@@ -382,3 +382,26 @@ fn child_process_commit_and_exit() {
         std::process::exit(0);
     }
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn owner_drop_releases_lock_with_a_transient_duplicate_alive() {
+    let fixture = Fixture::new();
+    let mut journal = fixture.open();
+    let receipt = checked(journal.commit(Digest32::ZERO, &tick(1)));
+    // Simulate the shared open description temporarily retained during fork.
+    // This is not permission for an application to share writable handles.
+    let transient = checked(journal.file.try_clone());
+    assert_eq!(
+        SparseJournal::open(fixture.file(), config(), scope(), /*max_records*/ 16).err(),
+        Some(JournalError::Busy)
+    );
+    drop(journal);
+    let mut reopened = fixture.open();
+    assert_eq!(checked(reopened.commit(Digest32::ZERO, &tick(1))), receipt);
+    drop(transient);
+    assert_eq!(
+        SparseJournal::open(fixture.file(), config(), scope(), /*max_records*/ 16).err(),
+        Some(JournalError::Busy)
+    );
+}
