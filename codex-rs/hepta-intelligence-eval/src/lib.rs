@@ -8,8 +8,13 @@ use std::fmt;
 use codex_hepta_types::{Digest32, FixedQ32, StableId};
 
 mod ope;
+mod temporal_fold;
 
 pub use ope::{OpeAction, OpeError, OpeEstimate, OpePlan, OpeRow, estimate_ope};
+pub use temporal_fold::{
+    HeldOutPrediction, HeldOutTarget, OutcomeTrainingSample, TemporalFoldError, TemporalFoldPlan,
+    TemporalFoldReceipt, fit_temporal_fold,
+};
 
 const MAX_METRICS: usize = 128;
 
