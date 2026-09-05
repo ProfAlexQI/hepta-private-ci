@@ -12,7 +12,11 @@ fn id(value: &str) -> StableId {
     must(StableId::new(value))
 }
 
-fn fixture() -> (TemporalFoldPlan, Vec<OutcomeTrainingSample>, Vec<HeldOutTarget>) {
+fn fixture() -> (
+    TemporalFoldPlan,
+    Vec<OutcomeTrainingSample>,
+    Vec<HeldOutTarget>,
+) {
     let plan = TemporalFoldPlan {
         plan_digest: Digest32::of_bytes(b"registered-plan"),
         fold_id: id("fold-1"),
@@ -64,36 +68,60 @@ fn rejects_all_training_validation_lineage_overlaps() {
     let (plan, training, targets) = fixture();
     let mut changed = targets.clone();
     changed[0].principal_lineage = training[0].principal_lineage.clone();
-    assert_eq!(fit_temporal_fold(&plan, &training, &changed), Err(TemporalFoldError::PrincipalLeakage));
+    assert_eq!(
+        fit_temporal_fold(&plan, &training, &changed),
+        Err(TemporalFoldError::PrincipalLeakage)
+    );
     changed = targets.clone();
     changed[0].episode_lineage = training[0].episode_lineage.clone();
-    assert_eq!(fit_temporal_fold(&plan, &training, &changed), Err(TemporalFoldError::EpisodeLeakage));
+    assert_eq!(
+        fit_temporal_fold(&plan, &training, &changed),
+        Err(TemporalFoldError::EpisodeLeakage)
+    );
     changed = targets.clone();
     changed[0].window_id = training[0].window_id.clone();
-    assert_eq!(fit_temporal_fold(&plan, &training, &changed), Err(TemporalFoldError::WindowLeakage));
+    assert_eq!(
+        fit_temporal_fold(&plan, &training, &changed),
+        Err(TemporalFoldError::WindowLeakage)
+    );
     changed = targets;
     changed[0].decision_id = training[0].decision_id.clone();
-    assert_eq!(fit_temporal_fold(&plan, &training, &changed), Err(TemporalFoldError::DuplicateDecision));
+    assert_eq!(
+        fit_temporal_fold(&plan, &training, &changed),
+        Err(TemporalFoldError::DuplicateDecision)
+    );
 }
 
 #[test]
 fn rejects_late_training_outcomes_and_early_validation() {
     let (plan, mut training, mut targets) = fixture();
     training[0].observed_at = 11;
-    assert_eq!(fit_temporal_fold(&plan, &training, &targets), Err(TemporalFoldError::FutureLeakage));
+    assert_eq!(
+        fit_temporal_fold(&plan, &training, &targets),
+        Err(TemporalFoldError::FutureLeakage)
+    );
     training[0].observed_at = 10;
     targets[0].decision_at = 19;
-    assert_eq!(fit_temporal_fold(&plan, &training, &targets), Err(TemporalFoldError::FutureLeakage));
+    assert_eq!(
+        fit_temporal_fold(&plan, &training, &targets),
+        Err(TemporalFoldError::FutureLeakage)
+    );
 }
 
 #[test]
 fn unsupported_actions_and_insufficient_samples_are_not_imputed() {
     let (mut plan, training, mut targets) = fixture();
     plan.minimum_per_action = 3;
-    assert_eq!(fit_temporal_fold(&plan, &training, &targets), Err(TemporalFoldError::UnsupportedAction));
+    assert_eq!(
+        fit_temporal_fold(&plan, &training, &targets),
+        Err(TemporalFoldError::UnsupportedAction)
+    );
     plan.minimum_per_action = 2;
     targets[0].actions.push(id("unknown"));
-    assert_eq!(fit_temporal_fold(&plan, &training, &targets), Err(TemporalFoldError::UnsupportedAction));
+    assert_eq!(
+        fit_temporal_fold(&plan, &training, &targets),
+        Err(TemporalFoldError::UnsupportedAction)
+    );
 }
 
 #[test]
@@ -105,7 +133,10 @@ fn ordering_does_not_change_receipts() {
     let expected = must(fit_temporal_fold(&plan, &training, &targets));
     training.reverse();
     targets.reverse();
-    assert_eq!(must(fit_temporal_fold(&plan, &training, &targets)), expected);
+    assert_eq!(
+        must(fit_temporal_fold(&plan, &training, &targets)),
+        expected
+    );
 }
 
 #[test]
@@ -133,14 +164,26 @@ fn mean_rounding_uses_ties_to_even() {
 fn rejects_duplicates_missing_evidence_and_invalid_rewards() {
     let (plan, mut training, mut targets) = fixture();
     training[1].decision_id = training[0].decision_id.clone();
-    assert_eq!(fit_temporal_fold(&plan, &training, &targets), Err(TemporalFoldError::DuplicateDecision));
+    assert_eq!(
+        fit_temporal_fold(&plan, &training, &targets),
+        Err(TemporalFoldError::DuplicateDecision)
+    );
     training[1].decision_id = id("train-1");
     training[0].evidence_digest = Digest32::ZERO;
-    assert_eq!(fit_temporal_fold(&plan, &training, &targets), Err(TemporalFoldError::MissingEvidence));
+    assert_eq!(
+        fit_temporal_fold(&plan, &training, &targets),
+        Err(TemporalFoldError::MissingEvidence)
+    );
     training[0].evidence_digest = Digest32::of_bytes(b"restored");
     training[0].outcome = FixedQ32::from_raw(-1);
-    assert_eq!(fit_temporal_fold(&plan, &training, &targets), Err(TemporalFoldError::InvalidOutcome));
+    assert_eq!(
+        fit_temporal_fold(&plan, &training, &targets),
+        Err(TemporalFoldError::InvalidOutcome)
+    );
     training[0].outcome = FixedQ32::ZERO;
     targets[0].actions.push(id("read"));
-    assert_eq!(fit_temporal_fold(&plan, &training, &targets), Err(TemporalFoldError::DuplicateAction));
+    assert_eq!(
+        fit_temporal_fold(&plan, &training, &targets),
+        Err(TemporalFoldError::DuplicateAction)
+    );
 }

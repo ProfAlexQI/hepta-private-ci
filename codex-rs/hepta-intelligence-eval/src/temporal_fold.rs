@@ -217,8 +217,7 @@ pub fn fit_temporal_fold(
             let twice_remainder = (sum % count) * 2;
             let rounded = quotient
                 + i128::from(
-                    twice_remainder > count
-                        || (twice_remainder == count && quotient % 2 != 0),
+                    twice_remainder > count || (twice_remainder == count && quotient % 2 != 0),
                 );
             let prediction = FixedQ32::from_raw(
                 i64::try_from(rounded).map_err(|_| TemporalFoldError::Arithmetic)?,
