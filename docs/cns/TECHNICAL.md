@@ -130,3 +130,56 @@ Repository gates require 24 organs, 15 protocols, 22 closed reference gaps, zero
 8. Request separately governed canary, operator acceptance, selection, promotion and release.
 
 Repository completion closes design and deterministic-reference gaps only. Evidence that depends on real hardware, future calendar time or an independent decision remains a named external gate and may never be replaced by prose or fixtures.
+
+## 18. Deployment identity and single-writer state handoff
+
+This section consolidates the deployment detail from the historical `docs/architecture/CENTRAL_NERVOUS_SYSTEM.md` blob `08433cac1f128ca8584778db84b1b462ae38b63e`, retained at commit `725605e890ed878e8a3ed8d4018bedd8d594640b`. That historical file is not a second active architecture. Its proposed `ModuleManifestV1` and `TopologySnapshotV1` names map conceptually to the registered `OrganManifestV1` and `BodyGraphSnapshotV1`; they are not wire-compatible aliases. The old `StateHandoffReceiptV1` field sketch is an implementation requirement, not an already registered or executable protocol. Any new serialized handoff record must first receive a versioned schema, producer/consumer bindings and migration tests in the canonical registries.
+
+### 18.1 Loader evidence and immutable generations
+
+An organ deployment must bind the manifest and body generation to exact source commit/tree, build artifact, build provenance, software bill of materials, signatures and protocol compatibility. Host placement, failure domain, queue/latency class, CPU/memory/storage ceilings, health/readiness probes, drain behavior, predecessor and retirement policy belong in the reviewed deployment evidence. Discovery cannot widen the signed manifest or its `OrganLeaseV1` principal scope, allowed operations, resource ceiling, authority epoch, expiry or revocation binding.
+
+The manifest describes an organ; the body graph describes a selected composition; a process or service is a deployment unit. They are not interchangeable identifiers. Generator, outcome observer, evaluator, selector, loader and promoter remain separately authorized roles even when several non-authority-bearing functions share a process. The loader consumes an independently selected body snapshot; it must not generate or approve the snapshot it loads.
+
+A request freezes the selected objective, body graph, manifests, learning artifacts and authority epoch. The executive may select only declared compatible alternatives inside that envelope. A parameter, binary, schema, writer assignment or topology replacement requiring a new generation cannot be smuggled into the running request. Revocation and emergency stop still take effect immediately; freezing a snapshot does not freeze revocation checks.
+
+### 18.2 Handoff evidence contents
+
+Before changing an authoritative writer, the owner must retain an independently witnessed handoff packet covering:
+
+| Evidence group | Required binding |
+|---|---|
+| Ownership | Data domain; old/new organ identity and generation; old/new writer fence; applicable authority epoch |
+| State | Source state digest and range; deterministic migration plan; migrated state digest; schema and invariant results |
+| Outstanding work | In-flight operation inventory; outbox drain watermark; unresolved effects and their reconciliation ownership |
+| Consumers | Reader compatibility; consumer cutover digest; readiness results; selected body graph and route |
+| Recovery | Exact rollback state and predecessor; deletion/tombstone coverage; retention window; independent witness identities and signatures |
+
+The packet is not a replacement source store or a permission grant. A checksum proves a byte relationship, not that a migration is complete, authorized or semantically correct. Source counts/ranges, invariants, privacy exclusions and tombstones must be verified independently. An absent witness or unresolved external effect cannot be replaced by a locally invented successful receipt.
+
+### 18.3 Required cutover order
+
+1. Stop admitting new mutations through the old route while preserving authorized read and local safety paths.
+2. Drain in-flight work and the durable outbox to a recorded watermark. Record unresolved effects for fenced reconciliation rather than declaring them successful.
+3. Fence the old writer and verify that stale-generation writes are rejected.
+4. Snapshot the source state and bind its exact range and digest to the migration plan.
+5. Run the deterministic migration in a non-authoritative target. It must not become a second live writer.
+6. Verify schema, counts/ranges, checksums, invariants, privacy exclusions and deletion tombstones; establish compatible readers and fallback readiness.
+7. Establish the new writer fence only after the old fence is invalidated. If ownership is uncertain, keep writes stopped and require independent recovery.
+8. Publish the new signed route and body generation atomically. Consumers must not combine old writer assignments with new manifests or mixed artifact generations.
+9. Retain the exact rollback state and handoff evidence until the approved rollback window closes. Rollback is a fenced, independently authorized transition, not replay of a revoked lease.
+10. Complete retirement only after consumer cutover, projection/cache invalidation, replay exclusion and the final state-disposition policy have been verified.
+
+There must never be two valid active writer fences for one domain. Failure after any step must be replayable from recorded phase and evidence without duplicating effects or resurrecting deleted state. Restart cannot reset a generation, discard an acknowledgement, or infer a new owner from whichever process starts first.
+
+### 18.4 Structural-operation obligations
+
+`add` must demonstrate an unmet objective or reliability need and compare with the no-organ baseline. Replacement uses a new manifest and generation, with either state migration or an explicit stateless proof. `split` assigns every capability, fact and writer to one child and documents transaction/failure boundaries. `merge` must preserve independent authority/evaluation roles and define state-union conflict handling. `rewire` must validate typed compatibility, latency/backpressure, dependency/fallback constraints and scope before route publication. `retire` must drain and dispose of state; removing source files is not a retirement receipt.
+
+Feasibility precedes utility: reject missing capabilities, incompatible protocols, writer conflicts, undeclared authority, excess resources, mixed generations, expired evidence or missing recovery before scoring. Bound candidate count, changed organs/edges, resource deltas, evaluation duration, canary exposure and rollback duration. Compare with no-change and report risk, confidence, retained-task effects and complexity, not only a single aggregate score. The canonical NDU and causal-evaluation specifications determine numerical decision rules; the historical design's example lower/upper-confidence comparison is not a substitute for those registered rules.
+
+### 18.5 Qualification required before a real handoff
+
+Tests must interrupt every cutover phase, including old-writer fencing, snapshot completion, target validation, new-fence establishment and route publication. Negative cases include duplicate/stale writers, missing watermarks, truncated migrations, incompatible readers, revoked leases, missing tombstones, mixed generations, unavailable independent observers and canary regressions. Reopen/retry must either resume the same witnessed transition or preserve a stopped/reconciliation state. A successful rollback must demonstrate that ownership and deleted-data exclusions remain valid.
+
+These are deployment acceptance obligations. The dependency-free body-graph reference and documentation checks do not implement or certify a production state-migration service. Source integration, reference tests, independent acceptance and runtime activation remain separate evidence states under the existing global plan.
