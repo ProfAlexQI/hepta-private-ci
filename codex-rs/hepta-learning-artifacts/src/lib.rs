@@ -8,6 +8,7 @@
 mod error;
 mod model;
 mod registry;
+mod storage;
 
 pub use error::ArtifactRegistryError;
 pub use model::ArtifactEvent;
@@ -21,3 +22,9 @@ pub use model::RegistryAppendDisposition;
 pub use model::RegistryAppendReceipt;
 pub use model::StateChange;
 pub use registry::ArtifactRegistry;
+pub use storage::ArtifactStorageError;
+pub use storage::RegistrySnapshotReceipt;
+pub use storage::read_candidate_payload;
+pub use storage::read_registry_snapshot;
+pub use storage::write_candidate_payload;
+pub use storage::write_registry_snapshot;
