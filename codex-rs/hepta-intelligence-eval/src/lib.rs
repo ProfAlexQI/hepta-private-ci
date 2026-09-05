@@ -8,11 +8,16 @@ use std::fmt;
 use codex_hepta_types::{Digest32, FixedQ32, StableId};
 
 mod ope;
+mod temporal_evaluation;
 mod temporal_fold;
 
 pub use ope::{
     ClusterAssignment, ClusterConfidenceError, ClusterConfidencePlan, ClusterOpeEstimate, OpeAction,
     OpeError, OpeEstimate, OpeInterval, OpePlan, OpeRow, estimate_cluster_intervals, estimate_ope,
+};
+pub use temporal_evaluation::{
+    TemporalEvaluationError, TemporalEvaluationPlan, TemporalEvaluationReceipt,
+    evaluate_temporal_holdout,
 };
 pub use temporal_fold::{
     HeldOutPrediction, HeldOutTarget, OutcomeTrainingSample, TemporalFoldError, TemporalFoldPlan,
