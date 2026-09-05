@@ -1,4 +1,4 @@
-name: Hepta final single-main consolidation
+name: Hepta retire all non-default duplicate branches
 
 on:
   push:
@@ -16,10 +16,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  consolidate-to-single-main:
+  retire-duplicate-branches:
     if: github.repository == 'TrillionniumFoundation/hepta-private-ci' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -27,204 +27,129 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Freeze live refs and prove every non-main head is retained
+      - name: Freeze and verify all live refs
+        id: freeze
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          root="$RUNNER_TEMP/hepta-single-main"
+          root="$RUNNER_TEMP/hepta-branch-retirement"
           mkdir -p "$root"
           git fetch --prune --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
           main_sha="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
+          default_branch="$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)"
+          default_sha="$(git ls-remote --heads origin "refs/heads/$default_branch" | awk '{print $1}')"
           test -n "$main_sha"
+          test -n "$default_sha"
+          [[ "$default_sha" == "$main_sha" ]]
           git cat-file -e "$main_sha^{commit}"
           git merge-base --is-ancestor "$GITHUB_SHA" "$main_sha"
-          default_before="$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)"
-          export MAIN_SHA="$main_sha" DEFAULT_BEFORE="$default_before" OUT="$root/refs.json"
+          export MAIN_SHA="$main_sha" DEFAULT_BRANCH="$default_branch" OUT="$root/frozen-refs.json"
           python3 - <<'PY'
           import json, os, subprocess
           main = os.environ['MAIN_SHA']
-          raw = subprocess.check_output(['git','ls-remote','--heads','origin'], text=True)
+          default = os.environ['DEFAULT_BRANCH']
           rows = []
+          raw = subprocess.check_output(['git','ls-remote','--heads','origin'], text=True)
           for line in raw.splitlines():
               sha, ref = line.split('\t', 1)
               name = ref.removeprefix('refs/heads/')
               retained = subprocess.run(['git','merge-base','--is-ancestor',sha,main]).returncode == 0
               if name != 'main' and not retained:
                   raise SystemExit(f'unretained live branch: {name} {sha}')
-              rows.append({'name': name, 'sha': sha, 'retainedByMain': retained})
-          if not rows or sum(r['name']=='main' for r in rows) != 1:
-              raise SystemExit('main ref inventory mismatch')
-          payload = {
-              'schema':'hepta.single-main-live-ref-freeze.v1',
+              rows.append({'name':name,'sha':sha,'retainedByMain':retained,'protectedFromThisPass':name in {'main',default}})
+          if sum(row['name']=='main' for row in rows) != 1 or sum(row['name']==default for row in rows) != 1:
+              raise SystemExit('main/default inventory mismatch')
+          payload={
+              'schema':'hepta.duplicate-branch-retirement-freeze.v1',
               'repository':os.environ['GITHUB_REPOSITORY'],
               'workflowHead':os.environ['GITHUB_SHA'],
               'main':main,
-              'defaultBefore':os.environ['DEFAULT_BEFORE'],
+              'defaultBranch':default,
               'branchCount':len(rows),
               'allNonMainHeadsRetainedByMain':True,
               'branches':rows,
           }
           with open(os.environ['OUT'],'w') as f:
               json.dump(payload,f,indent=2,sort_keys=True); f.write('\n')
-          print(json.dumps({'branchCount':len(rows),'main':main,'defaultBefore':os.environ['DEFAULT_BEFORE']}))
+          print(json.dumps({'branchCount':len(rows),'main':main,'defaultBranch':default}))
           PY
+          printf 'main_sha=%s\n' "$main_sha" >> "$GITHUB_OUTPUT"
+          printf 'default_branch=%s\n' "$default_branch" >> "$GITHUB_OUTPUT"
 
-      - name: Verify retained external recovery bundle
+      - name: Verify retained external all-branch recovery bundle
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          root="$RUNNER_TEMP/hepta-single-main"
+          root="$RUNNER_TEMP/hepta-branch-retirement"
           gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/9967303182" > "$root/external-backup.json"
           jq -e '.expired == false' "$root/external-backup.json" >/dev/null
           jq -e '.digest == "sha256:f93b0efabf9c8db7a50ae8381c2995f9f6ab2f439e7b235bc83ef48541759211"' "$root/external-backup.json" >/dev/null
 
-      - name: Retain frozen refs before mutation
+      - name: Retain exact pre-delete ref inventory
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: hepta-pre-delete-ref-freeze-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/hepta-single-main
+          name: hepta-pre-delete-duplicate-refs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hepta-branch-retirement
           retention-days: 30
           compression-level: 0
           if-no-files-found: error
 
-      - name: Make main the live default using an available administrator credential
+      - name: Delete all refs except main and the live default
         env:
-          TOKEN_HEPTA_ADMIN: ${{ secrets.HEPTA_ADMIN_TOKEN }}
-          TOKEN_GH_ADMIN: ${{ secrets.GH_ADMIN_TOKEN }}
-          TOKEN_REPO_ADMIN: ${{ secrets.REPO_ADMIN_TOKEN }}
-          TOKEN_ADMIN_GITHUB: ${{ secrets.ADMIN_GITHUB_TOKEN }}
-          TOKEN_GITHUB_ADMIN: ${{ secrets.GITHUB_ADMIN_TOKEN }}
-          TOKEN_GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
-          TOKEN_GH_PAT: ${{ secrets.GH_PAT }}
-          TOKEN_PAT: ${{ secrets.PAT }}
-          TOKEN_PERSONAL_ACCESS: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-          TOKEN_GH_PERSONAL_ACCESS: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
-          TOKEN_REPO: ${{ secrets.REPO_TOKEN }}
-          TOKEN_HEPTA_GITHUB: ${{ secrets.HEPTA_GITHUB_TOKEN }}
-          TOKEN_PROFHEPTA: ${{ secrets.PROFHEPTA_TOKEN }}
-          TOKEN_ADMIN_PAT: ${{ secrets.ADMIN_PAT }}
-          TOKEN_CODEX_GITHUB: ${{ secrets.CODEX_GITHUB_TOKEN }}
-          TOKEN_BUILTIN: ${{ github.token }}
+          MAIN_SHA: ${{ steps.freeze.outputs.main_sha }}
+          DEFAULT_BRANCH: ${{ steps.freeze.outputs.default_branch }}
         shell: bash
         run: |
           set -euo pipefail
-          root="$RUNNER_TEMP/hepta-single-main"
-          default_before="$(GH_TOKEN="$TOKEN_BUILTIN" gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)"
-          main_sha="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
-          test -n "$main_sha"
-          method=already_main
-
-          candidates=(
-            "$TOKEN_HEPTA_ADMIN" "$TOKEN_GH_ADMIN" "$TOKEN_REPO_ADMIN"
-            "$TOKEN_ADMIN_GITHUB" "$TOKEN_GITHUB_ADMIN" "$TOKEN_GITHUB_PAT"
-            "$TOKEN_GH_PAT" "$TOKEN_PAT" "$TOKEN_PERSONAL_ACCESS"
-            "$TOKEN_GH_PERSONAL_ACCESS" "$TOKEN_REPO" "$TOKEN_HEPTA_GITHUB"
-            "$TOKEN_PROFHEPTA" "$TOKEN_ADMIN_PAT" "$TOKEN_CODEX_GITHUB"
-            "$TOKEN_BUILTIN"
-          )
-          selected=""
-
-          if [[ "$default_before" != main ]]; then
-            default_sha="$(git ls-remote --heads origin "refs/heads/$default_before" | awk '{print $1}')"
-            [[ -n "$default_sha" && "$default_sha" == "$main_sha" ]]
-            : > "$root/default-api.err"
-            index=0
-            for candidate in "${candidates[@]}"; do
-              index=$((index + 1))
-              [[ -n "$candidate" ]] || continue
-              echo "::add-mask::$candidate"
-              if GH_TOKEN="$candidate" gh api --method PATCH "repos/$GITHUB_REPOSITORY" -f default_branch=main >"$root/default-api.json" 2>>"$root/default-api.err"; then
-                selected="$candidate"
-                method="repository_patch_candidate_$index"
-                break
-              fi
-            done
-
-            if [[ -z "$selected" ]]; then
-              git push --porcelain --force-with-lease="refs/heads/main:$main_sha" origin :refs/heads/main
-              encoded_default="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe=""))' "$default_before")"
-              index=0
-              for candidate in "${candidates[@]}"; do
-                index=$((index + 1))
-                [[ -n "$candidate" ]] || continue
-                if GH_TOKEN="$candidate" gh api --method POST "repos/$GITHUB_REPOSITORY/branches/$encoded_default/rename" -f new_name=main >"$root/default-api.json" 2>>"$root/default-api.err"; then
-                  selected="$candidate"
-                  method="default_branch_rename_candidate_$index"
-                  break
-                fi
-              done
-              if [[ -z "$selected" ]]; then
-                git push --porcelain origin "$main_sha:refs/heads/main"
-                echo 'No available administrator credential may change the default branch; main restored and deletion aborted.' >&2
-                exit 1
-              fi
-            fi
-          else
-            selected="$TOKEN_BUILTIN"
-          fi
-
-          for _ in $(seq 1 40); do
-            live_default="$(GH_TOKEN="$selected" gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)"
-            live_main="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
-            if [[ "$live_default" == main && "$live_main" == "$main_sha" ]]; then
-              jq -n --arg method "$method" --arg prior "$default_before" --arg default "$live_default" --arg sha "$live_main" \
-                '{method:$method,priorDefault:$prior,defaultBranch:$default,main:$sha}' > "$root/default-result.json"
-              exit 0
-            fi
-            sleep 3
-          done
-          echo 'GitHub did not converge to default=main at the reviewed commit.' >&2
-          exit 1
-
-      - name: Delete every non-main ref with exact leases
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          root="$RUNNER_TEMP/hepta-single-main"
-          [[ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)" == main ]]
+          root="$RUNNER_TEMP/hepta-branch-retirement"
           git fetch --prune --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
-          main_sha="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
-          test -n "$main_sha"
-          git cat-file -e "$main_sha^{commit}"
-          git merge-base --is-ancestor "$GITHUB_SHA" "$main_sha"
+          live_main="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
+          [[ "$live_main" == "$MAIN_SHA" ]]
 
           leases=()
           deletes=()
+          deleted_names=()
           while IFS=$'\t' read -r sha ref; do
             name="${ref#refs/heads/}"
-            [[ "$name" == main ]] && continue
+            [[ "$name" == main || "$name" == "$DEFAULT_BRANCH" ]] && continue
             git cat-file -e "$sha^{commit}"
-            git merge-base --is-ancestor "$sha" "$main_sha"
+            git merge-base --is-ancestor "$sha" "$MAIN_SHA"
             leases+=("--force-with-lease=refs/heads/$name:$sha")
             deletes+=(":refs/heads/$name")
+            deleted_names+=("$name")
           done < <(git ls-remote --heads origin)
 
           if ((${#deletes[@]})); then
-            git push --atomic --porcelain "${leases[@]}" origin "${deletes[@]}"
+            git push --atomic --porcelain "${leases[@]}" origin "${deletes[@]}" | tee "$root/delete-output.txt"
           fi
+          printf '%s\n' "${deleted_names[@]}" > "$root/deleted-branches.txt"
 
-          remaining=()
-          while IFS= read -r name; do
-            [[ -n "$name" ]] && remaining+=("$name")
-          done < <(git ls-remote --heads origin | awk '{sub("refs/heads/", "", $2); print $2}')
-          [[ ${#remaining[@]} -eq 1 && "${remaining[0]}" == main ]]
-          [[ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)" == main ]]
-          jq -n --arg main "$main_sha" --argjson deleted "${#deletes[@]}" \
-            '{singleMainRefVerified:true,main:$main,defaultBranch:"main",deletedBranchCount:$deleted}' \
+          mapfile -t remaining < <(git ls-remote --heads origin | awk '{sub("refs/heads/", "", $2); print $2}' | sort)
+          mapfile -t expected < <(printf '%s\n' main "$DEFAULT_BRANCH" | sort -u)
+          [[ ${#remaining[@]} -eq ${#expected[@]} ]]
+          [[ "${remaining[*]}" == "${expected[*]}" ]]
+          remaining_main="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
+          remaining_default="$(git ls-remote --heads origin "refs/heads/$DEFAULT_BRANCH" | awk '{print $1}')"
+          [[ "$remaining_main" == "$MAIN_SHA" && "$remaining_default" == "$MAIN_SHA" ]]
+
+          jq -n \
+            --arg main "$MAIN_SHA" \
+            --arg default "$DEFAULT_BRANCH" \
+            --argjson deleted "${#deleted_names[@]}" \
+            --argjson remaining "${#remaining[@]}" \
+            '{singleWorkingTreeVerified:true,main:$main,defaultBranch:$default,deletedBranchCount:$deleted,remainingBranchCount:$remaining,remainingRefs:["main",$default],defaultBranchAdministrativeRenameStillRequired:($default != "main")}' \
             > "$root/final-receipt.json"
 
-      - name: Retain final receipts
+      - name: Retain final deletion receipt
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: hepta-single-main-result-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/hepta-single-main
+          name: hepta-duplicate-ref-retirement-result-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hepta-branch-retirement
           retention-days: 30
           compression-level: 0
           if-no-files-found: warn
