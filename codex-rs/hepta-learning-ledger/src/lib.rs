@@ -17,6 +17,7 @@ pub use durable::DurableLedger;
 pub use durable::DurableLedgerError;
 pub use durable::LedgerAnchor;
 pub use durable::LedgerRecovery;
+pub use durable::inspect_ledger;
 pub use error::LedgerError;
 pub use ledger::LearningLedger;
 pub use model::AppendDisposition;

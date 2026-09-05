@@ -56,6 +56,8 @@ pub enum DurableLedgerError {
     BindingMismatch,
     AcknowledgedHistoryMissing,
     AnchorMismatch,
+    IncompleteTail,
+    UnwitnessedTail,
     Corrupt,
     Conflict,
     Capacity,
@@ -140,86 +142,9 @@ impl DurableLedger {
         recovery: LedgerRecovery,
     ) -> Result<Self, DurableLedgerError> {
         validate_domain(binding, max_records)?;
-        if let LedgerRecovery::Acknowledged(anchor) = recovery
-            && (anchor.sequence == 0
-                || anchor.sequence > max_records as u64
-                || anchor.chain_digest.is_zero())
-        {
-            return Err(DurableLedgerError::InvalidAnchor);
-        }
+        validate_recovery(recovery, max_records)?;
         lock_file(&file)?;
-        let length = file.metadata()?.len();
-        if length < HEADER as u64 {
-            return Err(DurableLedgerError::MissingHeader);
-        }
-        if length > MAX_BYTES {
-            return Err(DurableLedgerError::Capacity);
-        }
-        file.seek(SeekFrom::Start(0))?;
-        let mut header = [0; HEADER];
-        file.read_exact(&mut header)?;
-        if &header[..8] != MAGIC || Digest32::of_bytes(&header[..40]).as_array() != &header[40..] {
-            return Err(DurableLedgerError::Corrupt);
-        }
-        if &header[8..40] != binding.as_array() {
-            return Err(DurableLedgerError::BindingMismatch);
-        }
-        let mut core = LearningLedger::new();
-        let mut cursor = HEADER as u64;
-        while cursor < length {
-            if length - cursor < 8 {
-                break;
-            }
-            let mut prefix = [0; 8];
-            file.read_exact(&mut prefix)?;
-            let size = u32::from_be_bytes(
-                prefix[..4]
-                    .try_into()
-                    .map_err(|_| DurableLedgerError::Corrupt)?,
-            );
-            let complement = u32::from_be_bytes(
-                prefix[4..]
-                    .try_into()
-                    .map_err(|_| DurableLedgerError::Corrupt)?,
-            );
-            if size != !complement || size == 0 || size as usize > MAX_EVENT {
-                return Err(DurableLedgerError::Corrupt);
-            }
-            let total = size as usize + FRAME_OVERHEAD;
-            if length - cursor < total as u64 {
-                break;
-            }
-            if core.records().len() >= max_records {
-                return Err(DurableLedgerError::Capacity);
-            }
-            let mut frame = vec![0; total];
-            frame[..8].copy_from_slice(&prefix);
-            file.read_exact(&mut frame[8..])?;
-            if Digest32::of_bytes(&frame[..total - 32]).as_array() != &frame[total - 32..] {
-                return Err(DurableLedgerError::Corrupt);
-            }
-            let event = decode_event(&frame[48..48 + size as usize])?;
-            let prepared = core
-                .prepare(event)
-                .map_err(|_| DurableLedgerError::Corrupt)?;
-            if prepared.disposition != AppendDisposition::Appended
-                || encode_frame(&prepared.record)? != frame
-            {
-                return Err(DurableLedgerError::Corrupt);
-            }
-            core.apply(prepared)
-                .map_err(|_| DurableLedgerError::Corrupt)?;
-            cursor += total as u64;
-        }
-        if let LedgerRecovery::Acknowledged(anchor) = recovery {
-            let record = core
-                .records()
-                .get((anchor.sequence - 1) as usize)
-                .ok_or(DurableLedgerError::AcknowledgedHistoryMissing)?;
-            if record.chain_digest != anchor.chain_digest {
-                return Err(DurableLedgerError::AnchorMismatch);
-            }
-        }
+        let (core, cursor, length) = replay_frames(&mut file, binding, max_records, recovery)?;
         if cursor != length {
             file.set_len(cursor)
                 .map_err(|_| DurableLedgerError::Indeterminate)?;
@@ -311,6 +236,148 @@ impl DurableLedger {
     }
 }
 
+/// Inspect a closed, fully witnessed segment through a host-authorized read-only
+/// file. Uses the writer's parser but never writes, syncs, repairs or initializes.
+/// The host must authenticate the binding and obtain the CURRENT external anchor.
+/// Unlike writer recovery, inspection requires that anchor to match the entire
+/// complete log. A later complete suffix requires a new witness, never a silent
+/// old-prefix view. An incomplete suffix requires owner recovery, never reader repair.
+/// The returned snapshot is historical, not ongoing revocation or use authority.
+/// Independently open the file; already locked aliases are unsupported.
+pub fn inspect_ledger(
+    file: File,
+    binding: Digest32,
+    max_records: usize,
+    anchor: LedgerAnchor,
+) -> Result<LedgerSnapshot, DurableLedgerError> {
+    validate_domain(binding, max_records)?;
+    let recovery = LedgerRecovery::Acknowledged(anchor);
+    validate_recovery(recovery, max_records)?;
+    if !file.metadata()?.is_file() {
+        return Err(DurableLedgerError::NotRegular);
+    }
+    match file.try_lock_shared() {
+        Ok(()) => (),
+        Err(TryLockError::WouldBlock) => return Err(DurableLedgerError::Busy),
+        Err(TryLockError::Error(error)) => return Err(error.into()),
+    }
+    // Construct only AFTER acquisition, so a failed lock never unlocks an owner.
+    let mut guard = InspectionLock(file);
+    let (core, cursor, length) = replay_frames(&mut guard.0, binding, max_records, recovery)?;
+    if cursor != length {
+        return Err(DurableLedgerError::IncompleteTail);
+    }
+    if core.records().len() as u64 != anchor.sequence {
+        return Err(DurableLedgerError::UnwitnessedTail);
+    }
+    Ok(core.snapshot())
+}
+
+struct InspectionLock(File);
+
+impl Drop for InspectionLock {
+    fn drop(&mut self) {
+        // Do not let a transient inherited open description retain our shared
+        // lock after success or rejection. File closure remains the fallback.
+        let _ = self.0.unlock();
+    }
+}
+
+fn replay_frames(
+    file: &mut File,
+    binding: Digest32,
+    max_records: usize,
+    recovery: LedgerRecovery,
+) -> Result<(LearningLedger, u64, u64), DurableLedgerError> {
+    let length = file.metadata()?.len();
+    if length < HEADER as u64 {
+        return Err(DurableLedgerError::MissingHeader);
+    }
+    if length > MAX_BYTES {
+        return Err(DurableLedgerError::Capacity);
+    }
+    file.seek(SeekFrom::Start(0))?;
+    let mut header = [0; HEADER];
+    file.read_exact(&mut header)?;
+    if &header[..8] != MAGIC || Digest32::of_bytes(&header[..40]).as_array() != &header[40..] {
+        return Err(DurableLedgerError::Corrupt);
+    }
+    if &header[8..40] != binding.as_array() {
+        return Err(DurableLedgerError::BindingMismatch);
+    }
+    let mut core = LearningLedger::new();
+    let mut cursor = HEADER as u64;
+    while cursor < length {
+        if length - cursor < 8 {
+            break;
+        }
+        let mut prefix = [0; 8];
+        file.read_exact(&mut prefix)?;
+        let size = u32::from_be_bytes(
+            prefix[..4]
+                .try_into()
+                .map_err(|_| DurableLedgerError::Corrupt)?,
+        );
+        let complement = u32::from_be_bytes(
+            prefix[4..]
+                .try_into()
+                .map_err(|_| DurableLedgerError::Corrupt)?,
+        );
+        if size != !complement || size == 0 || size as usize > MAX_EVENT {
+            return Err(DurableLedgerError::Corrupt);
+        }
+        let total = size as usize + FRAME_OVERHEAD;
+        if length - cursor < total as u64 {
+            break;
+        }
+        if core.records().len() >= max_records {
+            return Err(DurableLedgerError::Capacity);
+        }
+        let mut frame = vec![0; total];
+        frame[..8].copy_from_slice(&prefix);
+        file.read_exact(&mut frame[8..])?;
+        if Digest32::of_bytes(&frame[..total - 32]).as_array() != &frame[total - 32..] {
+            return Err(DurableLedgerError::Corrupt);
+        }
+        let event = decode_event(&frame[48..48 + size as usize])?;
+        let prepared = core
+            .prepare(event)
+            .map_err(|_| DurableLedgerError::Corrupt)?;
+        if prepared.disposition != AppendDisposition::Appended
+            || encode_frame(&prepared.record)? != frame
+        {
+            return Err(DurableLedgerError::Corrupt);
+        }
+        core.apply(prepared)
+            .map_err(|_| DurableLedgerError::Corrupt)?;
+        cursor += total as u64;
+    }
+    if let LedgerRecovery::Acknowledged(anchor) = recovery {
+        let record = core
+            .records()
+            .get((anchor.sequence - 1) as usize)
+            .ok_or(DurableLedgerError::AcknowledgedHistoryMissing)?;
+        if record.chain_digest != anchor.chain_digest {
+            return Err(DurableLedgerError::AnchorMismatch);
+        }
+    }
+    Ok((core, cursor, length))
+}
+
+fn validate_recovery(
+    recovery: LedgerRecovery,
+    max_records: usize,
+) -> Result<(), DurableLedgerError> {
+    if let LedgerRecovery::Acknowledged(anchor) = recovery
+        && (anchor.sequence == 0
+            || anchor.sequence > max_records as u64
+            || anchor.chain_digest.is_zero())
+    {
+        return Err(DurableLedgerError::InvalidAnchor);
+    }
+    Ok(())
+}
+
 fn validate_domain(binding: Digest32, max_records: usize) -> Result<(), DurableLedgerError> {
     if binding.is_zero() {
         return Err(DurableLedgerError::InvalidBinding);
@@ -335,3 +402,7 @@ fn lock_file(file: &File) -> Result<(), DurableLedgerError> {
 #[cfg(test)]
 #[path = "durable_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "inspection_tests.rs"]
+mod inspection_tests;
