@@ -23,6 +23,7 @@ use crate::durable_codec::FRAME_OVERHEAD;
 use crate::durable_codec::MAX_EVENT;
 use crate::durable_codec::decode_event;
 use crate::durable_codec::encode_frame;
+use crate::durable_lock::LockedFile;
 
 const MAGIC: &[u8; 8] = b"HEPTLR01";
 const HEADER: usize = 72;
@@ -85,33 +86,23 @@ impl From<io::Error> for DurableLedgerError {
 /// Passing cloned/inherited handles already locked elsewhere is unsupported.
 /// No mutable core escapes; memory advances only after the same event is synced.
 pub struct DurableLedger {
-    file: File,
+    file: LockedFile,
     core: LearningLedger,
     max_records: usize,
     durable_length: u64,
     poisoned: bool,
 }
 
-impl Drop for DurableLedger {
-    fn drop(&mut self) {
-        // A transient descriptor inherited during fork can outlive this owner.
-        // Unlock the owned open description now, before File closes it. This is
-        // not a durability acknowledgement; normal commit already handles sync.
-        // If unlock fails, File still closes and another opener remains fenced.
-        let _ = self.file.unlock();
-    }
-}
-
 impl DurableLedger {
     /// Create an empty store explicitly. Never use this to replace lost history.
     /// File creation and containing-directory durability are owned by the host.
     pub fn create(
-        mut file: File,
+        file: File,
         binding: Digest32,
         max_records: usize,
     ) -> Result<Self, DurableLedgerError> {
         validate_domain(binding, max_records)?;
-        lock_file(&file)?;
+        let mut file = LockedFile::acquire(file)?;
         if file.metadata()?.len() != 0 {
             return Err(DurableLedgerError::AlreadyInitialized);
         }
@@ -136,14 +127,14 @@ impl DurableLedger {
     /// before repairing an incomplete final frame. Full corruption never repairs.
     /// All recovered data is synced before it becomes an exposed committed result.
     pub fn recover(
-        mut file: File,
+        file: File,
         binding: Digest32,
         max_records: usize,
         recovery: LedgerRecovery,
     ) -> Result<Self, DurableLedgerError> {
         validate_domain(binding, max_records)?;
         validate_recovery(recovery, max_records)?;
-        lock_file(&file)?;
+        let mut file = LockedFile::acquire(file)?;
         let (core, cursor, length) = replay_frames(&mut file, binding, max_records, recovery)?;
         if cursor != length {
             file.set_len(cursor)
@@ -386,17 +377,6 @@ fn validate_domain(binding: Digest32, max_records: usize) -> Result<(), DurableL
         return Err(DurableLedgerError::InvalidLimit);
     }
     Ok(())
-}
-
-fn lock_file(file: &File) -> Result<(), DurableLedgerError> {
-    if !file.metadata()?.is_file() {
-        return Err(DurableLedgerError::NotRegular);
-    }
-    match file.try_lock() {
-        Ok(()) => Ok(()),
-        Err(TryLockError::WouldBlock) => Err(DurableLedgerError::Busy),
-        Err(TryLockError::Error(error)) => Err(error.into()),
-    }
 }
 
 #[cfg(test)]

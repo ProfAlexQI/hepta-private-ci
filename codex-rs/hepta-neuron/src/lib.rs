@@ -16,6 +16,7 @@ use codex_hepta_types::Generation;
 use codex_hepta_types::StableId;
 
 mod journal;
+mod journal_lock;
 mod sparse;
 
 pub use journal::JournalAnchor;

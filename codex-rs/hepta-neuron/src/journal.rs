@@ -4,7 +4,6 @@
 use std::error::Error;
 use std::fmt;
 use std::fs::File;
-use std::fs::TryLockError;
 use std::io;
 use std::io::Read;
 use std::io::Seek;
@@ -12,6 +11,8 @@ use std::io::SeekFrom;
 use std::io::Write;
 
 use codex_hepta_types::Digest32;
+
+use crate::journal_lock::LockedFile;
 
 use crate::SparseCheckpoint;
 use crate::SparseConfig;
@@ -80,23 +81,13 @@ impl From<io::Error> for JournalError {
 /// local filesystem. Locks are advisory; this is not a hostile-writer sandbox.
 /// No paths are opened here. The host owns enrollment, revocation and deletion.
 pub struct SparseJournal {
-    file: File,
+    file: LockedFile,
     config: SparseConfig,
     scope: JournalScope,
     max_records: usize,
     entries: Vec<(Digest32, SparseSignalReceipt)>,
     current: Option<SparseCheckpoint>,
     poisoned: bool,
-}
-
-impl Drop for SparseJournal {
-    fn drop(&mut self) {
-        // A transient descriptor inherited during fork can outlive this owner.
-        // Unlock the owned open description now, before File closes it. This is
-        // not a durability acknowledgement; normal commit already handles sync.
-        // If unlock fails, File still closes and another opener remains fenced.
-        let _ = self.file.unlock();
-    }
 }
 
 impl SparseJournal {
@@ -133,7 +124,7 @@ impl SparseJournal {
     }
 
     fn open_with_policy(
-        mut file: File,
+        file: File,
         config: SparseConfig,
         scope: JournalScope,
         max_records: usize,
@@ -153,14 +144,7 @@ impl SparseJournal {
         if scope.scope_digest.is_zero() || scope.objective_digest.is_zero() {
             return Err(JournalError::ContextMismatch);
         }
-        if !file.metadata()?.is_file() {
-            return Err(JournalError::NotRegular);
-        }
-        match file.try_lock() {
-            Ok(()) => {}
-            Err(TryLockError::WouldBlock) => return Err(JournalError::Busy),
-            Err(TryLockError::Error(error)) => return Err(error.into()),
-        }
+        let mut file = LockedFile::acquire(file)?;
         let mut header = MAGIC.to_vec();
         for digest in [config_digest, scope.scope_digest, scope.objective_digest] {
             header.extend_from_slice(digest.as_array());

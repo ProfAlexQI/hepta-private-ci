@@ -558,3 +558,54 @@ fn owner_drop_releases_lock_with_a_transient_duplicate_alive() {
         Some(DurableLedgerError::Busy)
     );
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn failed_constructor_releases_acquired_lock_with_transient_duplicate() {
+    let fixture = Fixture::new();
+    let snapshot = fixture.write_events(vec![decision()]);
+    let file = fixture.file();
+    let transient = must(file.try_clone());
+    assert_eq!(
+        DurableLedger::create(file, binding(), /*max_records*/ 16).err(),
+        Some(DurableLedgerError::AlreadyInitialized)
+    );
+    let recovered = must(fixture.recover(anchored(&snapshot)));
+    assert_eq!(must(recovered.snapshot()), snapshot);
+    drop(transient);
+    assert_eq!(
+        fixture.recover(anchored(&snapshot)).err(),
+        Some(DurableLedgerError::Busy)
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn failed_recovery_releases_acquired_lock_before_store_exists() {
+    let fixture = Fixture::new();
+    let snapshot = fixture.write_events(vec![decision()]);
+    let original = must(fs::read(fixture.path()));
+    for bytes in [Vec::new(), b"broken".to_vec(), {
+        let mut bad = original;
+        bad[HEADER] ^= 1;
+        bad
+    }] {
+        must(fs::write(fixture.path(), &bytes));
+        let file = fixture.file();
+        let transient = must(file.try_clone());
+        let first = DurableLedger::recover(
+            file,
+            binding(),
+            /*max_records*/ 16,
+            anchored(&snapshot),
+        )
+        .err();
+        assert!(matches!(
+            first,
+            Some(DurableLedgerError::MissingHeader | DurableLedgerError::Corrupt)
+        ));
+        assert_eq!(fixture.recover(anchored(&snapshot)).err(), first);
+        drop(transient);
+        assert_eq!(must(fs::read(fixture.path())), bytes);
+    }
+}

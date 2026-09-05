@@ -405,3 +405,43 @@ fn owner_drop_releases_lock_with_a_transient_duplicate_alive() {
         Some(JournalError::Busy)
     );
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn failed_recovery_releases_acquired_lock_before_journal_exists() {
+    let fixture = Fixture::new();
+    let receipt = checked(fixture.open().commit(Digest32::ZERO, &tick(1)));
+    let original = checked(fs::read(fixture.path()));
+    for bytes in [Vec::new(), b"broken".to_vec(), {
+        let mut bad = original;
+        bad[0] ^= 1;
+        bad
+    }] {
+        checked(fs::write(fixture.path(), &bytes));
+        let file = fixture.file();
+        let transient = checked(file.try_clone());
+        let anchor = JournalAnchor {
+            sequence: 1,
+            checkpoint_digest: receipt.checkpoint_after,
+        };
+        let first =
+            SparseJournal::open_anchored(file, config(), scope(), /*max_records*/ 16, anchor).err();
+        assert!(matches!(
+            first,
+            Some(JournalError::AcknowledgedHistoryMissing | JournalError::Corrupt)
+        ));
+        assert_eq!(
+            SparseJournal::open_anchored(
+                fixture.file(),
+                config(),
+                scope(),
+                /*max_records*/ 16,
+                anchor
+            )
+            .err(),
+            first
+        );
+        drop(transient);
+        assert_eq!(checked(fs::read(fixture.path())), bytes);
+    }
+}
