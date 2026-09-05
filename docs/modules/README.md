@@ -12,10 +12,10 @@ This directory contains exactly one stable implementation guide for every module
 - [`runtime.supervisor`](runtime.supervisor/TECHNICAL.md) — `existing_bound`, bootstrap `P0.7A-RUNTIME-BOOTSTRAP`.
 - [`runtime.fleet`](runtime.fleet/TECHNICAL.md) — `existing_bound`, bootstrap `FLEET-1-ALLOCATION-CONTRACT`.
 - [`runtime.agentd`](runtime.agentd/TECHNICAL.md) — `existing_bound`, bootstrap `P0.8B-READINESS`.
-- [`runtime.codex`](runtime.codex/TECHNICAL.md) — `existing_legacy_aggregate`, bootstrap `P0.7B-B1B-MODEL-BOUNDARY`.
-- [`auth.authbus`](auth.authbus/TECHNICAL.md) — `existing_legacy_aggregate`, bootstrap `AUTHBUS-P1.3-V12`.
-- [`secrets.heptabao`](secrets.heptabao/TECHNICAL.md) — `external_with_adapter_target`, bootstrap `HEPTABAO-1-SECRET-BOUNDARY`.
-- [`inference.control`](inference.control/TECHNICAL.md) — `existing_legacy_aggregate`, bootstrap `P0.7B-B1A-PROVIDER-BOUNDARY`.
+- [`runtime.codex`](runtime.codex/TECHNICAL.md) — `existing_bound`, bootstrap `P0.7B-B1B-MODEL-BOUNDARY`.
+- [`auth.authbus`](auth.authbus/TECHNICAL.md) — `existing_bound`, bootstrap `AUTHBUS-P1.3-V12`.
+- [`secrets.heptabao`](secrets.heptabao/TECHNICAL.md) — `existing_bound`, bootstrap `HEPTABAO-1-SECRET-BOUNDARY`.
+- [`inference.control`](inference.control/TECHNICAL.md) — `existing_bound`, bootstrap `P0.7B-B1A-PROVIDER-BOUNDARY`.
 - [`inference.worker`](inference.worker/TECHNICAL.md) — `existing_bound`, bootstrap `INFER-V4-T4`.
 - [`objective.compiler`](objective.compiler/TECHNICAL.md) — `existing_bound`, bootstrap `OBJ-0-OBJECTIVE-CONTRACTS`.
 - [`utility.ndu`](utility.ndu/TECHNICAL.md) — `existing_bound`, bootstrap `NDU-0-PREFERENCE-UTILITY-CONTRACTS`.
@@ -23,15 +23,15 @@ This directory contains exactly one stable implementation guide for every module
 - [`intuition.policy`](intuition.policy/TECHNICAL.md) — `existing_bound`, bootstrap `INT-1-CALIBRATED-INTUITION-POLICY`.
 - [`prompt.registry`](prompt.registry/TECHNICAL.md) — `existing_bound`, bootstrap `PIM-0-PROMPT-INTERVENTION-CONTRACTS`.
 - [`prompt.optimizer`](prompt.optimizer/TECHNICAL.md) — `existing_bound`, bootstrap `PIM-2-PROMPT-PRICING-PORTFOLIO-SHADOW`.
-- [`context.compiler`](context.compiler/TECHNICAL.md) — `target_partially_materialized`, bootstrap `CTX-1-CONTEXT-COMPILER`.
-- [`intelligence.control`](intelligence.control/TECHNICAL.md) — `target_partially_materialized`, bootstrap `INTELLIGENCE-A0-Q0.63`.
-- [`cognitive.types`](cognitive.types/TECHNICAL.md) — `target_partially_materialized`, bootstrap `MEM-0-TYPES`.
-- [`cognitive.store`](cognitive.store/TECHNICAL.md) — `target_partially_materialized`, bootstrap `MEM-1-STORE`.
-- [`cognitive.read`](cognitive.read/TECHNICAL.md) — `target_partially_materialized`, bootstrap `MEM-READ-1-SNAPSHOT-PORT`.
-- [`memory.retrieval`](memory.retrieval/TECHNICAL.md) — `target_partially_materialized`, bootstrap `MEM-2-RETRIEVAL`.
-- [`memory.federation`](memory.federation/TECHNICAL.md) — `target_partially_materialized`, bootstrap `MEM-3-FEDERATION`.
-- [`knowledge.graph`](knowledge.graph/TECHNICAL.md) — `target_partially_materialized`, bootstrap `MEM-4-KG`.
-- [`compact.engine`](compact.engine/TECHNICAL.md) — `target_partially_materialized`, bootstrap `MEM-5-COMPACT`.
+- [`context.compiler`](context.compiler/TECHNICAL.md) — `existing_bound`, bootstrap `CTX-1-CONTEXT-COMPILER`.
+- [`intelligence.control`](intelligence.control/TECHNICAL.md) — `existing_bound`, bootstrap `INTELLIGENCE-A0-Q0.63`.
+- [`cognitive.types`](cognitive.types/TECHNICAL.md) — `existing_bound`, bootstrap `MEM-0-TYPES`.
+- [`cognitive.store`](cognitive.store/TECHNICAL.md) — `existing_bound`, bootstrap `MEM-1-STORE`.
+- [`cognitive.read`](cognitive.read/TECHNICAL.md) — `existing_bound`, bootstrap `MEM-READ-1-SNAPSHOT-PORT`.
+- [`memory.retrieval`](memory.retrieval/TECHNICAL.md) — `existing_bound`, bootstrap `MEM-2-RETRIEVAL`.
+- [`memory.federation`](memory.federation/TECHNICAL.md) — `existing_bound`, bootstrap `MEM-3-FEDERATION`.
+- [`knowledge.graph`](knowledge.graph/TECHNICAL.md) — `existing_bound`, bootstrap `MEM-4-KG`.
+- [`compact.engine`](compact.engine/TECHNICAL.md) — `existing_bound`, bootstrap `MEM-5-COMPACT`.
 - [`learning.ledger`](learning.ledger/TECHNICAL.md) — `existing_bound`, bootstrap `LRN-0-CAUSAL-LEARNING-CONTRACTS`.
 - [`learning.operator`](learning.operator/TECHNICAL.md) — `existing_bound`, bootstrap `HBO-0-BELLMAN-OPERATOR-CONTRACTS`.
 - [`learning.eval`](learning.eval/TECHNICAL.md) — `existing_bound`, bootstrap `LRN-2-CAUSAL-EVALUATION`.
@@ -39,10 +39,10 @@ This directory contains exactly one stable implementation guide for every module
 - [`learning.plasticity`](learning.plasticity/TECHNICAL.md) — `existing_bound`, bootstrap `PLS-1-PARAMETER-PLASTICITY`.
 - [`automation.taskflow`](automation.taskflow/TECHNICAL.md) — `existing_bound`, bootstrap `TASKFLOW-1-EXECUTION-BOUNDARY`.
 - [`channel.matrix`](channel.matrix/TECHNICAL.md) — `existing_bound`, bootstrap `MATRIX-1-CHANNEL-BOUNDARY`.
-- [`browser.servo`](browser.servo/TECHNICAL.md) — `existing_declared_unbound`, bootstrap `BROWSER-WEB-C1`.
+- [`browser.servo`](browser.servo/TECHNICAL.md) — `existing_bound`, bootstrap `BROWSER-WEB-C1`.
 - [`ui.control`](ui.control/TECHNICAL.md) — `existing_bound`, bootstrap `UI-V5`.
-- [`ui.native`](ui.native/TECHNICAL.md) — `target_partially_materialized`, bootstrap `UI-NATIVE-1-SHELL`.
-- [`control.runtime`](control.runtime/TECHNICAL.md) — `target_partially_materialized`, bootstrap `RCP-1-RUNTIME-CONTROL-PLANE`.
+- [`ui.native`](ui.native/TECHNICAL.md) — `existing_bound`, bootstrap `UI-NATIVE-1-SHELL`.
+- [`control.runtime`](control.runtime/TECHNICAL.md) — `existing_bound`, bootstrap `RCP-1-RUNTIME-CONTROL-PLANE`.
 - [`control.engineering`](control.engineering/TECHNICAL.md) — `existing_bound`, bootstrap `ECP-1-ENGINEERING-CONTROL-PLANE`.
 
 ## Adaptive algorithm overlay

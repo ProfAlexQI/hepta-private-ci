@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "module": "secrets.heptabao",
+  "repository": "TrillionniumFoundation/HeptaBao",
+  "branch": "main",
+  "commit": "1c69131d7251bc02ebeab726689ecd53bce89968",
+  "integration_mode": "opaque_reference_adapter",
+  "contains_secret_material": false,
+  "automatic_update": false,
+  "runtime_authority": false,
+  "release_authority": false,
+  "interpretation": "this record pins external source identity and does not vendor secrets or grant runtime access"
+}
