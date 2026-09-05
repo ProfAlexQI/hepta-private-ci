@@ -88,11 +88,10 @@ jobs:
           version: 0.11.3
           enable-cache: false
 
-      - name: Generate formatting candidate and exact spelling exceptions
+      - name: Check source spellings before formatter environments exist
         shell: bash
         run: |
           set -euo pipefail
-          just fmt
           python3 - <<'PY'
           from pathlib import Path
           path = Path('.codespellignore')
@@ -100,9 +99,17 @@ jobs:
           assert before == 'ans\niTerm\niTerm2\nnumer\npsuedo\nre-use\nSOM\nte\nTE\nWRONLY\n'
           # Existing Rust enum identifiers, not prose misspellings. No files skipped.
           path.write_text(before + 'atleast\natmost\n')
+          assert not Path('scripts/.venv').exists()
+          assert not Path('sdk/python/.venv').exists()
           PY
-          just fmt-check
           uvx --from codespell==2.4.3 codespell --ignore-words .codespellignore --skip ./.git
+
+      - name: Generate formatting candidate using unchanged rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          just fmt
+          just fmt-check
 
       - name: Bound changed paths and preserve Python semantics
         shell: bash
