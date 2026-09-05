@@ -12,6 +12,14 @@ use codex_hepta_types::{AuthorityPosture, Digest32, FixedQ32, ProbabilityQ32, St
 
 use crate::push_id;
 
+#[path = "ope_confidence.rs"]
+mod confidence;
+
+pub use confidence::{
+    ClusterAssignment, ClusterConfidenceError, ClusterConfidencePlan, ClusterOpeEstimate, OpeInterval,
+    estimate_cluster_intervals,
+};
+
 const SCALE: i128 = 1_i128 << 32;
 const MAX_ROWS: usize = 1_000_000;
 const MAX_ACTIONS: usize = 128;

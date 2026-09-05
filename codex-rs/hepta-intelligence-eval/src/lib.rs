@@ -10,7 +10,10 @@ use codex_hepta_types::{Digest32, FixedQ32, StableId};
 mod ope;
 mod temporal_fold;
 
-pub use ope::{OpeAction, OpeError, OpeEstimate, OpePlan, OpeRow, estimate_ope};
+pub use ope::{
+    ClusterAssignment, ClusterConfidenceError, ClusterConfidencePlan, ClusterOpeEstimate, OpeAction,
+    OpeError, OpeEstimate, OpeInterval, OpePlan, OpeRow, estimate_cluster_intervals, estimate_ope,
+};
 pub use temporal_fold::{
     HeldOutPrediction, HeldOutTarget, OutcomeTrainingSample, TemporalFoldError, TemporalFoldPlan,
     TemporalFoldReceipt, fit_temporal_fold,
