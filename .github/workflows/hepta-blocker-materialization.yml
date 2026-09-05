@@ -1,4 +1,4 @@
-name: Hepta bounded formatter candidate materialization
+name: Hepta bounded blocker candidate materialization
 
 on:
   push:
@@ -9,16 +9,17 @@ permissions:
 
 concurrency:
   group: hepta-bounded-materialization-r3
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   materialize:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       SOURCE_SHA: 2569607012501456d290183df9e986b0a4703fe5
-      OUTPUT_BRANCH: codex/hepta-blocker-normalized-output-20260905-r3
+      OUTPUT_BRANCH: codex/hepta-blocker-repair-20260905-r3
       PYTHONDONTWRITEBYTECODE: "1"
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
       - name: Check out fixed source, excluding this generator
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -27,10 +28,56 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
-      - name: Install repository format tools
+      - name: Load exact bounded recovery source candidates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          import subprocess
+          import urllib.request
+          from pathlib import Path
+          source = '2569607012501456d290183df9e986b0a4703fe5'
+          assert subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode().strip() == source
+          prepared = {
+              'codex-rs/hepta-neuron/src/journal.rs': '2ed922c1977bf29fe72569c0a67781e7ce037fb7',
+              'codex-rs/hepta-neuron/src/journal_anchor_tests.rs': '67808d964e540f23604a8c3c62496d98588c9e63',
+              'codex-rs/hepta-neuron/RECOVERY_ANCHOR.md': 'f83217aa985b0fba16625bbcaf48464cb4bfcece',
+          }
+          for path, sha in prepared.items():
+              url = 'https://api.github.com/repos/TrillionniumFoundation/hepta-private-ci/git/blobs/' + sha
+              request = urllib.request.Request(url, headers={
+                  'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+              })
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  value = json.load(response)
+              assert value['sha'] == sha and value['encoding'] == 'base64'
+              content = base64.b64decode(value['content'])
+              actual = subprocess.check_output(['git', 'hash-object', '--stdin'], input=content).decode().strip()
+              assert actual == sha, path
+              Path(path).write_bytes(content)
+          lib = Path('codex-rs/hepta-neuron/src/lib.rs')
+          assert subprocess.check_output(['git', 'hash-object', str(lib)]).decode().strip() == 'cd4ce659b06d67a136be143d7aa8fd64d5519786'
+          before = lib.read_text()
+          needle = 'pub use journal::JournalError;\n'
+          assert before.count(needle) == 1
+          lib.write_text(before.replace(needle, 'pub use journal::JournalAnchor;\n' + needle))
+          out = Path(os.environ['RUNNER_TEMP']) / 'hepta-normalization'
+          out.mkdir()
+          (out / 'prepared.json').write_text(json.dumps(prepared, indent=2) + '\n')
+          (out / 'source.txt').write_bytes(subprocess.check_output(['git', 'rev-parse', 'HEAD', 'HEAD^{tree}']))
+          PY
+
+      - name: Install repository format and test tools
         uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
         with:
-          tool: just@1.51.0
+          tool: just@1.51.0,nextest@0.9.103
 
       - name: Install DotSlash
         uses: facebook/install-dotslash@1e4e7b3e07eaca387acb98f1d4720e0bee8dbb6a
@@ -45,7 +92,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           just fmt
           python3 - <<'PY'
           from pathlib import Path
@@ -58,7 +104,7 @@ jobs:
           just fmt-check
           uvx --from codespell==2.4.3 codespell --ignore-words .codespellignore --skip ./.git
 
-      - name: Reject changes outside observed formatter failures
+      - name: Bound changed paths and preserve Python semantics
         shell: bash
         run: |
           set -euo pipefail
@@ -94,10 +140,17 @@ jobs:
               'hepta-types/src/identity_tests.rs', 'hepta-wire/src/envelope.rs',
               'hepta-wire/src/envelope_tests.rs',
           }
-          allowed = allowed_python | {'codex-rs/' + p for p in allowed_rust} | {'.codespellignore'}
-          changed = git('diff', '--name-only', '-z').decode().strip('\0').split('\0')
+          implementation = {
+              'codex-rs/hepta-neuron/src/journal.rs',
+              'codex-rs/hepta-neuron/src/journal_anchor_tests.rs',
+              'codex-rs/hepta-neuron/RECOVERY_ANCHOR.md',
+          }
+          allowed = allowed_python | {'codex-rs/' + p for p in allowed_rust} | {'.codespellignore'} | implementation
+          tracked = set(filter(None, git('diff', '--name-only', '-z').decode().split('\0')))
+          untracked = set(filter(None, git('ls-files', '--others', '--exclude-standard', '-z').decode().split('\0')))
+          changed = sorted(tracked | untracked)
           assert changed and set(changed) <= allowed, sorted(set(changed) - allowed)
-          assert not git('ls-files', '--others', '--exclude-standard').strip(), 'unexpected untracked files'
+          assert untracked <= implementation
           for path in changed:
               assert Path(path).is_file() and not Path(path).is_symlink(), path
               if path in allowed_python:
@@ -105,18 +158,38 @@ jobs:
                   after = Path(path).read_text()
                   assert ast.dump(ast.parse(before), include_attributes=False) == ast.dump(ast.parse(after), include_attributes=False), path
           out = Path(os.environ['RUNNER_TEMP']) / 'hepta-normalization'
-          out.mkdir()
-          (out / 'changes.patch').write_bytes(git('diff', '--binary'))
+          hashes = {path: git('hash-object', path).decode().strip() for path in changed}
           (out / 'paths.json').write_text(json.dumps(changed, indent=2) + '\n')
-          (out / 'source.txt').write_bytes(git('rev-parse', 'HEAD', 'HEAD^{tree}'))
+          (out / 'hashes.json').write_text(json.dumps(hashes, indent=2) + '\n')
+          subprocess.run(['git', 'add', '--', *changed], check=True)
+          (out / 'changes.patch').write_bytes(git('diff', '--cached', '--binary'))
           print(json.dumps({'source': os.environ['SOURCE_SHA'], 'changed_files': len(changed), 'paths': changed}))
           PY
-          git diff --check
+          git diff --cached --check
+
+      - name: Compile, execute all neuron regressions, and lint
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked -p codex-hepta-neuron --all-targets
+          just test --locked -p codex-hepta-neuron
+          cargo clippy --locked -p codex-hepta-neuron --all-targets -- -D warnings
+          cargo fmt --package codex-hepta-neuron -- --config imports_granularity=Item --check
+
+      - name: Check document, caller and existing boundary regressions
+        shell: bash
+        run: |
+          set -euo pipefail
           python3 scripts/hepta-module-docs.py verify
           python3 scripts/hepta-gap-closure.py verify
           python3 scripts/hepta-cns.py verify
           python3 scripts/hepta-docs.py verify
+          python3 scripts/verify_hepta_callers.py self-test
+          python3 scripts/verify_hepta_callers.py verify
           python3 -m unittest discover -s scripts -p test_hepta_module_doc_metadata.py -v
+          python3 -m unittest discover -s qualification/cns-organ-reference -v
+          python3 -m unittest discover -s tools/hepta-engineering-control -v
 
       - name: Create candidate Git objects and a new branch only
         env:
@@ -133,12 +206,19 @@ jobs:
           from pathlib import Path
           repo = 'TrillionniumFoundation/hepta-private-ci'
           source = '2569607012501456d290183df9e986b0a4703fe5'
-          branch = 'codex/hepta-blocker-normalized-output-20260905-r3'
+          branch = 'codex/hepta-blocker-repair-20260905-r3'
+          def git(*args):
+              return subprocess.check_output(['git', *args])
           assert os.environ['GITHUB_REPOSITORY'] == repo
           assert os.environ['GITHUB_REF'] == 'refs/heads/codex/hepta-blocker-materialization-20260905-r3'
-          assert subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode().strip() == source
+          assert git('rev-parse', 'HEAD').decode().strip() == source
           out = Path(os.environ['RUNNER_TEMP']) / 'hepta-normalization'
           paths = json.loads((out / 'paths.json').read_text())
+          hashes = json.loads((out / 'hashes.json').read_text())
+          assert not git('diff', '--name-only').strip(), 'tests modified staged source'
+          assert not git('ls-files', '--others', '--exclude-standard').strip(), 'unexpected untracked files'
+          actual_paths = set(filter(None, git('diff', '--cached', '--name-only', '-z').decode().split('\0')))
+          assert actual_paths == set(paths)
           def post(endpoint, data):
               request = urllib.request.Request(
                   'https://api.github.com/repos/' + repo + '/git/' + endpoint,
@@ -152,18 +232,18 @@ jobs:
           entries = []
           for path in paths:
               content = Path(path).read_bytes()
+              assert git('hash-object', path).decode().strip() == hashes[path], path
               blob = post('blobs', {'encoding': 'base64', 'content': base64.b64encode(content).decode()})
-              expected = subprocess.check_output(['git', 'hash-object', path]).decode().strip()
-              assert blob['sha'] == expected, path
-              mode = subprocess.check_output(['git', 'ls-tree', 'HEAD', '--', path]).decode().split()[0]
+              assert blob['sha'] == hashes[path], path
+              original = git('ls-tree', 'HEAD', '--', path).decode().split()
+              mode = original[0] if original else '100644'
               entries.append({'path': path, 'mode': mode, 'type': 'blob', 'sha': blob['sha']})
-          base_tree = subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}']).decode().strip()
+          base_tree = git('rev-parse', 'HEAD^{tree}').decode().strip()
           tree = post('trees', {'base_tree': base_tree, 'tree': entries})
-          subprocess.run(['git', 'add', '--', *paths], check=True)
-          expected_tree = subprocess.check_output(['git', 'write-tree']).decode().strip()
-          assert tree['sha'] == expected_tree
-          commit = post('commits', {'message': 'style(hepta): reconcile mandatory formatting and legitimate enum spellings\n\nBounded generated candidate from exact 2569607. Existing formatters only; Python AST preserved. Spelling exceptions limited to existing AtLeast/AtMost enum identifiers. No formatter, evaluator, permission, activation or release rules changed. Independent source and synthetic-merge qualification still required.', 'tree': tree['sha'], 'parents': [source]})
-          # POST creates only; 422 on existing branch. Never PATCH, force-push or merge.
+          assert tree['sha'] == git('write-tree').decode().strip()
+          message = 'fix(hepta): anchor acknowledged recovery and reconcile mandatory format blockers\n\nBounded candidate from exact 2569607. Add externally anchored recovery with nine regressions; preserve legacy journal bytes and deny silent acknowledged-history loss before repair. Other source changes use existing formatters only, with Python AST equality. Add only existing AtLeast/AtMost spelling exceptions. No evaluator, formatter rule, workflow, dependency, permission, activation or release change. Generator tests are not independent acceptance; exact source and synthetic-merge CI remain required.'
+          commit = post('commits', {'message': message, 'tree': tree['sha'], 'parents': [source]})
+          # POST creates only; 422 on an existing branch. Never PATCH, force-push or merge.
           post('refs', {'ref': 'refs/heads/' + branch, 'sha': commit['sha']})
           identity = {'source': source, 'tree': tree['sha'], 'head': commit['sha'], 'branch': branch, 'acceptance': False, 'release': False}
           (out / 'candidate.json').write_text(json.dumps(identity, indent=2) + '\n')
