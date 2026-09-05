@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   inventory:
-    runs-on: macos-15
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -19,7 +19,7 @@ jobs:
           persist-credentials: false
       - name: Freeze heads and export all reachable histories
         env:
-          SOURCE: d19920e86ba0ed07984acc602f743d29843f57ff
+          SOURCE: 38be50acb9ec6153ad71f74295937e4cab4c0073
         shell: bash
         run: |
           set -euo pipefail
