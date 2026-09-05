@@ -185,9 +185,14 @@ fn point_estimate_failures_cannot_be_hidden_by_intervals() {
 
 #[test]
 fn outward_integer_radius_has_an_exact_scalar_oracle() {
-    assert_eq!(must(radius(/*range*/ 10, /*log_upper*/ 2, /*sum_squares*/ 4, /*count*/ 2)), 18);
-    assert_eq!(must(radius(/*range*/ 1, /*log_upper*/ 1, /*sum_squares*/ 1, /*count*/ 1)), 9);
-    assert_eq!(radius(/*range*/ u128::MAX, /*log_upper*/ 2, /*sum_squares*/ 4, /*count*/ 2), Err(ClusterConfidenceError::Arithmetic));
+    let (range, log_upper, sum_squares, count) = (10, 2, 4, 2);
+    assert_eq!(must(radius(range, log_upper, sum_squares, count)), 18);
+    let (range, log_upper, sum_squares, count) = (1, 1, 1, 1);
+    assert_eq!(must(radius(range, log_upper, sum_squares, count)), 9);
+    assert_eq!(
+        radius(u128::MAX, log_upper, sum_squares, count),
+        Err(ClusterConfidenceError::Arithmetic)
+    );
 }
 
 #[test]
@@ -197,5 +202,23 @@ fn confidence_plan_requires_prespecified_assumptions_and_budget() {
     assert_eq!(
         estimate_cluster_intervals(&ope, &plan, &rows, &assignments),
         Err(ClusterConfidenceError::InvalidPlan)
+    );
+}
+
+#[test]
+fn unchosen_actions_also_have_to_respect_the_weight_ceiling() {
+    let (ope, plan, mut rows, assignments) = fixture();
+    rows[0].actions[0].behavior_probability = must(ProbabilityQ32::from_raw(3 << 30));
+    rows[0].actions[0].evaluation_probability = must(ProbabilityQ32::from_raw(1 << 31));
+    rows[0].actions.push(OpeAction {
+        action_id: id("unchosen"),
+        behavior_probability: must(ProbabilityQ32::from_raw(1 << 30)),
+        evaluation_probability: must(ProbabilityQ32::from_raw(1 << 31)),
+        predicted_outcome: FixedQ32::ZERO,
+    });
+    assert!(estimate_ope(&ope, &rows).is_ok());
+    assert_eq!(
+        estimate_cluster_intervals(&ope, &plan, &rows, &assignments),
+        Err(ClusterConfidenceError::WeightEnvelope)
     );
 }
