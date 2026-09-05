@@ -1,0 +1,81 @@
+name: Hepta all-branch consolidation audit
+on:
+  push:
+    branches: [admin/full-gap-closure-audit-export-20260902]
+    paths: [.github/workflows/hepta-main-consolidation-audit.yml]
+permissions:
+  contents: read
+concurrency:
+  group: hepta-main-consolidation-audit
+  cancel-in-progress: false
+jobs:
+  inventory:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Freeze heads and export all reachable histories
+        env:
+          SOURCE: d19920e86ba0ed07984acc602f743d29843f57ff
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/main-consolidation"
+          export OUT="$RUNNER_TEMP/main-consolidation"
+          python3 - <<'PY'
+          import hashlib,json,os,subprocess,pathlib
+          def git(*args):
+              return subprocess.check_output(['git',*args])
+          source=os.environ['SOURCE']; out=pathlib.Path(os.environ['OUT'])
+          def entries(ref):
+              result={}
+              for row in git('ls-tree','-rz',ref).split(b'\0'):
+                  if not row: continue
+                  meta,path=row.split(b'\t',1)
+                  mode,kind,sha=meta.decode().split()
+                  result[path.decode()]={'mode':mode,'type':kind,'sha':sha}
+              return result
+          selected=entries(source); branches=[]
+          for line in git('for-each-ref','--format=%(refname) %(objectname)','refs/remotes/origin').decode().splitlines():
+              ref,sha=line.split(); name=ref.removeprefix('refs/remotes/origin/')
+              if name=='HEAD': continue
+              ancestor=subprocess.run(['git','merge-base','--is-ancestor',sha,source]).returncode==0
+              bases=subprocess.run(['git','merge-base','--all',source,sha],capture_output=True,text=True)
+              roots=bases.stdout.split(); base=roots[0] if len(roots)==1 else None
+              target=entries(sha); old=entries(base) if base else {}
+              rows=[]
+              for path in sorted(set(old)|set(target)):
+                  if old.get(path)==target.get(path): continue
+                  disposition=('already_present' if target.get(path)==selected.get(path) else 'unique_delta' if old.get(path)==selected.get(path) else 'overlapping_delta')
+                  rows.append({'path':path,'base':old.get(path),'branch':target.get(path),'selected':selected.get(path),'disposition':disposition})
+              branches.append({'branch':name,'sha':sha,'tree':git('rev-parse',sha+'^{tree}').decode().strip(),'ancestor_of_selected':ancestor,'merge_bases':roots,'deltas':rows})
+          report={'schema':'hepta.branch-consolidation-audit.v1','source':source,'source_tree':git('rev-parse',source+'^{tree}').decode().strip(),'branches':branches,'branch_count':len(branches),'writes_performed':False}
+          (out/'branch-audit.json').write_text(json.dumps(report,indent=2)+'\n')
+          (out/'selected-tree.json').write_text(json.dumps(selected,indent=2)+'\n')
+          (out/'commit-graph.txt').write_bytes(git('log','--all','--format=%H %T %P %cI %s'))
+          for b in branches:
+              counts={k:sum(r['disposition']==k for r in b['deltas']) for k in ['already_present','unique_delta','overlapping_delta']}
+              print(b['branch'],b['sha'],b['ancestor_of_selected'],counts)
+          git('bundle','create',str(out/'all-branches.bundle'),'--all')
+          git('bundle','verify',str(out/'all-branches.bundle'))
+          with (out/'selected-source.tar.gz').open('wb') as f:
+              subprocess.run(['git','archive','--format=tar.gz',source],stdout=f,check=True)
+          sums=[]
+          for p in sorted(out.iterdir()):
+              h=hashlib.sha256()
+              with p.open('rb') as f:
+                  for block in iter(lambda:f.read(1024*1024),b''):h.update(block)
+              sums.append(h.hexdigest()+'  '+p.name)
+          (out/'SHA256SUMS').write_text('\n'.join(sums)+'\n')
+          PY
+      - name: Retain immutable audit and recovery bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-main-consolidation-audit-${{ github.sha }}
+          path: ${{ runner.temp }}/main-consolidation
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
