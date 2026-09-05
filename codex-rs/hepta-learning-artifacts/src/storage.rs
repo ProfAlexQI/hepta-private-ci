@@ -90,6 +90,7 @@ pub fn write_registry_snapshot(
 }
 
 /// Rebuild the same canonical registry and revocation lineage from exact bytes.
+/// Accepts a read-only file and uses a shared lock, never a writer recovery path.
 /// There is no repair, initialization, old-snapshot fallback or selected pointer.
 pub fn read_registry_snapshot(
     file: File,
@@ -151,7 +152,8 @@ pub fn write_candidate_payload(
 }
 
 /// Load candidate bytes using a CURRENT host-authenticated registry snapshot.
-/// Successful loading is not authority to execute, install or select the bytes.
+/// A read-only handle is sufficient. Successful loading is not authority to
+/// execute, install or select the bytes, nor proof of continued revocation freshness.
 pub fn read_candidate_payload(
     file: File,
     registry: &ArtifactRegistry,
@@ -170,7 +172,9 @@ fn eligible_manifest<'a>(
     if !registry.is_eligible(artifact) {
         return Err(ArtifactStorageError::Unavailable);
     }
-    registry.manifest(artifact).ok_or(ArtifactStorageError::Unavailable)
+    registry
+        .manifest(artifact)
+        .ok_or(ArtifactStorageError::Unavailable)
 }
 
 fn validate_payload(manifest: &ArtifactManifest, bytes: &[u8]) -> Result<(), ArtifactStorageError> {
@@ -185,43 +189,70 @@ fn validate_payload(manifest: &ArtifactManifest, bytes: &[u8]) -> Result<(), Art
     Ok(())
 }
 
-fn lock(file: &File) -> Result<(), ArtifactStorageError> {
+enum LockKind {
+    Shared,
+    Exclusive,
+}
+
+struct LockedFile(File);
+
+impl Drop for LockedFile {
+    fn drop(&mut self) {
+        // Normal close alone can leave a lock on a transient inherited open
+        // description. Release only the lock this guard successfully acquired.
+        // This is not a commit acknowledgement or a forced-exit guarantee.
+        let _ = self.0.unlock();
+    }
+}
+
+fn lock(file: File, kind: LockKind) -> Result<LockedFile, ArtifactStorageError> {
     if !file.metadata()?.is_file() {
         return Err(ArtifactStorageError::NotRegular);
     }
-    match file.try_lock() {
-        Ok(()) => Ok(()),
+    let result = match kind {
+        LockKind::Shared => file.try_lock_shared(),
+        LockKind::Exclusive => file.try_lock(),
+    };
+    match result {
+        Ok(()) => Ok(LockedFile(file)),
         Err(TryLockError::WouldBlock) => Err(ArtifactStorageError::Busy),
         Err(TryLockError::Error(error)) => Err(error.into()),
     }
 }
 
-fn write_new(mut file: File, bytes: &[u8]) -> Result<(), ArtifactStorageError> {
-    lock(&file)?;
-    if file.metadata()?.len() != 0 {
+fn write_new(file: File, bytes: &[u8]) -> Result<(), ArtifactStorageError> {
+    let mut guard = lock(file, LockKind::Exclusive)?;
+    if guard.0.metadata()?.len() != 0 {
         return Err(ArtifactStorageError::AlreadyExists);
     }
-    file.seek(SeekFrom::Start(0))?;
-    file.write_all(bytes)
-        .and_then(|()| file.sync_all())
+    guard.0.seek(SeekFrom::Start(0))?;
+    guard
+        .0
+        .write_all(bytes)
+        .and_then(|()| guard.0.sync_all())
         .map_err(|_| ArtifactStorageError::Indeterminate)
 }
 
-fn read_bounded(mut file: File, limit: usize) -> Result<Vec<u8>, ArtifactStorageError> {
-    lock(&file)?;
-    if file.metadata()?.len() > limit as u64 {
+fn read_bounded(file: File, limit: usize) -> Result<Vec<u8>, ArtifactStorageError> {
+    let mut guard = lock(file, LockKind::Shared)?;
+    if guard.0.metadata()?.len() > limit as u64 {
         return Err(ArtifactStorageError::Capacity);
     }
-    file.seek(SeekFrom::Start(0))?;
+    guard.0.seek(SeekFrom::Start(0))?;
     let mut bytes = Vec::new();
-    file.take(limit as u64 + 1).read_to_end(&mut bytes)?;
+    (&mut guard.0)
+        .take(limit as u64 + 1)
+        .read_to_end(&mut bytes)?;
     if bytes.len() > limit {
         return Err(ArtifactStorageError::Capacity);
     }
     Ok(bytes)
 }
 
-fn encode_snapshot(registry: &ArtifactRegistry, binding: Digest32) -> Result<Vec<u8>, ArtifactStorageError> {
+fn encode_snapshot(
+    registry: &ArtifactRegistry,
+    binding: Digest32,
+) -> Result<Vec<u8>, ArtifactStorageError> {
     let count = registry.records().len();
     if count > MAX_RECORDS {
         return Err(ArtifactStorageError::Capacity);
@@ -229,13 +260,22 @@ fn encode_snapshot(registry: &ArtifactRegistry, binding: Digest32) -> Result<Vec
     let mut text = format!("{MAGIC}\n{binding}\n{count}\n");
     for record in registry.records() {
         match &record.event {
-            ArtifactEvent::Register { event_id, manifest: m } => {
+            ArtifactEvent::Register {
+                event_id,
+                manifest: m,
+            } => {
                 let predecessor = m.predecessor_id.as_ref().map_or("", StableId::as_str);
                 text.push_str(&format!(
                     "R|{event_id}|{}|{}|{}|{predecessor}|{}|{}|{}|{}|{}|{}\n",
-                    m.artifact_id, m.kind.tag(), m.generation.get(), m.content_digest,
-                    m.objective_digest, m.support_digest, m.producer_id,
-                    m.compatibility_digest, m.encoded_size_bytes,
+                    m.artifact_id,
+                    m.kind.tag(),
+                    m.generation.get(),
+                    m.content_digest,
+                    m.objective_digest,
+                    m.support_digest,
+                    m.producer_id,
+                    m.compatibility_digest,
+                    m.encoded_size_bytes,
                 ));
             }
             ArtifactEvent::Quarantine(change) | ArtifactEvent::Revoke(change) => {
@@ -244,8 +284,10 @@ fn encode_snapshot(registry: &ArtifactRegistry, binding: Digest32) -> Result<Vec
                     ArtifactEvent::Revoke(_) => "V",
                     ArtifactEvent::Register { .. } => return Err(ArtifactStorageError::Semantic),
                 };
-                text.push_str(&format!("{tag}|{}|{}|{}|{}\n", change.event_id,
-                                       change.artifact_id, change.evaluator_id, change.reason_digest));
+                text.push_str(&format!(
+                    "{tag}|{}|{}|{}|{}\n",
+                    change.event_id, change.artifact_id, change.evaluator_id, change.reason_digest
+                ));
             }
         }
     }
@@ -277,19 +319,36 @@ fn decode_event(line: &str) -> Result<ArtifactEvent, ArtifactStorageError> {
             Ok(ArtifactEvent::Register {
                 event_id: id(event)?,
                 manifest: ArtifactManifest {
-                    artifact_id: id(artifact)?, kind,
-                    generation: Generation::new(number(generation)?).map_err(|_| ArtifactStorageError::Corrupt)?,
-                    predecessor_id: if predecessor.is_empty() { None } else { Some(id(predecessor)?) },
-                    content_digest: digest(content)?, objective_digest: digest(objective)?,
-                    support_digest: digest(support)?, producer_id: id(producer)?,
-                    compatibility_digest: digest(compatibility)?, encoded_size_bytes: number(size)?,
+                    artifact_id: id(artifact)?,
+                    kind,
+                    generation: Generation::new(number(generation)?)
+                        .map_err(|_| ArtifactStorageError::Corrupt)?,
+                    predecessor_id: if predecessor.is_empty() {
+                        None
+                    } else {
+                        Some(id(predecessor)?)
+                    },
+                    content_digest: digest(content)?,
+                    objective_digest: digest(objective)?,
+                    support_digest: digest(support)?,
+                    producer_id: id(producer)?,
+                    compatibility_digest: digest(compatibility)?,
+                    encoded_size_bytes: number(size)?,
                 },
             })
         }
         [tag @ ("Q" | "V"), event, artifact, evaluator, reason] => {
-            let change = StateChange { event_id: id(event)?, artifact_id: id(artifact)?,
-                                       evaluator_id: id(evaluator)?, reason_digest: digest(reason)? };
-            Ok(if *tag == "Q" { ArtifactEvent::Quarantine(change) } else { ArtifactEvent::Revoke(change) })
+            let change = StateChange {
+                event_id: id(event)?,
+                artifact_id: id(artifact)?,
+                evaluator_id: id(evaluator)?,
+                reason_digest: digest(reason)?,
+            };
+            Ok(if *tag == "Q" {
+                ArtifactEvent::Quarantine(change)
+            } else {
+                ArtifactEvent::Revoke(change)
+            })
         }
         _ => Err(ArtifactStorageError::Corrupt),
     }
@@ -298,3 +357,7 @@ fn decode_event(line: &str) -> Result<ArtifactEvent, ArtifactStorageError> {
 #[cfg(test)]
 #[path = "storage_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "storage_lock_tests.rs"]
+mod lock_tests;
