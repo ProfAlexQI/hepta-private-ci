@@ -1,0 +1,77 @@
+name: Hepta verified merged-branch retirement
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - tools/branch-consolidation/**
+      - .github/workflows/hepta-branch-consolidation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-verified-branch-retirement
+  cancel-in-progress: false
+
+jobs:
+  retire-verified-ancestors:
+    if: github.repository == 'TrillionniumFoundation/hepta-private-ci' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Test backup, races, ancestry, and atomic rejection
+        working-directory: tools/branch-consolidation
+        run: python3 -m unittest -v test_hepta_branch_consolidation.py
+
+      - name: Attempt the user-requested administrative default change
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh api --method PATCH "repos/$GITHUB_REPOSITORY" -f default_branch=main > "$RUNNER_TEMP/hepta-default-result.json" 2> "$RUNNER_TEMP/hepta-default-error.txt"; then
+            printf 'Administrative default: '
+            jq -r .default_branch "$RUNNER_TEMP/hepta-default-result.json"
+          else
+            echo 'Default change was not authorized by the runtime token; retaining the live default branch.'
+            cat "$RUNNER_TEMP/hepta-default-error.txt"
+          fi
+
+      - name: Freeze every branch and verify a complete recovery bundle
+        id: plan
+        run: python3 tools/branch-consolidation/hepta_branch_consolidation.py plan --output "$RUNNER_TEMP/hepta-ref-backup"
+
+      - name: Retain backup before any branch deletion
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-branch-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hepta-ref-backup
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Delete only frozen ancestors using explicit leases
+        env:
+          PLAN_SHA256: ${{ steps.plan.outputs.plan_sha256 }}
+        run: python3 tools/branch-consolidation/hepta_branch_consolidation.py apply --output "$RUNNER_TEMP/hepta-ref-backup" --expected-plan-sha256 "$PLAN_SHA256"
+
+      - name: Retain actual result, including refusals and remaining refs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-branch-result-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/hepta-ref-backup/plan.json
+            ${{ runner.temp }}/hepta-ref-backup/receipt.json
+            ${{ runner.temp }}/hepta-default-result.json
+            ${{ runner.temp }}/hepta-default-error.txt
+          retention-days: 30
+          if-no-files-found: warn
