@@ -109,10 +109,9 @@ pub fn prepare_dataset_revocation(
         .records()
         .iter()
         .filter_map(|record| match &record.event {
-            ArtifactEvent::Register { manifest, .. } => {
-                (manifest.support_digest == request.dataset_digest)
-                    .then(|| manifest.artifact_id.clone())
-            }
+            ArtifactEvent::Register { manifest, .. } => (manifest.support_digest
+                == request.dataset_digest)
+                .then(|| manifest.artifact_id.clone()),
             ArtifactEvent::Quarantine(_) | ArtifactEvent::Revoke(_) => None,
         })
         .collect();
@@ -139,9 +138,11 @@ pub fn prepare_dataset_revocation(
     let mut replayed = 0;
     let mut already_revoked = 0;
     for artifact in &targets {
-        let manifest = registry.manifest(artifact).ok_or(
-            DatasetRevocationError::Registry(ArtifactRegistryError::InternalInvariant),
-        )?;
+        let manifest = registry
+            .manifest(artifact)
+            .ok_or(DatasetRevocationError::Registry(
+                ArtifactRegistryError::InternalInvariant,
+            ))?;
         if manifest.producer_id == request.evaluator_id {
             return Err(DatasetRevocationError::Registry(
                 ArtifactRegistryError::ProducerSelfEvaluates(artifact.to_string()),
@@ -153,9 +154,10 @@ pub fn prepare_dataset_revocation(
         key.extend_from_slice(request.dataset_digest.as_array());
         push_id(&mut key, &request.operation_id);
         push_id(&mut key, artifact);
-        let event_id = StableId::new(format!("ds-revoke:{}", Digest32::of_bytes(&key))).map_err(
-            |_| DatasetRevocationError::Registry(ArtifactRegistryError::InternalInvariant),
-        )?;
+        let event_id =
+            StableId::new(format!("ds-revoke:{}", Digest32::of_bytes(&key))).map_err(|_| {
+                DatasetRevocationError::Registry(ArtifactRegistryError::InternalInvariant)
+            })?;
         if !existing.contains(&event_id) {
             if registry.state(artifact) == Some(ArtifactState::Revoked) {
                 already_revoked += 1;
