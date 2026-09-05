@@ -1,0 +1,180 @@
+name: Hepta bounded formatter candidate materialization
+
+on:
+  push:
+    branches: [codex/hepta-blocker-materialization-20260905-r3]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-bounded-materialization-r3
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOURCE_SHA: 2569607012501456d290183df9e986b0a4703fe5
+      OUTPUT_BRANCH: codex/hepta-blocker-normalized-output-20260905-r3
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Check out fixed source, excluding this generator
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: 2569607012501456d290183df9e986b0a4703fe5
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install repository format tools
+        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532
+        with:
+          tool: just@1.51.0
+
+      - name: Install DotSlash
+        uses: facebook/install-dotslash@1e4e7b3e07eaca387acb98f1d4720e0bee8dbb6a
+
+      - name: Install pinned uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: 0.11.3
+          enable-cache: false
+
+      - name: Generate formatting candidate and exact spelling exceptions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          just fmt
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.codespellignore')
+          before = path.read_text()
+          assert before == 'ans\niTerm\niTerm2\nnumer\npsuedo\nre-use\nSOM\nte\nTE\nWRONLY\n'
+          # Existing Rust enum identifiers, not prose misspellings. No files skipped.
+          path.write_text(before + 'atleast\natmost\n')
+          PY
+          just fmt-check
+          uvx --from codespell==2.4.3 codespell --ignore-words .codespellignore --skip ./.git
+
+      - name: Reject changes outside observed formatter failures
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import ast
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+          def git(*args):
+              return subprocess.check_output(['git', *args])
+          allowed_python = {
+              'scripts/hepta-cns.py', 'scripts/hepta-gap-closure.py',
+              'scripts/hepta-value-learning.py', 'scripts/hepta_module_doc_metadata.py',
+              'scripts/hepta_source_registry_closure.py', 'scripts/hepta_wave2_memory_sources.py',
+              'scripts/test_hepta_module_doc_metadata.py', 'scripts/verify_hepta_callers.py',
+          }
+          allowed_rust = {
+              'hepta-bellman-operator/src/lib.rs', 'hepta-bellman-operator/src/lib_tests.rs',
+              'hepta-infer-worker-host/src/lib.rs', 'hepta-intelligence-eval/src/lib.rs',
+              'hepta-intelligence-eval/src/lib_tests.rs', 'hepta-intelligence-eval/src/ope.rs',
+              'hepta-intelligence-eval/src/ope_confidence.rs',
+              'hepta-intelligence-eval/src/temporal_evaluation.rs',
+              'hepta-intelligence-eval/src/temporal_evaluation_tests.rs',
+              'hepta-intelligence-eval/src/temporal_fold.rs', 'hepta-intuition/src/lib.rs',
+              'hepta-neuron/src/lib.rs', 'hepta-neuron/src/sparse.rs',
+              'hepta-operations/src/error.rs', 'hepta-operations/src/ledger.rs',
+              'hepta-operations/src/ledger_tests.rs', 'hepta-operations/src/outbox_tests.rs',
+              'hepta-plasticity/src/lib.rs', 'hepta-prompt-optimizer/src/lib.rs',
+              'hepta-prompt-registry/src/lib.rs', 'hepta-types/src/bounded.rs',
+              'hepta-types/src/digest.rs', 'hepta-types/src/digest_tests.rs',
+              'hepta-types/src/fixed.rs', 'hepta-types/src/identity.rs',
+              'hepta-types/src/identity_tests.rs', 'hepta-wire/src/envelope.rs',
+              'hepta-wire/src/envelope_tests.rs',
+          }
+          allowed = allowed_python | {'codex-rs/' + p for p in allowed_rust} | {'.codespellignore'}
+          changed = git('diff', '--name-only', '-z').decode().strip('\0').split('\0')
+          assert changed and set(changed) <= allowed, sorted(set(changed) - allowed)
+          assert not git('ls-files', '--others', '--exclude-standard').strip(), 'unexpected untracked files'
+          for path in changed:
+              assert Path(path).is_file() and not Path(path).is_symlink(), path
+              if path in allowed_python:
+                  before = git('show', 'HEAD:' + path).decode()
+                  after = Path(path).read_text()
+                  assert ast.dump(ast.parse(before), include_attributes=False) == ast.dump(ast.parse(after), include_attributes=False), path
+          out = Path(os.environ['RUNNER_TEMP']) / 'hepta-normalization'
+          out.mkdir()
+          (out / 'changes.patch').write_bytes(git('diff', '--binary'))
+          (out / 'paths.json').write_text(json.dumps(changed, indent=2) + '\n')
+          (out / 'source.txt').write_bytes(git('rev-parse', 'HEAD', 'HEAD^{tree}'))
+          print(json.dumps({'source': os.environ['SOURCE_SHA'], 'changed_files': len(changed), 'paths': changed}))
+          PY
+          git diff --check
+          python3 scripts/hepta-module-docs.py verify
+          python3 scripts/hepta-gap-closure.py verify
+          python3 scripts/hepta-cns.py verify
+          python3 scripts/hepta-docs.py verify
+          python3 -m unittest discover -s scripts -p test_hepta_module_doc_metadata.py -v
+
+      - name: Create candidate Git objects and a new branch only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          import subprocess
+          import urllib.request
+          from pathlib import Path
+          repo = 'TrillionniumFoundation/hepta-private-ci'
+          source = '2569607012501456d290183df9e986b0a4703fe5'
+          branch = 'codex/hepta-blocker-normalized-output-20260905-r3'
+          assert os.environ['GITHUB_REPOSITORY'] == repo
+          assert os.environ['GITHUB_REF'] == 'refs/heads/codex/hepta-blocker-materialization-20260905-r3'
+          assert subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode().strip() == source
+          out = Path(os.environ['RUNNER_TEMP']) / 'hepta-normalization'
+          paths = json.loads((out / 'paths.json').read_text())
+          def post(endpoint, data):
+              request = urllib.request.Request(
+                  'https://api.github.com/repos/' + repo + '/git/' + endpoint,
+                  data=json.dumps(data).encode(),
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json',
+                           'X-GitHub-Api-Version': '2022-11-28',
+                           'Content-Type': 'application/json'}, method='POST')
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  return json.load(response)
+          entries = []
+          for path in paths:
+              content = Path(path).read_bytes()
+              blob = post('blobs', {'encoding': 'base64', 'content': base64.b64encode(content).decode()})
+              expected = subprocess.check_output(['git', 'hash-object', path]).decode().strip()
+              assert blob['sha'] == expected, path
+              mode = subprocess.check_output(['git', 'ls-tree', 'HEAD', '--', path]).decode().split()[0]
+              entries.append({'path': path, 'mode': mode, 'type': 'blob', 'sha': blob['sha']})
+          base_tree = subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}']).decode().strip()
+          tree = post('trees', {'base_tree': base_tree, 'tree': entries})
+          subprocess.run(['git', 'add', '--', *paths], check=True)
+          expected_tree = subprocess.check_output(['git', 'write-tree']).decode().strip()
+          assert tree['sha'] == expected_tree
+          commit = post('commits', {'message': 'style(hepta): reconcile mandatory formatting and legitimate enum spellings\n\nBounded generated candidate from exact 2569607. Existing formatters only; Python AST preserved. Spelling exceptions limited to existing AtLeast/AtMost enum identifiers. No formatter, evaluator, permission, activation or release rules changed. Independent source and synthetic-merge qualification still required.', 'tree': tree['sha'], 'parents': [source]})
+          # POST creates only; 422 on existing branch. Never PATCH, force-push or merge.
+          post('refs', {'ref': 'refs/heads/' + branch, 'sha': commit['sha']})
+          identity = {'source': source, 'tree': tree['sha'], 'head': commit['sha'], 'branch': branch, 'acceptance': False, 'release': False}
+          (out / 'candidate.json').write_text(json.dumps(identity, indent=2) + '\n')
+          print(json.dumps(identity))
+          PY
+
+      - name: Retain candidate patch and identities, not acceptance receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-bounded-normalization-r3
+          path: ${{ runner.temp }}/hepta-normalization/
+          if-no-files-found: warn
+          retention-days: 7
