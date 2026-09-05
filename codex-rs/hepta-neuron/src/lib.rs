@@ -10,6 +10,13 @@ use std::fmt;
 
 use codex_hepta_types::{AuthorityPosture, Digest32, FixedQ32, Generation, StableId};
 
+mod sparse;
+
+pub use sparse::{
+    InhibitoryEdge, SparseCheckpoint, SparseConfig, SparseError, SparseSignalReceipt, SparseTick,
+    sparse_tick,
+};
+
 const MAX_FEATURES: usize = 4_096;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
