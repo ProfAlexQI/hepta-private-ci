@@ -36,6 +36,12 @@ struct OutcomeIndex {
     finality: OutcomeFinality,
 }
 
+/// Validated immutable event prepared for a single-writer commit.
+pub(crate) struct PreparedAppend {
+    pub(crate) record: LedgerRecord,
+    pub(crate) disposition: AppendDisposition,
+}
+
 /// Deterministic append-only ledger core. The type performs no ambient I/O and
 /// exposes immutable snapshots for a separately authorized durable adapter.
 #[derive(Clone, Debug, Default)]
@@ -56,7 +62,12 @@ impl LearningLedger {
         Self::default()
     }
 
-    pub fn append(&mut self, mut event: LedgerEvent) -> Result<AppendReceipt, LedgerError> {
+    pub fn append(&mut self, event: LedgerEvent) -> Result<AppendReceipt, LedgerError> {
+        let prepared = self.prepare(event)?;
+        self.apply(prepared)
+    }
+
+    pub(crate) fn prepare(&self, mut event: LedgerEvent) -> Result<PreparedAppend, LedgerError> {
         normalize_event(&mut event)?;
         let record_id = event.record_id().clone();
         let event_digest = digest_event(&event);
@@ -70,7 +81,10 @@ impl LearningLedger {
                 .iter()
                 .find(|record| record.event.record_id() == &record_id)
                 .ok_or(LedgerError::InternalInvariant)?;
-            return Ok(receipt(record, AppendDisposition::IdempotentReplay));
+            return Ok(PreparedAppend {
+                record: record.clone(),
+                disposition: AppendDisposition::IdempotentReplay,
+            });
         }
 
         if self.records.len() >= MAX_RECORDS {
@@ -95,10 +109,32 @@ impl LearningLedger {
             chain_digest,
             event,
         };
-        let append_receipt = receipt(&record, AppendDisposition::Appended);
-        self.index_record(&record);
-        self.records.push(record);
-        Ok(append_receipt)
+        Ok(PreparedAppend {
+            record,
+            disposition: AppendDisposition::Appended,
+        })
+    }
+
+    pub(crate) fn apply(&mut self, prepared: PreparedAppend) -> Result<AppendReceipt, LedgerError> {
+        let PreparedAppend {
+            record,
+            disposition,
+        } = prepared;
+        let result = receipt(&record, disposition);
+        if disposition == AppendDisposition::Appended {
+            let head = self
+                .records
+                .last()
+                .map_or(Digest32::ZERO, |row| row.chain_digest);
+            if record.predecessor_chain_digest != head
+                || record.sequence.get() != self.records.len() as u64 + 1
+            {
+                return Err(LedgerError::InternalInvariant);
+            }
+            self.index_record(&record);
+            self.records.push(record);
+        }
+        Ok(result)
     }
 
     #[must_use]
@@ -370,6 +406,9 @@ fn normalize_event(event: &mut LedgerEvent) -> Result<(), LedgerError> {
     let LedgerEvent::Decision(decision) = event else {
         return Ok(());
     };
+    if decision.candidate_ids.len() > MAX_CANDIDATES {
+        return Err(LedgerError::CandidateLimitExceeded);
+    }
     decision.candidate_ids.sort();
     for window in decision.candidate_ids.windows(2) {
         if window[0] == window[1] {
@@ -416,6 +455,10 @@ fn event_kind(event: &LedgerEvent) -> u8 {
 }
 
 fn digest_event(event: &LedgerEvent) -> Digest32 {
+    Digest32::of_bytes(&encode_event(event))
+}
+
+pub(crate) fn encode_event(event: &LedgerEvent) -> Vec<u8> {
     let mut bytes = Vec::new();
     bytes.extend_from_slice(EVENT_DIGEST_DOMAIN);
     bytes.push(event_kind(event));
@@ -425,7 +468,7 @@ fn digest_event(event: &LedgerEvent) -> Digest32 {
         LedgerEvent::Credit(value) => push_credit(&mut bytes, value),
         LedgerEvent::Revocation(value) => push_revocation(&mut bytes, value),
     }
-    Digest32::of_bytes(&bytes)
+    bytes
 }
 
 fn digest_chain(
