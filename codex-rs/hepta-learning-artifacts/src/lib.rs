@@ -5,11 +5,17 @@
 
 #![forbid(unsafe_code)]
 
+mod dataset_revocation;
 mod error;
 mod model;
 mod registry;
 mod storage;
 
+pub use dataset_revocation::DatasetRevocationError;
+pub use dataset_revocation::DatasetRevocationRequest;
+pub use dataset_revocation::DatasetRevocationSummary;
+pub use dataset_revocation::PreparedDatasetRevocation;
+pub use dataset_revocation::prepare_dataset_revocation;
 pub use error::ArtifactRegistryError;
 pub use model::ArtifactEvent;
 pub use model::ArtifactKind;
