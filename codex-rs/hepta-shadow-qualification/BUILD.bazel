@@ -43,3 +43,16 @@ rust_binary(
         "@crates//:tokio",
     ],
 )
+
+rust_test(
+    name = "durable-learning-roundtrip",
+    srcs = ["tests/durable_learning_roundtrip.rs"],
+    crate_root = "tests/durable_learning_roundtrip.rs",
+    edition = "2024",
+    deps = [
+        "//codex-rs/hepta-learning-artifacts",
+        "//codex-rs/hepta-learning-ledger",
+        "//codex-rs/hepta-types",
+        "@crates//:tempfile",
+    ],
+)
