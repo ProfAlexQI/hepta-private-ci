@@ -1,4 +1,4 @@
-name: Hepta verified merged-branch retirement
+name: Hepta final single-main consolidation
 
 on:
   push:
@@ -13,13 +13,13 @@ permissions:
 
 concurrency:
   group: hepta-verified-branch-retirement
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  retire-verified-ancestors:
+  consolidate-to-single-main:
     if: github.repository == 'TrillionniumFoundation/hepta-private-ci' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -27,50 +27,139 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Test backup, races, ancestry, and atomic rejection
+      - name: Test backup, ancestry, races and atomic rejection
         working-directory: tools/branch-consolidation
         run: python3 -m unittest -v test_hepta_branch_consolidation.py
 
-      - name: Attempt the user-requested administrative default change
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if gh api --method PATCH "repos/$GITHUB_REPOSITORY" -f default_branch=main > "$RUNNER_TEMP/hepta-default-result.json" 2> "$RUNNER_TEMP/hepta-default-error.txt"; then
-            printf 'Administrative default: '
-            jq -r .default_branch "$RUNNER_TEMP/hepta-default-result.json"
-          else
-            echo 'Default change was not authorized by the runtime token; retaining the live default branch.'
-            cat "$RUNNER_TEMP/hepta-default-error.txt"
-          fi
-
-      - name: Freeze every branch and verify a complete recovery bundle
+      - name: Freeze every live branch and verify a complete recovery bundle
         id: plan
         run: python3 tools/branch-consolidation/hepta_branch_consolidation.py plan --output "$RUNNER_TEMP/hepta-ref-backup"
 
-      - name: Retain backup before any branch deletion
+      - name: Retain verified backup before any ref mutation
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: hepta-branch-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          name: hepta-all-branch-backup-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/hepta-ref-backup
           retention-days: 30
           compression-level: 0
           if-no-files-found: error
 
-      - name: Delete only frozen ancestors using explicit leases
+      - name: Make main the live default, with a reversible rename fallback
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$RUNNER_TEMP/hepta-default-result.json"
+          error="$RUNNER_TEMP/hepta-default-error.txt"
+          : >"$error"
+          default_before="$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)"
+          main_sha="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
+          test -n "$main_sha"
+
+          method=already_main
+          if [[ "$default_before" != main ]]; then
+            default_sha="$(git ls-remote --heads origin "refs/heads/$default_before" | awk '{print $1}')"
+            test -n "$default_sha"
+            if [[ "$default_sha" != "$main_sha" ]]; then
+              echo "Live default and main do not identify the same reviewed commit" >&2
+              exit 1
+            fi
+
+            if gh api --method PATCH "repos/$GITHUB_REPOSITORY" -f default_branch=main >"$result" 2>"$error"; then
+              method=repository_patch
+            else
+              # GitHub permits ref deletion with contents:write. Remove main only under an
+              # exact lease, rename the byte-identical live default to main, and recreate
+              # main immediately if the rename is refused. No source commit is rewritten.
+              git push --porcelain \
+                --force-with-lease="refs/heads/main:$main_sha" \
+                origin :refs/heads/main
+              encoded_default="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$default_before")"
+              set +e
+              gh api --method POST \
+                "repos/$GITHUB_REPOSITORY/branches/$encoded_default/rename" \
+                -f new_name=main >"$result" 2>>"$error"
+              rename_rc=$?
+              set -e
+              if [[ $rename_rc -ne 0 ]]; then
+                git push --porcelain origin "$main_sha:refs/heads/main"
+                echo "Default-branch rename was refused; main was restored and deletion is aborted" >&2
+                exit 1
+              fi
+              method=default_branch_rename
+            fi
+          fi
+
+          for _ in $(seq 1 40); do
+            live_default="$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)"
+            live_main="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
+            if [[ "$live_default" == main && "$live_main" == "$main_sha" ]]; then
+              jq -n \
+                --arg method "$method" \
+                --arg prior "$default_before" \
+                --arg default "$live_default" \
+                --arg sha "$live_main" \
+                '{method:$method,priorDefault:$prior,defaultBranch:$default,main:$sha}' >"$result"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "GitHub did not converge to default=main at the reviewed SHA" >&2
+          exit 1
+
+      - name: Apply the frozen lease-protected retirement plan
         env:
           PLAN_SHA256: ${{ steps.plan.outputs.plan_sha256 }}
         run: python3 tools/branch-consolidation/hepta_branch_consolidation.py apply --output "$RUNNER_TEMP/hepta-ref-backup" --expected-plan-sha256 "$PLAN_SHA256"
 
-      - name: Retain actual result, including refusals and remaining refs
+      - name: Delete every remaining non-main ancestor atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote --symref origin HEAD | sed -n 's#^ref: refs/heads/\([^[:space:]]*\)[[:space:]]HEAD$#\1#p')" = main
+          git fetch --prune --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          main_sha="$(git ls-remote --heads origin refs/heads/main | awk '{print $1}')"
+          test -n "$main_sha"
+          git cat-file -e "$main_sha^{commit}"
+          git merge-base --is-ancestor "$GITHUB_SHA" "$main_sha"
+
+          leases=()
+          deletes=()
+          while IFS=$'\t' read -r sha ref; do
+            name="${ref#refs/heads/}"
+            [[ "$name" == main ]] && continue
+            git cat-file -e "$sha^{commit}"
+            git merge-base --is-ancestor "$sha" "$main_sha"
+            leases+=("--force-with-lease=refs/heads/$name:$sha")
+            deletes+=(":refs/heads/$name")
+          done < <(git ls-remote --heads origin)
+
+          if ((${#deletes[@]})); then
+            git push --atomic --porcelain "${leases[@]}" origin "${deletes[@]}"
+          fi
+
+          mapfile -t remaining < <(git ls-remote --heads origin | awk '{sub("refs/heads/", "", $2); print $2}')
+          [[ ${#remaining[@]} -eq 1 && "${remaining[0]}" == main ]]
+          [[ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)" == main ]]
+          jq -n \
+            --arg main "$main_sha" \
+            --argjson deleted "${#deletes[@]}" \
+            --arg default main \
+            '{singleMainRefVerified:true,main:$main,defaultBranch:$default,deletedBranchCount:$deleted}' \
+            >"$RUNNER_TEMP/hepta-ref-backup/final-receipt.json"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Retain the actual cleanup receipts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: hepta-branch-result-${{ github.run_id }}-${{ github.run_attempt }}
+          name: hepta-single-main-result-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/hepta-ref-backup/plan.json
             ${{ runner.temp }}/hepta-ref-backup/receipt.json
+            ${{ runner.temp }}/hepta-ref-backup/final-receipt.json
             ${{ runner.temp }}/hepta-default-result.json
             ${{ runner.temp }}/hepta-default-error.txt
           retention-days: 30
